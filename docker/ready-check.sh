@@ -6,8 +6,8 @@
 # deployments work the same as local Docker.
 set -uo pipefail
 
-RETRIES="${JVMETA_READY_RETRIES:-40}"
-INTERVAL="${JVMETA_READY_INTERVAL:-3}"
+RETRIES="${JAVMETA_READY_RETRIES:-40}"
+INTERVAL="${JAVMETA_READY_INTERVAL:-3}"
 
 failures=()
 

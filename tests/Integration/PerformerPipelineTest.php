@@ -11,7 +11,7 @@ use MongoDB\BSON\ObjectId;
 use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
- * Live-captured performer page → real crawlerx → jvmeta job → Postgres
+ * Live-captured performer page → real crawlerx → javmeta job → Postgres
  * (performer + source link) + Mongo archive + Elasticsearch document.
  */
 final class PerformerPipelineTest extends IntegrationTestCase

@@ -8,11 +8,11 @@ PROFILE_CRAWLER = --profile app --profile flare
 PROFILE_CONTROL = --profile app --profile control --profile embed
 PROFILE_NODE = --profile app --profile flare --profile control --profile embed
 
-# Worker instances come from .env (JVMETA_WORKER_INSTANCES); override on the
-# command line wins: `make up JVMETA_WORKER_INSTANCES=4`.
-JVMETA_WORKER_INSTANCES ?= 2
-ifneq ($(strip $(shell grep -E '^JVMETA_WORKER_INSTANCES=' .env 2>/dev/null)),)
-JVMETA_WORKER_INSTANCES := $(shell grep -E '^JVMETA_WORKER_INSTANCES=' .env 2>/dev/null | head -1 | cut -d= -f2-)
+# Worker instances come from .env (JAVMETA_WORKER_INSTANCES); override on the
+# command line wins: `make up JAVMETA_WORKER_INSTANCES=4`.
+JAVMETA_WORKER_INSTANCES ?= 2
+ifneq ($(strip $(shell grep -E '^JAVMETA_WORKER_INSTANCES=' .env 2>/dev/null)),)
+JAVMETA_WORKER_INSTANCES := $(shell grep -E '^JAVMETA_WORKER_INSTANCES=' .env 2>/dev/null | head -1 | cut -d= -f2-)
 endif
 
 API_SERVICES = api
@@ -88,16 +88,16 @@ up:
 	@case "$(MODE)" in \
 		local) \
 			test -f .env || cp .env.example .env; \
-			$(DOCKER_COMPOSE) $(PROFILE_ALL) up -d --scale worker=$(JVMETA_WORKER_INSTANCES) $(LOCAL_SERVICES); \
+			$(DOCKER_COMPOSE) $(PROFILE_ALL) up -d --scale worker=$(JAVMETA_WORKER_INSTANCES) $(LOCAL_SERVICES); \
 			;; \
 		crawler) \
-			$(DOCKER_COMPOSE) $(PROFILE_CRAWLER) up -d --scale worker=$(JVMETA_WORKER_INSTANCES) $(CRAWLER_SERVICES); \
+			$(DOCKER_COMPOSE) $(PROFILE_CRAWLER) up -d --scale worker=$(JAVMETA_WORKER_INSTANCES) $(CRAWLER_SERVICES); \
 			;; \
 		control) \
 			$(DOCKER_COMPOSE) $(PROFILE_CONTROL) up -d $(CONTROL_NODE_SERVICES); \
 			;; \
 		node) \
-			$(DOCKER_COMPOSE) $(PROFILE_NODE) up -d --scale worker=$(JVMETA_WORKER_INSTANCES) $(NODE_SERVICES); \
+			$(DOCKER_COMPOSE) $(PROFILE_NODE) up -d --scale worker=$(JAVMETA_WORKER_INSTANCES) $(NODE_SERVICES); \
 			;; \
 		*) \
 			echo "Unsupported MODE='$(MODE)'. Use MODE=local, crawler, control, or node."; \

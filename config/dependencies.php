@@ -12,7 +12,7 @@ $matrix = [
 ];
 
 return [
-    'role' => env('JVMETA_ROLE', 'api'),
+    'role' => env('JAVMETA_ROLE', 'api'),
     'roles' => [
         'api' => $matrix,
         'mcp' => $matrix,

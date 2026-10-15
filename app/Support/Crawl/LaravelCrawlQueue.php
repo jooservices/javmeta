@@ -13,7 +13,7 @@ final class LaravelCrawlQueue
     public static function nameForKind(string $kind): string
     {
         /** @var array<string, string> $names */
-        $names = config('jvmeta_queues.names', []);
+        $names = config('javmeta_queues.names', []);
         $name = $names[$kind] ?? null;
 
         if (! is_string($name) || $name === '') {
@@ -27,7 +27,7 @@ final class LaravelCrawlQueue
     public static function allNames(): array
     {
         /** @var array<string, string> $names */
-        $names = config('jvmeta_queues.names', []);
+        $names = config('javmeta_queues.names', []);
 
         return array_values($names);
     }

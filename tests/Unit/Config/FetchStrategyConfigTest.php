@@ -8,12 +8,12 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * crawlerx owns the fetch strategy (method, profile, per-method timeout);
- * jvmeta must not configure it any more.
+ * javmeta must not configure it any more.
  */
 final class FetchStrategyConfigTest extends TestCase
 {
     private const FILES = [
-        'config/jvmeta_sources.php',
+        'config/javmeta_sources.php',
         'app/Services/Crawler/CrawlerxClient.php',
         '.env.example',
         'deploy/production.env.example',
@@ -27,8 +27,8 @@ final class FetchStrategyConfigTest extends TestCase
 
         foreach (self::FILES as $file) {
             $contents = (string) file_get_contents($root . '/' . $file);
-            self::assertStringNotContainsString('JVMETA_FETCH_PROFILE', $contents, $file);
-            self::assertStringNotContainsString('JVMETA_FETCH_TIMEOUT', $contents, $file);
+            self::assertStringNotContainsString('JAVMETA_FETCH_PROFILE', $contents, $file);
+            self::assertStringNotContainsString('JAVMETA_FETCH_TIMEOUT', $contents, $file);
             self::assertStringNotContainsString('FetchProfile', $contents, $file);
             self::assertStringNotContainsString('HttpOptionsDto', $contents, $file);
         }

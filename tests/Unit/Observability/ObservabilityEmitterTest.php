@@ -17,7 +17,7 @@ final class ObservabilityEmitterTest extends TestCase
             'openobserve.enabled' => true,
             'openobserve.url' => 'http://openobserve.test',
             'openobserve.org' => 'default',
-            'openobserve.stream_logs' => 'jvmeta_logs',
+            'openobserve.stream_logs' => 'javmeta_logs',
         ]);
         Http::fake(['openobserve.test/*' => Http::response([], 200)]);
         $errorText = fake()->url();

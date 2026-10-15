@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 from sentence_transformers import SentenceTransformer
 
-app = FastAPI(title="jvmeta embedder")
+app = FastAPI(title="javmeta embedder")
 
 MODEL_NAME = "intfloat/multilingual-e5-small"
 _model = None
@@ -18,7 +18,7 @@ def get_model() -> SentenceTransformer:
 
 
 class EmbedRequest(BaseModel):
-    model: str = "jvmeta-passage"
+    model: str = "javmeta-passage"
     input: str | list[str]
 
 

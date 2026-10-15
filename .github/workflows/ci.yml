@@ -1,4 +1,4 @@
-# Quality gate for jooservices/jvmeta — GitHub-hosted runners only.
+# Quality gate for jooservices/javmeta — GitHub-hosted runners only.
 # Runs the same commands as the local gate through docker/ci/run.
 name: CI
 
@@ -28,7 +28,7 @@ jobs:
           persist-credentials: false
 
       - name: Build CI image
-        run: docker build --tag jvmeta-ci:local --file docker/ci/Dockerfile docker/ci
+        run: docker build --tag javmeta-ci:local --file docker/ci/Dockerfile docker/ci
 
       - name: Cache Composer vendor
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -40,27 +40,27 @@ jobs:
       - name: Install dependencies
         if: steps.vendor-cache.outputs.cache-hit != 'true'
         env:
-          JVMETA_CI_SKIP_BUILD: '1'
+          JAVMETA_CI_SKIP_BUILD: '1'
         run: docker/ci/run composer install --no-interaction --prefer-dist --no-progress
 
       - name: Composer validate
         env:
-          JVMETA_CI_SKIP_BUILD: '1'
+          JAVMETA_CI_SKIP_BUILD: '1'
         run: docker/ci/run composer validate --strict
 
       - name: Lint (Pint, PHPCS, PHPMD, PHPStan, PHP-CS-Fixer)
         env:
-          JVMETA_CI_SKIP_BUILD: '1'
+          JAVMETA_CI_SKIP_BUILD: '1'
         run: docker/ci/run composer lint
 
       - name: Test with coverage
         env:
-          JVMETA_CI_SKIP_BUILD: '1'
+          JAVMETA_CI_SKIP_BUILD: '1'
         run: docker/ci/run composer test:coverage
 
       - name: Coverage check (minimum 85%)
         env:
-          JVMETA_CI_SKIP_BUILD: '1'
+          JAVMETA_CI_SKIP_BUILD: '1'
         run: docker/ci/run composer coverage:check
 
       - name: Upload coverage report
@@ -82,7 +82,7 @@ jobs:
           persist-credentials: false
 
       - name: Build CI image
-        run: docker build --tag jvmeta-ci:local --file docker/ci/Dockerfile docker/ci
+        run: docker build --tag javmeta-ci:local --file docker/ci/Dockerfile docker/ci
 
       - name: Cache Composer vendor
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
@@ -94,12 +94,12 @@ jobs:
       - name: Install dependencies
         if: steps.vendor-cache.outputs.cache-hit != 'true'
         env:
-          JVMETA_CI_SKIP_BUILD: '1'
+          JAVMETA_CI_SKIP_BUILD: '1'
         run: docker/ci/run composer install --no-interaction --prefer-dist --no-progress
 
       - name: Run integration suite
         env:
-          JVMETA_CI_SKIP_BUILD: '1'
+          JAVMETA_CI_SKIP_BUILD: '1'
         run: docker/ci/integration
 
   secrets:
@@ -132,7 +132,7 @@ jobs:
           persist-credentials: false
 
       - name: Build Dockerfile.production (no push)
-        run: docker build --tag jvmeta:ci --file Dockerfile.production .
+        run: docker build --tag javmeta:ci --file Dockerfile.production .
 
       - name: Report image size
-        run: docker image inspect jvmeta:ci --format '{{.Size}}' | numfmt --to=iec
+        run: docker image inspect javmeta:ci --format '{{.Size}}' | numfmt --to=iec

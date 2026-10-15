@@ -17,8 +17,8 @@ use Illuminate\Support\Facades\Cache;
  */
 final class WorkerHeartbeat
 {
-    public const CACHE_KEY = 'jvmeta:worker:heartbeat';
-    public const INDEX_KEY = 'jvmeta:worker:instances';
+    public const CACHE_KEY = 'javmeta:worker:heartbeat';
+    public const INDEX_KEY = 'javmeta:worker:instances';
 
     public function beat(?string $instance = null): void
     {
@@ -44,7 +44,7 @@ final class WorkerHeartbeat
 
     public function isStale(?string $instance = null, ?int $staleSeconds = null): bool
     {
-        $threshold = $staleSeconds ?? (int) config('jvmeta_alerts.watchdog.heartbeat_stale_seconds', 600);
+        $threshold = $staleSeconds ?? (int) config('javmeta_alerts.watchdog.heartbeat_stale_seconds', 600);
         $last = $this->lastBeatAt($instance);
 
         if ($last === null) {
@@ -59,7 +59,7 @@ final class WorkerHeartbeat
      */
     public function instances(?int $staleSeconds = null): array
     {
-        $threshold = $staleSeconds ?? (int) config('jvmeta_alerts.watchdog.heartbeat_stale_seconds', 600);
+        $threshold = $staleSeconds ?? (int) config('javmeta_alerts.watchdog.heartbeat_stale_seconds', 600);
         $index = Cache::get(self::INDEX_KEY, []);
         if (! is_array($index)) {
             return [];

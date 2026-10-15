@@ -12,18 +12,18 @@ final class RuntimeDependencyHealthTest extends IntegrationTestCase
 {
     public function test_mongo_outage_is_soft_for_health_and_postgres_backed_api_routes(): void
     {
-        if (getenv('JVMETA_INTEGRATION_STOP_MONGO') !== '1') {
+        if (getenv('JAVMETA_INTEGRATION_STOP_MONGO') !== '1') {
             $this->markTestSkipped('The integration runner must stop Mongo during this test.');
         }
 
         $performer = Performer::factory()->create();
         $apiKey = app(ApiKeyService::class)->create(fake()->words(2, true))->plaintext;
-        $signalId = getenv('JVMETA_MONGO_OUTAGE_SIGNAL_ID');
+        $signalId = getenv('JAVMETA_MONGO_OUTAGE_SIGNAL_ID');
         self::assertIsString($signalId);
         self::assertNotSame('', $signalId);
         self::assertTrue(app(MongoProbe::class)->probe(), 'Mongo must be reachable before the outage.');
 
-        $signalDirectory = '/tmp/jvmeta-integration-signal';
+        $signalDirectory = '/tmp/javmeta-integration-signal';
         $readySignal = "{$signalDirectory}/mongo-outage-{$signalId}.ready";
         $stoppedSignal = "{$signalDirectory}/mongo-outage-{$signalId}.stopped";
         $failureSignal = "{$signalDirectory}/mongo-outage-{$signalId}.failed";

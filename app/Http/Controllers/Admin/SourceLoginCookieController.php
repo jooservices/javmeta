@@ -46,8 +46,8 @@ final class SourceLoginCookieController extends BaseApiController
 
     private function assertConfiguredSource(string $slug): void
     {
-        if (! is_array(config("jvmeta_sources.sources.{$slug}"))) {
-            throw ValidationException::withMessages(['slug' => 'The source must be a configured jvmeta source.']);
+        if (! is_array(config("javmeta_sources.sources.{$slug}"))) {
+            throw ValidationException::withMessages(['slug' => 'The source must be a configured javmeta source.']);
         }
     }
 

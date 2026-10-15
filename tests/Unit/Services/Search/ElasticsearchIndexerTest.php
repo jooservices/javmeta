@@ -27,7 +27,7 @@ final class ElasticsearchIndexerTest extends TestCase
         $this->assertFalse(app(ElasticsearchIndexer::class)->indexMovie($movie, requireVector: true));
 
         Http::assertSent(static fn(ClientRequest $request): bool => str_ends_with($request->url(), '/v1/embeddings'));
-        Http::assertNotSent(static fn(ClientRequest $request): bool => str_contains($request->url(), '/jvmeta_movies/_doc/'));
+        Http::assertNotSent(static fn(ClientRequest $request): bool => str_contains($request->url(), '/javmeta_movies/_doc/'));
     }
 
     public function test_movie_indexing_remains_fail_open_when_vector_is_unavailable(): void
@@ -41,7 +41,7 @@ final class ElasticsearchIndexerTest extends TestCase
         $this->assertTrue(app(ElasticsearchIndexer::class)->indexMovie($movie));
 
         Http::assertSent(static function (ClientRequest $request) use ($movie): bool {
-            if (! str_ends_with($request->url(), '/jvmeta_movies/_doc/' . $movie->uuid)) {
+            if (! str_ends_with($request->url(), '/javmeta_movies/_doc/' . $movie->uuid)) {
                 return false;
             }
 
@@ -60,7 +60,7 @@ final class ElasticsearchIndexerTest extends TestCase
         $this->assertFalse(app(ElasticsearchIndexer::class)->indexMovie($movie));
 
         Http::assertSent(static function (ClientRequest $request) use ($movie): bool {
-            return str_ends_with($request->url(), '/jvmeta_movies/_doc/' . $movie->uuid)
+            return str_ends_with($request->url(), '/javmeta_movies/_doc/' . $movie->uuid)
                 && array_key_exists('embedding_movie', $request->data());
         });
     }
@@ -76,7 +76,7 @@ final class ElasticsearchIndexerTest extends TestCase
         $this->assertFalse(app(ElasticsearchIndexer::class)->indexPerformer($performer, requireVector: true));
 
         Http::assertSent(static fn(ClientRequest $request): bool => str_ends_with($request->url(), '/v1/embeddings'));
-        Http::assertNotSent(static fn(ClientRequest $request): bool => str_contains($request->url(), '/jvmeta_performers/_doc/'));
+        Http::assertNotSent(static fn(ClientRequest $request): bool => str_contains($request->url(), '/javmeta_performers/_doc/'));
     }
 
     public function test_performer_indexing_remains_fail_open_when_vector_is_unavailable(): void
@@ -90,7 +90,7 @@ final class ElasticsearchIndexerTest extends TestCase
         $this->assertTrue(app(ElasticsearchIndexer::class)->indexPerformer($performer));
 
         Http::assertSent(static function (ClientRequest $request) use ($performer): bool {
-            if (! str_ends_with($request->url(), '/jvmeta_performers/_doc/' . $performer->uuid)) {
+            if (! str_ends_with($request->url(), '/javmeta_performers/_doc/' . $performer->uuid)) {
                 return false;
             }
 
@@ -110,7 +110,7 @@ final class ElasticsearchIndexerTest extends TestCase
         $performer->aliases()->create(['alias' => $alias, 'kind' => 'stage']);
 
         Http::fake(static fn(ClientRequest $request) => str_ends_with($request->url(), '/v1/embeddings')
-            ? Http::response(['data' => [['embedding' => array_fill(0, 384, 0.1)]], 'model' => 'jvmeta-passage'])
+            ? Http::response(['data' => [['embedding' => array_fill(0, 384, 0.1)]], 'model' => 'javmeta-passage'])
             : Http::response(['result' => 'created']));
 
         app(ElasticsearchIndexer::class)->indexPerformer($performer);
@@ -129,7 +129,7 @@ final class ElasticsearchIndexerTest extends TestCase
         });
 
         Http::assertSent(static function (ClientRequest $request) use ($performer): bool {
-            if (! str_ends_with($request->url(), '/jvmeta_performers/_doc/' . $performer->uuid)) {
+            if (! str_ends_with($request->url(), '/javmeta_performers/_doc/' . $performer->uuid)) {
                 return false;
             }
 
@@ -143,7 +143,7 @@ final class ElasticsearchIndexerTest extends TestCase
 
         Http::fake(static function (ClientRequest $request) use ($uuid) {
             if (str_ends_with($request->url(), '/v1/embeddings')) {
-                return Http::response(['data' => [['embedding' => array_fill(0, 384, 0.2)]], 'model' => 'jvmeta-query']);
+                return Http::response(['data' => [['embedding' => array_fill(0, 384, 0.2)]], 'model' => 'javmeta-query']);
             }
 
             return Http::response(['hits' => ['hits' => [['_source' => ['uuid' => $uuid]]]]]);
@@ -153,7 +153,7 @@ final class ElasticsearchIndexerTest extends TestCase
 
         $this->assertSame([$uuid], $uuids);
         Http::assertSent(static function (ClientRequest $request): bool {
-            if (! str_ends_with($request->url(), '/jvmeta_performers/_search')) {
+            if (! str_ends_with($request->url(), '/javmeta_performers/_search')) {
                 return false;
             }
 
@@ -167,7 +167,7 @@ final class ElasticsearchIndexerTest extends TestCase
 
         Http::fake(static function (ClientRequest $request) use ($uuid) {
             if (str_ends_with($request->url(), '/v1/embeddings')) {
-                return Http::response(['data' => [['embedding' => array_fill(0, 384, 0.3)]], 'model' => 'jvmeta-query']);
+                return Http::response(['data' => [['embedding' => array_fill(0, 384, 0.3)]], 'model' => 'javmeta-query']);
             }
 
             return Http::response(['hits' => ['hits' => [['_source' => ['uuid' => $uuid]]]]]);
@@ -177,7 +177,7 @@ final class ElasticsearchIndexerTest extends TestCase
 
         $this->assertSame([$uuid], $uuids);
         Http::assertSent(static function (ClientRequest $request): bool {
-            if (! str_ends_with($request->url(), '/jvmeta_movies/_search')) {
+            if (! str_ends_with($request->url(), '/javmeta_movies/_search')) {
                 return false;
             }
 

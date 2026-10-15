@@ -11,18 +11,18 @@ use Throwable;
 /**
  * Minimal MCP stdio server (JSON-RPC 2.0) for AI integration.
  * Tools: lookup_movies, get_movie, lookup_performers, get_performer.
- * Auth: JVMETA_MCP_API_KEY must be an active API key (same store as HTTP).
+ * Auth: JAVMETA_MCP_API_KEY must be an active API key (same store as HTTP).
  */
 final class McpServeCommand extends Command
 {
     protected $signature = 'mcp:serve';
 
-    protected $description = 'Serve JVMeta MCP tools over stdin/stdout (JSON-RPC).';
+    protected $description = 'Serve JAVMeta MCP tools over stdin/stdout (JSON-RPC).';
 
     public function handle(McpRequestHandler $handler): int
     {
         if (! $handler->isAuthorized()) {
-            $this->error('MCP auth failed: set JVMETA_MCP_API_KEY to an active jvm_… API key.');
+            $this->error('MCP auth failed: set JAVMETA_MCP_API_KEY to an active jvm_… API key.');
 
             return self::FAILURE;
         }

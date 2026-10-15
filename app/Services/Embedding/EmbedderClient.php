@@ -28,7 +28,7 @@ final class EmbedderClient
             $response = Http::timeout(15)->post(
                 rtrim((string) config('elasticsearch.embedder_url', 'http://embedder:8000'), '/') . '/v1/embeddings',
                 [
-                    'model' => $isQuery ? 'jvmeta-query' : 'jvmeta-passage',
+                    'model' => $isQuery ? 'javmeta-query' : 'javmeta-passage',
                     'input' => $texts,
                 ],
             );

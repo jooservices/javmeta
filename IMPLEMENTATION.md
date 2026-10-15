@@ -1,4 +1,4 @@
-# IMPLEMENTATION — jvmeta POC
+# IMPLEMENTATION — javmeta POC
 
 Status: **Approved** (planning gate closed, 2026-09-17). Working file — ticket
 state is updated by the root only. Source of truth. Requirements:
@@ -36,7 +36,7 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
 - **Description:** Verify real crawlerx adapters before any crawl implementation.
   Classify each candidate adapter as `working` / `walled` / `broken`; Wave 1
   may use only `working`. **Must run first (critical path).**
-- **Write scope:** none in `projects/jvmeta`; read/run only in `projects/crawlerx`.
+- **Write scope:** none in `projects/javmeta`; read/run only in `projects/crawlerx`.
 - **Steps:** from `projects/crawlerx`, run `make live-check SITE=<slug>` for:
   javdb, javdatabase, javlibrary, missav, fc2, onejav, javbtc, 141jav, ffjav,
   avfan, jable, xcity, warashi, minnanoav, onepondo, caribbeancom, heyzo,
@@ -62,7 +62,7 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
 
 - **Traceability:** AD-1, AD-2, AD-5, AD-17 → `tests/Feature/Health/BasicAppBootTest.php`
 - **Assigned to:** joo-dev_2 · **Status:** done (verified 2026-09-17)
-- **Write scope:** `projects/jvmeta/**` except `BUSINESS.md`, `ARCHITECTURE.md`; no writes to sibling repos.
+- **Write scope:** `projects/javmeta/**` except `BUSINESS.md`, `ARCHITECTURE.md`; no writes to sibling repos.
 - **Steps:** scaffold Laravel (prefer latest stable supporting PHP 8.5; if neither
   12/13 resolves, stop and ask). Add composer.json, artisan, bootstrap, app/config/
   database/routes/tests, Dockerfile, docker-compose.yml, .dockerignore, .env.example,
@@ -71,10 +71,10 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
   `jooservices/laravel-controller ^4`, `jooservices/laravel-repository ^4`,
   `jooservices/crawlerx` path `../crawlerx` (if path versioning blocks, stop and ask).
   Docker: `php:8.5-cli-bookworm`, `postgres:17`, optional profile `fetch`
-  (node Playwright + FlareSolverr). `.env.example` keys: APP_*, DB_* (pgsql/jvmeta),
+  (node Playwright + FlareSolverr). `.env.example` keys: APP_*, DB_* (pgsql/javmeta),
   QUEUE_CONNECTION=database, CACHE_STORE=database,
   NOTIFICATION_TELEGRAM_BOT_TOKEN/CHAT_ID (TELEGRAM_* legacy fallback),
-  JVMETA_OWNER_ADMIN_TOKEN — no real secrets. README `Status: POC — branch model may be bypassed`.
+  JAVMETA_OWNER_ADMIN_TOKEN — no real secrets. README `Status: POC — branch model may be bypassed`.
   `git init` only if not already a repo; no commit.
 - **Do NOT:** create GitHub repo/remotes; overwrite BUSINESS.md/ARCHITECTURE.md; put real `.env` secrets in repo.
 - **Verification:** `make build` && `make install` && `docker compose config` && `make test`.
@@ -154,7 +154,7 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
 
 - **Traceability:** REQ-2, AC-2.2, AC-2.4, AC-2.5, AC-2.6, AD-14, AD-15 → scheduler tests
 - **Assigned to:** joo-dev_5 · **Status:** done (verified 2026-09-17) · **Depends on:** JV-W0-004, JV-W0-001
-- **Write scope:** `config/jvmeta_sources.php`, `app/Console/Commands/CrawlTickCommand.php`,
+- **Write scope:** `config/javmeta_sources.php`, `app/Console/Commands/CrawlTickCommand.php`,
   `app/Services/Crawl/SourceThrottle.php`, `app/Services/Crawl/SourceCircuitBreaker.php`,
   `app/Services/Crawl/CrawlQueueService.php`, `routes/console.php`,
   `tests/Feature/Crawl/CrawlTickCommandTest.php`, `tests/Unit/Services/Crawl/**`
@@ -172,7 +172,7 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
   unreadable without approved fallback; queue reclaim behavior ambiguous.
 - **DoD:** tick per-source isolated; DB queue resumes after stale claim; tests cover closed/open/half-open.
 - **Progress / handover:**
-  - Completed: 2026-09-17 — config/jvmeta_sources.php (20 frozen sources, base_urls + throttle from crawlerx manifests, priority D-7, max_attempts=3 default), SourceThrottle (AIMD clamp [min,max]), SourceCircuitBreaker (closed↔open↔half_open, cooldown 300s), CrawlQueueService (dedupe UNIQUE, stale-claim reclaim, attempts≤max), CrawlTickCommand (per-source isolated loop, CrawlRun+CrawlEvent, enqueue listing seeds kind=listing delayed by gap), schedule every minute (test-guarded). Fixed 2 Pint + 5 PHPStan. `make test` 46 passed (313) · lint ✅ · `crawl:tick --limit=1` enqueued 20 listing rows.
+  - Completed: 2026-09-17 — config/javmeta_sources.php (20 frozen sources, base_urls + throttle from crawlerx manifests, priority D-7, max_attempts=3 default), SourceThrottle (AIMD clamp [min,max]), SourceCircuitBreaker (closed↔open↔half_open, cooldown 300s), CrawlQueueService (dedupe UNIQUE, stale-claim reclaim, attempts≤max), CrawlTickCommand (per-source isolated loop, CrawlRun+CrawlEvent, enqueue listing seeds kind=listing delayed by gap), schedule every minute (test-guarded). Fixed 2 Pint + 5 PHPStan. `make test` 46 passed (313) · lint ✅ · `crawl:tick --limit=1` enqueued 20 listing rows.
   - Next step: JV-W1-006 (crawlerx jobs + normalizers)
   - Blocked: —
   - On disk: —
@@ -247,11 +247,11 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
   `tests/Feature/Health/**`, `tests/Unit/Notifications/**`
 - **Endpoint:** `GET /health` no auth → `{status: ok|degraded|down, sources:[{slug,
   circuit_state, last_success_at, last_error_at}], queue:{pending,failed}}`. No title/performer data.
-- **Commands:** `php artisan jvmeta:watchdog`.
+- **Commands:** `php artisan javmeta:watchdog`.
 - **Edge cases:** Telegram env missing → log warning, no crash; source-down alert ≤24h;
   health must not leak movie codes/titles; stale worker heartbeat → log + Telegram alert.
 - **Do NOT:** require API key for /health; expose crawl URLs with sensitive params; add email.
-- **Verification:** `make test -- --filter=HealthControllerTest` && `--filter=TelegramAlertNotifierTest` && `php artisan jvmeta:watchdog`.
+- **Verification:** `make test -- --filter=HealthControllerTest` && `--filter=TelegramAlertNotifierTest` && `php artisan javmeta:watchdog`.
 - **Ask for help when:** Telegram token/Chat ID needed for manual live test; health needs
   extra fields not in ADR; alert frequency/debounce unclear.
 - **DoD:** /health works without key; alerts use Telegram + laravel-logging strategy; worker stale condition tested.
@@ -284,7 +284,7 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
   use DB without cache; immediate revoke conflicts with framework cache.
 - **DoD:** hash-only storage test passes; revoke immediate test passes; 401/429 RFC 7807 covered.
 - **Progress / handover:**
-  - Completed: 2026-09-17 — ApiKeyService (SHA-256 hash-only, jvm_ prefix, abuse_rpm=60 default, revoke immediate no-cache), AuthenticateApiKey + LogApiUsage + OwnerAdminGuard middlewares (hash_equals constant-time, fail-closed), Admin ApiKeyController CRUD (plaintext once), Laravel RateLimiter per key → 429 + Retry-After (database cache store, no Redis), config/jvmeta_auth.php, routes/api.php admin keys + auth wiring. AC-7.1..7.4 + AC-3.4 covered. `make test` 46 passed (313) · lint ✅ (after JV-W1-005 fixes). NOTE: repo branch `main` zero commits (POC marker allows bypass) — establish develop/master at first commit.
+  - Completed: 2026-09-17 — ApiKeyService (SHA-256 hash-only, jvm_ prefix, abuse_rpm=60 default, revoke immediate no-cache), AuthenticateApiKey + LogApiUsage + OwnerAdminGuard middlewares (hash_equals constant-time, fail-closed), Admin ApiKeyController CRUD (plaintext once), Laravel RateLimiter per key → 429 + Retry-After (database cache store, no Redis), config/javmeta_auth.php, routes/api.php admin keys + auth wiring. AC-7.1..7.4 + AC-3.4 covered. `make test` 46 passed (313) · lint ✅ (after JV-W1-005 fixes). NOTE: repo branch `main` zero commits (POC marker allows bypass) — establish develop/master at first commit.
   - Next step: JV-W1-010 / JV-W1-012
   - Blocked: —
   - On disk: —

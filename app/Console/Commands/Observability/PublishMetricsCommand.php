@@ -23,9 +23,9 @@ final class PublishMetricsCommand extends Command
 {
     protected $signature = 'obs:publish-metrics';
 
-    protected $aliases = ['jvmeta:obs-publish-metrics'];
+    protected $aliases = ['javmeta:obs-publish-metrics'];
 
-    protected $description = 'Publish jvmeta ops and quality aggregate metrics to OpenObserve.';
+    protected $description = 'Publish javmeta ops and quality aggregate metrics to OpenObserve.';
 
     public function handle(OpenObserveClient $client): int
     {
@@ -63,7 +63,7 @@ final class PublishMetricsCommand extends Command
         foreach (Source::query()->get() as $source) {
             $labels = ['source_slug' => $source->slug];
             $points[] = [
-                'name' => 'jvmeta_source_gap_seconds',
+                'name' => 'javmeta_source_gap_seconds',
                 'value' => (float) $source->gap_seconds_current,
                 'labels' => $labels,
             ];
@@ -71,7 +71,7 @@ final class PublishMetricsCommand extends Command
                 ? max(0, now()->diffInSeconds($source->last_success_at))
                 : -1;
             $points[] = [
-                'name' => 'jvmeta_source_last_success_age_seconds',
+                'name' => 'javmeta_source_last_success_age_seconds',
                 'value' => $age,
                 'labels' => $labels,
             ];
@@ -93,7 +93,7 @@ final class PublishMetricsCommand extends Command
 
         foreach ($rows as $row) {
             $points[] = [
-                'name' => 'jvmeta_crawl_queue_depth',
+                'name' => 'javmeta_crawl_queue_depth',
                 'value' => (int) $row->getAttribute('c'),
                 'labels' => ['status' => (string) $row->status],
             ];
@@ -105,7 +105,7 @@ final class PublishMetricsCommand extends Command
             ->orderBy('claimed_at')
             ->value('claimed_at');
         $points[] = [
-            'name' => 'jvmeta_crawl_queue_claimed_age_seconds',
+            'name' => 'javmeta_crawl_queue_claimed_age_seconds',
             'value' => $oldestClaimed !== null ? max(0, (int) now()->diffInSeconds($oldestClaimed)) : -1,
         ];
 
@@ -113,7 +113,7 @@ final class PublishMetricsCommand extends Command
             ->whereIn('status', [CrawlQueue::STATUS_PENDING, CrawlQueue::STATUS_FAILED])
             ->avg('attempts');
         $points[] = [
-            'name' => 'jvmeta_crawl_queue_avg_attempts',
+            'name' => 'javmeta_crawl_queue_avg_attempts',
             'value' => $avgAttempts !== null ? (float) $avgAttempts : 0.0,
         ];
 
@@ -135,7 +135,7 @@ final class PublishMetricsCommand extends Command
 
         foreach ($rows as $row) {
             $points[] = [
-                'name' => 'jvmeta_crawl_events_5m',
+                'name' => 'javmeta_crawl_events_5m',
                 'value' => (int) $row->getAttribute('c'),
                 'labels' => ['kind' => (string) $row->kind],
             ];
@@ -156,11 +156,11 @@ final class PublishMetricsCommand extends Command
 
         if ($rows->isEmpty()) {
             return [
-                ['name' => 'jvmeta_api_requests_1m', 'value' => 0],
-                ['name' => 'jvmeta_api_error_rate_1m', 'value' => 0],
-                ['name' => 'jvmeta_api_p50_ms_1m', 'value' => 0],
-                ['name' => 'jvmeta_api_p95_ms_1m', 'value' => 0],
-                ['name' => 'jvmeta_api_429_1m', 'value' => 0],
+                ['name' => 'javmeta_api_requests_1m', 'value' => 0],
+                ['name' => 'javmeta_api_error_rate_1m', 'value' => 0],
+                ['name' => 'javmeta_api_p50_ms_1m', 'value' => 0],
+                ['name' => 'javmeta_api_p95_ms_1m', 'value' => 0],
+                ['name' => 'javmeta_api_429_1m', 'value' => 0],
             ];
         }
 
@@ -170,22 +170,22 @@ final class PublishMetricsCommand extends Command
         $latencies = $rows->pluck('response_ms')->filter(fn($ms) => $ms !== null)->map(fn($ms) => (int) $ms)->sort()->values();
 
         $points = [
-            ['name' => 'jvmeta_api_requests_1m', 'value' => $total],
-            ['name' => 'jvmeta_api_error_rate_1m', 'value' => $total > 0 ? $errors / $total : 0],
-            ['name' => 'jvmeta_api_p50_ms_1m', 'value' => $this->percentile($latencies->all(), 0.50)],
-            ['name' => 'jvmeta_api_p95_ms_1m', 'value' => $this->percentile($latencies->all(), 0.95)],
-            ['name' => 'jvmeta_api_429_1m', 'value' => $rateLimited],
+            ['name' => 'javmeta_api_requests_1m', 'value' => $total],
+            ['name' => 'javmeta_api_error_rate_1m', 'value' => $total > 0 ? $errors / $total : 0],
+            ['name' => 'javmeta_api_p50_ms_1m', 'value' => $this->percentile($latencies->all(), 0.50)],
+            ['name' => 'javmeta_api_p95_ms_1m', 'value' => $this->percentile($latencies->all(), 0.95)],
+            ['name' => 'javmeta_api_429_1m', 'value' => $rateLimited],
         ];
 
         foreach ($rows->groupBy('endpoint') as $endpoint => $group) {
             $points[] = [
-                'name' => 'jvmeta_api_requests_by_endpoint_1m',
+                'name' => 'javmeta_api_requests_by_endpoint_1m',
                 'value' => $group->count(),
                 'labels' => ['endpoint' => (string) $endpoint],
             ];
             $epLat = $group->pluck('response_ms')->filter(fn($ms) => $ms !== null)->map(fn($ms) => (int) $ms)->sort()->values()->all();
             $points[] = [
-                'name' => 'jvmeta_api_p95_ms_by_endpoint_1m',
+                'name' => 'javmeta_api_p95_ms_by_endpoint_1m',
                 'value' => $this->percentile($epLat, 0.95),
                 'labels' => ['endpoint' => (string) $endpoint],
             ];
@@ -202,11 +202,11 @@ final class PublishMetricsCommand extends Command
         $points = [];
 
         $points[] = [
-            'name' => 'jvmeta_movies_needs_review',
+            'name' => 'javmeta_movies_needs_review',
             'value' => Movie::query()->where('needs_review', true)->count(),
         ];
         $points[] = [
-            'name' => 'jvmeta_review_flags_open',
+            'name' => 'javmeta_review_flags_open',
             'value' => ReviewFlag::query()->whereNull('resolved_at')->count(),
         ];
 
@@ -216,7 +216,7 @@ final class PublishMetricsCommand extends Command
             ->get();
         foreach ($tiers as $tier) {
             $points[] = [
-                'name' => 'jvmeta_movies_completeness_tier',
+                'name' => 'javmeta_movies_completeness_tier',
                 'value' => (int) $tier->getAttribute('c'),
                 'labels' => ['tier' => (string) ($tier->completeness_tier ?? 'unknown')],
             ];
@@ -252,7 +252,7 @@ final class PublishMetricsCommand extends Command
 
         foreach ($conflicts as $row) {
             $points[] = [
-                'name' => 'jvmeta_observation_conflict_rate',
+                'name' => 'javmeta_observation_conflict_rate',
                 'value' => (float) ($row->conflict_rate ?? 0),
                 'labels' => ['field' => (string) $row->field],
             ];
@@ -285,7 +285,7 @@ final class PublishMetricsCommand extends Command
             $labels = ['source_slug' => (string) $row->source_slug];
             foreach (['pages_fetched', 'movies_new', 'movies_updated', 'failures', 'proxy_requests', 'proxy_bytes', 'browser_fetches'] as $metric) {
                 $points[] = [
-                    'name' => 'jvmeta_crawl_run_' . $metric . '_1h',
+                    'name' => 'javmeta_crawl_run_' . $metric . '_1h',
                     'value' => (int) $row->{$metric},
                     'labels' => $labels,
                 ];
@@ -301,10 +301,10 @@ final class PublishMetricsCommand extends Command
     private function catalogMetrics(): array
     {
         return [
-            ['name' => 'jvmeta_movies_total', 'value' => Movie::query()->count()],
-            ['name' => 'jvmeta_performers_total', 'value' => Performer::query()->count()],
+            ['name' => 'javmeta_movies_total', 'value' => Movie::query()->count()],
+            ['name' => 'javmeta_performers_total', 'value' => Performer::query()->count()],
             [
-                'name' => 'jvmeta_observations_1d',
+                'name' => 'javmeta_observations_1d',
                 'value' => DB::table('movie_observations')->where('crawled_at', '>=', now()->subDay())->count(),
             ],
         ];
@@ -316,13 +316,13 @@ final class PublishMetricsCommand extends Command
     private function failedJobMetrics(): array
     {
         if (! Schema::hasTable('failed_jobs')) {
-            return [['name' => 'jvmeta_failed_jobs', 'value' => 0]];
+            return [['name' => 'javmeta_failed_jobs', 'value' => 0]];
         }
 
         return [
-            ['name' => 'jvmeta_failed_jobs', 'value' => DB::table('failed_jobs')->count()],
+            ['name' => 'javmeta_failed_jobs', 'value' => DB::table('failed_jobs')->count()],
             [
-                'name' => 'jvmeta_failed_jobs_1h',
+                'name' => 'javmeta_failed_jobs_1h',
                 'value' => DB::table('failed_jobs')->where('failed_at', '>=', now()->subHour())->count(),
             ],
         ];
@@ -337,26 +337,26 @@ final class PublishMetricsCommand extends Command
 
         try {
             DB::connection()->getPdo();
-            $points[] = ['name' => 'jvmeta_dep_up', 'value' => 1, 'labels' => ['dependency' => 'postgres']];
+            $points[] = ['name' => 'javmeta_dep_up', 'value' => 1, 'labels' => ['dependency' => 'postgres']];
         } catch (Throwable) {
-            $points[] = ['name' => 'jvmeta_dep_up', 'value' => 0, 'labels' => ['dependency' => 'postgres']];
+            $points[] = ['name' => 'javmeta_dep_up', 'value' => 0, 'labels' => ['dependency' => 'postgres']];
         }
 
         $esHost = rtrim((string) config('elasticsearch.host'), '/');
         try {
             $ok = Http::timeout(2)->get("{$esHost}/_cluster/health")->successful();
-            $points[] = ['name' => 'jvmeta_dep_up', 'value' => $ok ? 1 : 0, 'labels' => ['dependency' => 'elasticsearch']];
+            $points[] = ['name' => 'javmeta_dep_up', 'value' => $ok ? 1 : 0, 'labels' => ['dependency' => 'elasticsearch']];
         } catch (Throwable) {
-            $points[] = ['name' => 'jvmeta_dep_up', 'value' => 0, 'labels' => ['dependency' => 'elasticsearch']];
+            $points[] = ['name' => 'javmeta_dep_up', 'value' => 0, 'labels' => ['dependency' => 'elasticsearch']];
         }
 
         $ooUrl = rtrim((string) config('openobserve.url'), '/');
         try {
             $response = Http::timeout(2)->get("{$ooUrl}/healthz");
             $ok = $response->successful() || $response->status() < 500;
-            $points[] = ['name' => 'jvmeta_dep_up', 'value' => $ok ? 1 : 0, 'labels' => ['dependency' => 'openobserve']];
+            $points[] = ['name' => 'javmeta_dep_up', 'value' => $ok ? 1 : 0, 'labels' => ['dependency' => 'openobserve']];
         } catch (Throwable) {
-            $points[] = ['name' => 'jvmeta_dep_up', 'value' => 0, 'labels' => ['dependency' => 'openobserve']];
+            $points[] = ['name' => 'javmeta_dep_up', 'value' => 0, 'labels' => ['dependency' => 'openobserve']];
         }
 
         $mongoHost = (string) config('mongodb.host', '127.0.0.1');
@@ -366,7 +366,7 @@ final class PublishMetricsCommand extends Command
         $fp = @fsockopen($mongoHost, $mongoPort, $errno, $errstr, 1.0);
         $mongoUp = $fp !== false;
         $points[] = [
-            'name' => 'jvmeta_dep_up',
+            'name' => 'javmeta_dep_up',
             'value' => $mongoUp ? 1 : 0,
             'labels' => ['dependency' => 'mongo'],
         ];

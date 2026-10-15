@@ -9,7 +9,7 @@ use App\Models\Source;
 /**
  * Records the last crawl success / failure per source for status and the
  * stale-source watchdog. Fetch health (soft 404, blocking, retries) is owned
- * by crawlerx; jvmeta keeps no circuit breaker of its own.
+ * by crawlerx; javmeta keeps no circuit breaker of its own.
  */
 final class SourceActivityRecorder
 {

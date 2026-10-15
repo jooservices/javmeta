@@ -19,7 +19,7 @@ final class TitleFailureTracker
     public function recordFailure(string $sourceSlug, string $url, ?string $errorMessage = null, bool $soft404 = false): void
     {
         $movie = $this->movieForUrl($sourceSlug, $url);
-        $threshold = max(1, (int) config('jvmeta_alerts.title_failure_threshold', 3));
+        $threshold = max(1, (int) config('javmeta_alerts.title_failure_threshold', 3));
         $isSoft404 = $soft404;
 
         if ($isSoft404 && $movie instanceof Movie) {

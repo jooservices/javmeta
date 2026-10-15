@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run CaptainHook inside the CI image (docker/ci/run) so host PHP extensions never
-# matter. Set JVMETA_HOOKS_ON_HOST=1 to use host PHP instead.
+# matter. Set JAVMETA_HOOKS_ON_HOST=1 to use host PHP instead.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -16,7 +16,7 @@ if [[ ! -x vendor/bin/captainhook ]]; then
     exit 1
 fi
 
-if [[ "${JVMETA_HOOKS_ON_HOST:-0}" == "1" ]]; then
+if [[ "${JAVMETA_HOOKS_ON_HOST:-0}" == "1" ]]; then
     exec vendor/bin/captainhook "$@"
 fi
 

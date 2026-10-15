@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Http;
 use Throwable;
 
 /**
- * A crawl reports its fetch outcome to a real OpenObserve: jvmeta reads the
+ * A crawl reports its fetch outcome to a real OpenObserve: javmeta reads the
  * crawlerx result and ingests a `crawl_fetch` log record that can be queried
  * back from the stream.
  */

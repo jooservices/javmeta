@@ -1,4 +1,4 @@
-name: jvmeta-monitoring
+name: javmeta-monitoring
 
 services:
   node-exporter:
@@ -56,8 +56,8 @@ services:
       OBS_ORG: ${OBS_ORG:-default}
       OBS_USERNAME: ${OBS_USERNAME:-replace-with-observe-username}
       OBS_PASSWORD: ${OBS_PASSWORD:-replace-with-observe-password}
-      JVMETA_NODE_NAME: ${JVMETA_NODE_NAME:-node-example}
-      JVMETA_NODE_ROLE: ${JVMETA_NODE_ROLE:-crawler}
+      JAVMETA_NODE_NAME: ${JAVMETA_NODE_NAME:-node-example}
+      JAVMETA_NODE_ROLE: ${JAVMETA_NODE_ROLE:-crawler}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -86,8 +86,8 @@ configs:
       global:
         scrape_interval: 15s
         external_labels:
-          node: "${JVMETA_NODE_NAME:-node-example}"
-          role: "${JVMETA_NODE_ROLE:-crawler}"
+          node: "${JAVMETA_NODE_NAME:-node-example}"
+          role: "${JAVMETA_NODE_ROLE:-crawler}"
 
       scrape_configs:
         - job_name: node-exporter
@@ -105,7 +105,7 @@ configs:
 
 networks:
   monitoring:
-    name: ${JVMETA_MONITORING_NETWORK:-jvmeta-monitoring-network}
+    name: ${JAVMETA_MONITORING_NETWORK:-javmeta-monitoring-network}
     ipam:
       config:
-        - subnet: ${JVMETA_MONITORING_SUBNET:-10.254.0.0/24}
+        - subnet: ${JAVMETA_MONITORING_SUBNET:-10.254.0.0/24}

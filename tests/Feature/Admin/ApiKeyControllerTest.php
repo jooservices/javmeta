@@ -91,6 +91,6 @@ final class ApiKeyControllerTest extends TestCase
 
     private function setOwnerToken(string $ownerToken): void
     {
-        config(['jvmeta_auth.owner_admin_token' => $ownerToken]);
+        config(['javmeta_auth.owner_admin_token' => $ownerToken]);
     }
 }

@@ -2,13 +2,13 @@
 
 Status: Approved plan; implementation deferred.
 
-This document records the agreed deployment design for jvmeta. It is a plan,
+This document records the agreed deployment design for javmeta. It is a plan,
 not an indication that the automation currently exists or has been verified in
 production.
 
 ## 1. Context
 
-jvmeta is deployed to six application nodes:
+javmeta is deployed to six application nodes:
 
 - one control node;
 - five crawler nodes.
@@ -157,7 +157,7 @@ through `eval`.
 - Use the pinned `known_hosts`; do not trust a key discovered during the run.
 - Disable interactive prompts and password authentication.
 - Do not use agent forwarding.
-- Restrict the remote deployment user and its `sudo` permissions to the jvmeta
+- Restrict the remote deployment user and its `sudo` permissions to the javmeta
   service commands required by this plan.
 - Remove temporary private-key files with a shell trap.
 
@@ -167,7 +167,7 @@ Only one production deployment may execute at a time:
 
 ```yaml
 concurrency:
-  group: jvmeta-production
+  group: javmeta-production
   cancel-in-progress: false
 ```
 
@@ -409,7 +409,7 @@ continue automatically.
 - Restrict production deployment to an approved release/tag source.
 - Do not use a self-hosted GitHub runner on a production node.
 - Do not restart the Docker daemon or the entire Supervisor service.
-- Restart or stop only jvmeta process groups and Compose services.
+- Restart or stop only javmeta process groups and Compose services.
 - Never remove volumes, prune Docker state, or delete queued jobs as part of
   deployment.
 - Preserve logs needed for manual recovery.

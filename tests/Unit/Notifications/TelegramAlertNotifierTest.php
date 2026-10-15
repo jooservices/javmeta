@@ -22,8 +22,8 @@ final class TelegramAlertNotifierTest extends TestCase
     public function test_skips_when_env_missing(): void
     {
         config([
-            'jvmeta_alerts.telegram.bot_token' => '',
-            'jvmeta_alerts.telegram.chat_id' => '',
+            'javmeta_alerts.telegram.bot_token' => '',
+            'javmeta_alerts.telegram.chat_id' => '',
             'laravel-notifications.channels.telegram.bot_token' => '',
             'laravel-notifications.channels.telegram.chat_id' => '',
         ]);
@@ -33,16 +33,16 @@ final class TelegramAlertNotifierTest extends TestCase
 
         self::assertSame([], ClientBuilder::recorded());
         Log::shouldHaveReceived('warning')->withArgs(static function (string $message): bool {
-            return $message === 'jvmeta.telegram_skipped';
+            return $message === 'javmeta.telegram_skipped';
         });
     }
 
     public function test_posts_telegram_message_when_configured(): void
     {
         config([
-            'jvmeta_alerts.telegram.bot_token' => 'tok',
-            'jvmeta_alerts.telegram.chat_id' => '42',
-            'jvmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
+            'javmeta_alerts.telegram.bot_token' => 'tok',
+            'javmeta_alerts.telegram.chat_id' => '42',
+            'javmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
             'laravel-notifications.channels.telegram.bot_token' => 'tok',
             'laravel-notifications.channels.telegram.chat_id' => '42',
             'laravel-notifications.channels.telegram.api_base' => 'https://api.telegram.org',
@@ -76,9 +76,9 @@ final class TelegramAlertNotifierTest extends TestCase
     public function test_posts_telegram_message_when_bot_token_contains_colon(): void
     {
         config([
-            'jvmeta_alerts.telegram.bot_token' => '123456:ABC-DEF',
-            'jvmeta_alerts.telegram.chat_id' => '42',
-            'jvmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
+            'javmeta_alerts.telegram.bot_token' => '123456:ABC-DEF',
+            'javmeta_alerts.telegram.chat_id' => '42',
+            'javmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
             'laravel-notifications.channels.telegram.bot_token' => '123456:ABC-DEF',
             'laravel-notifications.channels.telegram.chat_id' => '42',
             'laravel-notifications.channels.telegram.api_base' => 'https://api.telegram.org',

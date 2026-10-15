@@ -3,7 +3,7 @@
 set -eu
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
-project_name="jvmeta-monitoring-verify-$$"
+project_name="javmeta-monitoring-verify-$$"
 export OBS_HOST_PORT=${OBS_HOST_PORT:-15080}
 compose_base="docker compose --project-name ${project_name} --file ${script_dir}/compose.yml --file ${script_dir}/compose.local-test.yml"
 search_url="http://127.0.0.1:${OBS_HOST_PORT:-5080}/api/default/_search?type=metrics"

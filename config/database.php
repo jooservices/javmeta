@@ -123,7 +123,7 @@ return [
                 env('MONGO_HOST', 'mongo'),
                 env('MONGO_PORT', '27017'),
             ),
-            'database' => env('MONGO_DATABASE', 'jvmeta_archive'),
+            'database' => env('MONGO_DATABASE', 'javmeta_archive'),
         ],
 
     ],

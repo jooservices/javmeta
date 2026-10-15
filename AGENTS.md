@@ -1,10 +1,10 @@
-# JOOservices jvmeta project rules
+# JOOservices javmeta project rules
 
 Adds to the workspace `AGENTS.md`. Does not weaken any workspace rule.
 
 ## Production VMs — read-only unless confirmed
 
-The jvmeta production topology is maintained in the private workspace
+The javmeta production topology is maintained in the private workspace
 deployment inventory. This file intentionally omits production IP addresses.
 The control plane runs on one instance; crawler workers run on the crawler
 instances.
@@ -20,9 +20,9 @@ instances.
 
 ## GitHub access on production VMs — gh CLI only
 
-All jvmeta VMs authenticate to GitHub via the **`gh` CLI** (account
+All javmeta VMs authenticate to GitHub via the **`gh` CLI** (account
 `soulevilx`), not SSH deploy keys.
 
 - Before any `gh` / git fetch on a VM: `gh auth switch --user soulevilx` and
   verify `gh api user --jq .login` returns `soulevilx`.
-- Do not add or rely on SSH deploy keys for jvmeta VMs.
+- Do not add or rely on SSH deploy keys for javmeta VMs.

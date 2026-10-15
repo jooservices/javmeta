@@ -1,4 +1,4 @@
-# ARCHITECTURE DECISION RECORD — "JAV Metadata API" (codename `jvmeta`) POC
+# ARCHITECTURE DECISION RECORD — "JAV Metadata API" (codename `javmeta`) POC
 
 Status: **Approved** (architecture gate closed, 2026-09-17). Source of truth;
 decision log ở mục 10. Root overview:
@@ -6,11 +6,11 @@ decision log ở mục 10. Root overview:
 
 **Phase:** architecture (`joo-sa`) · **Tác giả:** `joo-sa` · bản ghi do
 `joo-doc-writer` từ nội dung root đã duyệt.
-**Nguồn yêu cầu:** [`projects/jvmeta/BUSINESS.md`](./BUSINESS.md)
+**Nguồn yêu cầu:** [`projects/javmeta/BUSINESS.md`](./BUSINESS.md)
 (requirements gate đóng 2026-09-17).
 **Phạm vi:** POC — crawl → normalize → API lookup/search, 1.000–5.000 movie,
 1 server, báo cáo go/no-go. **Billing NGOÀI phạm vi.**
-Tên sản phẩm cuối: TBD bởi owner (OQ-13) — dùng codename `jvmeta`.
+Tên sản phẩm cuối: TBD bởi owner (OQ-13) — dùng codename `javmeta`.
 
 ## Quyết định đã chốt với owner
 
@@ -62,7 +62,7 @@ items cuối cùng chốt **tại gate** (chi tiết ở mục 10–11):
 **Một Laravel app, hai runtime role, một PostgreSQL.** Không microservice (KISS — 1 server, 1 team).
 
 ```text
-┌──────────────────────── jvmeta (Laravel 12/13, PHP 8.5) ────────────────────────┐
+┌──────────────────────── javmeta (Laravel 12/13, PHP 8.5) ────────────────────────┐
 │                                                                                  │
 │  ROLE: api  (php-fpm/Octane)          ROLE: worker (queue:work, 24/7)            │
 │  ┌────────────────────────────┐       ┌──────────────────────────────────────┐   │
@@ -92,7 +92,7 @@ items cuối cùng chốt **tại gate** (chi tiết ở mục 10–11):
 
 | Layer | Trách nhiệm | KHÔNG được |
 |---|---|---|
-| `crawlerx` (external lib) | Fetch + parse HTML/JSON → `CrawlItemResultDto`/`CrawlListResultDto` | Không biết schema jvmeta, không persist, không queue, không throttle |
+| `crawlerx` (external lib) | Fetch + parse HTML/JSON → `CrawlItemResultDto`/`CrawlListResultDto` | Không biết schema javmeta, không persist, không queue, không throttle |
 | `SourceNormalizer` (per source) | Map `MovieDto` + `metadata{}` không typed → `MovieDraft` chuẩn | Không fetch, không ghi DB, không quyết conflict |
 | `MovieMerger` | Resolve `movie_id` từ `code_normalized` + linkage nguồn khai báo | Không fuzzy match (R-5, AD-10 — owner chấp nhận exact-only cho Wave 1) |
 | `ConflictPolicy` (Strategy) | Chọn giá trị primary từ observations (BR-2) | Không persist |
@@ -111,7 +111,7 @@ for each source WHERE enabled AND circuit_state != 'open':
     # nguồn chết → circuit open → vòng lặp BỎ QUA nguồn đó, các nguồn khác vẫn chạy (AC-2.4)
 ```
 
-Throttle defaults **đọc từ manifest `crawlerx`** (`AdapterManifestDto::$defaultThrottle`, vd javdb `min 20 / max 60s`) — không bịa số mới (DRY). `crawlerx` khai báo nhưng **không enforce** → jvmeta thi hành.
+Throttle defaults **đọc từ manifest `crawlerx`** (`AdapterManifestDto::$defaultThrottle`, vd javdb `min 20 / max 60s`) — không bịa số mới (DRY). `crawlerx` khai báo nhưng **không enforce** → javmeta thi hành.
 
 **Bước 2 — `FetchDetailJob` (worker):**
 
@@ -139,7 +139,7 @@ MovieDraft { code, title_jp, title_en, release_date, runtime_minutes, maker, lab
             censored, source_slug, source_url, crawled_at }
 ```
 
-Đây chính là **REQ-1a/1b** — công việc chuẩn hoá thật, và nó thuộc jvmeta (crawlerx không nên biết canonical schema của jvmeta → OCP).
+Đây chính là **REQ-1a/1b** — công việc chuẩn hoá thật, và nó thuộc javmeta (crawlerx không nên biết canonical schema của javmeta → OCP).
 
 **Bước 4 — `MovieMerger` (BR-1/D-23):**
 
@@ -193,9 +193,9 @@ movie_id = movie_codes[code_normalized] ?? create movie
 | **Queue/scheduler** | Laravel **database** queue + `schedule:run` (cron mỗi phút) | KISS: không thêm container Redis; queue bền qua restart (edge case 29) đủ cho POC 1–5k | Redis/Horizon: YAGNI ở POC — ghi nhận làm evolution |
 | **HTTP client / anti-bot** | `crawlerx` fallback chain + `jooservices/client` v4 (PSR-18) | Đã có sẵn, đã test bằng fixture thật | — |
 | **Proxy** | **Wave 1: không cần.** Wave 2: PR nhỏ vào `crawlerx` | `HttpOptionsDto:14-19` không có `proxy`; `ClientFactory:29-54` không gọi `withProxy()` dù `ClientBuilder:161` có; grep `proxy` trong `crawlerx/src` = **0 kết quả**. Wave 1 owner đã hoãn FANZA (nguồn cần proxy) → YAGNI | Sửa ngay: xây thứ chưa cần |
-| **Soft-404 / chống mất dữ liệu** | **jvmeta-side merge policy** | `crawlerx` **đã có** guard cấu trúc: `AbstractType::assertUsableMovieDetail():29-46` throw `CrawlParseException` khi thiếu title/thiếu field; `htmlFromResponse():14-27` throw `CrawlBlockedException` khi ≥400 hoặc CF challenge. Phần còn thiếu (null-overwrite, sharp-drop) vốn là **chính sách toàn vẹn dữ liệu** → đúng tầng ở jvmeta, nơi BR-2/provenance đang sống | Thêm hook vào crawlerx: sai tầng, trùng trách nhiệm |
+| **Soft-404 / chống mất dữ liệu** | **javmeta-side merge policy** | `crawlerx` **đã có** guard cấu trúc: `AbstractType::assertUsableMovieDetail():29-46` throw `CrawlParseException` khi thiếu title/thiếu field; `htmlFromResponse():14-27` throw `CrawlBlockedException` khi ≥400 hoặc CF challenge. Phần còn thiếu (null-overwrite, sharp-drop) vốn là **chính sách toàn vẹn dữ liệu** → đúng tầng ở javmeta, nơi BR-2/provenance đang sống | Thêm hook vào crawlerx: sai tầng, trùng trách nhiệm |
 | **Runtime** | Docker Compose: `php:8.5-cli-bookworm` (pin) + `postgres:17` (pin) + profile `fetch` (node/Playwright, FlareSolverr) | Đúng rule runtime workspace (DB + multi-service → Docker/Compose; LTS + pin tag). Owner hoãn deploy → thiết kế portable | Native: lệch rule |
-| **Repo/git** | `projects/jvmeta`, **local git only**, đánh dấu `Status: POC` | Rule workspace: new project GitHub là opt-in, chỉ tạo khi owner yêu cầu rõ. POC marker cho phép bypass branch model (identity/commits/hooks vẫn bắt buộc) | — |
+| **Repo/git** | `projects/javmeta`, **local git only**, đánh dấu `Status: POC` | Rule workspace: new project GitHub là opt-in, chỉ tạo khi owner yêu cầu rõ. POC marker cho phép bypass branch model (identity/commits/hooks vẫn bắt buộc) | — |
 
 ---
 
@@ -296,7 +296,7 @@ sources (
   circuit_opened_at timestamptz,
   last_success_at timestamptz,                 -- AC-9.1
   last_error_at timestamptz, last_error text,
-  soft404_markers jsonb                        -- signature not-found theo nguồn (jvmeta-side)
+  soft404_markers jsonb                        -- signature not-found theo nguồn (javmeta-side)
 )
 
 -- REQ-2 resume (edge case 29) + per-source isolation
@@ -436,7 +436,7 @@ Base `/api/v1` · Auth header `X-API-Key: jvm_...` (REQ-7) · Envelope + RFC 780
 
 | # | Risk | Sev | Mitigation |
 |---|---|---|---|
-| **R-1** | **`crawlerx` chưa đạt DoD của chính nó**: `make ci` đỏ (coverage 69.87% Unit / 62.27% Feature vs sàn 85% — handover §5, §7 P0). Fixture javbus/javlibrary/missav là **CF wall**, fetch production **chưa được chứng minh** (handover §6.4, P1) | 🔴 HIGH | **Wave 1 source list xác minh thực nghiệm TRƯỚC**: chạy `make live-check` / `tools/live-check.php` từng adapter → phân loại `working` / `walled` / `broken`. Chỉ nguồn `working` vào crawl set. Nguồn walled → báo cáo **chưa phủ** theo AC-2.6, không bỏ âm thầm. **Không gate jvmeta trên coverage crawlerx** (nợ repo đó) |
+| **R-1** | **`crawlerx` chưa đạt DoD của chính nó**: `make ci` đỏ (coverage 69.87% Unit / 62.27% Feature vs sàn 85% — handover §5, §7 P0). Fixture javbus/javlibrary/missav là **CF wall**, fetch production **chưa được chứng minh** (handover §6.4, P1) | 🔴 HIGH | **Wave 1 source list xác minh thực nghiệm TRƯỚC**: chạy `make live-check` / `tools/live-check.php` từng adapter → phân loại `working` / `walled` / `broken`. Chỉ nguồn `working` vào crawl set. Nguồn walled → báo cáo **chưa phủ** theo AC-2.6, không bỏ âm thầm. **Không gate javmeta trên coverage crawlerx** (nợ repo đó) |
 | **R-2** | **Không có FANZA/DMM** = nguồn giàu nhất thiếu → completeness tier + đo xung đột G-5 kém thuyết phục | 🔴 HIGH | Owner đã chấp nhận (AD-3, Wave 2). AC-2.6 ghi rõ gap. G-5 vẫn đo được trên ≥2 nguồn cộng đồng. Wave 2 đã nhận diện 2 đường: Affiliate API (JSON, rẻ hơn) hoặc HTML adapter + proxy Nhật |
 | **R-3** | **`crawlerx` không có proxy** (`HttpOptionsDto:14-19`, `ClientFactory:29-54`, grep = 0 match) → nguồn geo-block/IP-ban không tới được | 🟡 MED | Wave 1 chọn nguồn không geo-block. Nguồn nào hoá ra geo-block → set `needs_proxy=true`, loại, báo cáo (AC-2.6). PR Wave-2 đã định hình: ~30 dòng (`HttpOptionsDto.proxy` + `ClientFactory::withProxy` + thread vào browser/FlareSolverr handler) |
 | **R-4** | **HTML drift âm thầm** (edge case 15) — không exception, chỉ sai giá trị. **Nguy hiểm nhất** | 🔴 HIGH | 3 lớp: (a) `assertUsableMovieDetail()` throw khi trang thiếu title/field; (b) **sharp-drop guard** — số core field non-null giảm ≥N → `needs_review`, giữ giá trị cũ; (c) `parse_drift` event khi field-yield rate của nguồn tụt dưới ngưỡng → alert **Telegram + log** (AC-9.2, OQ-11 resolved). `movie_observations` append-only nên drift **truy vết được** trong lịch sử |
@@ -472,11 +472,11 @@ Base `/api/v1` · Auth header `X-API-Key: jvm_...` (REQ-7) · Envelope + RFC 780
 **Khuyến nghị (đã được owner duyệt — AD-3, AD-4):**
 
 1. **Tái dùng `crawlerx` làm fetch/parse engine** — KHÔNG viết lại bằng Go/Python. Nó là tài sản khớp yêu cầu nhất: 21 adapter JAV + anti-bot chain hoàn chỉnh.
-2. **Wave 1 dùng nguyên trạng, zero thay đổi.** jvmeta sở hữu toàn bộ phần 24/7 (queue, scheduler, throttle, backoff, circuit breaker, resume, normalize, merge, persist, report) — đúng ranh giới `crawlerx` tự khai báo.
+2. **Wave 1 dùng nguyên trạng, zero thay đổi.** javmeta sở hữu toàn bộ phần 24/7 (queue, scheduler, throttle, backoff, circuit breaker, resume, normalize, merge, persist, report) — đúng ranh giới `crawlerx` tự khai báo.
 3. **Xác minh thực nghiệm trước khi đóng băng source list** (R-1): chạy `live-check` từng adapter, chỉ lấy nguồn `working`.
 4. **PR proxy → Wave 2**, chỉ khi owner thật sự mua proxy Nhật (YAGNI).
-5. **Soft-404 chống mất dữ liệu → jvmeta merge policy** (null-overwrite guard + sharp-drop guard), không phải crawlerx.
-6. **Coverage crawlerx = task bảo trì độc lập**, không gate jvmeta.
+5. **Soft-404 chống mất dữ liệu → javmeta merge policy** (null-overwrite guard + sharp-drop guard), không phải crawlerx.
+6. **Coverage crawlerx = task bảo trì độc lập**, không gate javmeta.
 
 ---
 
@@ -507,7 +507,7 @@ Base `/api/v1` · Auth header `X-API-Key: jvm_...` (REQ-7) · Envelope + RFC 780
 
 | Wave | Nội dung | Gate |
 |---|---|---|
-| **Wave 0** | Scaffold `projects/jvmeta` (local git, POC marker) + Compose (php/postgres/fetch profile) + schema migration + `live-check` xác minh source list | Source list đóng băng |
+| **Wave 0** | Scaffold `projects/javmeta` (local git, POC marker) + Compose (php/postgres/fetch profile) + schema migration + `live-check` xác minh source list | Source list đóng băng |
 | **Wave 1** | Crawl nguồn `crawlerx` đã có → normalize → merge (exact-only, AD-10) → persist → API lookup/search/bulk/performer → key + usage log → health → alerting (Telegram + log) → report | **G-1..G-7** (1–5k movie, 72h, report) → **go/no-go** |
 | **Wave 2** *(chỉ nếu go)* | FANZA (Affiliate API hoặc adapter + proxy Nhật) + PR proxy crawlerx + field-level authority (REQ-D4, quyết bằng số liệu G-5) + **re-evaluate fuzzy merge (AD-10) bằng số liệu REQ-8** | Owner duyệt ngân sách proxy (OQ-4) |
 | **Wave 3+** *(ngoài POC)* | sextb/mgstage/DLsite adapters · billing (REQ-D1) · takedown (REQ-D7) · webhook (REQ-D5) · search engine · scale 400k | — |
@@ -543,7 +543,7 @@ nhận; ngưỡng OQ-12 chốt default owner-cấu hình.
 | **AD-1** | Ngôn ngữ | All-PHP / Python+PHP / Go+PHP / PHP không Laravel | **All-PHP: Laravel API + PHP worker, reuse crawlerx** | Chọn: `crawlerx` (C-3) là PHP + đã có 21 adapter JAV; toàn bộ stack reuse là PHP → 1 ngôn ngữ, DRY tối đa. **Loại** Python: viết lại 21 adapter, vi phạm C-3; CF bypass `bds-crawler` **chỉ chạy macOS** → chết trên server Linux. **Loại** Go: `go-crawlerx` chỉ title+downloadables, HTTP-only. **Loại** non-Laravel: mất `laravel-controller`+`laravel-repository` đã khớp REQ-4/9 | REQ-1..9, C-3 |
 | **AD-2** | Database | PostgreSQL / MySQL / SQLite / MongoDB | **PostgreSQL 17 (Docker, 1 instance)** | Chọn: 600k row nhỏ với PG; `jsonb`+GIN, `pg_trgm`, `tsvector`, **MVCC** (crawl ghi không chặn API đọc — đúng NFR p95), keyset pagination. **Loại** MySQL: không GIN/trigram, FTS yếu → khó đạt search p95 ở 400k. **Loại** SQLite: single-writer, rủi ro crawl 24/7 + API đồng thời, phá NFR scale. **Loại** MongoDB: filter/sort nhiều chiều + performer↔movie yếu, `laravel-repository` không áp dụng | REQ-1, REQ-4, NFR perf/scale |
 | **AD-3** | FANZA/DMM (nguồn #1, không adapter, geo-block) | Hoãn Wave 2 / làm trước / Affiliate API / bỏ hẳn | **Hoãn sang Wave 2 — Wave 1 chạy nguồn `crawlerx` đã có** | Chọn: POC không đứng yên chờ 2 thứ chưa có (adapter mới + proxy chưa mua). AC-2.6 bắt buộc báo cáo ghi rõ "FANZA chưa phủ" → minh bạch. **Loại** "làm trước": đúng R-1 BA cảnh báo (POC không bao giờ xong). **Loại** "bỏ hẳn": mất nguồn giàu nhất, ngược D-7. Affiliate API giữ làm **option Wave 2** (rẻ hơn viết adapter HTML) | REQ-2, G-1/G-2, AC-2.6 |
-| **AD-4** | Sửa `crawlerx`? | Sửa proxy+soft-404 / chỉ proxy / không sửa / sửa luôn coverage | **Wave 1 KHÔNG sửa gì. Proxy PR → Wave 2. Soft-404 → jvmeta. Coverage → task bảo trì độc lập** | Chọn (sau khi owner chất vấn "why change instead use?"): đọc kỹ code thấy `crawlerx` **đã có** soft-404 guard cấu trúc (`AbstractType.php:29-46`) + block guard (`:14-27`, `:87-97`) → không cần hook. Proxy là gap thật (`HttpOptionsDto:14-19`, grep=0) nhưng **Wave 1 không cần** (FANZA đã hoãn) → YAGNI. Chống mất dữ liệu đặt ở jvmeta merge policy = đúng tầng (BR-2/provenance sống ở đó). **Loại** "sửa ngay": xây thứ chưa cần. **Loại** "không bao giờ sửa": Wave 2 sẽ cần proxy. **Loại** "sửa coverage": nợ repo crawlerx, làm phình scope POC | REQ-2, C-3, NFR reliability |
+| **AD-4** | Sửa `crawlerx`? | Sửa proxy+soft-404 / chỉ proxy / không sửa / sửa luôn coverage | **Wave 1 KHÔNG sửa gì. Proxy PR → Wave 2. Soft-404 → javmeta. Coverage → task bảo trì độc lập** | Chọn (sau khi owner chất vấn "why change instead use?"): đọc kỹ code thấy `crawlerx` **đã có** soft-404 guard cấu trúc (`AbstractType.php:29-46`) + block guard (`:14-27`, `:87-97`) → không cần hook. Proxy là gap thật (`HttpOptionsDto:14-19`, grep=0) nhưng **Wave 1 không cần** (FANZA đã hoãn) → YAGNI. Chống mất dữ liệu đặt ở javmeta merge policy = đúng tầng (BR-2/provenance sống ở đó). **Loại** "sửa ngay": xây thứ chưa cần. **Loại** "không bao giờ sửa": Wave 2 sẽ cần proxy. **Loại** "sửa coverage": nợ repo crawlerx, làm phình scope POC | REQ-2, C-3, NFR reliability |
 | **AD-5** | Deployment | Compose portable / chờ spec server / native | **Docker Compose portable, không chặn ở spec server** | Owner: "just finish POC, deploy later". Compose theo đúng rule runtime workspace (pin tag `php:8.5-cli-bookworm`, `postgres:17`). Resource isolation (`CPUWeight`/`MemoryMax`) thiết kế sẵn, áp khi deploy | C-1, NFR ops |
 | **AD-6** | Queue driver | Redis+Horizon / **database** / beanstalkd | **Laravel database queue** | Chọn: KISS — không thêm container; bền qua restart → edge case 29 resume miễn phí; đủ cho POC 1–5k. **Loại** Redis: YAGNI ở POC, ghi nhận làm evolution | REQ-2, AC-2.2, edge case 29 |
 | **AD-7** | Provenance & đo xung đột | JSONB column trên `movies` / **bảng `movie_observations` append-only** / event store | **Bảng `movie_observations` append-only** | Chọn: AC-1.2 yêu cầu giá trị bị loại **vẫn truy vết được**; G-5/AC-8.1(c) yêu cầu conflict rate **theo từng field** → aggregate SQL trên bảng hẹp (6 cột) rẻ và index được. Đồng thời thoả NFR "crawled data never lost on re-crawl" by construction. **Loại** JSONB column: aggregate xung đột thành query JSONB chậm, khó index. **Loại** event store/CQRS: over-engineering cho POC | REQ-1, REQ-8, G-5, AC-1.2 |
@@ -553,10 +553,10 @@ nhận; ngưỡng OQ-12 chốt default owner-cấu hình.
 | **AD-11** | Pagination | OFFSET / **keyset-cursor** | **Keyset/cursor** | Chọn: AC-4.3 (không trùng không sót) + edge case 28 (phân trang trong khi crawl đồng thời) → OFFSET **vỡ** khi có insert. Keyset miễn nhiễm + O(log n) ở 400k → thoả NFR scale. `laravel-repository` v4 hỗ trợ sẵn | REQ-4, AC-4.3/4.4, NFR scale |
 | **AD-12** | API key revocation (AC-7.2 "ngay lập tức") | Cache TTL dài / **không cache, query DB** | **Không cache key lookup** | Chọn: 1 indexed lookup trên `key_hash` ≈ sub-ms → truly immediate, KISS. **Loại** cache TTL: tạo độ trễ hiệu lực, vi phạm AC-7.2 | REQ-7, AC-7.2 |
 | **AD-13** | Key storage | Plaintext / **hash only** | **Hash only** (`key_hash`), `prefix` để nhận diện | NFR Security + edge case 26 (key lộ/commit lên repo công khai). AC-7.1 vẫn thoả nhờ `prefix` | REQ-7, AC-7.1, NFR security |
-| **AD-14** | Throttle numbers | Tự đặt / **đọc từ manifest `crawlerx`** | **Đọc `defaultThrottle` từ manifest** (javdb 20–60s, duga/fc2/heyzo 10–60s...) | DRY: `crawlerx` đã khai báo politeness per site, chỉ **không enforce** → jvmeta thi hành. Không bịa số mới | REQ-2, BR-6, AC-2.4 |
+| **AD-14** | Throttle numbers | Tự đặt / **đọc từ manifest `crawlerx`** | **Đọc `defaultThrottle` từ manifest** (javdb 20–60s, duga/fc2/heyzo 10–60s...) | DRY: `crawlerx` đã khai báo politeness per site, chỉ **không enforce** → javmeta thi hành. Không bịa số mới | REQ-2, BR-6, AC-2.4 |
 | **AD-15** | Backoff strategy | Fixed retry / **AIMD + circuit breaker per source** | **AIMD** (additive increase, multiplicative decrease) trên `gap_seconds_current` + circuit `closed/open/half_open` | Chọn: BR-6 yêu cầu "giảm tốc/tạm dừng **riêng nguồn đó**"; AC-2.4 yêu cầu nguồn khác vẫn chạy → isolation phải **cấu trúc**, không phải convention. **Loại** fixed retry: không thích ứng, đốt proxy (edge case 12) | REQ-2, BR-6, AC-2.4, WF-3 |
 | **AD-16** | BR-4 enforcement | Policy/doc / **schema-level** | **Schema-level**: `movie_media.url` là cột duy nhất dạng media | Chọn: không có đường nào ghi bytes xuống disk → bất biến enforce được bằng code review + schema, không dựa vào kỷ luật thủ công. **Loại** policy-only: dễ trôi | BR-4, D-22, NFR security, R-11 |
-| **AD-17** | Repo/git | GitHub ngay / **local git + POC marker** | **`projects/jvmeta`, local git only, `Status: POC`** | Rule workspace: new project GitHub là **opt-in**, chỉ tạo khi owner yêu cầu rõ. POC marker cho phép bypass branch model; identity (`Viet Vu <jooservices@gmail.com>`), Conventional Commits, hooks, description+topics **vẫn bắt buộc** | Policy |
+| **AD-17** | Repo/git | GitHub ngay / **local git + POC marker** | **`projects/javmeta`, local git only, `Status: POC`** | Rule workspace: new project GitHub là **opt-in**, chỉ tạo khi owner yêu cầu rõ. POC marker cho phép bypass branch model; identity (`Viet Vu <jooservices@gmail.com>`), Conventional Commits, hooks, description+topics **vẫn bắt buộc** | Policy |
 | **AD-18** | Alert channel (AC-9.2) | Email / **Telegram + laravel-logging** / log-only | **Telegram + laravel-logging (`alert.sent`)** — evolved from gate “Telegram + log” | Chọn: Telegram tới điện thoại; audit alert durable qua `jooservices/laravel-logging` (thay `Log::warning`). Side effects qua Laravel events/listeners (`CrawlIncidentOccurred`, `WorkerHeartbeatStale`, …). Telegram không thay bằng OO alerts trong POC. | REQ-9, AC-9.2, OQ-11 |
 | **AD-19** | Observability sink | External SaaS / Vector sidecar / **OpenObserve Compose** / log-only | **OpenObserve OSS (1 service) trong Compose** + app push trực tiếp (JSON logs + OTLP HTTP metrics/traces); Postgres vẫn SoR cho `crawl_events`/`api_usage_log` | Chọn: một binary, OTLP-native, đủ logs/metrics/traces cho REQ-9 ops + API + quality aggregates (G-5 qua `value_hash` only). **Không** gửi movie/performer/observation values/URLs/HTML/secrets. Fail-open ingest. Telegram (AD-18) vẫn là kênh điện thoại — không thay bằng OO alerts trong POC. **Loại** Vector sidecar: thêm service trái “1 OBS service”. **Loại** full OTEL PHP SDK: YAGNI — raw OTLP JSON qua Laravel Http (cùng pattern ES). | REQ-9, REQ-7, REQ-8 |
 
@@ -571,7 +571,7 @@ nhận; ngưỡng OQ-12 chốt default owner-cấu hình.
 | **OQ-12** | Ngưỡng `abuse_rpm` (AC-7.4) + `max_attempts` / N consecutive failures (AC-9.3)? | ✅ **RESOLVED tại gate** | Defaults chốt: `abuse_rpm=60`, `max_attempts=3`, `N=3`. **Owner cấu hình được** qua `sources` / `api_keys` — không hard-code. Planning chỉ cần hiện thực hoá config surface. |
 | **Wave 1 source list** | Đóng băng danh sách nguồn sau `live-check` thực nghiệm (R-1) | 🔶 **Chốt ở planning** | Chạy `make live-check` từng adapter → phân loại `working`/`walled`/`broken`. Chỉ nguồn `working` vào crawl set. Nguồn walled (javbus/javlibrary/missav có thể) → báo cáo **chưa phủ** theo AC-2.6, **không** bỏ âm thầm. |
 | **OQ-4** | Trần ngân sách proxy Nhật | 🔶 **Sau báo cáo POC** | Không cần cho Wave 1. G-4/AC-8.3 cho số đo proxy requests + giờ crawl + lỗi / 1.000 title → ngoại suy 100k/400k → owner đặt trần **bằng số liệu**. |
-| **OQ-13** | Tên sản phẩm | 🔶 **Mở (không chặn kỹ thuật)** | Giữ codename `jvmeta` cho repo + route prefix. Đổi tên sau = đổi `display` metadata, không đổi contract. |
+| **OQ-13** | Tên sản phẩm | 🔶 **Mở (không chặn kỹ thuật)** | Giữ codename `javmeta` cho repo + route prefix. Đổi tên sau = đổi `display` metadata, không đổi contract. |
 
 ---
 
@@ -581,7 +581,7 @@ nhận; ngưỡng OQ-12 chốt default owner-cấu hình.
 
 **2. Evidence inspected:**
 
-- `projects/jvmeta/BUSINESS.md` (463 dòng, đọc hết)
+- `projects/javmeta/BUSINESS.md` (463 dòng, đọc hết)
 - `projects/crawlerx/`: `README.md`, `handover.md`, `composer.json`, `src/CrawlerXFactory.php`, `src/Dto/{HttpOptionsDto,FetchOptionsDto,CrawlOptionsDto,CrawlListResultDto,StreamResultDto}.php`, `src/Dto/Entity/{MovieDto,PerformerDto}.php`, `src/Services/ClientFactory.php`, `src/Fetch/{FetchRuntimeConfig,ChallengeDetector}.php`, `src/Adapters/AbstractType.php`, `src/Adapters/{JavDb/manifest.json,OnePondo/Types/Detail.php}`, `src/Adapters/` (21 site dirs)
 - `projects/client/src/Client/ClientBuilder.php:161`, `src/Transport/Curl/CurlProxy.php`
 - `projects/bds-crawler/`: `README.md`, `schema.sql`, `AGENTS.md`, `docs/02-concepts/architecture.md:14-18`

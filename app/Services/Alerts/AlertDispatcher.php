@@ -19,12 +19,12 @@ final class AlertDispatcher
      */
     public function send(string $debounceKey, string $subject, string $body, array $context = [], ?int $debounceSeconds = null): bool
     {
-        if (! (bool) config('jvmeta_alerts.enabled', true)) {
+        if (! (bool) config('javmeta_alerts.enabled', true)) {
             return false;
         }
 
-        $ttl = $debounceSeconds ?? (int) config('jvmeta_alerts.debounce_seconds', 900);
-        $cacheKey = 'jvmeta:alert:' . hash('sha256', $debounceKey);
+        $ttl = $debounceSeconds ?? (int) config('javmeta_alerts.debounce_seconds', 900);
+        $cacheKey = 'javmeta:alert:' . hash('sha256', $debounceKey);
 
         if ($ttl > 0 && ! Cache::add($cacheKey, 1, $ttl)) {
             return false;

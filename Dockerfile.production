@@ -109,12 +109,12 @@ RUN mkdir -p \
         && PUPPETEER_SKIP_DOWNLOAD=true npm ci --omit=dev --ignore-scripts \
         && npx playwright install chromium; \
     fi \
-    && groupadd --system --gid 10001 jvmeta \
-    && useradd --system --uid 10001 --gid 10001 --create-home --home-dir /home/jvmeta jvmeta \
-    && chown -R jvmeta:jvmeta /var/www/html/storage /var/www/html/bootstrap/cache /ms-playwright \
+    && groupadd --system --gid 10001 javmeta \
+    && useradd --system --uid 10001 --gid 10001 --create-home --home-dir /home/javmeta javmeta \
+    && chown -R javmeta:javmeta /var/www/html/storage /var/www/html/bootstrap/cache /ms-playwright \
     && chmod -R a+rX /var/www/html/vendor /ms-playwright
 
-USER jvmeta
+USER javmeta
 
 ENTRYPOINT ["ready-check"]
 CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]

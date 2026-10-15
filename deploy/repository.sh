@@ -12,43 +12,43 @@ require_command() {
 }
 
 sync_repository() {
-  if [[ -d "${JVMETA_APP_DIR}/.git" ]]; then
-    if [[ -n "$(git -C "${JVMETA_APP_DIR}" status --porcelain --untracked-files=all)" ]]; then
-      die "repository is not clean: ${JVMETA_APP_DIR}"
+  if [[ -d "${JAVMETA_APP_DIR}/.git" ]]; then
+    if [[ -n "$(git -C "${JAVMETA_APP_DIR}" status --porcelain --untracked-files=all)" ]]; then
+      die "repository is not clean: ${JAVMETA_APP_DIR}"
     fi
 
     local current_branch
-    current_branch="$(git -C "${JVMETA_APP_DIR}" branch --show-current)"
-    [[ "${current_branch}" == "${JVMETA_BRANCH}" ]] || die "expected branch ${JVMETA_BRANCH}, found ${current_branch:-detached}"
+    current_branch="$(git -C "${JAVMETA_APP_DIR}" branch --show-current)"
+    [[ "${current_branch}" == "${JAVMETA_BRANCH}" ]] || die "expected branch ${JAVMETA_BRANCH}, found ${current_branch:-detached}"
 
-    GIT_TERMINAL_PROMPT=0 git -C "${JVMETA_APP_DIR}" pull --ff-only origin "${JVMETA_BRANCH}"
+    GIT_TERMINAL_PROMPT=0 git -C "${JAVMETA_APP_DIR}" pull --ff-only origin "${JAVMETA_BRANCH}"
     return
   fi
 
-  [[ ! -e "${JVMETA_APP_DIR}" ]] || die "application path exists but is not a Git repository: ${JVMETA_APP_DIR}"
+  [[ ! -e "${JAVMETA_APP_DIR}" ]] || die "application path exists but is not a Git repository: ${JAVMETA_APP_DIR}"
 
-  mkdir -p "$(dirname "${JVMETA_APP_DIR}")"
-  GIT_TERMINAL_PROMPT=0 git clone --branch "${JVMETA_BRANCH}" --single-branch "${JVMETA_REPO_URL}" "${JVMETA_APP_DIR}"
+  mkdir -p "$(dirname "${JAVMETA_APP_DIR}")"
+  GIT_TERMINAL_PROMPT=0 git clone --branch "${JAVMETA_BRANCH}" --single-branch "${JAVMETA_REPO_URL}" "${JAVMETA_APP_DIR}"
 }
 
 prepare_environment() {
-  if [[ -n "${JVMETA_ENV_SOURCE:-}" ]]; then
-    [[ -f "${JVMETA_ENV_SOURCE}" ]] || die "runtime env source does not exist: ${JVMETA_ENV_SOURCE}"
+  if [[ -n "${JAVMETA_ENV_SOURCE:-}" ]]; then
+    [[ -f "${JAVMETA_ENV_SOURCE}" ]] || die "runtime env source does not exist: ${JAVMETA_ENV_SOURCE}"
 
-    if [[ "${JVMETA_ENV_SOURCE}" != "${JVMETA_APP_DIR}/.env" ]]; then
-      install -m 600 "${JVMETA_ENV_SOURCE}" "${JVMETA_APP_DIR}/.env"
+    if [[ "${JAVMETA_ENV_SOURCE}" != "${JAVMETA_APP_DIR}/.env" ]]; then
+      install -m 600 "${JAVMETA_ENV_SOURCE}" "${JAVMETA_APP_DIR}/.env"
     fi
   fi
 
-  [[ -f "${JVMETA_APP_DIR}/.env" ]] || die "missing ${JVMETA_APP_DIR}/.env; set JVMETA_ENV_SOURCE"
-  chmod 600 "${JVMETA_APP_DIR}/.env"
+  [[ -f "${JAVMETA_APP_DIR}/.env" ]] || die "missing ${JAVMETA_APP_DIR}/.env; set JAVMETA_ENV_SOURCE"
+  chmod 600 "${JAVMETA_APP_DIR}/.env"
 }
 
 compose() {
   docker compose \
-    --project-directory "${JVMETA_APP_DIR}" \
-    --env-file "${JVMETA_APP_DIR}/.env" \
-    --file "${JVMETA_APP_DIR}/${JVMETA_COMPOSE_FILE}" \
+    --project-directory "${JAVMETA_APP_DIR}" \
+    --env-file "${JAVMETA_APP_DIR}/.env" \
+    --file "${JAVMETA_APP_DIR}/${JAVMETA_COMPOSE_FILE}" \
     --profile app \
     --profile control \
     --profile embed \

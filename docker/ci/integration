@@ -7,15 +7,15 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 compose=(docker compose --file "${root}/docker/ci/compose.integration.yml")
 
-export JVMETA_CI_UID="$(id -u)" JVMETA_CI_GID="$(id -g)"
-export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-jvmeta-integration}"
+export JAVMETA_CI_UID="$(id -u)" JAVMETA_CI_GID="$(id -g)"
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-javmeta-integration}"
 signal_id="$$"
-signal_dir="$(mktemp -d "${TMPDIR:-/tmp}/jvmeta-integration-outage.XXXXXX")"
-export JVMETA_INTEGRATION_SIGNAL_DIR="$signal_dir"
+signal_dir="$(mktemp -d "${TMPDIR:-/tmp}/javmeta-integration-outage.XXXXXX")"
+export JAVMETA_INTEGRATION_SIGNAL_DIR="$signal_dir"
 ready_signal="${signal_dir}/mongo-outage-${signal_id}.ready"
 stopped_signal="${signal_dir}/mongo-outage-${signal_id}.stopped"
 failure_signal="${signal_dir}/mongo-outage-${signal_id}.failed"
-docker volume create jvmeta-ci-composer-cache >/dev/null
+docker volume create javmeta-ci-composer-cache >/dev/null
 
 cleanup() {
   "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
@@ -24,7 +24,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if [[ "${JVMETA_CI_SKIP_BUILD:-0}" != "1" ]]; then
+if [[ "${JAVMETA_CI_SKIP_BUILD:-0}" != "1" ]]; then
   "${compose[@]}" build --quiet gate
 fi
 "${compose[@]}" up --detach --wait postgres mongo elasticsearch
@@ -45,8 +45,8 @@ fi
 
 if [[ "$run_mongo_outage_test" == "true" ]]; then
   "${compose[@]}" run --rm \
-    --env JVMETA_INTEGRATION_STOP_MONGO=1 \
-    --env "JVMETA_MONGO_OUTAGE_SIGNAL_ID=${signal_id}" \
+    --env JAVMETA_INTEGRATION_STOP_MONGO=1 \
+    --env "JAVMETA_MONGO_OUTAGE_SIGNAL_ID=${signal_id}" \
     gate vendor/bin/phpunit --configuration phpunit.integration.xml --filter RuntimeDependencyHealthTest &
   test_pid=$!
 

@@ -18,14 +18,14 @@ use Throwable;
 /**
  * Maps crawlerx MovieDto typed fields plus a configurable metadata{} key map
  * onto a MovieDraft. The key map is per-source configurable through
- * `jvmeta_sources.sources.<slug>.normalize` and defaults to a union of the
+ * `javmeta_sources.sources.<slug>.normalize` and defaults to a union of the
  * key shapes observed across the frozen Wave 1 adapters.
  */
 class DefaultSourceNormalizer implements SourceNormalizer
 {
     public function supports(string $slug): bool
     {
-        return is_array(config("jvmeta_sources.sources.{$slug}"));
+        return is_array(config("javmeta_sources.sources.{$slug}"));
     }
 
     public function normalizeMovie(MovieDto $movie, array $metadata, string $slug, string $sourceUrl, CarbonImmutable $crawledAt): MovieDraft
@@ -162,11 +162,11 @@ class DefaultSourceNormalizer implements SourceNormalizer
 
     protected function titleLocale(string $slug): string
     {
-        $locale = config("jvmeta_sources.sources.{$slug}.normalize.title_locale");
+        $locale = config("javmeta_sources.sources.{$slug}.normalize.title_locale");
 
         return is_string($locale) && $locale !== ''
             ? $locale
-            : (string) config('jvmeta_sources.normalize.title_locale', 'jp');
+            : (string) config('javmeta_sources.normalize.title_locale', 'jp');
     }
 
     /**
@@ -174,10 +174,10 @@ class DefaultSourceNormalizer implements SourceNormalizer
      */
     protected function keyMap(string $slug): array
     {
-        $default = config('jvmeta_sources.normalize.key_map');
+        $default = config('javmeta_sources.normalize.key_map');
         $map = is_array($default) ? $default : [];
 
-        $override = config("jvmeta_sources.sources.{$slug}.normalize.key_map");
+        $override = config("javmeta_sources.sources.{$slug}.normalize.key_map");
         if (is_array($override)) {
             $map = array_merge($map, $override);
         }

@@ -15,7 +15,7 @@
         <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing" force="true"/>
         <env name="APP_KEY" value="base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" force="true"/>
-        <env name="APP_NAME" value="jvmeta" force="true"/>
+        <env name="APP_NAME" value="javmeta" force="true"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
@@ -24,9 +24,9 @@
         <env name="DB_USERNAME" value="jvmeta" force="true"/>
         <env name="DB_PASSWORD" value="jvmeta" force="true"/>
         <env name="DB_URL" value="" force="true"/>
-        <env name="MONGO_DATABASE" value="jvmeta_it_archive" force="true"/>
-        <env name="ELASTICSEARCH_MOVIES_INDEX" value="jvmeta_it_movies" force="true"/>
-        <env name="ELASTICSEARCH_PERFORMERS_INDEX" value="jvmeta_it_performers" force="true"/>
+        <env name="MONGO_DATABASE" value="javmeta_it_archive" force="true"/>
+        <env name="ELASTICSEARCH_MOVIES_INDEX" value="javmeta_it_movies" force="true"/>
+        <env name="ELASTICSEARCH_PERFORMERS_INDEX" value="javmeta_it_performers" force="true"/>
         <env name="EMBEDDER_URL" value="http://embedder.test" force="true"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
@@ -37,7 +37,7 @@
         <env name="NIGHTWATCH_ENABLED" value="false"/>
         <env name="OPENOBSERVE_ENABLED" value="false" force="true"/>
         <env name="OPENOBSERVE_ORG" value="default" force="true"/>
-        <env name="OPENOBSERVE_STREAM_LOGS" value="jvmeta_it_logs" force="true"/>
+        <env name="OPENOBSERVE_STREAM_LOGS" value="javmeta_it_logs" force="true"/>
         <env name="LOG_STACK" value="single" force="true"/>
         <env name="NOTIFICATION_TELEGRAM_BOT_TOKEN" value="" force="true"/>
         <env name="NOTIFICATION_TELEGRAM_CHAT_ID" value="" force="true"/>

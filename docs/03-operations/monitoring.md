@@ -1,6 +1,6 @@
 # Node and container monitoring
 
-This runbook describes the standalone `jvmeta-monitoring` Compose project. It
+This runbook describes the standalone `javmeta-monitoring` Compose project. It
 collects host and Docker container metrics on each control or crawler node and
 ships them to OpenObserve through Prometheus remote write. It does not change
 the application Compose project or deploy application services.
@@ -30,11 +30,11 @@ kernel limitation.
 Prometheus adds these external labels to every series:
 
 ```text
-node = ${JVMETA_NODE_NAME}
-role = ${JVMETA_NODE_ROLE}
+node = ${JAVMETA_NODE_NAME}
+role = ${JAVMETA_NODE_ROLE}
 ```
 
-`JVMETA_NODE_NAME` must be unique per node. `JVMETA_NODE_ROLE` is either
+`JAVMETA_NODE_NAME` must be unique per node. `JAVMETA_NODE_ROLE` is either
 `control` or `crawler`. Use these labels for all per-node dashboards and
 queries; do not infer node identity from a container name or scrape target.
 cAdvisor's `name` and Docker Compose container labels identify the container
@@ -61,7 +61,7 @@ Run these commands from the repository root. The monitoring files are kept in
 cp deploy/monitoring/.env.example deploy/monitoring/.env
 # Set local node/role and a test OpenObserve endpoint in deploy/monitoring/.env.
 docker compose \
-  --project-name jvmeta-monitoring \
+  --project-name javmeta-monitoring \
   --env-file deploy/monitoring/.env \
   --file deploy/monitoring/compose.yml \
   up -d
@@ -70,14 +70,14 @@ docker compose \
 Check the stack without changing it:
 
 ```bash
-docker compose --project-name jvmeta-monitoring \
+docker compose --project-name javmeta-monitoring \
   --env-file deploy/monitoring/.env \
   --file deploy/monitoring/compose.yml ps
 curl -fsS http://127.0.0.1:9090/-/ready
 curl -fsS http://127.0.0.1:9100/metrics >/dev/null
 # Use the host port published for cAdvisor by the Compose file. It may be
-# remapped from container port 8080 when the jvmeta API is also local.
-docker compose --project-name jvmeta-monitoring \
+# remapped from container port 8080 when the javmeta API is also local.
+docker compose --project-name javmeta-monitoring \
   --env-file deploy/monitoring/.env \
   --file deploy/monitoring/compose.yml \
   port cadvisor 8080
@@ -97,7 +97,7 @@ OpenObserve port `5080`; set `OBS_HOST_PORT` to choose another free port.
 Stop the monitoring project without removing its named volumes:
 
 ```bash
-docker compose --project-name jvmeta-monitoring \
+docker compose --project-name javmeta-monitoring \
   --env-file deploy/monitoring/.env \
   --file deploy/monitoring/compose.yml \
   down
@@ -217,7 +217,7 @@ Prometheus label and range-vector semantics.
 ### Production rollout
 
 - [ ] The exact Compose/image revisions and exporter mounts have been reviewed.
-- [ ] `JVMETA_NODE_NAME` is unique and `JVMETA_NODE_ROLE` is `control` or
+- [ ] `JAVMETA_NODE_NAME` is unique and `JAVMETA_NODE_ROLE` is `control` or
       `crawler`.
 - [ ] `OBS_URL`, `OBS_ORG`, and the remote-write path have been verified against
       the intended OpenObserve instance.

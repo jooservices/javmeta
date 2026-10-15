@@ -22,14 +22,14 @@ final class WatchdogCommandTest extends TestCase
         $command = $commands['crawler:watchdog'];
 
         $this->assertInstanceOf(WatchdogCommand::class, $command);
-        $this->assertArrayHasKey('jvmeta:watchdog', $commands);
-        $this->assertSame($command, $commands['jvmeta:watchdog']);
+        $this->assertArrayHasKey('javmeta:watchdog', $commands);
+        $this->assertSame($command, $commands['javmeta:watchdog']);
     }
 
     public function test_watchdog_dispatches_stale_heartbeat_event(): void
     {
         Event::fake([WorkerHeartbeatStale::class]);
-        config(['jvmeta_alerts.watchdog.heartbeat_stale_seconds' => 60]);
+        config(['javmeta_alerts.watchdog.heartbeat_stale_seconds' => 60]);
         cache()->forget(WorkerHeartbeat::CACHE_KEY);
 
         $this->artisan('crawler:watchdog')->assertSuccessful();

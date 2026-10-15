@@ -13,7 +13,7 @@ use MongoDB\BSON\ObjectId;
 use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
- * Live-captured detail page → real crawlerx → jvmeta job → Postgres (movie,
+ * Live-captured detail page → real crawlerx → javmeta job → Postgres (movie,
  * observations, source link) + Mongo archive + Elasticsearch document.
  */
 final class MoviePipelineTest extends IntegrationTestCase

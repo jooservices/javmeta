@@ -22,7 +22,7 @@ final class SyncSourcesCommandTest extends TestCase
         $newSourceName = fake()->company();
         $gapSeconds = fake()->randomFloat(2, 10, 60);
 
-        config()->set('jvmeta_sources.sources', [
+        config()->set('javmeta_sources.sources', [
             $sourceSlug => [
                 'name' => $sourceName,
                 'base_url' => $baseUrl,

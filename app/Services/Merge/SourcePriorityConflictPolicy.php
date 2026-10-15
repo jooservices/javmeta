@@ -10,7 +10,7 @@ use Illuminate\Support\Collection;
 /**
  * BR-2 source-priority conflict policy. The observation from the most
  * authoritative source wins: priorities come from
- * config('jvmeta_sources.sources.<slug>.priority') where the smallest
+ * config('javmeta_sources.sources.<slug>.priority') where the smallest
  * number is the highest authority (D-7 order, javdb=10). Ties resolve to
  * the most recently crawled observation, then to the newest row id for
  * determinism. A slug missing from the config is treated as the least
@@ -42,7 +42,7 @@ final class SourcePriorityConflictPolicy implements ConflictPolicy
 
     private function priority(string $sourceSlug): int
     {
-        $priority = config("jvmeta_sources.sources.{$sourceSlug}.priority");
+        $priority = config("javmeta_sources.sources.{$sourceSlug}.priority");
 
         return is_numeric($priority) ? (int) $priority : self::UNKNOWN_SOURCE_PRIORITY;
     }

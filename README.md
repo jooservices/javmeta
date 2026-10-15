@@ -1,6 +1,6 @@
-# jvmeta
+# javmeta
 
-[![CI](https://github.com/jooservices/jvmeta/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/jooservices/jvmeta/actions/workflows/ci.yml)
+[![CI](https://github.com/jooservices/javmeta/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/jooservices/javmeta/actions/workflows/ci.yml)
 
 Laravel app: crawl JAV metadata (crawlerx) → Mongo archive → Postgres SoR → Elasticsearch search → API + MCP.
 
@@ -8,7 +8,7 @@ Status: Beta — v0.1.0-beta
 
 ## Definition of Done
 
-- **Crawl all sites:** `make crawl ACTION=tick` → `make crawl ACTION=dispatch` (worker in compose). 25 sources in `config/jvmeta_sources.php` — **movies, performers, and galleries** by capability.
+- **Crawl all sites:** `make crawl ACTION=tick` → `make crawl ACTION=dispatch` (worker in compose). 25 sources in `config/javmeta_sources.php` — **movies, performers, and galleries** by capability.
 - **Query API:** `GET /api/v1/movies/{code}` · `GET /api/v1/movies?q=…` · `GET /api/v1/performers` (aliases `/movies`). API key via admin.
 - **MCP for AI:** `docker compose --profile mcp run --rm mcp` — tools `lookup_movies`, `get_movie`, `search`, `lookup_performers`, `get_performer`.
 - **Docker + durable DB:** Postgres / Mongo / ES bind-mounted under `./data/*` (survive container drop; avoid `down -v`).
@@ -50,7 +50,7 @@ Status: Beta — v0.1.0-beta
 | Store | Role | Data path |
 |---|---|---|
 | Postgres | System of record (`movies` = movies, performers, pivots) | Lookup / detail |
-| MongoDB | Per-site archive (flexible; not end-user) | volume `jvmeta_mongo-db-data` |
+| MongoDB | Per-site archive (flexible; not end-user) | volume `javmeta_mongo-db-data` |
 | Elasticsearch | Search index → returns `uuid` → hydrate PG | `./data/elasticsearch` |
 
 **Search:** `ES → uuid → Postgres → respond`  
@@ -61,13 +61,13 @@ Status: Beta — v0.1.0-beta
 
 Compose service `openobserve` (UI [http://localhost:5080](http://localhost:5080)). App dual-writes sanitized ops/API telemetry **synchronously** (fail-open; no `default` queue dependency). Toggle with `OPENOBSERVE_ENABLED`. Domain catalog content is never ingested.
 
-**REQ-9 ops:** `GET /api/health` (no key) → status + per-source circuit/`last_success_at` + queue counts. Alerts: Telegram via `jooservices/laravel-notifications` (`NOTIFICATION_TELEGRAM_BOT_TOKEN` / `NOTIFICATION_TELEGRAM_CHAT_ID`, with `TELEGRAM_*` legacy fallback) + `laravel-logging` (`alert.sent`). Scheduler runs `jvmeta:watchdog` every 5 minutes. Consumer movie/performer **404** also alerts so ops can crawl ASAP.
+**REQ-9 ops:** `GET /api/health` (no key) → status + per-source circuit/`last_success_at` + queue counts. Alerts: Telegram via `jooservices/laravel-notifications` (`NOTIFICATION_TELEGRAM_BOT_TOKEN` / `NOTIFICATION_TELEGRAM_CHAT_ID`, with `TELEGRAM_*` legacy fallback) + `laravel-logging` (`alert.sent`). Scheduler runs `javmeta:watchdog` every 5 minutes. Consumer movie/performer **404** also alerts so ops can crawl ASAP.
 
 ```bash
 # after make up — login with ZO_ROOT_USER_EMAIL / ZO_ROOT_USER_PASSWORD from .env
 open http://localhost:5080
-php artisan jvmeta:obs-publish-metrics   # or wait for scheduler (every minute)
-php artisan jvmeta:watchdog
+php artisan javmeta:obs-publish-metrics   # or wait for scheduler (every minute)
+php artisan javmeta:watchdog
 curl -s http://localhost:8080/api/health
 ```
 
@@ -83,7 +83,7 @@ make up                 # full local stack, including embedder
 make migrate
 make crawl ACTION=tick       # enqueue all sites
 make crawl ACTION=dispatch   # claim buffer → named Laravel queues
-# N worker containers (JVMETA_WORKER_INSTANCES) × 5 queues × JVMETA_WORKERS_PER_QUEUE processes
+# N worker containers (JAVMETA_WORKER_INSTANCES) × 5 queues × JAVMETA_WORKERS_PER_QUEUE processes
 ```
 
 **Compose profiles** — every service is grouped so a stack can mix bundled-Docker and external services:
@@ -113,7 +113,7 @@ curl -s -H "X-Api-Key: jvm_..." "http://localhost:8080/api/v1/movies/STARS-456"
 curl -s -H "X-Api-Key: jvm_..." "http://localhost:8080/api/v1/movies?q=STARS"
 ```
 
-MCP (stdio for AI clients) — set `JVMETA_MCP_API_KEY` to an **active** `jvm_…` key first:
+MCP (stdio for AI clients) — set `JAVMETA_MCP_API_KEY` to an **active** `jvm_…` key first:
 
 ```bash
 docker compose --profile mcp run --rm mcp
@@ -156,12 +156,12 @@ corresponding detail API endpoints) expose the same photo contract:
 ```
 
 `source` is the stable source slug. Only URL references are stored; image
-binary content is not downloaded into JVMeta.
+binary content is not downloaded into JAVMeta.
 
 **MCP over HTTP (streamable HTTP)** — reachable from any AI over the network:
 
 ```bash
-curl -s -H "X-Api-Key: $JVMETA_MCP_API_KEY" \
+curl -s -H "X-Api-Key: $JAVMETA_MCP_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
   http://localhost:8080/api/v1/mcp

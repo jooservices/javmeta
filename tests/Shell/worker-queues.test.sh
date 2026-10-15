@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 WORKER_SCRIPT="${SCRIPT_DIR}/../../docker/worker-queues.sh"
 BASH_BIN="${BASH_BIN:-bash}"
-TEST_TMP="$(mktemp -d "${TMPDIR:-/tmp}/jvmeta-worker-queues.XXXXXX")"
+TEST_TMP="$(mktemp -d "${TMPDIR:-/tmp}/javmeta-worker-queues.XXXXXX")"
 FAKE_PHP="${TEST_TMP}/fake-php"
 FAKE_STATE="${TEST_TMP}/state"
 SUPERVISOR_PID=""
@@ -71,12 +71,12 @@ reset_state() {
 
 start_supervisor() {
   : > "${FAKE_STATE}/launches"
-  JVMETA_PHP_BIN="${FAKE_PHP}" \
+  JAVMETA_PHP_BIN="${FAKE_PHP}" \
     QUEUE_CONNECTION=database \
-    JVMETA_QUEUE_SLEEP=1 \
-    JVMETA_QUEUE_TRIES=3 \
-    JVMETA_QUEUE_MAX_TIME=60 \
-    JVMETA_QUEUE_MAX_JOBS=500 \
+    JAVMETA_QUEUE_SLEEP=1 \
+    JAVMETA_QUEUE_TRIES=3 \
+    JAVMETA_QUEUE_MAX_TIME=60 \
+    JAVMETA_QUEUE_MAX_JOBS=500 \
     "${BASH_BIN}" "${WORKER_SCRIPT}" > "${FAKE_STATE}/supervisor.log" 2>&1 &
   SUPERVISOR_PID=$!
 }
@@ -157,7 +157,7 @@ assert_contains_arg() {
 
 test_starts_one_worker_per_queue_slot() {
   reset_state
-  export JVMETA_QUEUE_NAMES=alpha,beta JVMETA_WORKERS_PER_QUEUE=2 JVMETA_QUEUE_TIMEOUT=180 FAKE_MODE=hold
+  export JAVMETA_QUEUE_NAMES=alpha,beta JAVMETA_WORKERS_PER_QUEUE=2 JAVMETA_QUEUE_TIMEOUT=180 FAKE_MODE=hold
   start_supervisor
   wait_for_launches 4 5
   assert_eq 2 "$(awk -F'|' '$1 == "alpha" { count++ } END { print count + 0 }' "${FAKE_STATE}/launches")" 'alpha worker count'
@@ -167,8 +167,8 @@ test_starts_one_worker_per_queue_slot() {
 
 test_passes_timeout_default_and_override() {
   reset_state
-  unset JVMETA_QUEUE_TIMEOUT
-  export JVMETA_QUEUE_NAMES=alpha JVMETA_WORKERS_PER_QUEUE=1 FAKE_MODE=hold
+  unset JAVMETA_QUEUE_TIMEOUT
+  export JAVMETA_QUEUE_NAMES=alpha JAVMETA_WORKERS_PER_QUEUE=1 FAKE_MODE=hold
   start_supervisor
   wait_for_launches 1 5
   args_file="$(find "${FAKE_STATE}" -name 'args_alpha_*' -type f | head -1)"
@@ -176,18 +176,18 @@ test_passes_timeout_default_and_override() {
   stop_supervisor
 
   reset_state
-  export JVMETA_QUEUE_TIMEOUT=321
+  export JAVMETA_QUEUE_TIMEOUT=321
   start_supervisor
   wait_for_launches 1 5
   args_file="$(find "${FAKE_STATE}" -name 'args_alpha_*' -type f | head -1)"
   assert_contains_arg '--timeout=321' "${args_file}"
   stop_supervisor
-  unset JVMETA_QUEUE_TIMEOUT
+  unset JAVMETA_QUEUE_TIMEOUT
 }
 
 test_restarts_only_failed_worker() {
   reset_state
-  export JVMETA_QUEUE_NAMES=alpha,beta JVMETA_WORKERS_PER_QUEUE=1 FAKE_MODE=hold
+  export JAVMETA_QUEUE_NAMES=alpha,beta JAVMETA_WORKERS_PER_QUEUE=1 FAKE_MODE=hold
   export FAKE_EXIT_QUEUE=alpha FAKE_EXIT_CODE=7
   start_supervisor
   wait_for_launches 2 5
@@ -203,7 +203,7 @@ test_restarts_only_failed_worker() {
 
 test_backoff_grows() {
   reset_state
-  export JVMETA_QUEUE_NAMES=alpha JVMETA_WORKERS_PER_QUEUE=1 FAKE_MODE=rapid
+  export JAVMETA_QUEUE_NAMES=alpha JAVMETA_WORKERS_PER_QUEUE=1 FAKE_MODE=rapid
   start_supervisor
   wait_for_log 'backoff=2s' 5
   wait_for_log 'backoff=4s' 8
@@ -215,7 +215,7 @@ test_backoff_grows() {
 
 test_sigterm_exits_zero() {
   reset_state
-  export JVMETA_QUEUE_NAMES=alpha,beta JVMETA_WORKERS_PER_QUEUE=1 FAKE_MODE=hold
+  export JAVMETA_QUEUE_NAMES=alpha,beta JAVMETA_WORKERS_PER_QUEUE=1 FAKE_MODE=hold
   start_supervisor
   wait_for_launches 2 5
   stop_supervisor
@@ -223,7 +223,7 @@ test_sigterm_exits_zero() {
 
 test_sigterm_kills_term_ignoring_child() {
   reset_state
-  export JVMETA_QUEUE_NAMES=alpha JVMETA_WORKERS_PER_QUEUE=1 FAKE_MODE=ignore-term JVMETA_QUEUE_STOP_GRACE=1
+  export JAVMETA_QUEUE_NAMES=alpha JAVMETA_WORKERS_PER_QUEUE=1 FAKE_MODE=ignore-term JAVMETA_QUEUE_STOP_GRACE=1
   start_supervisor
   wait_for_launches 1 5
   child_pid="$(awk -F'|' 'NR == 1 { print $2; exit }' "${FAKE_STATE}/launches")"
@@ -232,7 +232,7 @@ test_sigterm_kills_term_ignoring_child() {
     echo 'FAIL: TERM-ignoring worker still exists after stop grace.' >&2
     return 1
   fi
-  unset JVMETA_QUEUE_STOP_GRACE
+  unset JAVMETA_QUEUE_STOP_GRACE
 }
 
 test_starts_one_worker_per_queue_slot

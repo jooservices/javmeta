@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<ruleset name="JOOservices JVMeta">
+<ruleset name="JOOservices JAVMeta">
     <description>PHP_CodeSniffer rules. Pint has priority for formatting.</description>
     <rule ref="PSR12">
         <!-- Pint is the primary formatter; these spacing rules conflict with Pint's output. -->
