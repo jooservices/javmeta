@@ -27,6 +27,12 @@ trap cleanup EXIT
 if [[ "${JAVMETA_CI_SKIP_BUILD:-0}" != "1" ]]; then
   "${compose[@]}" build --quiet gate
 fi
+# Registry rate limits are transient; retry the image pulls before failing the run.
+for attempt in 1 2 3; do
+  "${compose[@]}" pull --quiet postgres mongo redis elasticsearch openobserve && break
+  [[ "$attempt" -lt 3 ]] || { echo "Could not pull the integration service images." >&2; exit 1; }
+  sleep 20
+done
 "${compose[@]}" up --detach --wait postgres mongo elasticsearch
 "${compose[@]}" up --detach openobserve
 "${compose[@]}" run --rm gate vendor/bin/phpunit --configuration phpunit.integration.xml "$@"
