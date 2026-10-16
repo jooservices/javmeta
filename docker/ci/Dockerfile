@@ -10,6 +10,8 @@ RUN apt-get update \
         libpq-dev \
         libssl-dev \
         pkg-config \
+        jq \
+        shellcheck \
         unzip \
     && { for attempt in 1 2 3; do pecl install mongodb-2.5.5 pcov-1.0.12 && break; [ "$attempt" -lt 3 ] || exit 1; sleep 5; done; } \
     && docker-php-ext-enable mongodb pcov \

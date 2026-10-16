@@ -98,7 +98,9 @@
         ],
         "test:shell": [
             "bash tests/Shell/worker-queues.test.sh",
-            "bash tests/Shell/run-captainhook.test.sh"
+            "bash tests/Shell/run-captainhook.test.sh",
+            "bash tests/Shell/backup.test.sh",
+            "shellcheck -x deploy/backup/*.sh tests/Shell/backup.test.sh"
         ],
         "coverage:report": "php tools/coverage-report.php build/coverage.xml build/coverage/uncovered-files.md",
         "coverage:check": "php tools/coverage-enforce.php build/coverage.xml 90",
@@ -139,6 +141,7 @@
         }
     },
     "config": {
+        "process-timeout": 1800,
         "optimize-autoloader": true,
         "preferred-install": "dist",
         "sort-packages": true,

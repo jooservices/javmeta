@@ -1,0 +1,5 @@
+# Install only after setting paths in the private backup env file.
+# Run the daily encrypted backup at 02:00 UTC.
+0 2 * * * docker run --rm --user 1000:1000 --env-file /etc/javmeta/backup.env --volume /srv/javmeta/backups:/backups --volume /srv/javmeta/es-snapshots:/srv/javmeta/es-snapshots javmeta-backup:local backup.sh --namespace=javmeta
+# Keep one weekly archive every Sunday at 03:00 UTC.
+0 3 * * 0 docker run --rm --user 1000:1000 --env-file /etc/javmeta/backup.env --volume /srv/javmeta/backups:/backups --volume /srv/javmeta/es-snapshots:/srv/javmeta/es-snapshots javmeta-backup:local backup.sh --namespace=javmeta --weekly
