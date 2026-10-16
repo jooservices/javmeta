@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# Import observability definitions into only the shared javmeta_it OpenObserve org.
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+workspaces="${JAVMETA_WORKSPACES_ROOT:-$(cd "${root}/../../.." && pwd -P)}"
+workspaces_env="${workspaces}/.env"
+temp_dir="${workspaces}/.tmp"
+image="${JAVMETA_CI_IMAGE:-javmeta-ci:local}"
+
+[[ -f "${workspaces_env}" && ! -L "${workspaces_env}" ]] || { echo "Workspaces root .env not found or is a symlink." >&2; exit 2; }
+[[ "$(stat -f '%Lp' "${workspaces_env}" 2>/dev/null || stat -c '%a' "${workspaces_env}")" == "600" ]] || { echo "Workspaces root .env must be mode 0600." >&2; exit 2; }
+[[ -d "${temp_dir}" ]] || { echo "Workspaces .tmp directory not found." >&2; exit 2; }
+
+env_file="$(mktemp "${temp_dir}/javmeta-observability-import.XXXXXX")"
+chmod 600 "${env_file}"
+trap 'rm -f "${env_file}"' EXIT
+
+python3 -I - "${workspaces_env}" "${env_file}" <<'PY'
+import base64
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+
+source, target = sys.argv[1:]
+values = {}
+for line in open(source, encoding="utf-8"):
+    row = line.strip()
+    if row and not row.startswith("#") and "=" in row:
+        key, value = row.split("=", 1)
+        values[key.removeprefix("export ").strip()] = value.strip().strip('"').strip("'")
+
+required = (
+    "JAVMETA_IT_OPENOBSERVE_EMAIL",
+    "JAVMETA_IT_OPENOBSERVE_PASSWORD",
+    "JAVMETA_IT_TELEGRAM_BOT_TOKEN",
+    "JAVMETA_IT_TELEGRAM_CHAT_ID",
+)
+missing = [key for key in required if not values.get(key)]
+if missing:
+    sys.exit("Missing test-only keys in the Workspaces .env: " + ", ".join(missing))
+
+email = values["JAVMETA_IT_OPENOBSERVE_EMAIL"]
+password = values["JAVMETA_IT_OPENOBSERVE_PASSWORD"]
+token = base64.b64encode(f"{email}:{password}".encode()).decode()
+request = urllib.request.Request(
+    "http://127.0.0.1:15080/api/organizations",
+    headers={"Authorization": "Basic " + token, "Accept": "application/json"},
+)
+payload = None
+for attempt in range(3):
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.load(response)
+        break
+    except Exception as error:  # noqa: BLE001 - suppress sensitive transport details
+        if attempt == 2:
+            sys.exit(f"Could not list OpenObserve organizations ({type(error).__name__}).")
+        time.sleep(5)
+
+items = payload.get("data") or payload.get("organizations") or payload.get("list") or payload if isinstance(payload, dict) else payload
+wanted = values.get("JAVMETA_IT_OPENOBSERVE_ORG", "javmeta_it")
+matches = [item for item in items if isinstance(item, dict) and item.get("name") == wanted]
+if len(matches) != 1 or not matches[0].get("identifier"):
+    sys.exit("The javmeta_it OpenObserve test organization was not found.")
+
+env = {
+    "OPENOBSERVE_URL": "http://host.docker.internal:15080",
+    "OPENOBSERVE_ORG": matches[0]["identifier"],
+    "OPENOBSERVE_EMAIL": email,
+    "OPENOBSERVE_PASSWORD": password,
+    "NOTIFICATION_TELEGRAM_BOT_TOKEN": values["JAVMETA_IT_TELEGRAM_BOT_TOKEN"],
+    "NOTIFICATION_TELEGRAM_CHAT_ID": values["JAVMETA_IT_TELEGRAM_CHAT_ID"],
+    "OPENOBSERVE_ENABLED": "true",
+}
+# Optional: lets the metrics publisher run against the shared test database so the metric streams exist.
+if all(values.get(key) for key in ("JAVMETA_IT_POSTGRES_USER", "JAVMETA_IT_POSTGRES_PASSWORD", "JAVMETA_IT_POSTGRES_DATABASE")):
+    env.update({
+        "DB_CONNECTION": "pgsql",
+        "DB_HOST": "host.docker.internal",
+        "DB_PORT": "15435",
+        "DB_DATABASE": values["JAVMETA_IT_POSTGRES_DATABASE"],
+        "DB_USERNAME": values["JAVMETA_IT_POSTGRES_USER"],
+        "DB_PASSWORD": values["JAVMETA_IT_POSTGRES_PASSWORD"],
+    })
+with open(target, "w", encoding="utf-8") as handle:
+    for key, value in env.items():
+        handle.write(f"{key}={value}\n")
+PY
+
+run_artisan() {
+  docker run --rm \
+    --user "$(id -u):$(id -g)" \
+    --add-host host.docker.internal:host-gateway \
+    --env HOME=/tmp \
+    --env-file "${env_file}" \
+    --volume "${root}:/app" \
+    --workdir /app \
+    "${image}" php artisan "$@"
+}
+
+# OpenObserve only accepts an alert for a metric stream that already received data. With
+# JAVMETA_SEED_STREAMS=1 the metrics publisher writes one sample set into the test org first.
+if [[ "${JAVMETA_SEED_STREAMS:-0}" == "1" ]]; then
+  run_artisan migrate --force --no-interaction >/dev/null
+  run_artisan crawler:sync-sources >/dev/null
+  run_artisan javmeta:obs-publish-metrics
+fi
+
+run_artisan observability:import "$@"

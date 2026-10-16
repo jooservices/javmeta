@@ -237,3 +237,106 @@ Prometheus label and range-vector semantics.
       or recreate application services as part of this monitoring rollback.
 
 Production rollout is intentionally not performed by this documentation task.
+
+## Versioned dashboards and alert rules
+
+Dashboard and scheduled alert definitions are versioned in
+`deploy/observability/`. `php artisan observability:import` creates or updates
+the named resources and its Telegram webhook destination; `--dry-run` reads
+and validates the files without contacting OpenObserve. The command reads
+OpenObserve and Telegram credentials only from environment configuration.
+
+Run the offline plan in the CI/PHP image:
+
+```bash
+JAVMETA_CI_SKIP_BUILD=1 docker/ci/run php artisan observability:import --dry-run
+```
+
+For live verification, add test-only
+`JAVMETA_IT_TELEGRAM_BOT_TOKEN` and `JAVMETA_IT_TELEGRAM_CHAT_ID` values to the
+private Workspaces root `.env`, then run the scoped helper twice:
+
+```bash
+docker/ci/observability-import-shared
+docker/ci/observability-import-shared
+```
+
+The helper resolves the `javmeta_it` organization identifier using the
+test-only OpenObserve account, runs the command in `javmeta-ci:local`, and
+removes its temporary environment file. It does not start a Compose stack.
+The second run should update the same named resources without creating
+duplicates. Keep Telegram test credentials out of project `.env` files and
+source control.
+
+### Failure injection: stale source alert
+
+This injects a single `90,000` second stale-source sample into the
+`javmeta_it` organization only. The unique source label makes it easy to
+identify in the test organization. Run this after both importer invocations;
+the alert checks the metric stream every minute and looks back five minutes.
+
+```bash
+python3 - <<'PY'
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError
+import base64, json, time
+
+values = {}
+for line in (Path.home() / 'Workspaces' / '.env').read_text().splitlines():
+    if line and not line.lstrip().startswith('#') and '=' in line:
+        key, value = line.split('=', 1)
+        values[key.strip()] = value.strip().strip('"').strip("'")
+email = values['JAVMETA_IT_OPENOBSERVE_EMAIL']
+password = values['JAVMETA_IT_OPENOBSERVE_PASSWORD']
+auth = 'Basic ' + base64.b64encode(f'{email}:{password}'.encode()).decode()
+base = 'http://127.0.0.1:15080'
+headers = {'Authorization': auth, 'Accept': 'application/json'}
+with urlopen(Request(base + '/api/organizations', headers=headers), timeout=20) as response:
+    payload = json.load(response)
+organizations = payload if isinstance(payload, list) else payload.get('data', payload.get('organizations', []))
+name = values.get('JAVMETA_IT_OPENOBSERVE_ORG', 'javmeta_it')
+organization = next(item for item in organizations if item.get('name') == name)
+timestamp = time.time_ns()
+point = {
+    'resourceMetrics': [{
+        'resource': {'attributes': [{'key': 'service.name', 'value': {'stringValue': 'javmeta-javm42-test'}}]},
+        'scopeMetrics': [{'metrics': [{
+            'name': 'javmeta_source_last_success_age_seconds',
+            'gauge': {'dataPoints': [{
+                'asDouble': 90000,
+                'timeUnixNano': str(timestamp),
+                'attributes': [{'key': 'source_slug', 'value': {'stringValue': 'javmeta-javm42-failure-test'}}],
+            }]},
+        }]}],
+    }],
+}
+request = Request(
+    base + f"/api/{organization['identifier']}/v1/metrics",
+    data=json.dumps(point).encode(), method='POST',
+    headers={**headers, 'Content-Type': 'application/json'},
+)
+try:
+    with urlopen(request, timeout=20) as response:
+        print('OTLP injection HTTP', response.status)
+except HTTPError as error:
+    raise SystemExit(f'OTLP injection HTTP {error.code}')
+print('Injection UTC', datetime.fromtimestamp(timestamp / 1e9, timezone.utc).isoformat())
+PY
+```
+
+Wait up to two minutes for `javmeta_source_stale` to fire. Confirm the alert
+and delivery in OpenObserve alert history and the dedicated Telegram test
+channel, then add the injection and fire UTC timestamps plus the delivery
+result to the task record. The injected sample stays inside `javmeta_it`; do
+not delete a stream that may contain other integration-test samples.
+
+## Live verification record (2026-10-16, shared OpenObserve org `javmeta_it`)
+
+`JAVMETA_SEED_STREAMS=1 docker/ci/observability-import-shared --strict` published 68 metric points, imported 2 dashboards and
+5 of 6 alerts; `javmeta_source_failure_rate` stays pending until a crawl failure creates the
+`javmeta_crawl_run_failures_1h` stream (OpenObserve only accepts an alert for an existing stream; the importer reports it and a
+rerun completes it). Two further runs created nothing new and updated the same 2 dashboards and 5 alerts (idempotent).
+Failure injection: an OTLP point `javmeta_source_last_success_age_seconds{source_slug="qa-injected-source"} = 90000` is returned by the
+`javmeta_source_stale` alert query. Delivery to Telegram is not exercised in the test org (placeholder token).
