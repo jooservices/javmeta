@@ -21,7 +21,8 @@ services:
   mongo:
     image: mongodb/mongodb-community-server:9.0.4-ubi9-slim
     tmpfs:
-      - /data/db
+      # The community-server image runs mongod as uid 1000; a root-owned tmpfs makes it exit with code 100.
+      - /data/db:uid=1000,gid=1000,mode=0755
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
       interval: 2s
