@@ -68,17 +68,17 @@ final class RunSourceCommandTest extends TestCase
             }
         };
 
-        $application->add($recordCommand('crawler:sync-sources', function (InputInterface $input) use (&$calls): int {
+        $application->addCommand($recordCommand('crawler:sync-sources', function (InputInterface $input) use (&$calls): int {
             $calls[] = ['command' => 'crawler:sync-sources'];
 
             return SymfonyCommand::SUCCESS;
         }));
-        $application->add($recordCommand('crawler:reclaim', function (InputInterface $input) use (&$calls): int {
+        $application->addCommand($recordCommand('crawler:reclaim', function (InputInterface $input) use (&$calls): int {
             $calls[] = ['command' => 'crawler:reclaim'];
 
             return SymfonyCommand::SUCCESS;
         }));
-        $application->add($recordCommand('crawler:seed', function (InputInterface $input) use (&$calls): int {
+        $application->addCommand($recordCommand('crawler:seed', function (InputInterface $input) use (&$calls): int {
             $calls[] = [
                 'command' => 'crawler:seed',
                 'source' => $input->getOption('source'),
@@ -87,7 +87,7 @@ final class RunSourceCommandTest extends TestCase
 
             return SymfonyCommand::SUCCESS;
         }));
-        $application->add($recordCommand('crawler:feed-pool', function (InputInterface $input) use (&$calls): int {
+        $application->addCommand($recordCommand('crawler:feed-pool', function (InputInterface $input) use (&$calls): int {
             $calls[] = ['command' => 'crawler:feed-pool', 'limit' => $input->getOption('limit')];
 
             return SymfonyCommand::SUCCESS;
