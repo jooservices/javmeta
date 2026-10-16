@@ -147,6 +147,114 @@ final class SourceNormalizerTest extends TestCase
         self::assertSame('ACME', $draft->maker);
     }
 
+    public function test_it_keeps_only_valid_media_urls_when_metadata_has_mixed_entries(): void
+    {
+        config()->set('javmeta_sources.sources.onejav.normalize.key_map', [
+            'magnets' => ['downloads'],
+            'hls' => ['stream'],
+        ]);
+        $normalizer = new DefaultSourceNormalizer();
+        $movie = new MovieDto(
+            title: 'Media Title',
+            code: 'YMDS-282',
+            metadata: [
+                'downloads' => [
+                    'invalid entry',
+                    ['url' => '  '],
+                    ['url' => ' magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567 ', 'seeders' => 4],
+                ],
+                'stream' => [
+                    'manifest_url' => ' https://onejav.com/sample.m3u8 ',
+                    'video_id' => '42',
+                    'expires_at' => '2026-10-01T00:00:00Z',
+                ],
+            ],
+        );
+
+        $draft = $normalizer->normalizeMovie(
+            $movie,
+            $movie->metadata,
+            'onejav',
+            'https://onejav.com/torrent/ymds282',
+            CarbonImmutable::parse('2026-10-01T00:00:00Z'),
+        );
+
+        self::assertSame([
+            ['url' => 'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567', 'seeders' => 4],
+        ], $draft->extras['magnets']);
+        self::assertSame([
+            ['url' => 'https://onejav.com/sample.m3u8', 'video_id' => '42'],
+        ], $draft->extras['hls']);
+    }
+
+    public function test_it_wraps_a_single_magnet_url_string_from_metadata(): void
+    {
+        config()->set('javmeta_sources.sources.onejav.normalize.key_map', ['magnets' => ['download_url']]);
+        $normalizer = new DefaultSourceNormalizer();
+        $movie = new MovieDto(
+            title: 'Magnet Title',
+            code: 'YMDS-282',
+            metadata: ['download_url' => ' magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567 '],
+        );
+
+        $draft = $normalizer->normalizeMovie(
+            $movie,
+            $movie->metadata,
+            'onejav',
+            'https://onejav.com/torrent/ymds282',
+            CarbonImmutable::parse('2026-10-01T00:00:00Z'),
+        );
+
+        self::assertSame([
+            ['url' => 'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567'],
+        ], $draft->extras['magnets']);
+    }
+
+    public function test_it_maps_directors_when_metadata_contains_strings_and_named_records(): void
+    {
+        config()->set('javmeta_sources.sources.onejav.normalize.key_map', ['directors' => ['director']]);
+        $normalizer = new DefaultSourceNormalizer();
+        $movie = new MovieDto(
+            title: 'Director Title',
+            code: 'YMDS-282',
+            metadata: ['director' => ['  A. Director ', ['name' => 'B. Director'], ['name' => '  '], 'A. Director']],
+        );
+
+        $draft = $normalizer->normalizeMovie(
+            $movie,
+            $movie->metadata,
+            'onejav',
+            'https://onejav.com/torrent/ymds282',
+            CarbonImmutable::parse('2026-10-01T00:00:00Z'),
+        );
+
+        self::assertSame(['A. Director', 'B. Director'], $draft->directors);
+    }
+
+    public function test_it_keeps_optional_values_null_when_source_values_are_invalid(): void
+    {
+        $normalizer = new DefaultSourceNormalizer();
+        $movie = new MovieDto(
+            title: 'Optional Fields',
+            code: 'YMDS-282',
+            date: 'not-a-date',
+            duration: 0,
+            performers: [new PerformerDto(name: '  ')],
+        );
+
+        $draft = $normalizer->normalizeMovie(
+            $movie,
+            [],
+            'onejav',
+            'https://onejav.com/torrent/ymds282',
+            CarbonImmutable::parse('2026-10-01T00:00:00Z'),
+        );
+
+        self::assertNull($draft->releaseDate);
+        self::assertNull($draft->runtimeMinutes);
+        self::assertSame([], $draft->performers);
+    }
+
     public function test_per_source_title_locale_maps_title_to_title_en(): void
     {
         $normalizer = $this->registry()->forSlug('onepondo');

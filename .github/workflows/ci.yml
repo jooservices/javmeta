@@ -58,17 +58,52 @@ jobs:
           JAVMETA_CI_SKIP_BUILD: '1'
         run: docker/ci/run composer test:coverage
 
-      - name: Coverage check (minimum 85%)
+      - name: Generate coverage report for the PR
+        env:
+          JAVMETA_CI_SKIP_BUILD: '1'
+        run: docker/ci/run composer coverage:report
+
+      - name: Coverage check (minimum 90%)
         env:
           JAVMETA_CI_SKIP_BUILD: '1'
         run: docker/ci/run composer coverage:check
+
+      - name: Test stability (three consecutive runs, maximum 30% growth)
+        env:
+          JAVMETA_CI_SKIP_BUILD: '1'
+        run: |
+          set -euo pipefail
+          baseline_seconds=25.00
+          maximum_seconds=32.50
+
+          for run in 1 2 3; do
+            printf 'Composer test stability run %s/3\n' "${run}"
+            output="$(docker/ci/run composer test)"
+            printf '%s\n' "${output}"
+
+            duration_line="$(printf '%s\n' "${output}" | grep -E '^[[:space:]]*Duration: [0-9]+([.][0-9]+)?s$' | tail -n 1)"
+            if [[ -z "${duration_line}" ]]; then
+              echo "Could not read composer test duration from output." >&2
+              exit 1
+            fi
+
+            duration="${duration_line#*: }"
+            duration="${duration%s}"
+            if ! awk -v actual="${duration}" -v limit="${maximum_seconds}" 'BEGIN { exit(actual < limit ? 0 : 1) }'; then
+              printf 'Composer test run %s took %ss; must stay below %ss (baseline %ss).\n' \
+                "${run}" "${duration}" "${maximum_seconds}" "${baseline_seconds}" >&2
+              exit 1
+            fi
+          done
 
       - name: Upload coverage report
         if: always() && hashFiles('build/coverage.xml') != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: coverage
-          path: build/coverage.xml
+          path: |
+            build/coverage.xml
+            artifacts/reports/JAVM-24-coverage.md
           retention-days: 7
 
   integration:

@@ -32,6 +32,92 @@ final class OpenObserveClientTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_it_does_not_send_spans_when_trace_sampling_is_disabled(): void
+    {
+        config()->set([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.trace_sample_rate' => 0,
+        ]);
+        Http::fake();
+
+        $client = new OpenObserveClient(new TelemetrySanitizer());
+        $client->ingestSpan([
+            'name' => 'crawl.detail',
+            'trace_id' => str_repeat('a', 32),
+            'span_id' => str_repeat('b', 16),
+            'start_ns' => 1,
+            'end_ns' => 2,
+        ]);
+
+        Http::assertNothingSent();
+    }
+
+    public function test_it_sends_parent_span_when_non_null_attributes_remain_after_sanitizing(): void
+    {
+        config()->set([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.trace_sample_rate' => 1,
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response([], 200)]);
+
+        $client = new OpenObserveClient(new TelemetrySanitizer());
+        $client->ingestSpan([
+            'name' => 'crawl.detail',
+            'trace_id' => str_repeat('a', 32),
+            'span_id' => str_repeat('b', 16),
+            'parent_span_id' => str_repeat('c', 16),
+            'start_ns' => 1,
+            'end_ns' => 2,
+            'status_code' => 503,
+            'attributes' => ['operation' => 'fetch', 'empty' => null, 'api_key' => 'test-only-value'],
+        ]);
+
+        Http::assertSent(static function (ClientRequest $request): bool {
+            $span = $request->data()['resourceSpans'][0]['scopeSpans'][0]['spans'][0];
+
+            return $request->url() === 'http://openobserve.test/api/default/v1/traces'
+                && ($span['parentSpanId'] ?? null) === str_repeat('c', 16)
+                && $span['status']['code'] === 2
+                && $span['attributes'] === [[
+                    'key' => 'operation',
+                    'value' => ['stringValue' => 'fetch'],
+                ]];
+        });
+    }
+
+    public function test_it_encodes_the_organization_when_sending_metric_labels(): void
+    {
+        config()->set([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'jav meta',
+            'openobserve.service_name' => 'javmeta',
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response([], 200)]);
+
+        $client = new OpenObserveClient(new TelemetrySanitizer());
+        $client->ingestMetrics([[
+            'name' => 'crawl.items',
+            'value' => 3,
+            'labels' => ['source' => 'javdb'],
+        ]]);
+
+        Http::assertSent(static function (ClientRequest $request): bool {
+            $metric = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'][0];
+
+            return $request->url() === 'http://openobserve.test/api/jav%20meta/v1/metrics'
+                && $metric['name'] === 'crawl.items'
+                && $metric['gauge']['dataPoints'][0]['asDouble'] === 3.0
+                && $metric['gauge']['dataPoints'][0]['attributes'] === [[
+                    'key' => 'source',
+                    'value' => ['stringValue' => 'javdb'],
+                ]];
+        });
+    }
+
     public function test_fail_open_on_http_error(): void
     {
         config()->set([

@@ -61,4 +61,28 @@ final class MovieDraftTest extends TestCase
 
         new MovieDraft('javdb', 'https://example.test/v/1', 'SSIS-001', runtimeMinutes: 0);
     }
+
+    public function test_it_rejects_extras_when_a_media_reference_collection_is_missing(): void
+    {
+        $this->expectExceptionMessage('Movie extras magnets must be a list.');
+
+        new MovieDraft(
+            'javdb',
+            'https://example.test/v/1',
+            'SSIS-001',
+            extras: ['hls' => [], 'gallery' => [], 'score' => null],
+        );
+    }
+
+    public function test_it_rejects_integer_score_instead_of_the_normalized_float(): void
+    {
+        $this->expectExceptionMessage('Movie extras score must be a float or null.');
+
+        new MovieDraft(
+            'javdb',
+            'https://example.test/v/1',
+            'SSIS-001',
+            extras: ['magnets' => [], 'hls' => [], 'gallery' => [], 'score' => 8],
+        );
+    }
 }

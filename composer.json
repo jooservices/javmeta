@@ -99,7 +99,8 @@
             "bash tests/Shell/worker-queues.test.sh",
             "bash tests/Shell/run-captainhook.test.sh"
         ],
-        "coverage:check": "php tools/coverage-enforce.php build/coverage.xml 85",
+        "coverage:report": "php tools/coverage-report.php build/coverage.xml artifacts/reports/JAVM-24-coverage.md",
+        "coverage:check": "php tools/coverage-enforce.php build/coverage.xml 90",
         "check": [
             "@lint",
             "@test",
@@ -108,6 +109,7 @@
         "ci": [
             "@lint",
             "@test:coverage",
+            "@coverage:report",
             "@coverage:check",
             "@test:shell"
         ],
