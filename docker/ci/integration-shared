@@ -3,7 +3,8 @@
 #   docker/ci/integration-shared                 # whole suite
 #   docker/ci/integration-shared --filter Movie  # extra PHPUnit arguments
 #
-# Prerequisite (once): scripts/docker/shared provision-javmeta-test  (creates the JAVMETA_IT_* namespaces).
+# Prerequisites (once): scripts/docker/shared provision-javmeta-test and
+# scripts/docker/shared provision-javmeta-redis (create isolated JAVMETA_IT_* namespaces).
 # Credentials are read from the private Workspaces root .env into a temporary 0600 env file that is
 # removed on exit; values are never printed. The Mongo outage test is skipped (it would stop a shared
 # service); it still runs in CI through docker/ci/integration.
@@ -17,7 +18,10 @@ image="${JAVMETA_CI_IMAGE:-javmeta-ci:local}"
 [[ -f "$workspaces_env" && ! -L "$workspaces_env" ]] || { echo "Workspaces root .env not found: $workspaces_env" >&2; exit 2; }
 [[ "$(stat -f '%Lp' "$workspaces_env" 2>/dev/null || stat -c '%a' "$workspaces_env")" == "600" ]] || { echo "Workspaces root .env must be mode 0600." >&2; exit 2; }
 
-env_file="$(mktemp "${TMPDIR:-/tmp}/javmeta-it-env.XXXXXX")"
+temp_dir="${root}/.tmp"
+mkdir -p "$temp_dir"
+chmod 700 "$temp_dir"
+env_file="$(mktemp "${temp_dir}/javmeta-it-env.XXXXXX")"
 chmod 600 "$env_file"
 trap 'rm -f "$env_file"' EXIT
 
@@ -36,11 +40,12 @@ required = (
     "JAVMETA_IT_POSTGRES_USER", "JAVMETA_IT_POSTGRES_PASSWORD", "JAVMETA_IT_POSTGRES_DATABASE",
     "JAVMETA_IT_MONGODB_USER", "JAVMETA_IT_MONGODB_PASSWORD", "JAVMETA_IT_MONGODB_DATABASE",
     "JAVMETA_IT_ELASTIC_USER", "JAVMETA_IT_ELASTIC_PASSWORD",
+    "JAVMETA_IT_REDIS_USER", "JAVMETA_IT_REDIS_PASSWORD",
     "JAVMETA_IT_OPENOBSERVE_EMAIL", "JAVMETA_IT_OPENOBSERVE_PASSWORD",
 )
 missing = [key for key in required if not values.get(key)]
 if missing:
-    sys.exit("Missing JAVMETA_IT_* keys in the Workspaces .env (run scripts/docker/shared provision-javmeta-test): " + ", ".join(missing))
+        sys.exit("Missing JAVMETA_IT_* keys in Workspaces .env (run the provision-javmeta-test and provision-javmeta-redis commands): " + ", ".join(missing))
 
 quote = lambda text: urllib.parse.quote(text, safe="")
 host = "host.docker.internal"
@@ -53,6 +58,12 @@ out = {
     "DB_PASSWORD": values["JAVMETA_IT_POSTGRES_PASSWORD"],
     "MONGO_URI": f"mongodb://{quote(values['JAVMETA_IT_MONGODB_USER'])}:{quote(values['JAVMETA_IT_MONGODB_PASSWORD'])}@{host}:27022/{mongo_db}?authSource={mongo_db}",
     "ELASTICSEARCH_HOST": f"http://{quote(values['JAVMETA_IT_ELASTIC_USER'])}:{quote(values['JAVMETA_IT_ELASTIC_PASSWORD'])}@{host}:19200",
+    "REDIS_HOST": host,
+    "REDIS_PORT": values.get("JAVMETA_IT_REDIS_PORT", "16382"),
+    "REDIS_USERNAME": values["JAVMETA_IT_REDIS_USER"],
+    "REDIS_PASSWORD": values["JAVMETA_IT_REDIS_PASSWORD"],
+    "REDIS_PREFIX": values.get("JAVMETA_IT_REDIS_PREFIX", "javmeta_it:"),
+    "HORIZON_PREFIX": values.get("JAVMETA_IT_REDIS_PREFIX", "javmeta_it:") + "horizon:",
     "OPENOBSERVE_URL": f"http://{host}:15080",
     "OPENOBSERVE_EMAIL": values["JAVMETA_IT_OPENOBSERVE_EMAIL"],
     "OPENOBSERVE_PASSWORD": values["JAVMETA_IT_OPENOBSERVE_PASSWORD"],

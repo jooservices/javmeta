@@ -13,6 +13,7 @@ use App\Models\CrawlQueue;
 use App\Observability\ObservabilityEmitter;
 use App\Observability\TraceContext;
 use App\Services\Crawl\CrawlQueueService;
+use App\Support\Crawl\LaravelCrawlQueue;
 use Illuminate\Console\Command;
 
 /**
@@ -29,28 +30,53 @@ final class FeedPoolCommand extends Command
     public function handle(CrawlQueueService $queue, ObservabilityEmitter $observability): int
     {
         $limit = max(1, (int) $this->option('limit'));
+        $depthLimit = max(1, (int) config('javmeta_queues.depth_limit', 100));
+        /** @var array<string, string> $queues */
+        $queues = config('javmeta_queues.names', []);
         $workerId = gethostname() . ':' . getmypid();
         $dispatched = 0;
         $traceId = TraceContext::newTraceId();
         $parentSpanId = TraceContext::newSpanId();
         $traceparent = TraceContext::formatTraceparent($traceId, $parentSpanId);
 
-        for ($i = 0; $i < $limit; $i++) {
-            $row = $queue->claimNext($workerId);
-            if (! $row instanceof CrawlQueue) {
+        foreach ($queues as $kind => $queueName) {
+            if ($dispatched >= $limit) {
                 break;
             }
 
-            match ($row->kind) {
-                CrawlQueue::KIND_LISTING => FetchListingJob::dispatch($row->id, $traceparent),
-                CrawlQueue::KIND_DETAIL => FetchDetailJob::dispatch($row->id, $traceparent),
-                CrawlQueue::KIND_PERFORMER_LISTING => FetchPerformerListingJob::dispatch($row->id, $traceparent),
-                CrawlQueue::KIND_PERFORMER_DETAIL => FetchPerformerDetailJob::dispatch($row->id, $traceparent),
-                CrawlQueue::KIND_GALLERY => FetchGalleryJob::dispatch($row->id, $traceparent),
-                default => null,
-            };
+            if ($queueName === '') {
+                continue;
+            }
 
-            $dispatched++;
+            $depth = LaravelCrawlQueue::readyDepth($queueName);
+            $capacity = max(0, $depthLimit - $depth);
+            if ($capacity === 0) {
+                $observability->emitOps('pool_gated', [
+                    'queue' => $queueName,
+                    'depth' => $depth,
+                    'threshold' => $depthLimit,
+                ]);
+                continue;
+            }
+
+            $queueCapacity = min($capacity, $limit - $dispatched);
+            for ($i = 0; $i < $queueCapacity; $i++) {
+                $row = $queue->claimNext($workerId, $kind);
+                if (! $row instanceof CrawlQueue) {
+                    break;
+                }
+
+                match ($row->kind) {
+                    CrawlQueue::KIND_LISTING => FetchListingJob::dispatch($row->id, $traceparent),
+                    CrawlQueue::KIND_DETAIL => FetchDetailJob::dispatch($row->id, $traceparent),
+                    CrawlQueue::KIND_PERFORMER_LISTING => FetchPerformerListingJob::dispatch($row->id, $traceparent),
+                    CrawlQueue::KIND_PERFORMER_DETAIL => FetchPerformerDetailJob::dispatch($row->id, $traceparent),
+                    CrawlQueue::KIND_GALLERY => FetchGalleryJob::dispatch($row->id, $traceparent),
+                    default => null,
+                };
+
+                $dispatched++;
+            }
         }
 
         $observability->emitOps('crawl_dispatch', ['dispatched' => $dispatched]);

@@ -18,7 +18,10 @@ return [
     ],
 
     /** Workers per queue name on each instance (POC: 1). */
-    'workers_per_queue' => (int) env('JAVMETA_WORKERS_PER_QUEUE', 1),
+    'workers_per_queue' => max(1, (int) env('JAVMETA_WORKERS_PER_QUEUE', 1)),
+
+    /** Maximum ready Laravel jobs buffered for each crawl queue. */
+    'depth_limit' => max(1, (int) env('JAVMETA_QUEUE_DEPTH_LIMIT', 100)),
 
     'worker_timeout' => (int) env('JAVMETA_QUEUE_TIMEOUT', 180),
 ];
