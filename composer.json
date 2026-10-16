@@ -22,7 +22,7 @@
         "jooservices/laravel-notifications": "^1.0.1",
         "jooservices/laravel-repository": "^4.0",
         "laravel/framework": "^12.0",
-        "laravel/tinker": "^2.10.1",
+        "laravel/tinker": "^3.0.2",
         "mongodb/mongodb": "^2.0"
     },
     "require-dev": {
