@@ -16,15 +16,19 @@ final class CrawlQueueService
     /** Retry delay by attempt number when crawlerx gives no Retry-After hint. */
     private const RETRY_BACKOFF_SECONDS = [60, 300, 1800];
 
-    public function claimNext(string $workerId): ?CrawlQueue
+    public function claimNext(string $workerId, ?string $kind = null): ?CrawlQueue
     {
-        return DB::transaction(function () use ($workerId): ?CrawlQueue {
+        return DB::transaction(function () use ($workerId, $kind): ?CrawlQueue {
             $query = CrawlQueue::query()
                 ->where('status', CrawlQueue::STATUS_PENDING)
                 ->where(function ($q): void {
                     $q->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', now());
                 })
                 ->orderBy('id');
+
+            if ($kind !== null) {
+                $query->where('kind', $kind);
+            }
 
             if (DB::getDriverName() === 'pgsql') {
                 $query->lockForUpdate();

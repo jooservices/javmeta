@@ -5,9 +5,10 @@ declare(strict_types=1);
 namespace Tests\Integration;
 
 use Illuminate\Support\Facades\Redis;
-use Tests\TestCase;
 
-final class RedisConnectionTest extends TestCase
+// Extends IntegrationTestCase on purpose: Tests\TestCase pins DB_CONNECTION=sqlite with putenv(), which leaks into
+// the tests that run after it in the same PHPUnit process and breaks the Postgres-backed integration suite.
+final class RedisConnectionTest extends IntegrationTestCase
 {
     public function test_it_round_trips_a_key_with_the_integration_prefix(): void
     {

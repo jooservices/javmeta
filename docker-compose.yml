@@ -32,6 +32,7 @@ x-app-environment: &app-environment
   CRAWLERX_PUPPETEER_SCRIPT: /var/www/html/vendor/jooservices/crawlerx/scripts/puppeteer-stealth-fetch.mjs
   CRAWLERX_FLARESOLVERR_URL: ${CRAWLERX_FLARESOLVERR_URL:-http://flaresolverr:8191/v1}
   PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+  QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
   JAVMETA_WORKERS_PER_QUEUE: ${JAVMETA_WORKERS_PER_QUEUE:-1}
   JAVMETA_QUEUE_NAMES: ${JAVMETA_QUEUE_NAMES:-listing,detail,performer_listing,performer_detail,gallery}
   OPENOBSERVE_ENABLED: ${OPENOBSERVE_ENABLED:-true}
@@ -43,13 +44,19 @@ x-app-environment: &app-environment
 x-worker: &worker
   image: jooservices/javmeta:php85
   working_dir: /var/www/html
-  command: ["crawlerx-fetch-ready", "worker-queues"]
+  command: ["sh", "-ec", "if [ \"$${QUEUE_CONNECTION:-database}\" = redis ]; then exec php artisan horizon; else exec crawlerx-fetch-ready worker-queues; fi"]
   env_file:
     - .env
   environment:
     <<: *app-environment
   volumes: *app-volumes
   restart: unless-stopped
+  healthcheck:
+    test: ["CMD-SHELL", "if [ \"$${QUEUE_CONNECTION:-database}\" = redis ]; then php artisan horizon:status; else kill -0 1; fi"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 30s
   profiles:
     - app
 

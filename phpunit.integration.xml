@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Integration suite: real Postgres, Mongo, Elasticsearch and OpenObserve. Run with docker/ci/integration. -->
+<!-- Integration suite: real shared or CI Postgres, Mongo, Redis, Elasticsearch and OpenObserve. -->
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
          bootstrap="vendor/autoload.php"
@@ -31,6 +31,7 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="REDIS_PREFIX" value="javmeta_it:" force="true"/>
+        <env name="HORIZON_PREFIX" value="javmeta_it:horizon:" force="true"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="PULSE_ENABLED" value="false"/>

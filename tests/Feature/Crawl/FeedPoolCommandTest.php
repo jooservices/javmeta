@@ -6,11 +6,17 @@ namespace Tests\Feature\Crawl;
 
 use App\Console\Commands\Crawler\FeedPoolCommand;
 use App\Jobs\FetchDetailJob;
+use App\Jobs\FetchGalleryJob;
 use App\Jobs\FetchListingJob;
+use App\Jobs\FetchPerformerDetailJob;
+use App\Jobs\FetchPerformerListingJob;
 use App\Models\CrawlQueue;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Mockery;
 use Tests\TestCase;
 
 final class FeedPoolCommandTest extends TestCase
@@ -48,5 +54,104 @@ final class FeedPoolCommandTest extends TestCase
         Queue::assertNotPushed(FetchDetailJob::class);
         $this->assertSame(CrawlQueue::STATUS_CLAIMED, $first->refresh()->status);
         $this->assertSame(CrawlQueue::STATUS_PENDING, $second->refresh()->status);
+    }
+
+    public function test_feed_pool_dispatches_each_configured_crawl_kind(): void
+    {
+        foreach (array_keys(config('javmeta_queues.names')) as $kind) {
+            CrawlQueue::factory()->create([
+                'source_slug' => fake()->slug(2),
+                'kind' => $kind,
+            ]);
+        }
+        Queue::fake();
+
+        $this->artisan('crawler:feed-pool')->assertSuccessful();
+
+        foreach ([
+            FetchListingJob::class,
+            FetchDetailJob::class,
+            FetchPerformerListingJob::class,
+            FetchPerformerDetailJob::class,
+            FetchGalleryJob::class,
+        ] as $jobClass) {
+            Queue::assertPushed($jobClass, 1);
+        }
+    }
+
+    public function test_feed_pool_leaves_rows_pending_and_emits_pool_gated_when_queue_depth_is_full(): void
+    {
+        $row = CrawlQueue::factory()->create([
+            'source_slug' => fake()->slug(2),
+            'kind' => CrawlQueue::KIND_LISTING,
+        ]);
+        Queue::fake();
+        config([
+            'queue.default' => 'redis',
+            'queue.connections.redis.driver' => 'redis',
+            'queue.connections.redis.connection' => 'default',
+            'javmeta_queues.depth_limit' => 2,
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.stream_logs' => 'javmeta_logs',
+            'openobserve.email' => 'root@javmeta.local',
+            'openobserve.password' => 'secret',
+            'openobserve.timeout' => 1,
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
+        $redis = Mockery::mock();
+        $redis->shouldReceive('llen')->andReturnUsing(static fn(string $key): int => $key === 'queues:listing' ? 2 : 0);
+        Redis::shouldReceive('connection')->andReturn($redis);
+
+        $this->artisan('crawler:feed-pool')->assertSuccessful();
+
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $row->refresh()->status);
+        Queue::assertNothingPushed();
+        Http::assertSent(static function ($request): bool {
+            if (! str_contains($request->url(), '/_json')) {
+                return false;
+            }
+
+            $payload = json_decode($request->body(), true);
+            if (! is_array($payload)) {
+                return false;
+            }
+            $records = array_is_list($payload) ? $payload : [$payload];
+
+            return collect($records)->contains(
+                static fn(mixed $record): bool
+                => is_array($record)
+                && ($record['event'] ?? null) === 'ops'
+                && ($record['kind'] ?? null) === 'pool_gated'
+                && ($record['queue'] ?? null) === 'listing'
+                && ($record['depth'] ?? null) === 2
+                && ($record['threshold'] ?? null) === 2,
+            );
+        });
+    }
+
+    public function test_feed_pool_claims_only_the_remaining_capacity_for_each_queue(): void
+    {
+        $rows = CrawlQueue::factory()->count(5)->create([
+            'source_slug' => fake()->slug(2),
+            'kind' => CrawlQueue::KIND_LISTING,
+        ]);
+        Queue::fake();
+        config([
+            'queue.default' => 'redis',
+            'queue.connections.redis.driver' => 'redis',
+            'queue.connections.redis.connection' => 'default',
+            'javmeta_queues.depth_limit' => 5,
+        ]);
+        $redis = Mockery::mock();
+        $redis->shouldReceive('llen')->andReturnUsing(static fn(string $key): int => $key === 'queues:listing' ? 2 : 0);
+        Redis::shouldReceive('connection')->andReturn($redis);
+
+        $this->artisan('crawler:feed-pool')->assertSuccessful();
+
+        Queue::assertPushed(FetchListingJob::class, 3);
+        $this->assertSame(3, $rows->filter(static fn(CrawlQueue $row): bool => $row->refresh()->status === CrawlQueue::STATUS_CLAIMED)->count());
+        $this->assertSame(2, $rows->filter(static fn(CrawlQueue $row): bool => $row->refresh()->status === CrawlQueue::STATUS_PENDING)->count());
     }
 }

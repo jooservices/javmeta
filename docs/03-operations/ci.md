@@ -71,7 +71,8 @@ MongoDB 9.0.4, Elasticsearch 9.5.5, OpenObserve 1.0.4, Redis 8.2.10). For local 
 run the same suite against the shared services instead of starting a second stack:
 
 ```bash
-scripts/docker/shared provision-javmeta-test     # once, from the Workspaces root: creates the JAVMETA_IT_* namespaces
+scripts/docker/shared provision-javmeta-test     # once: creates the Postgres/Mongo/ES/OpenObserve namespaces
+scripts/docker/shared provision-javmeta-redis    # once: creates the restricted Redis queue identity
 docker/ci/integration-shared                     # whole suite against the shared services
 docker/ci/integration-shared --filter Performer  # extra PHPUnit arguments
 ```

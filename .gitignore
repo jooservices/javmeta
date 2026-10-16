@@ -27,3 +27,4 @@ __pycache__/
 *.pyc
 /build
 /.php-cs-fixer.cache
+/.tmp/
