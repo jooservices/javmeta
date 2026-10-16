@@ -31,7 +31,7 @@ final class FailuresCommand extends Command
 
         $failures = CrawlQueue::query()
             ->where('status', CrawlQueue::STATUS_FAILED)
-            ->where('last_failed_at', '>=', $since)
+            ->where('last_failed_at', '>=', $since->utc())
             ->when($source !== null, static fn($query) => $query->where('source_slug', $source))
             ->select('source_slug', 'error_code')
             ->selectRaw('COUNT(*) as failures')
@@ -87,9 +87,9 @@ final class FailuresCommand extends Command
                 default => throw new LogicException('Unsupported duration unit.'),
             };
 
-            return CarbonImmutable::now()->subSeconds($seconds);
+            return CarbonImmutable::now('UTC')->subSeconds($seconds);
         }
 
-        return CarbonImmutable::parse($value);
+        return CarbonImmutable::parse($value)->utc();
     }
 }

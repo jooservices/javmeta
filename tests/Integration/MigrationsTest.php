@@ -43,6 +43,8 @@ final class MigrationsTest extends BaseTestCase
         self::assertSame('legacy_unclassified', $legacyRow?->error_code);
         self::assertSame('Failure reason not recorded before JAVM-37.', $legacyRow?->last_error);
         self::assertNull($legacyRow?->last_failed_at);
+        $constraintValidation = DB::selectOne("SELECT CASE WHEN convalidated THEN 1 ELSE 0 END AS is_validated FROM pg_constraint WHERE conname = 'crawl_queue_failed_reason_check'");
+        self::assertSame(1, (int) $constraintValidation?->is_validated);
 
         $failureMigration = require database_path('migrations/2026_10_16_000001_backfill_failed_reasons.php');
         $failureMigration->up();

@@ -12,6 +12,8 @@ return new class extends Migration {
 
     private const LEGACY_MESSAGE = 'Failure reason not recorded before JAVM-37.';
 
+    public $withinTransaction = false;
+
     public function up(): void
     {
         $addErrorCode = ! Schema::hasColumn('crawl_queue', 'error_code');
@@ -40,8 +42,12 @@ return new class extends Migration {
                 'last_error' => DB::raw("COALESCE(last_error, '" . self::LEGACY_MESSAGE . "')"),
             ]);
 
-        if (DB::getDriverName() === 'pgsql' && ! $this->constraintExists()) {
-            DB::statement("ALTER TABLE crawl_queue ADD CONSTRAINT " . self::CHECK_NAME . " CHECK (status <> 'failed' OR (error_code IS NOT NULL AND last_error IS NOT NULL AND (last_failed_at IS NOT NULL OR error_code = 'legacy_unclassified')))");
+        if (DB::getDriverName() === 'pgsql') {
+            if (! $this->constraintExists()) {
+                DB::statement("ALTER TABLE crawl_queue ADD CONSTRAINT " . self::CHECK_NAME . " CHECK (status <> 'failed' OR (error_code IS NOT NULL AND last_error IS NOT NULL AND (last_failed_at IS NOT NULL OR error_code = 'legacy_unclassified'))) NOT VALID");
+            }
+
+            DB::statement('ALTER TABLE crawl_queue VALIDATE CONSTRAINT ' . self::CHECK_NAME);
         }
     }
 

@@ -6,6 +6,7 @@ namespace Tests\Feature\Crawl;
 
 use App\Enums\CrawlErrorCode;
 use App\Models\CrawlQueue;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
@@ -95,5 +96,31 @@ final class FailuresCommandTest extends TestCase
         ])
             ->expectsOutputToContain('No crawl failures found for the selected period.')
             ->assertExitCode(0);
+    }
+
+    public function test_iso_since_offset_is_normalized_to_utc_before_querying(): void
+    {
+        CrawlQueue::factory()->create([
+            'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::Blocked->value,
+            'last_error' => 'Blocked after the cutoff.',
+            'last_failed_at' => CarbonImmutable::parse('2026-10-16T19:30:00+00:00'),
+        ]);
+        CrawlQueue::factory()->create([
+            'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::Blocked->value,
+            'last_error' => 'Blocked before the cutoff.',
+            'last_failed_at' => CarbonImmutable::parse('2026-10-16T18:30:00+00:00'),
+        ]);
+
+        self::assertSame(0, Artisan::call('crawler:failures', [
+            '--since' => '2026-10-16T12:00:00-07:00',
+            '--json' => true,
+        ]));
+
+        $report = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
+
+        self::assertSame('2026-10-16T19:00:00+00:00', $report['since']);
+        self::assertSame(1, $report['total']);
     }
 }
