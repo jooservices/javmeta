@@ -4,17 +4,21 @@ declare(strict_types=1);
 
 namespace App\Jobs\Concerns;
 
+use App\Enums\CrawlErrorCode;
 use App\Events\CrawlIncidentOccurred;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Observability\ObservabilityEmitter;
 use App\Models\Source;
+use App\Services\Crawl\CrawlQueueService;
 use App\Services\Crawl\SourceActivityRecorder;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawl\TitleFailureTracker;
 use App\Services\Crawler\CrawlerxClient;
 use App\Services\Crawler\CrawlerxFetchResult;
+use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Event;
+use Throwable;
 
 /**
  * Shared crawl_queue row bookkeeping for the fetch jobs: row lookup, terminal
@@ -25,9 +29,6 @@ use Illuminate\Support\Facades\Event;
  */
 trait HandlesCrawlQueueRow
 {
-    /** Retry delay by attempt number when crawlerx gives no Retry-After hint. */
-    private const RETRY_BACKOFF_SECONDS = [60, 300, 1800];
-
     private function queueRow(int $id, string $expectedKind): ?CrawlQueue
     {
         $row = CrawlQueue::query()->find($id);
@@ -60,39 +61,35 @@ trait HandlesCrawlQueueRow
             'claimed_at' => null,
             'locked_by' => null,
             'last_error' => null,
+            'error_code' => null,
+            'last_failed_at' => null,
         ])->save();
     }
 
-    private function markFailed(CrawlQueue $row, ?string $error): void
-    {
-        $row->forceFill([
-            'status' => CrawlQueue::STATUS_FAILED,
-            'claimed_at' => null,
-            'locked_by' => null,
-            'last_error' => $error,
-        ])->save();
+    private function markFailed(
+        CrawlQueue $row,
+        CrawlErrorCode $errorCode,
+        string $message,
+        bool $retryable = false,
+        ?int $retryAfterSeconds = null,
+    ): void {
+        app(CrawlQueueService::class)->markFailed($row, $errorCode, $message, $retryable, $retryAfterSeconds);
     }
 
-    private function markRetry(CrawlQueue $row, ?string $error, int $delaySeconds): void
+    public function failed(Throwable $exception): void
     {
-        $row->forceFill([
-            'status' => CrawlQueue::STATUS_PENDING,
-            'next_attempt_at' => now()->addSeconds($delaySeconds),
-            'claimed_at' => null,
-            'locked_by' => null,
-            'last_error' => $error,
-        ])->save();
-    }
-
-    private function retryDelaySeconds(CrawlQueue $row, ?int $retryAfterSeconds): int
-    {
-        if ($retryAfterSeconds !== null && $retryAfterSeconds > 0) {
-            return $retryAfterSeconds;
+        $row = CrawlQueue::query()->find($this->crawlQueueId);
+        if (! $row instanceof CrawlQueue || $row->status !== CrawlQueue::STATUS_CLAIMED) {
+            return;
         }
 
-        $index = min(max($row->attempts, 1), count(self::RETRY_BACKOFF_SECONDS)) - 1;
-
-        return self::RETRY_BACKOFF_SECONDS[$index];
+        $timedOut = $exception instanceof TimeoutExceededException;
+        $this->markFailed(
+            $row,
+            $timedOut ? CrawlErrorCode::Timeout : CrawlErrorCode::WorkerFailed,
+            $timedOut ? 'Worker timed out while processing the crawl row.' : $exception->getMessage(),
+            $row->attempts < $row->max_attempts,
+        );
     }
 
     /**
@@ -111,7 +108,7 @@ trait HandlesCrawlQueueRow
         SourceThrottle $throttle,
     ): void {
         $errorCode = $result->errorCode ?? CrawlerxClient::ERROR_PARSE_FAILED;
-        $message = $result->errorMessage ?? 'Crawl failed.';
+        $message = CrawlQueueService::sanitizeErrorMessage($result->errorMessage ?? 'Crawl failed.');
         $soft404 = in_array($errorCode, [CrawlerxClient::ERROR_SOFT404, CrawlerxClient::ERROR_NOT_FOUND, CrawlerxClient::ERROR_GONE], true);
 
         $this->recordEvent($row->source_slug, $this->eventKind($errorCode, $soft404), $row->url, [
@@ -121,11 +118,7 @@ trait HandlesCrawlQueueRow
             'retryable' => $result->retryable,
         ]);
 
-        if ($result->retryable && $row->attempts < $row->max_attempts) {
-            $this->markRetry($row, $message, $this->retryDelaySeconds($row, $result->retryAfterSeconds));
-        } else {
-            $this->markFailed($row, $message);
-        }
+        $this->markFailed($row, CrawlErrorCode::fromCrawlerx($errorCode), $message, $result->retryable, $result->retryAfterSeconds);
 
         $activity->recordFailure($source, $message);
         $throttle->onFailure($source);

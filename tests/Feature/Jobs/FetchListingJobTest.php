@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Jobs;
 
+use App\Enums\CrawlErrorCode;
 use App\Jobs\FetchListingJob;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
@@ -180,7 +181,13 @@ final class FetchListingJobTest extends TestCase
         FetchListingJob::dispatch($row->id);
 
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_BLOCKED]);
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'attempts' => 1, 'last_error' => 'Blocked by site.']);
+        $this->assertDatabaseHas('crawl_queue', [
+            'id' => $row->id,
+            'status' => CrawlQueue::STATUS_FAILED,
+            'attempts' => 1,
+            'last_error' => 'Blocked by site.',
+            'error_code' => CrawlErrorCode::Blocked->value,
+        ]);
         $this->assertDatabaseHas('sources', ['slug' => 'onejav', 'last_error' => 'Blocked by site.']);
         self::assertSame(4.0, (float) $source->refresh()->gap_seconds_current);
     }
@@ -195,7 +202,7 @@ final class FetchListingJobTest extends TestCase
         FetchListingJob::dispatch($row->id);
 
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_CHALLENGE]);
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'error_code' => CrawlErrorCode::Challenge->value]);
     }
 
     public function test_parse_failure_records_parse_drift_event(): void
@@ -208,7 +215,7 @@ final class FetchListingJobTest extends TestCase
         FetchListingJob::dispatch($row->id);
 
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_PARSE_DRIFT]);
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'error_code' => CrawlErrorCode::ParseFailed->value]);
     }
 
     public function test_non_movie_listing_records_parse_drift_and_marks_row_done_without_detail_rows(): void
@@ -245,7 +252,7 @@ final class FetchListingJobTest extends TestCase
         FetchListingJob::dispatch($row->id);
 
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'ghost', 'kind' => CrawlEvent::KIND_PARSE_DRIFT]);
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'error_code' => CrawlErrorCode::UnknownSource->value]);
         $this->assertDatabaseMissing('sources', ['slug' => 'ghost']);
     }
 

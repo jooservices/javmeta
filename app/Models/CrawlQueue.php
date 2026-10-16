@@ -27,7 +27,7 @@ class CrawlQueue extends Model
     protected $table = 'crawl_queue';
     public $timestamps = false;
     /** @var list<string> */
-    protected $fillable = ['source_slug', 'url', 'kind', 'status', 'attempts', 'max_attempts', 'next_attempt_at', 'claimed_at', 'locked_by', 'last_error'];
+    protected $fillable = ['source_slug', 'url', 'kind', 'status', 'attempts', 'max_attempts', 'next_attempt_at', 'claimed_at', 'locked_by', 'last_error', 'error_code', 'last_failed_at'];
 
     /**
      * Map a crawlerx item's nextCrawlType to a queue kind. Falls back to the
@@ -52,6 +52,6 @@ class CrawlQueue extends Model
     /** @return array<string, string> */
     protected function casts(): array
     {
-        return ['attempts' => 'integer', 'max_attempts' => 'integer', 'next_attempt_at' => 'datetime', 'claimed_at' => 'datetime'];
+        return ['attempts' => 'integer', 'max_attempts' => 'integer', 'next_attempt_at' => 'datetime', 'claimed_at' => 'datetime', 'last_failed_at' => 'datetime'];
     }
 }

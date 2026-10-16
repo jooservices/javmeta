@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Enums\CrawlErrorCode;
 use App\Data\Crawl\MovieDraft;
 use App\Events\MovieDraftCaptured;
 use App\Jobs\Concerns\HandlesCrawlQueueRow;
@@ -12,6 +13,7 @@ use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Services\Crawl\SourceActivityRecorder;
+use App\Services\Crawl\CrawlQueueService;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawl\MovieDraftSink;
 use App\Services\Crawler\CrawlerxClient;
@@ -62,7 +64,7 @@ final class FetchDetailJob implements ShouldQueue
         $source = Source::query()->find($row->source_slug);
         if (! $source instanceof Source) {
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => 'unknown_source']);
-            $this->markFailed($row, 'Unknown source slug.');
+            $this->markFailed($row, CrawlErrorCode::UnknownSource, 'Unknown source slug.');
 
             return;
         }
@@ -77,7 +79,7 @@ final class FetchDetailJob implements ShouldQueue
         $normalizer = $registry->forSlug($row->source_slug);
         if ($normalizer === null) {
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => 'no_normalizer']);
-            $this->markFailed($row, 'No normalizer for source slug.');
+            $this->markFailed($row, CrawlErrorCode::NormalizerMissing, 'No normalizer for source slug.');
             $activity->recordFailure($source, 'No normalizer for source slug.');
             $throttle->onFailure($source);
 
@@ -93,9 +95,10 @@ final class FetchDetailJob implements ShouldQueue
                 CarbonImmutable::now(),
             );
         } catch (NormalizationFailedException $exception) {
-            $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => $exception->getMessage()]);
-            $this->markFailed($row, $exception->getMessage());
-            $activity->recordFailure($source, $exception->getMessage());
+            $message = CrawlQueueService::sanitizeErrorMessage($exception->getMessage());
+            $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => $message]);
+            $this->markFailed($row, CrawlErrorCode::NormalizationFailed, $message);
+            $activity->recordFailure($source, $message);
             $throttle->onFailure($source);
 
             return;

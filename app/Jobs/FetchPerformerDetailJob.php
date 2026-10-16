@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Enums\CrawlErrorCode;
 use App\Jobs\Concerns\HandlesCrawlQueueRow;
 use App\Jobs\Middleware\TraceCrawlJob;
 use App\Models\CrawlEvent;
@@ -58,7 +59,7 @@ final class FetchPerformerDetailJob implements ShouldQueue
         $source = Source::query()->find($row->source_slug);
         if (! $source instanceof Source) {
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => 'unknown_source']);
-            $this->markFailed($row, 'Unknown source slug.');
+            $this->markFailed($row, CrawlErrorCode::UnknownSource, 'Unknown source slug.');
 
             return;
         }
@@ -73,7 +74,7 @@ final class FetchPerformerDetailJob implements ShouldQueue
         $draft = $normalizer->normalize($result->performer, $row->source_slug, $row->url);
         if ($draft === null) {
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => 'performer_normalize_failed']);
-            $this->markFailed($row, 'Performer normalization failed.');
+            $this->markFailed($row, CrawlErrorCode::NormalizationFailed, 'Performer normalization failed.');
             $activity->recordFailure($source, 'Performer normalization failed.');
             $throttle->onFailure($source);
 

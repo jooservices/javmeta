@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Jobs;
 
+use App\Enums\CrawlErrorCode;
 use App\Jobs\FetchGalleryJob;
 use App\Jobs\FetchPerformerDetailJob;
 use App\Jobs\FetchPerformerListingJob;
@@ -17,6 +18,7 @@ use App\Models\PerformerMedia;
 use App\Services\Crawler\CrawlerxClient;
 use App\Services\Crawler\CrawlerxFetchResult;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use JOOservices\CrawlerX\Dto\CrawlItemResultDto;
 use JOOservices\CrawlerX\Dto\CrawlListResultDto;
 use JOOservices\CrawlerX\Dto\CrawlPaginationDto;
@@ -160,6 +162,67 @@ final class FetchPerformerAndGalleryJobTest extends TestCase
         ]);
         $this->assertDatabaseHas('performer_aliases', ['alias' => 'AiriS']);
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
+    }
+
+    public function test_performer_detail_normalization_failure_records_reason(): void
+    {
+        $source = $this->source('javdatabase');
+        $row = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'url' => 'https://www.javdatabase.com/idols/unknown/',
+            'kind' => CrawlQueue::KIND_PERFORMER_DETAIL,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+        ]);
+
+        $this->fakeClient(
+            listing: CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'),
+            detail: CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'),
+            performerDetail: CrawlerxFetchResult::performer(PerformerDto::fromParsed(null, null, [], $row->url)),
+        );
+
+        FetchPerformerDetailJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', [
+            'id' => $row->id,
+            'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::NormalizationFailed->value,
+            'last_error' => 'Performer normalization failed.',
+        ]);
+    }
+
+    #[DataProvider('unknownSourceJobs')]
+    public function test_unknown_source_failure_paths_record_reason(string $jobClass, string $kind): void
+    {
+        $row = CrawlQueue::factory()->create([
+            'source_slug' => 'missing-source',
+            'url' => 'https://missing-source.test/' . $kind,
+            'kind' => $kind,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+        ]);
+
+        $this->fakeClient(
+            listing: CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'),
+            detail: CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'),
+        );
+
+        $jobClass::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', [
+            'id' => $row->id,
+            'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::UnknownSource->value,
+            'last_error' => 'Unknown source slug.',
+        ]);
+    }
+
+    /** @return array<string, array{class-string, string}> */
+    public static function unknownSourceJobs(): array
+    {
+        return [
+            'performer listing' => [FetchPerformerListingJob::class, CrawlQueue::KIND_PERFORMER_LISTING],
+            'performer detail' => [FetchPerformerDetailJob::class, CrawlQueue::KIND_PERFORMER_DETAIL],
+            'gallery' => [FetchGalleryJob::class, CrawlQueue::KIND_GALLERY],
+        ];
     }
 
     public function test_gallery_attaches_media_when_movie_code_matches(): void
