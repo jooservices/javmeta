@@ -11,14 +11,14 @@ RUN apt-get update \
         libssl-dev \
         pkg-config \
         unzip \
-    && pecl install mongodb pcov \
+    && { for attempt in 1 2 3; do pecl install mongodb-2.5.5 pcov-1.0.12 && break; [ "$attempt" -lt 3 ] || exit 1; sleep 5; done; } \
     && docker-php-ext-enable mongodb pcov \
     && docker-php-ext-install intl pcntl pdo_pgsql pdo_mysql \
     && rm -rf /var/lib/apt/lists/* /tmp/pear \
     && mkdir -p /tmp/composer-cache \
     && chmod 1777 /tmp/composer-cache
 
-RUN pecl install redis-6.3.0 \
+RUN { for attempt in 1 2 3; do pecl install redis-6.3.0 && break; [ "$attempt" -lt 3 ] || exit 1; sleep 5; done; } \
     && docker-php-ext-enable redis \
     && rm -rf /tmp/pear
 
