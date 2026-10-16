@@ -28,4 +28,5 @@ if [[ "${JAVMETA_CI_SKIP_BUILD:-0}" != "1" ]]; then
 fi
 "${compose[@]}" pull --quiet postgres mongo redis elasticsearch openobserve
 "${compose[@]}" up --detach --wait postgres mongo redis elasticsearch openobserve
+"${compose[@]}" run --rm gate php artisan migrate --force --ansi
 "${compose[@]}" run --rm gate composer test:e2e
