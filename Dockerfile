@@ -41,6 +41,10 @@ RUN apt-get update \
     && docker-php-ext-install intl pcntl pdo_pgsql pdo_mysql \
     && rm -rf /var/lib/apt/lists/*
 
+RUN pecl install redis-6.3.0 \
+    && docker-php-ext-enable redis \
+    && rm -rf /tmp/pear
+
 COPY --from=node-runtime /usr/local/ /usr/local/
 COPY --from=composer:2.10.3 /usr/bin/composer /usr/bin/composer
 
