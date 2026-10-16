@@ -331,3 +331,12 @@ and delivery in OpenObserve alert history and the dedicated Telegram test
 channel, then add the injection and fire UTC timestamps plus the delivery
 result to the task record. The injected sample stays inside `javmeta_it`; do
 not delete a stream that may contain other integration-test samples.
+
+## Live verification record (2026-10-16, shared OpenObserve org `javmeta_it`)
+
+`JAVMETA_SEED_STREAMS=1 docker/ci/observability-import-shared --strict` published 68 metric points, imported 2 dashboards and
+5 of 6 alerts; `javmeta_source_failure_rate` stays pending until a crawl failure creates the
+`javmeta_crawl_run_failures_1h` stream (OpenObserve only accepts an alert for an existing stream; the importer reports it and a
+rerun completes it). Two further runs created nothing new and updated the same 2 dashboards and 5 alerts (idempotent).
+Failure injection: an OTLP point `javmeta_source_last_success_age_seconds{source_slug="qa-injected-source"} = 90000` is returned by the
+`javmeta_source_stale` alert query. Delivery to Telegram is not exercised in the test org (placeholder token).

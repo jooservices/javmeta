@@ -10,7 +10,7 @@ use Throwable;
 
 final class ImportCommand extends Command
 {
-    protected $signature = 'observability:import {--dry-run : Show the import plan without contacting OpenObserve}';
+    protected $signature = 'observability:import {--dry-run : Show the import plan without contacting OpenObserve} {--strict : Fail when an alert could not be created because its stream does not exist yet}';
 
     protected $description = 'Import versioned dashboards and alert rules into OpenObserve.';
 
@@ -43,6 +43,15 @@ final class ImportCommand extends Command
             $result['dashboards_updated'],
             $result['alerts_updated'],
         ));
+
+        $pending = $result['alerts_pending'];
+        if ($pending !== []) {
+            $this->components->warn('Alerts pending until their metric stream receives data (rerun after the first metrics publish): ' . implode(', ', $pending));
+
+            if ((bool) $this->option('strict')) {
+                return self::FAILURE;
+            }
+        }
 
         return self::SUCCESS;
     }

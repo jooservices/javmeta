@@ -73,17 +73,40 @@ env = {
     "OPENOBSERVE_PASSWORD": password,
     "NOTIFICATION_TELEGRAM_BOT_TOKEN": values["JAVMETA_IT_TELEGRAM_BOT_TOKEN"],
     "NOTIFICATION_TELEGRAM_CHAT_ID": values["JAVMETA_IT_TELEGRAM_CHAT_ID"],
+    "OPENOBSERVE_ENABLED": "true",
 }
+# Optional: lets the metrics publisher run against the shared test database so the metric streams exist.
+if all(values.get(key) for key in ("JAVMETA_IT_POSTGRES_USER", "JAVMETA_IT_POSTGRES_PASSWORD", "JAVMETA_IT_POSTGRES_DATABASE")):
+    env.update({
+        "DB_CONNECTION": "pgsql",
+        "DB_HOST": "host.docker.internal",
+        "DB_PORT": "15435",
+        "DB_DATABASE": values["JAVMETA_IT_POSTGRES_DATABASE"],
+        "DB_USERNAME": values["JAVMETA_IT_POSTGRES_USER"],
+        "DB_PASSWORD": values["JAVMETA_IT_POSTGRES_PASSWORD"],
+    })
 with open(target, "w", encoding="utf-8") as handle:
     for key, value in env.items():
         handle.write(f"{key}={value}\n")
 PY
 
-docker run --rm \
-  --user "$(id -u):$(id -g)" \
-  --add-host host.docker.internal:host-gateway \
-  --env HOME=/tmp \
-  --env-file "${env_file}" \
-  --volume "${root}:/app" \
-  --workdir /app \
-  "${image}" php artisan observability:import "$@"
+run_artisan() {
+  docker run --rm \
+    --user "$(id -u):$(id -g)" \
+    --add-host host.docker.internal:host-gateway \
+    --env HOME=/tmp \
+    --env-file "${env_file}" \
+    --volume "${root}:/app" \
+    --workdir /app \
+    "${image}" php artisan "$@"
+}
+
+# OpenObserve only accepts an alert for a metric stream that already received data. With
+# JAVMETA_SEED_STREAMS=1 the metrics publisher writes one sample set into the test org first.
+if [[ "${JAVMETA_SEED_STREAMS:-0}" == "1" ]]; then
+  run_artisan migrate --force --no-interaction >/dev/null
+  run_artisan crawler:sync-sources >/dev/null
+  run_artisan javmeta:obs-publish-metrics
+fi
+
+run_artisan observability:import "$@"

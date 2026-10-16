@@ -25,6 +25,7 @@ final class ObservabilityImporter
      *     dashboards_updated: int,
      *     alerts_created: int,
      *     alerts_updated: int,
+     *     alerts_pending: list<string>,
      *     template_created: bool,
      *     destination_created: bool
      * }
@@ -71,6 +72,7 @@ final class ObservabilityImporter
             'dashboards_updated' => 0,
             'alerts_created' => 0,
             'alerts_updated' => 0,
+            'alerts_pending' => [],
         ];
 
         foreach ($dashboards as $dashboard) {
@@ -83,10 +85,16 @@ final class ObservabilityImporter
 
         foreach ($alerts as $alert) {
             $alert['destinations'] = [self::TELEGRAM_TEMPLATE_NAME];
-            if ($this->upsertAlert($alert, $alertResources)) {
-                $result['alerts_created']++;
-            } else {
-                $result['alerts_updated']++;
+            try {
+                if ($this->upsertAlert($alert, $alertResources)) {
+                    $result['alerts_created']++;
+                } else {
+                    $result['alerts_updated']++;
+                }
+            } catch (StreamNotReady) {
+                // OpenObserve only accepts an alert for a stream that already received data.
+                // Report it so a rerun after the first metrics publish completes the import.
+                $result['alerts_pending'][] = (string) $alert['name'];
             }
         }
 
@@ -319,7 +327,15 @@ final class ObservabilityImporter
     {
         $match = $this->matchByName($existing, (string) $definition['name']);
         if ($match === null) {
-            $this->request('POST', $this->alertsPath(), $definition);
+            try {
+                $this->request('POST', $this->alertsPath(), $definition);
+            } catch (RuntimeException $error) {
+                if (str_contains($error->getMessage(), 'returned HTTP 404')) {
+                    throw new StreamNotReady((string) $definition['stream_name'], previous: $error);
+                }
+
+                throw $error;
+            }
 
             return true;
         }
