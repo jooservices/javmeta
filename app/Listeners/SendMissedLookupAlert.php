@@ -16,7 +16,7 @@ final class SendMissedLookupAlert
 
     public function handle(ConsumerMissedLookup $event): void
     {
-        $ttl = (int) config('jvmeta_alerts.miss_debounce_seconds', 3600);
+        $ttl = (int) config('javmeta_alerts.miss_debounce_seconds', 3600);
 
         $this->alerts->send(
             debounceKey: "miss:{$event->entity}:" . strtolower($event->query),

@@ -11,7 +11,7 @@ final class QueueConfigurationTest extends TestCase
     public function test_database_retry_after_exceeds_worker_timeout_by_default(): void
     {
         self::assertGreaterThan(
-            config('jvmeta_queues.worker_timeout'),
+            config('javmeta_queues.worker_timeout'),
             config('queue.connections.database.retry_after'),
         );
     }

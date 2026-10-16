@@ -1,13 +1,13 @@
 # Runtime Dependencies
 
-JVMeta application containers start independently and remain available while
+JAVMeta application containers start independently and remain available while
 dependencies recover. Readiness checks do not gate container startup. The API
 container healthcheck uses `/api/health/live`, which reports only whether the
 HTTP process is serving requests.
 
 ## Dependency policy
 
-`JVMETA_ROLE` identifies each `api`, `mcp`, `scheduler`, or `worker` container.
+`JAVMETA_ROLE` identifies each `api`, `mcp`, `scheduler`, or `worker` container.
 The current matrix is the same for every role:
 
 | Dependency | Role | Probe |
@@ -53,7 +53,7 @@ capacity remains.
 
 ## Compose configuration
 
-The local and production Compose files set `JVMETA_ROLE` for each application
+The local and production Compose files set `JAVMETA_ROLE` for each application
 service and do not use `ready-check` as an entrypoint gate. Application
 containers have no startup dependency on one another. The API healthcheck uses
 `/api/health/live`; dependency health is reported separately by `/api/health`.

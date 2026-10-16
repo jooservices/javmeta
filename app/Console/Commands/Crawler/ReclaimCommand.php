@@ -16,7 +16,7 @@ final class ReclaimCommand extends Command
 
     public function handle(CrawlQueueService $queue, ObservabilityEmitter $observability): int
     {
-        $reclaimed = $queue->reclaimStaleClaimed((int) config('jvmeta_sources.defaults.queue.stale_claim_timeout_seconds', 900));
+        $reclaimed = $queue->reclaimStaleClaimed((int) config('javmeta_sources.defaults.queue.stale_claim_timeout_seconds', 900));
         if ($reclaimed > 0) {
             $this->components->info("Reclaimed {$reclaimed} stale queue rows.");
             $observability->emitOps('queue_reclaim', ['reclaimed' => $reclaimed]);

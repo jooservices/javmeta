@@ -12,7 +12,7 @@ final class BasicAppBootTest extends TestCase
     {
         $this->get('/')
             ->assertOk()
-            ->assertJsonPath('name', 'jvmeta')
+            ->assertJsonPath('name', 'javmeta')
             ->assertJsonPath('status', 'ok');
     }
 }

@@ -19,7 +19,7 @@ use Psr\Http\Message\ResponseInterface;
 use Throwable;
 
 /**
- * Runs the real jooservices/crawlerx stack inside jvmeta jobs with only the
+ * Runs the real jooservices/crawlerx stack inside javmeta jobs with only the
  * HTTP transport faked (jooservices/client ClientBuilder::fake()). While the
  * client is faked, crawlerx uses its HTTP-only fetch chain. Fixtures are the
  * live captures in tests/Fixtures/crawlerx (tools/sync-crawlerx-fixtures.php).
@@ -86,7 +86,7 @@ trait RunsCrawlerxFixtures
 
     protected function source(string $slug): Source
     {
-        $baseUrl = config("jvmeta_sources.sources.{$slug}.base_url");
+        $baseUrl = config("javmeta_sources.sources.{$slug}.base_url");
 
         return Source::factory()->create([
             'slug' => $slug,

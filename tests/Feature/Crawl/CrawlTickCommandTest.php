@@ -93,7 +93,7 @@ final class CrawlTickCommandTest extends TestCase
         $seedUrls = [fake()->unique()->url(), fake()->unique()->url()];
         $otherSeedUrl = fake()->unique()->url();
 
-        config()->set('jvmeta_sources.sources', [
+        config()->set('javmeta_sources.sources', [
             $sourceSlug => [
                 'name' => fake()->company(),
                 'base_url' => fake()->url(),

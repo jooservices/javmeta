@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /*
  * Copy the live-captured HTML fixtures shipped with jooservices/crawlerx into
- * tests/Fixtures/crawlerx/<jvmeta source slug>/ so the crawlerx contract tests
+ * tests/Fixtures/crawlerx/<javmeta source slug>/ so the crawlerx contract tests
  * run against real pages without network access. Re-run after upgrading
  * crawlerx; SOURCE.json records which crawlerx version the copies came from.
  *
@@ -35,7 +35,7 @@ foreach (glob($from . '/*/*.meta.json') ?: [] as $metaPath) {
         continue;
     }
 
-    // Fixture folders use adapter names (AvfanProfiles, JavLibrary); jvmeta uses snake_case slugs.
+    // Fixture folders use adapter names (AvfanProfiles, JavLibrary); javmeta uses snake_case slugs.
     $folder = basename(dirname($metaPath));
     $slug = strtolower((string) preg_replace('/(?<=[a-z])(?=[A-Z][a-z])/', '_', $folder));
     $slug = $slug === 'javlibrary' || $slug === 'jav_library' ? 'javlibrary' : $slug;

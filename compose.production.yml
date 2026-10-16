@@ -1,10 +1,10 @@
-name: jvmeta-production
+name: javmeta-production
 
 x-php-service: &php-service
-  image: ${JVMETA_IMAGE:?JVMETA_IMAGE must be set}
+  image: ${JAVMETA_IMAGE:?JAVMETA_IMAGE must be set}
   working_dir: /var/www/html
   env_file:
-    - ${JVMETA_ENV_FILE:-deploy/production.env}
+    - ${JAVMETA_ENV_FILE:-deploy/production.env}
   environment:
     APP_ENV: production
     APP_DEBUG: "false"
@@ -18,7 +18,7 @@ x-php-service: &php-service
   cap_drop:
     - ALL
   volumes:
-    - jvmeta-storage:/var/www/html/storage
+    - javmeta-storage:/var/www/html/storage
   logging:
     driver: json-file
     options:
@@ -31,12 +31,12 @@ services:
     <<: *php-service
     command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
     ports:
-      - "${JVMETA_API_BIND:-127.0.0.1:8080}:8080"
+      - "${JAVMETA_API_BIND:-127.0.0.1:8080}:8080"
     environment:
       APP_ENV: production
       APP_DEBUG: "false"
       CRAWLERX_FLARESOLVERR_REQUIRED: "false"
-      JVMETA_ROLE: api
+      JAVMETA_ROLE: api
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/api/health/live >/dev/null"]
       interval: 15s
@@ -53,7 +53,7 @@ services:
       APP_ENV: production
       APP_DEBUG: "false"
       CRAWLERX_FLARESOLVERR_REQUIRED: "false"
-      JVMETA_ROLE: scheduler
+      JAVMETA_ROLE: scheduler
     profiles:
       - control
 
@@ -64,14 +64,14 @@ services:
       APP_ENV: production
       APP_DEBUG: "false"
       CRAWLERX_FLARESOLVERR_REQUIRED: "false"
-      JVMETA_ROLE: mcp
+      JAVMETA_ROLE: mcp
     profiles:
       - control
 
   embedder:
-    image: ${JVMETA_EMBEDDER_IMAGE:?JVMETA_EMBEDDER_IMAGE must be set}
+    image: ${JAVMETA_EMBEDDER_IMAGE:?JAVMETA_EMBEDDER_IMAGE must be set}
     ports:
-      - "${JVMETA_EMBEDDER_BIND:-127.0.0.1:8000}:8000"
+      - "${JAVMETA_EMBEDDER_BIND:-127.0.0.1:8000}:8000"
     environment:
       HF_HOME: /home/embedder/.cache/huggingface
     user: "10001:10001"
@@ -107,7 +107,7 @@ services:
       APP_ENV: production
       APP_DEBUG: "false"
       CRAWLERX_FLARESOLVERR_REQUIRED: "true"
-      JVMETA_ROLE: worker
+      JAVMETA_ROLE: worker
     depends_on:
       - flaresolverr
     shm_size: 1gb
@@ -140,5 +140,5 @@ services:
       - migration
 
 volumes:
-  jvmeta-storage:
+  javmeta-storage:
   embedder-model-cache:

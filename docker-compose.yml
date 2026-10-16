@@ -18,12 +18,12 @@ x-app-environment: &app-environment
   MONGO_URI: ${MONGO_URI:-}
   MONGO_HOST: ${MONGO_HOST:-mongo}
   MONGO_PORT: ${MONGO_PORT:-27017}
-  MONGO_DATABASE: ${MONGO_DATABASE:-jvmeta_archive}
+  MONGO_DATABASE: ${MONGO_DATABASE:-javmeta_archive}
   ACTIVITY_LOG_CONNECTION: ${ACTIVITY_LOG_CONNECTION:-mongodb}
   ACTIVITY_LOG_COLLECTION: ${ACTIVITY_LOG_COLLECTION:-activity_logs}
   ELASTICSEARCH_HOST: ${ELASTICSEARCH_HOST:-http://elasticsearch:9200}
-  ELASTICSEARCH_MOVIES_INDEX: ${ELASTICSEARCH_MOVIES_INDEX:-jvmeta_movies}
-  ELASTICSEARCH_PERFORMERS_INDEX: ${ELASTICSEARCH_PERFORMERS_INDEX:-jvmeta_performers}
+  ELASTICSEARCH_MOVIES_INDEX: ${ELASTICSEARCH_MOVIES_INDEX:-javmeta_movies}
+  ELASTICSEARCH_PERFORMERS_INDEX: ${ELASTICSEARCH_PERFORMERS_INDEX:-javmeta_performers}
   EMBEDDER_URL: ${EMBEDDER_URL:-http://embedder:8000}
   EMBEDDER_DIM: ${EMBEDDER_DIM:-384}
   CRAWLERX_ROOT: /var/www/html/vendor/jooservices/crawlerx
@@ -32,16 +32,16 @@ x-app-environment: &app-environment
   CRAWLERX_PUPPETEER_SCRIPT: /var/www/html/vendor/jooservices/crawlerx/scripts/puppeteer-stealth-fetch.mjs
   CRAWLERX_FLARESOLVERR_URL: ${CRAWLERX_FLARESOLVERR_URL:-http://flaresolverr:8191/v1}
   PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
-  JVMETA_WORKERS_PER_QUEUE: ${JVMETA_WORKERS_PER_QUEUE:-1}
-  JVMETA_QUEUE_NAMES: ${JVMETA_QUEUE_NAMES:-listing,detail,performer_listing,performer_detail,gallery}
+  JAVMETA_WORKERS_PER_QUEUE: ${JAVMETA_WORKERS_PER_QUEUE:-1}
+  JAVMETA_QUEUE_NAMES: ${JAVMETA_QUEUE_NAMES:-listing,detail,performer_listing,performer_detail,gallery}
   OPENOBSERVE_ENABLED: ${OPENOBSERVE_ENABLED:-true}
   OPENOBSERVE_URL: ${OPENOBSERVE_URL:-http://openobserve:5080}
   OPENOBSERVE_ORG: ${OPENOBSERVE_ORG:-default}
-  OPENOBSERVE_STREAM_LOGS: ${OPENOBSERVE_STREAM_LOGS:-jvmeta_logs}
-  OPENOBSERVE_STREAM_METRICS: ${OPENOBSERVE_STREAM_METRICS:-jvmeta_metrics}
+  OPENOBSERVE_STREAM_LOGS: ${OPENOBSERVE_STREAM_LOGS:-javmeta_logs}
+  OPENOBSERVE_STREAM_METRICS: ${OPENOBSERVE_STREAM_METRICS:-javmeta_metrics}
 
 x-worker: &worker
-  image: jooservices/jvmeta:php85
+  image: jooservices/javmeta:php85
   working_dir: /var/www/html
   command: ["crawlerx-fetch-ready", "worker-queues"]
   env_file:
@@ -57,14 +57,14 @@ services:
   api:
     build:
       context: .
-    image: jooservices/jvmeta:php85
+    image: jooservices/javmeta:php85
     working_dir: /var/www/html
     command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
     env_file:
       - .env
     environment:
       <<: *app-environment
-      JVMETA_ROLE: api
+      JAVMETA_ROLE: api
     volumes: *app-volumes
     ports:
       - "8080:8080"
@@ -82,12 +82,12 @@ services:
     <<: *worker
     environment:
       <<: *app-environment
-      JVMETA_ROLE: worker
+      JAVMETA_ROLE: worker
 
   embedder:
     build:
       context: ./embedder
-    image: jooservices/jvmeta-embedder:latest
+    image: jooservices/javmeta-embedder:latest
     ports:
       - "${EMBEDDER_HOST_PORT:-8000}:8000"
     restart: unless-stopped
@@ -95,28 +95,28 @@ services:
       - embed
 
   scheduler:
-    image: jooservices/jvmeta:php85
+    image: jooservices/javmeta:php85
     working_dir: /var/www/html
     command: ["php", "artisan", "schedule:work"]
     env_file:
       - .env
     environment:
       <<: *app-environment
-      JVMETA_ROLE: scheduler
+      JAVMETA_ROLE: scheduler
     volumes: *app-volumes
     restart: unless-stopped
     profiles:
       - control
 
   mcp:
-    image: jooservices/jvmeta:php85
+    image: jooservices/javmeta:php85
     working_dir: /var/www/html
     command: ["php", "artisan", "mcp:serve"]
     env_file:
       - .env
     environment:
       <<: *app-environment
-      JVMETA_ROLE: mcp
+      JAVMETA_ROLE: mcp
     volumes: *app-volumes
     stdin_open: true
     tty: true
@@ -194,7 +194,7 @@ services:
       ZO_DATA_DIR: /data
       ZO_LOCAL_MODE: "true"
       ZO_TELEMETRY: "false"
-      ZO_ROOT_USER_EMAIL: ${ZO_ROOT_USER_EMAIL:-root@jvmeta.local}
+      ZO_ROOT_USER_EMAIL: ${ZO_ROOT_USER_EMAIL:-root@javmeta.local}
       ZO_ROOT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:-Complexpass#123}
     ports:
       - "5080:5080"

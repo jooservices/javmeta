@@ -38,8 +38,8 @@ final class OpenObserveClientTest extends TestCase
             'openobserve.enabled' => true,
             'openobserve.url' => 'http://openobserve.test',
             'openobserve.org' => 'default',
-            'openobserve.stream_logs' => 'jvmeta_logs',
-            'openobserve.email' => 'root@jvmeta.local',
+            'openobserve.stream_logs' => 'javmeta_logs',
+            'openobserve.email' => 'root@javmeta.local',
             'openobserve.password' => 'secret',
             'openobserve.timeout' => 1,
         ]);
@@ -60,7 +60,7 @@ final class OpenObserveClientTest extends TestCase
             'openobserve.enabled' => true,
             'openobserve.url' => 'http://openobserve.test',
             'openobserve.org' => 'default',
-            'openobserve.stream_logs' => 'jvmeta_logs',
+            'openobserve.stream_logs' => 'javmeta_logs',
             'openobserve.timeout' => 3,
         ]);
         Http::fake(static function (ClientRequest $request): never {
@@ -81,7 +81,7 @@ final class OpenObserveClientTest extends TestCase
             'openobserve.enabled' => true,
             'openobserve.url' => 'http://openobserve.test',
             'openobserve.org' => 'default',
-            'openobserve.stream_logs' => 'jvmeta_logs',
+            'openobserve.stream_logs' => 'javmeta_logs',
             'openobserve.log_buffer_capacity' => 2,
         ]);
         Http::fake(static function (ClientRequest $request): never {
@@ -105,7 +105,7 @@ final class OpenObserveClientTest extends TestCase
             'openobserve.enabled' => true,
             'openobserve.url' => 'http://openobserve.test',
             'openobserve.org' => 'default',
-            'openobserve.stream_logs' => 'jvmeta_logs',
+            'openobserve.stream_logs' => 'javmeta_logs',
         ]);
         $attempts = 0;
         Http::fake(static function (ClientRequest $request) use (&$attempts) {

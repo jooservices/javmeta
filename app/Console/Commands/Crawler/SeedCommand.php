@@ -18,7 +18,7 @@ final class SeedCommand extends Command
 {
     protected $signature = 'crawler:seed {--source=} {--limit=50}';
 
-    protected $description = 'Enqueue crawl listing URLs for enabled JVMeta sources.';
+    protected $description = 'Enqueue crawl listing URLs for enabled JAVMeta sources.';
 
     public function handle(
         CrawlQueueService $queue,
@@ -115,9 +115,9 @@ final class SeedCommand extends Command
     /** @return list<string> */
     private function configUrlList(string $sourceSlug, string $primaryKey, ?string $fallbackKey = null): array
     {
-        $urls = config("jvmeta_sources.sources.{$sourceSlug}.{$primaryKey}", []);
+        $urls = config("javmeta_sources.sources.{$sourceSlug}.{$primaryKey}", []);
         if ((! is_array($urls) || $urls === []) && $fallbackKey !== null) {
-            $urls = config("jvmeta_sources.sources.{$sourceSlug}.{$fallbackKey}", []);
+            $urls = config("javmeta_sources.sources.{$sourceSlug}.{$fallbackKey}", []);
         }
 
         if (! is_array($urls)) {

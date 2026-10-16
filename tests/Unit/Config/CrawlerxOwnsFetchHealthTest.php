@@ -9,7 +9,7 @@ use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 
 /**
- * crawlerx owns soft-404 detection and fetch health; jvmeta must not read or
+ * crawlerx owns soft-404 detection and fetch health; javmeta must not read or
  * write its old per-source circuit / soft-404 columns (kept in the schema
  * until the owner decides to drop them).
  */
@@ -24,7 +24,7 @@ final class CrawlerxOwnsFetchHealthTest extends TestCase
         '->circuit_state',
         "'circuit_state' =>",
         'source->consecutive_failures',
-        'jvmeta_source_consecutive_failures',
+        'javmeta_source_consecutive_failures',
     ];
 
     public function test_app_and_config_do_not_use_source_circuit_or_soft404_fields(): void

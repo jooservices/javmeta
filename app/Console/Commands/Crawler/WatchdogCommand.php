@@ -15,7 +15,7 @@ final class WatchdogCommand extends Command
 {
     protected $signature = 'crawler:watchdog';
 
-    protected $aliases = ['jvmeta:watchdog'];
+    protected $aliases = ['javmeta:watchdog'];
 
     protected $description = 'Check worker heartbeat and long-stale sources; alert via Telegram + activity log.';
 
@@ -24,14 +24,14 @@ final class WatchdogCommand extends Command
         if ($heartbeat->isStale()) {
             Event::dispatch(new WorkerHeartbeatStale([
                 'last_heartbeat_at' => $heartbeat->lastBeatAt()?->toIso8601String(),
-                'stale_seconds' => (int) config('jvmeta_alerts.watchdog.heartbeat_stale_seconds', 600),
+                'stale_seconds' => (int) config('javmeta_alerts.watchdog.heartbeat_stale_seconds', 600),
             ]));
             $this->warn('Worker heartbeat stale.');
         } else {
             $this->info('Worker heartbeat ok.');
         }
 
-        $staleSeconds = (int) config('jvmeta_alerts.watchdog.source_stale_seconds', 86400);
+        $staleSeconds = (int) config('javmeta_alerts.watchdog.source_stale_seconds', 86400);
         $cutoff = now()->subSeconds($staleSeconds);
 
         $staleSources = Source::query()

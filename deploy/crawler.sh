@@ -4,15 +4,15 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-: "${JVMETA_APP_DIR:=/home/joos/jvmeta}"
-: "${JVMETA_REPO_URL:=https://github.com/jooservices/jvmeta.git}"
-: "${JVMETA_BRANCH:=develop}"
-: "${JVMETA_COMPOSE_FILE:=docker-compose.yml}"
-: "${JVMETA_PHP_SERVICE:=api}"
-: "${JVMETA_WORKER_INSTANCES:=1}"
-: "${JVMETA_READY_RETRIES:=40}"
-: "${JVMETA_READY_INTERVAL:=3}"
-: "${JVMETA_FLARESOLVERR_HEALTH_URL:=http://127.0.0.1:8191/}"
+: "${JAVMETA_APP_DIR:=/home/joos/javmeta}"
+: "${JAVMETA_REPO_URL:=https://github.com/jooservices/javmeta.git}"
+: "${JAVMETA_BRANCH:=develop}"
+: "${JAVMETA_COMPOSE_FILE:=docker-compose.yml}"
+: "${JAVMETA_PHP_SERVICE:=api}"
+: "${JAVMETA_WORKER_INSTANCES:=1}"
+: "${JAVMETA_READY_RETRIES:=40}"
+: "${JAVMETA_READY_INTERVAL:=3}"
+: "${JAVMETA_FLARESOLVERR_HEALTH_URL:=http://127.0.0.1:8191/}"
 
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/repository.sh"
@@ -28,9 +28,9 @@ require_positive_integer() {
 
 crawler_compose() {
   docker compose \
-    --project-directory "${JVMETA_APP_DIR}" \
-    --env-file "${JVMETA_APP_DIR}/.env" \
-    --file "${JVMETA_APP_DIR}/${JVMETA_COMPOSE_FILE}" \
+    --project-directory "${JAVMETA_APP_DIR}" \
+    --env-file "${JAVMETA_APP_DIR}/.env" \
+    --file "${JAVMETA_APP_DIR}/${JAVMETA_COMPOSE_FILE}" \
     --profile app \
     --profile flare \
     "$@"
@@ -47,31 +47,31 @@ wait_for_running() {
   local expected="$2"
   local running
 
-  for ((attempt = 1; attempt <= JVMETA_READY_RETRIES; attempt++)); do
+  for ((attempt = 1; attempt <= JAVMETA_READY_RETRIES; attempt++)); do
     running="$(running_count "${service}")"
     if [[ "${running}" == "${expected}" ]]; then
       return
     fi
-    sleep "${JVMETA_READY_INTERVAL}"
+    sleep "${JAVMETA_READY_INTERVAL}"
   done
 
   die "${service} did not reach ${expected} running container(s)"
 }
 
 wait_for_flaresolverr() {
-  for ((attempt = 1; attempt <= JVMETA_READY_RETRIES; attempt++)); do
+  for ((attempt = 1; attempt <= JAVMETA_READY_RETRIES; attempt++)); do
     if curl --fail --silent --show-error --max-time 5 \
-      "${JVMETA_FLARESOLVERR_HEALTH_URL}" >/dev/null 2>&1; then
+      "${JAVMETA_FLARESOLVERR_HEALTH_URL}" >/dev/null 2>&1; then
       return
     fi
-    sleep "${JVMETA_READY_INTERVAL}"
+    sleep "${JAVMETA_READY_INTERVAL}"
   done
 
   die 'FlareSolverr did not become reachable at the configured health endpoint'
 }
 
 wait_for_embedder() {
-  for ((attempt = 1; attempt <= JVMETA_READY_RETRIES; attempt++)); do
+  for ((attempt = 1; attempt <= JAVMETA_READY_RETRIES; attempt++)); do
     # shellcheck disable=SC2016
     if crawler_compose exec -T worker php -r '
       $url = rtrim((string) getenv("EMBEDDER_URL"), "/") . "/healthz";
@@ -88,14 +88,14 @@ wait_for_embedder() {
     ' >/dev/null 2>&1; then
       return
     fi
-    sleep "${JVMETA_READY_INTERVAL}"
+    sleep "${JAVMETA_READY_INTERVAL}"
   done
 
   die 'control embedder did not become reachable from the crawler worker'
 }
 
 validate_crawler_environment() {
-  local environment_file="${JVMETA_APP_DIR}/.env"
+  local environment_file="${JAVMETA_APP_DIR}/.env"
 
   if ! grep -Eq '^CRAWLERX_FLARESOLVERR_REQUIRED=(true|1|yes)$' "${environment_file}"; then
     die 'crawler deployment requires CRAWLERX_FLARESOLVERR_REQUIRED=true in .env'
@@ -113,9 +113,9 @@ validate_crawler_environment() {
 require_command git
 require_command docker
 require_command curl
-require_positive_integer JVMETA_WORKER_INSTANCES "${JVMETA_WORKER_INSTANCES}"
-require_positive_integer JVMETA_READY_RETRIES "${JVMETA_READY_RETRIES}"
-require_positive_integer JVMETA_READY_INTERVAL "${JVMETA_READY_INTERVAL}"
+require_positive_integer JAVMETA_WORKER_INSTANCES "${JAVMETA_WORKER_INSTANCES}"
+require_positive_integer JAVMETA_READY_RETRIES "${JAVMETA_READY_RETRIES}"
+require_positive_integer JAVMETA_READY_INTERVAL "${JAVMETA_READY_INTERVAL}"
 
 sync_repository
 prepare_environment
@@ -126,18 +126,18 @@ if [[ "$(running_count worker)" != "0" ]]; then
 fi
 
 crawler_compose config --quiet
-crawler_compose build "${JVMETA_PHP_SERVICE}"
-crawler_compose run --rm --no-deps --entrypoint composer "${JVMETA_PHP_SERVICE}" \
+crawler_compose build "${JAVMETA_PHP_SERVICE}"
+crawler_compose run --rm --no-deps --entrypoint composer "${JAVMETA_PHP_SERVICE}" \
   install --no-dev --no-interaction --prefer-dist --optimize-autoloader
-crawler_compose run --rm --no-deps --entrypoint php "${JVMETA_PHP_SERVICE}" artisan optimize:clear
+crawler_compose run --rm --no-deps --entrypoint php "${JAVMETA_PHP_SERVICE}" artisan optimize:clear
 
 crawler_compose up -d --force-recreate flaresolverr
 wait_for_running flaresolverr 1
 wait_for_flaresolverr
 
-crawler_compose up -d --force-recreate --scale "worker=${JVMETA_WORKER_INSTANCES}" worker
-wait_for_running worker "${JVMETA_WORKER_INSTANCES}"
+crawler_compose up -d --force-recreate --scale "worker=${JAVMETA_WORKER_INSTANCES}" worker
+wait_for_running worker "${JAVMETA_WORKER_INSTANCES}"
 wait_for_embedder
 
 printf 'deploy: crawler services are healthy; workers=%s; control services were not started\n' \
-  "${JVMETA_WORKER_INSTANCES}"
+  "${JAVMETA_WORKER_INSTANCES}"

@@ -9,7 +9,7 @@ use Tests\Support\RunsCrawlerxFixtures;
 use Tests\TestCase;
 
 /**
- * Real crawlerx inside the jvmeta jobs, sqlite in-memory, HTTP faked.
+ * Real crawlerx inside the javmeta jobs, sqlite in-memory, HTTP faked.
  * See Tests\Support\RunsCrawlerxFixtures.
  */
 abstract class CrawlerxContractTestCase extends TestCase

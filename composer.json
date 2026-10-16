@@ -1,10 +1,10 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "jooservices/jvmeta",
+    "name": "jooservices/javmeta",
     "type": "project",
     "description": "Laravel POC API and crawl worker for JAV metadata normalization.",
     "keywords": [
-        "jvmeta",
+        "javmeta",
         "laravel",
         "metadata",
         "poc"
@@ -88,12 +88,12 @@
         "test": [
             "@php -r \"file_exists('.env') || touch('.env');\"",
             "@php artisan config:clear --ansi",
-            "APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= APP_NAME=jvmeta php artisan test"
+            "APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= APP_NAME=javmeta php artisan test"
         ],
         "test:coverage": [
             "@php -r \"file_exists('.env') || touch('.env');\"",
             "@php artisan config:clear --ansi",
-            "XDEBUG_MODE=coverage APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= APP_NAME=jvmeta php artisan test --coverage-clover=build/coverage.xml"
+            "XDEBUG_MODE=coverage APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= APP_NAME=javmeta php artisan test --coverage-clover=build/coverage.xml"
         ],
         "test:shell": [
             "bash tests/Shell/worker-queues.test.sh",

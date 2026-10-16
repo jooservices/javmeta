@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 REPO_ROOT="${SCRIPT_DIR}/../.."
-TEST_TMP="$(mktemp -d "${TMPDIR:-/tmp}/jvmeta-run-captainhook.XXXXXX")"
+TEST_TMP="$(mktemp -d "${TMPDIR:-/tmp}/javmeta-run-captainhook.XXXXXX")"
 TEST_TMP="$(cd "${TEST_TMP}" && pwd -P)"
 trap 'rm -rf "${TEST_TMP}"' EXIT INT TERM
 
@@ -68,7 +68,7 @@ COMMON_DIR="${MAIN}/.git"
 "${MAIN}/tools/run-captainhook" hook:commit-msg .git/COMMIT_EDITMSG
 line="$(run_line)"
 case "${line}" in
-  *"--volume ${MAIN}:/app "*"jvmeta-ci:local vendor/bin/captainhook hook:commit-msg .git/COMMIT_EDITMSG") ;;
+  *"--volume ${MAIN}:/app "*"javmeta-ci:local vendor/bin/captainhook hook:commit-msg .git/COMMIT_EDITMSG") ;;
   *) fail "main checkout docker run: ${line}" ;;
 esac
 case "${line}" in
@@ -86,8 +86,8 @@ esac
 
 # Host opt-in: no docker at all.
 : > "${DOCKER_LOG}"
-output="$(JVMETA_HOOKS_ON_HOST=1 "${WORKTREE}/tools/run-captainhook" hook:pre-commit)"
+output="$(JAVMETA_HOOKS_ON_HOST=1 "${WORKTREE}/tools/run-captainhook" hook:pre-commit)"
 [[ "${output}" == "host-captainhook hook:pre-commit" ]] || fail "host opt-in output: ${output}"
-[[ ! -s "${DOCKER_LOG}" ]] || fail "docker must not run with JVMETA_HOOKS_ON_HOST=1"
+[[ ! -s "${DOCKER_LOG}" ]] || fail "docker must not run with JAVMETA_HOOKS_ON_HOST=1"
 
 echo "run-captainhook tests passed"

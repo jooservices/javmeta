@@ -50,7 +50,7 @@ final class StatusHealthCheck
         ];
 
         $lastHeartbeat = $this->heartbeat->lastBeatAt();
-        $staleSeconds = (int) config('jvmeta_alerts.watchdog.heartbeat_stale_seconds', 600);
+        $staleSeconds = (int) config('javmeta_alerts.watchdog.heartbeat_stale_seconds', 600);
         $workerStale = $lastHeartbeat === null
             || $lastHeartbeat->diffInSeconds(now()) > $staleSeconds;
 

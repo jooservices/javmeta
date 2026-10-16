@@ -11,7 +11,7 @@ use JOOservices\LaravelNotifications\Channels\TelegramChannel;
 use JOOservices\LaravelNotifications\Message;
 
 /**
- * App-facing alert adapter: renders jvmeta context into a package Message and
+ * App-facing alert adapter: renders javmeta context into a package Message and
  * sends via jooservices/laravel-notifications TelegramChannel. Templates,
  * debounce, and Log stay in the application layer.
  */
@@ -22,14 +22,14 @@ final class TelegramAlertNotifier implements AlertNotifier
     public function notify(string $subject, string $body, array $context = []): void
     {
         $token = $this->stringConfig('laravel-notifications.channels.telegram.bot_token')
-            ?: $this->stringConfig('jvmeta_alerts.telegram.bot_token');
+            ?: $this->stringConfig('javmeta_alerts.telegram.bot_token');
         $chatId = $this->stringConfig('laravel-notifications.channels.telegram.chat_id')
-            ?: $this->stringConfig('jvmeta_alerts.telegram.chat_id');
+            ?: $this->stringConfig('javmeta_alerts.telegram.chat_id');
         $apiBase = $this->stringConfig('laravel-notifications.channels.telegram.api_base')
-            ?: $this->stringConfig('jvmeta_alerts.telegram.api_base', 'https://api.telegram.org');
+            ?: $this->stringConfig('javmeta_alerts.telegram.api_base', 'https://api.telegram.org');
         $timeout = (float) (
             config('laravel-notifications.channels.telegram.timeout')
-            ?? config('jvmeta_alerts.telegram.timeout', 5)
+            ?? config('javmeta_alerts.telegram.timeout', 5)
         );
 
         $channel = new TelegramChannel(
@@ -42,14 +42,14 @@ final class TelegramAlertNotifier implements AlertNotifier
 
         $result = $channel->send(
             Message::make(
-                subject: '[jvmeta] ' . $subject,
+                subject: '[javmeta] ' . $subject,
                 body: $body,
                 context: $this->scalarContext($context),
             ),
         );
 
         if ($result->isSkipped()) {
-            Log::warning('jvmeta.telegram_skipped', [
+            Log::warning('javmeta.telegram_skipped', [
                 'reason' => $result->reason ?? 'skipped',
                 'subject' => $subject,
             ]);
@@ -58,7 +58,7 @@ final class TelegramAlertNotifier implements AlertNotifier
         }
 
         if ($result->isFailed()) {
-            Log::warning('jvmeta.telegram_failed', [
+            Log::warning('javmeta.telegram_failed', [
                 'reason' => $result->reason ?? 'failed',
                 'subject' => $subject,
             ]);

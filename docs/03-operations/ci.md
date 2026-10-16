@@ -43,12 +43,12 @@ Redis or Mongo service is needed.
 
 | Layer | Where | What it proves |
 |---|---|---|
-| Unit / Feature | `tests/Unit`, `tests/Feature` | jvmeta logic on sqlite in-memory; crawlerx replaced by `FakeCrawlerxClient` |
-| crawlerx contract | `tests/Feature/Contract` | the **real** crawlerx stack parses every live-captured fixture (`tests/Fixtures/crawlerx`) and the jvmeta jobs store the result; generated failures (404, 410, 429, 5xx, network, empty, Cloudflare challenge, drifted page) end in the expected row state. Only the HTTP transport is faked (`ClientBuilder::fake()`) |
+| Unit / Feature | `tests/Unit`, `tests/Feature` | javmeta logic on sqlite in-memory; crawlerx replaced by `FakeCrawlerxClient` |
+| crawlerx contract | `tests/Feature/Contract` | the **real** crawlerx stack parses every live-captured fixture (`tests/Fixtures/crawlerx`) and the javmeta jobs store the result; generated failures (404, 410, 429, 5xx, network, empty, Cloudflare challenge, drifted page) end in the expected row state. Only the HTTP transport is faked (`ClientBuilder::fake()`) |
 | Integration | `tests/Integration` (`phpunit.integration.xml`) | real **Postgres** (all migrations apply, roll back, re-apply), **Mongo** archive, **Elasticsearch** documents and **OpenObserve** ingestion. Every movie and performer fixture goes through crawlerx → job → Postgres (`movies`/`movie_sources`, `performers`/`performer_sources` with the Mongo id) → Mongo → ES; a recrawl does not duplicate the movie, source link, archive or ES document (observations stay append-only by design); a crawl's `crawl_fetch` record is queryable in OpenObserve. Only the embedder is faked |
 
 The failure expectations pin the crawlerx 1.2 contract (every fetch failure
-is `blocked` or `challenge`, no retry). They change on purpose when jvmeta
+is `blocked` or `challenge`, no retry). They change on purpose when javmeta
 moves to crawlerx 1.3.
 
 After upgrading crawlerx, refresh the fixtures and rerun the suite:

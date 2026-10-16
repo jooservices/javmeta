@@ -14,8 +14,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * Every live-captured crawlerx fixture (tests/Fixtures/crawlerx, synced by
- * tools/sync-crawlerx-fixtures.php) goes through the matching jvmeta job and
- * must end up stored. Breaks when a crawlerx upgrade changes what jvmeta gets.
+ * tools/sync-crawlerx-fixtures.php) goes through the matching javmeta job and
+ * must end up stored. Breaks when a crawlerx upgrade changes what javmeta gets.
  */
 final class CrawlerxFixtureContractTest extends CrawlerxContractTestCase
 {
@@ -51,7 +51,7 @@ final class CrawlerxFixtureContractTest extends CrawlerxContractTestCase
 
     public function test_every_configured_source_has_a_fixture(): void
     {
-        $configured = array_keys((array) config('jvmeta_sources.sources'));
+        $configured = array_keys((array) config('javmeta_sources.sources'));
         $withFixtures = array_map('basename', glob(self::FIXTURE_DIR . '/*', GLOB_ONLYDIR) ?: []);
 
         self::assertSame([], array_values(array_diff($configured, $withFixtures)), 'sources without a crawlerx fixture');

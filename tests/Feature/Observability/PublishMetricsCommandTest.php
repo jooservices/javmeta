@@ -21,8 +21,8 @@ final class PublishMetricsCommandTest extends TestCase
         $command = $commands['obs:publish-metrics'];
 
         $this->assertInstanceOf(PublishMetricsCommand::class, $command);
-        $this->assertArrayHasKey('jvmeta:obs-publish-metrics', $commands);
-        $this->assertSame($command, $commands['jvmeta:obs-publish-metrics']);
+        $this->assertArrayHasKey('javmeta:obs-publish-metrics', $commands);
+        $this->assertSame($command, $commands['javmeta:obs-publish-metrics']);
     }
 
     public function test_command_publishes_gauge_points_when_enabled(): void
@@ -37,7 +37,7 @@ final class PublishMetricsCommandTest extends TestCase
             'openobserve.enabled' => true,
             'openobserve.url' => 'http://openobserve.test',
             'openobserve.org' => 'default',
-            'openobserve.email' => 'root@jvmeta.local',
+            'openobserve.email' => 'root@javmeta.local',
             'openobserve.password' => 'secret',
             'openobserve.timeout' => 1,
         ]);
@@ -49,9 +49,9 @@ final class PublishMetricsCommandTest extends TestCase
 
         Http::assertSent(function ($request): bool {
             return str_contains($request->url(), '/v1/metrics')
-                && str_contains($request->body(), 'jvmeta_source_gap_seconds')
-                && ! str_contains($request->body(), 'jvmeta_source_circuit_state')
-                && ! str_contains($request->body(), 'jvmeta_source_consecutive_failures');
+                && str_contains($request->body(), 'javmeta_source_gap_seconds')
+                && ! str_contains($request->body(), 'javmeta_source_circuit_state')
+                && ! str_contains($request->body(), 'javmeta_source_consecutive_failures');
         });
     }
 

@@ -58,11 +58,11 @@ final class ConsumerMissAlertTest extends TestCase
             ->build();
 
         config([
-            'jvmeta_alerts.enabled' => true,
-            'jvmeta_alerts.telegram.bot_token' => 'test-token',
-            'jvmeta_alerts.telegram.chat_id' => '12345',
-            'jvmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
-            'jvmeta_alerts.miss_debounce_seconds' => 0,
+            'javmeta_alerts.enabled' => true,
+            'javmeta_alerts.telegram.bot_token' => 'test-token',
+            'javmeta_alerts.telegram.chat_id' => '12345',
+            'javmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
+            'javmeta_alerts.miss_debounce_seconds' => 0,
             'laravel-notifications.channels.telegram.bot_token' => 'test-token',
             'laravel-notifications.channels.telegram.chat_id' => '12345',
             'laravel-notifications.channels.telegram.api_base' => 'https://api.telegram.org',
@@ -104,10 +104,10 @@ final class ConsumerMissAlertTest extends TestCase
     {
         Event::fake([WorkerHeartbeatStale::class]);
 
-        config(['jvmeta_alerts.watchdog.heartbeat_stale_seconds' => 60]);
-        cache()->forget('jvmeta:worker:heartbeat');
+        config(['javmeta_alerts.watchdog.heartbeat_stale_seconds' => 60]);
+        cache()->forget('javmeta:worker:heartbeat');
 
-        $this->artisan('jvmeta:watchdog')->assertSuccessful();
+        $this->artisan('javmeta:watchdog')->assertSuccessful();
 
         Event::assertDispatched(WorkerHeartbeatStale::class);
     }
@@ -118,7 +118,7 @@ final class ConsumerMissAlertTest extends TestCase
 
         app(WorkerHeartbeat::class)->beat();
 
-        $this->artisan('jvmeta:watchdog')->assertSuccessful();
+        $this->artisan('javmeta:watchdog')->assertSuccessful();
 
         Event::assertNotDispatched(WorkerHeartbeatStale::class);
     }

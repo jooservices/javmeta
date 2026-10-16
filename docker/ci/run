@@ -3,10 +3,10 @@
 #   docker/ci/run composer lint
 set -euo pipefail
 
-image="${JVMETA_CI_IMAGE:-jvmeta-ci:local}"
+image="${JAVMETA_CI_IMAGE:-javmeta-ci:local}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-if [[ "${JVMETA_CI_SKIP_BUILD:-0}" != "1" ]]; then
+if [[ "${JAVMETA_CI_SKIP_BUILD:-0}" != "1" ]]; then
   docker build --quiet --tag "${image}" --file "${root}/docker/ci/Dockerfile" "${root}/docker/ci" >/dev/null
 fi
 
@@ -27,6 +27,6 @@ exec docker run --rm \
   --user "$(id -u):$(id -g)" \
   --env HOME=/tmp \
   "${volumes[@]}" \
-  --volume "${JVMETA_CI_COMPOSER_CACHE:-jvmeta-ci-composer-cache}:/tmp/composer-cache" \
+  --volume "${JAVMETA_CI_COMPOSER_CACHE:-javmeta-ci-composer-cache}:/tmp/composer-cache" \
   --workdir /app \
   "${image}" "$@"

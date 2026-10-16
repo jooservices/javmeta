@@ -136,7 +136,7 @@ final class SourceNormalizerTest extends TestCase
 
     public function test_per_source_key_map_override_is_applied(): void
     {
-        config()->set('jvmeta_sources.sources.onejav.normalize.key_map', ['maker' => ['studio']]);
+        config()->set('javmeta_sources.sources.onejav.normalize.key_map', ['maker' => ['studio']]);
 
         $normalizer = $this->registry()->forSlug('onejav');
 

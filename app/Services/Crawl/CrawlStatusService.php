@@ -24,7 +24,7 @@ final class CrawlStatusService
      */
     public function status(): array
     {
-        $staleSeconds = (int) config('jvmeta_sources.defaults.queue.stale_claim_timeout_seconds', 900);
+        $staleSeconds = (int) config('javmeta_sources.defaults.queue.stale_claim_timeout_seconds', 900);
         $now = now();
         $claimCutoff = now()->subSeconds($staleSeconds);
 

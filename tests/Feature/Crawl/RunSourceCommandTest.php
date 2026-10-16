@@ -127,7 +127,7 @@ final class RunSourceCommandTest extends TestCase
                 'movie_listing_urls' => [fake()->unique()->url()],
             ],
         ];
-        config()->set('jvmeta_sources.sources', $sources);
+        config()->set('javmeta_sources.sources', $sources);
         $staleQueueRow = CrawlQueue::factory()->create([
             'source_slug' => fake()->unique()->slug(2),
             'status' => CrawlQueue::STATUS_CLAIMED,
@@ -154,7 +154,7 @@ final class RunSourceCommandTest extends TestCase
     {
         $sourceSlug = fake()->unique()->slug(2);
         $seedUrls = [fake()->unique()->url(), fake()->unique()->url()];
-        config()->set('jvmeta_sources.sources', [
+        config()->set('javmeta_sources.sources', [
             $sourceSlug => [
                 'name' => fake()->company(),
                 'base_url' => fake()->url(),

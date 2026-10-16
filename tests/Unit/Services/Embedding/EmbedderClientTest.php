@@ -32,7 +32,7 @@ final class EmbedderClientTest extends TestCase
 
         $this->assertSame([$vector], $result);
         Http::assertSent(function ($request) use ($text): bool {
-            return $request->data()['model'] === 'jvmeta-query'
+            return $request->data()['model'] === 'javmeta-query'
                 && $request->data()['input'] === [$text];
         });
     }
@@ -48,7 +48,7 @@ final class EmbedderClientTest extends TestCase
 
         $this->assertSame($vector, (new EmbedderClient())->embedOne($text));
         Http::assertSent(function ($request): bool {
-            return $request->data()['model'] === 'jvmeta-passage';
+            return $request->data()['model'] === 'javmeta-passage';
         });
     }
 

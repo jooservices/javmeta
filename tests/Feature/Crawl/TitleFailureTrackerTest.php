@@ -67,7 +67,7 @@ final class TitleFailureTrackerTest extends TestCase
     public function test_consecutive_failures_flag_needs_review(): void
     {
         Event::fake([CrawlSourceUnhealthy::class]);
-        config(['jvmeta_alerts.title_failure_threshold' => 2]);
+        config(['javmeta_alerts.title_failure_threshold' => 2]);
 
         $movie = Movie::factory()->create([
             'display_code' => 'SSIS-002',

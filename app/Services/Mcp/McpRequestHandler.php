@@ -10,7 +10,7 @@ use InvalidArgumentException;
 use Throwable;
 
 /**
- * Shared JSON-RPC 2.0 dispatch for the jvmeta MCP tools. Transport-agnostic:
+ * Shared JSON-RPC 2.0 dispatch for the javmeta MCP tools. Transport-agnostic:
  * used by the stdio server (mcp:serve) and the HTTP endpoint (POST /api/v1/mcp).
  */
 final class McpRequestHandler
@@ -22,7 +22,7 @@ final class McpRequestHandler
 
     public function isAuthorized(): bool
     {
-        $plain = (string) config('jvmeta_auth.mcp_api_key', '');
+        $plain = (string) config('javmeta_auth.mcp_api_key', '');
         if ($plain === '') {
             return false;
         }
@@ -50,7 +50,7 @@ final class McpRequestHandler
                 'initialize' => [
                     'protocolVersion' => '2024-11-05',
                     'capabilities' => ['tools' => (object) []],
-                    'serverInfo' => ['name' => 'jvmeta', 'version' => '0.1.0-beta'],
+                    'serverInfo' => ['name' => 'javmeta', 'version' => '0.1.0-beta'],
                 ],
                 'notifications/initialized', 'initialized' => null,
                 'tools/list' => ['tools' => $this->tools->definitions()],

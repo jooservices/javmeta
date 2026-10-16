@@ -1,4 +1,4 @@
-name: jvmeta-monitoring
+name: javmeta-monitoring
 
 services:
   node-exporter-local:
@@ -54,8 +54,8 @@ services:
       OBS_ORG: default
       OBS_USERNAME: local-observe@example.invalid
       OBS_PASSWORD: local-Observe-2026!
-      JVMETA_NODE_NAME: verify-node
-      JVMETA_NODE_ROLE: control
+      JAVMETA_NODE_NAME: verify-node
+      JAVMETA_NODE_ROLE: control
 
 configs:
   prometheus-config:

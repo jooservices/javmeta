@@ -25,7 +25,7 @@ final class McpHttpEndpointTest extends TestCase
         ], ['X-Api-Key' => $key])
             ->assertOk()
             ->assertJsonPath('result.protocolVersion', '2024-11-05')
-            ->assertJsonPath('result.serverInfo.name', 'jvmeta');
+            ->assertJsonPath('result.serverInfo.name', 'javmeta');
     }
 
     public function test_tools_list_over_http(): void
@@ -46,7 +46,7 @@ final class McpHttpEndpointTest extends TestCase
     public function test_tools_call_lookup_movies_over_http(): void
     {
         $key = app(ApiKeyService::class)->create(fake()->words(2, true))->plaintext;
-        config(['jvmeta_auth.mcp_api_key' => $key]);
+        config(['javmeta_auth.mcp_api_key' => $key]);
 
         $this->postJson('/api/v1/mcp', [
             'jsonrpc' => '2.0',
@@ -61,7 +61,7 @@ final class McpHttpEndpointTest extends TestCase
     public function test_tools_call_search_supports_performer_entity_over_http(): void
     {
         $key = app(ApiKeyService::class)->create(fake()->words(2, true))->plaintext;
-        config(['jvmeta_auth.mcp_api_key' => $key]);
+        config(['javmeta_auth.mcp_api_key' => $key]);
         $term = fake()->unique()->words(2, true);
         $performer = Performer::factory()->create(['bio_text' => "Profile {$term}"]);
 
@@ -84,7 +84,7 @@ final class McpHttpEndpointTest extends TestCase
     public function test_tools_call_rejects_unknown_tool(): void
     {
         $key = app(ApiKeyService::class)->create(fake()->words(2, true))->plaintext;
-        config(['jvmeta_auth.mcp_api_key' => $key]);
+        config(['javmeta_auth.mcp_api_key' => $key]);
 
         $this->postJson('/api/v1/mcp', [
             'jsonrpc' => '2.0',

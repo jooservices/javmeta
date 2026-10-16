@@ -15,9 +15,9 @@ use Throwable;
 
 /**
  * Generated failure responses go through the real crawlerx stack and the
- * jvmeta detail job. The expectations pin the crawlerx 1.3 contract: terminal
+ * javmeta detail job. The expectations pin the crawlerx 1.3 contract: terminal
  * codes (not_found, gone, auth_required) fail the row at once; retryable codes
- * put it back to pending with crawlerx's Retry-After hint or jvmeta's backoff.
+ * put it back to pending with crawlerx's Retry-After hint or javmeta's backoff.
  */
 final class CrawlerxFailureContractTest extends CrawlerxContractTestCase
 {

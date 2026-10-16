@@ -53,9 +53,9 @@ stop grace period before killing remaining children and exits successfully.
 When a queued crawl row is missing or is no longer `claimed`, the job skips the
 fetch without changing the row and emits the `crawl_job_skipped` `ops` event.
 
-The relevant environment variables are `JVMETA_QUEUE_TIMEOUT` (default `180`),
-`DB_QUEUE_RETRY_AFTER` (default `240`), and `JVMETA_QUEUE_STOP_GRACE` (default
-`200`). `JVMETA_PHP_BIN` is available for shell-test replacement of the PHP
+The relevant environment variables are `JAVMETA_QUEUE_TIMEOUT` (default `180`),
+`DB_QUEUE_RETRY_AFTER` (default `240`), and `JAVMETA_QUEUE_STOP_GRACE` (default
+`200`). `JAVMETA_PHP_BIN` is available for shell-test replacement of the PHP
 binary and defaults to `php`.
 
 ## Scheduled crawler commands
@@ -92,24 +92,24 @@ callers migrate:
 
 - `crawl:dispatch` → `crawler:feed-pool`
 - `crawl:source` → `crawler:run-source`
-- `jvmeta:watchdog` → `crawler:watchdog`
-- `jvmeta:obs-publish-metrics` → `obs:publish-metrics`
+- `javmeta:watchdog` → `crawler:watchdog`
+- `javmeta:obs-publish-metrics` → `obs:publish-metrics`
 
 ## New instance versus upgrade
 
 The scripts support both deployment cases without renaming the application
 directory:
 
-- **New instance:** when `JVMETA_APP_DIR` does not exist, the script runs
+- **New instance:** when `JAVMETA_APP_DIR` does not exist, the script runs
   `git clone --branch ... --single-branch` into that path. Restore the private
-  `.env` through `JVMETA_ENV_SOURCE` before starting services.
+  `.env` through `JAVMETA_ENV_SOURCE` before starting services.
 - **Existing instance upgrade:** when the checkout already exists, keep the
   same directory and branch. The script requires a clean worktree and runs
   `git pull --ff-only origin <branch>`. The existing `.env` stays in place
-  unless `JVMETA_ENV_SOURCE` is explicitly supplied to restore a verified
+  unless `JAVMETA_ENV_SOURCE` is explicitly supplied to restore a verified
   backup.
 
-Do not rename or delete `/home/joos/jvmeta` during a normal upgrade. Record the
+Do not rename or delete `/home/joos/javmeta` during a normal upgrade. Record the
 current Git SHA before pulling so an approved rollback can return to the
 previous revision.
 
@@ -143,7 +143,7 @@ Compose compatibility detail separate from Composer dependency installation.
 
 ## Deployment scripts
 
-Both scripts clone the application when `JVMETA_APP_DIR` does not exist, or
+Both scripts clone the application when `JAVMETA_APP_DIR` does not exist, or
 perform a fast-forward-only pull when it is already a clean checkout. They
 fail on a dirty checkout, a branch mismatch, a missing `.env`, a failed build,
 or a failed command. They never print the `.env` contents.
@@ -200,13 +200,13 @@ drain and stop them before an upgrade so an active crawl is not interrupted.
 Run it from the crawler checkout:
 
 ```bash
-/home/joos/jvmeta/deploy/crawler.sh
+/home/joos/javmeta/deploy/crawler.sh
 ```
 
 The safe default is one worker. Override it only after reviewing queue load:
 
 ```bash
-JVMETA_WORKER_INSTANCES=2 /home/joos/jvmeta/deploy/crawler.sh
+JAVMETA_WORKER_INSTANCES=2 /home/joos/javmeta/deploy/crawler.sh
 ```
 
 ### Elasticsearch mapping and reindex
@@ -255,13 +255,13 @@ The defaults are suitable for the current VM layout, but all deployment paths
 can be overridden without changing the scripts:
 
 ```bash
-export JVMETA_APP_DIR=/home/joos/jvmeta
-export JVMETA_REPO_URL=https://github.com/jooservices/jvmeta.git
-export JVMETA_BRANCH=develop
-export JVMETA_ENV_SOURCE=/home/joos/jvmeta-backups/.env.<timestamp>
+export JAVMETA_APP_DIR=/home/joos/javmeta
+export JAVMETA_REPO_URL=https://github.com/jooservices/javmeta.git
+export JAVMETA_BRANCH=develop
+export JAVMETA_ENV_SOURCE=/home/joos/javmeta-backups/.env.<timestamp>
 ```
 
-`JVMETA_ENV_SOURCE` is required only when a new checkout has no `.env`, or when
+`JAVMETA_ENV_SOURCE` is required only when a new checkout has no `.env`, or when
 the operator intentionally restores a verified backup. When the checkout
 already contains `.env`, the scripts preserve it and only enforce mode `600`.
 
@@ -295,13 +295,13 @@ visibility timeout. Never use `down -v`, `docker volume prune`, or
 
 ### 4. Pull the requested GitHub revision
 
-Keep `/home/joos/jvmeta` in place. Before running the scripts, record the
+Keep `/home/joos/javmeta` in place. Before running the scripts, record the
 current revision and confirm the checkout is clean and on the requested branch:
 
 ```bash
-git -C /home/joos/jvmeta rev-parse HEAD
-git -C /home/joos/jvmeta status --short
-git -C /home/joos/jvmeta branch --show-current
+git -C /home/joos/javmeta rev-parse HEAD
+git -C /home/joos/javmeta status --short
+git -C /home/joos/javmeta branch --show-current
 ```
 
 The scripts then run `git pull --ff-only origin develop`. They stop if local
@@ -314,17 +314,17 @@ Run the Python script first so the embedder is available. For an existing
 checkout, no environment override is needed:
 
 ```bash
-/home/joos/jvmeta/deploy/python.sh
+/home/joos/javmeta/deploy/python.sh
 ```
 
 Then run the Laravel script:
 
 ```bash
-/home/joos/jvmeta/deploy/laravel.sh
+/home/joos/javmeta/deploy/laravel.sh
 ```
 
 For a new instance, or when restoring the verified backup, prefix both
-commands with `JVMETA_ENV_SOURCE=/home/joos/jvmeta-backups/.env.<timestamp>`.
+commands with `JAVMETA_ENV_SOURCE=/home/joos/javmeta-backups/.env.<timestamp>`.
 The scripts must be run as the deployment user, not by copying secrets into
 the repository.
 

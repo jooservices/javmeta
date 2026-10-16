@@ -29,7 +29,7 @@ final class SourceLoginCookieControllerTest extends TestCase
         parent::setUp();
 
         $this->ownerToken = fake()->uuid();
-        config(['jvmeta_auth.owner_admin_token' => $this->ownerToken]);
+        config(['javmeta_auth.owner_admin_token' => $this->ownerToken]);
         $this->config = new FakeConfigStore();
         $this->app->instance(ConfigStore::class, $this->config);
     }

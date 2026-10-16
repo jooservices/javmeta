@@ -43,7 +43,7 @@ final class CrawlQueueService
     public function enqueue(string $url, string $sourceSlug, string $kind, ?int $maxAttempts = null): CrawlQueue
     {
         $source = Source::query()->find($sourceSlug);
-        $configuredMaxAttempts = $maxAttempts ?? (int) config("jvmeta_sources.sources.{$sourceSlug}.max_attempts", config('jvmeta_sources.defaults.max_attempts', 3));
+        $configuredMaxAttempts = $maxAttempts ?? (int) config("javmeta_sources.sources.{$sourceSlug}.max_attempts", config('javmeta_sources.defaults.max_attempts', 3));
 
         return CrawlQueue::query()->firstOrCreate(
             ['source_slug' => $sourceSlug, 'url' => $url],

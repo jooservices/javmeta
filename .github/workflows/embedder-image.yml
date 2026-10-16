@@ -33,7 +33,7 @@ jobs:
           persist-credentials: false
 
       - name: Build embedder/Dockerfile.production (no push)
-        run: docker build --tag jvmeta-embedder:ci --file embedder/Dockerfile.production embedder
+        run: docker build --tag javmeta-embedder:ci --file embedder/Dockerfile.production embedder
 
       - name: Report image size
-        run: docker image inspect jvmeta-embedder:ci --format '{{.Size}}' | numfmt --to=iec
+        run: docker image inspect javmeta-embedder:ci --format '{{.Size}}' | numfmt --to=iec

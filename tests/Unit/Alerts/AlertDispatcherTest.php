@@ -24,7 +24,7 @@ final class AlertDispatcherTest extends TestCase
 
     public function test_send_skips_when_alerts_disabled(): void
     {
-        config(['jvmeta_alerts.enabled' => false]);
+        config(['javmeta_alerts.enabled' => false]);
 
         $notifier = $this->notifierSpy();
         $result = (new AlertDispatcher($notifier))->send('k', 's', 'b', [], 0);
@@ -35,7 +35,7 @@ final class AlertDispatcherTest extends TestCase
 
     public function test_send_notifies_when_alerts_enabled(): void
     {
-        config(['jvmeta_alerts.enabled' => true]);
+        config(['javmeta_alerts.enabled' => true]);
 
         $notifier = $this->notifierSpy();
         $result = (new AlertDispatcher($notifier))->send('k', 's', 'b', [], 0);

@@ -16,7 +16,7 @@ use App\Observability\ObservabilityEmitter;
 
 /**
  * Thin adapter over the CrawlerX public API. crawlerx owns every fetch
- * decision; jvmeta only passes a time budget (job timeout minus a margin),
+ * decision; javmeta only passes a time budget (job timeout minus a margin),
  * routes the request explicitly by site and crawl type, and normalizes every
  * outcome into a CrawlerxFetchResult. Never writes to the database. Not final
  * so tests can substitute a fixture-backed fake.
@@ -181,7 +181,7 @@ class CrawlerxClient
 
     private function options(): CrawlOptionsDto
     {
-        $deadline = (int) config('jvmeta_queues.worker_timeout', 180) - self::DEADLINE_MARGIN_SECONDS;
+        $deadline = (int) config('javmeta_queues.worker_timeout', 180) - self::DEADLINE_MARGIN_SECONDS;
 
         return new CrawlOptionsDto(fetch: new FetchOptionsDto(deadlineSeconds: max(1, $deadline)));
     }

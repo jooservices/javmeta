@@ -10,7 +10,7 @@ final class CrawlTickCommand extends Command
 {
     protected $signature = 'crawl:tick {--source=} {--limit=50}';
 
-    protected $description = 'Enqueue crawl listing URLs for enabled JVMeta sources.';
+    protected $description = 'Enqueue crawl listing URLs for enabled JAVMeta sources.';
 
     public function handle(): int
     {
