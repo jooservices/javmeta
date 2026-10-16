@@ -81,6 +81,8 @@ services:
       DB_PORT: "5432"
       DB_CONNECTION: pgsql
       DB_DATABASE: jvmeta_it
+      DB_USERNAME: jvmeta
+      DB_PASSWORD: jvmeta
       JAVMETA_E2E_POSTGRES_DATABASE: jvmeta_it
       MONGO_HOST: mongo
       MONGO_PORT: "27017"
