@@ -6,18 +6,14 @@ namespace Tests\Integration;
 
 use App\Models\CrawlQueue;
 use App\Support\Crawl\LaravelCrawlQueue;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 use Symfony\Component\Process\Process;
 use Tests\Support\Jobs\RedisQueueProbeJob;
-use Tests\TestCase;
 
-final class RedisQueueTest extends TestCase
+final class RedisQueueTest extends IntegrationTestCase
 {
-    use RefreshDatabase;
-
     public function test_two_redis_workers_drain_two_hundred_jobs_without_loss_and_feed_pool_resumes(): void
     {
         config([
