@@ -5,6 +5,35 @@ collects host and Docker container metrics on each control or crawler node and
 ships them to OpenObserve through Prometheus remote write. It does not change
 the application Compose project or deploy application services.
 
+## Application errors in Sentry
+
+The application sends errors to the shared Sentry project when
+`JAVMETA_SENTRY_DSN` is configured. Keep that value in the private Workspaces
+root `.env` or the deployment secret store; do not copy it into this repository,
+logs, or Jira. If the DSN is empty, Sentry remains disabled and the application
+does not send events.
+
+Errors are sampled at 100%. Trace sampling defaults to zero and can be enabled
+with `JAVMETA_SENTRY_TRACES_SAMPLE_RATE`; profiling is disabled. Personal data
+collection is disabled. The event scrubber removes request bodies, cookies,
+headers, query strings, user context, and arbitrary event extras. Breadcrumbs
+retain only allowlisted operational fields.
+
+Set `JAVMETA_ROLE` to `api`, `worker`, `scheduler`, or `mcp` for each runtime and
+set `JAVMETA_NODE_NAME` to the unique node name. Sentry events include those
+values as tags. Production image builds set `SENTRY_RELEASE` from the Git commit
+SHA; `make build` does the same for a local image.
+
+To send a manual test event from a runtime with the shared DSN configured, run:
+
+```bash
+php artisan javmeta:sentry-test
+```
+
+The command prints the Sentry event ID only. Verify that ID in the `javmeta`
+project and filter by `role` and `node`; never include a DSN or event payload in
+the verification notes.
+
 ## Contract
 
 The monitoring project runs one instance of each service below per node:

@@ -8,6 +8,7 @@ use App\Enums\CrawlErrorCode;
 use App\Events\CrawlIncidentOccurred;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
+use App\Observability\Sentry\CrawlFailureReporter;
 use App\Observability\ObservabilityEmitter;
 use App\Models\Source;
 use App\Services\Crawl\CrawlQueueService;
@@ -84,12 +85,15 @@ trait HandlesCrawlQueueRow
         }
 
         $timedOut = $exception instanceof TimeoutExceededException;
+        $errorCode = $timedOut ? CrawlErrorCode::Timeout : CrawlErrorCode::WorkerFailed;
         $this->markFailed(
             $row,
-            $timedOut ? CrawlErrorCode::Timeout : CrawlErrorCode::WorkerFailed,
+            $errorCode,
             $timedOut ? 'Worker timed out while processing the crawl row.' : $exception->getMessage(),
             $row->attempts < $row->max_attempts,
         );
+
+        app(CrawlFailureReporter::class)->report($exception, $row->source_slug, $errorCode->value);
     }
 
     /**
