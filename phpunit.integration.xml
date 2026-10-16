@@ -21,8 +21,8 @@
         <env name="CACHE_STORE" value="array"/>
         <env name="DB_CONNECTION" value="pgsql" force="true"/>
         <env name="DB_DATABASE" value="jvmeta_it" force="true"/>
-        <env name="DB_USERNAME" value="jvmeta" force="true"/>
-        <env name="DB_PASSWORD" value="jvmeta" force="true"/>
+        <env name="DB_USERNAME" value="jvmeta"/>
+        <env name="DB_PASSWORD" value="jvmeta"/>
         <env name="DB_URL" value="" force="true"/>
         <env name="MONGO_DATABASE" value="javmeta_it_archive" force="true"/>
         <env name="ELASTICSEARCH_MOVIES_INDEX" value="javmeta_it_movies" force="true"/>
@@ -37,8 +37,8 @@
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
         <env name="OPENOBSERVE_ENABLED" value="false" force="true"/>
-        <env name="OPENOBSERVE_ORG" value="default" force="true"/>
-        <env name="OPENOBSERVE_STREAM_LOGS" value="javmeta_it_logs" force="true"/>
+        <env name="OPENOBSERVE_ORG" value="default"/>
+        <env name="OPENOBSERVE_STREAM_LOGS" value="javmeta_it_logs"/>
         <env name="LOG_STACK" value="single" force="true"/>
         <env name="NOTIFICATION_TELEGRAM_BOT_TOKEN" value="" force="true"/>
         <env name="NOTIFICATION_TELEGRAM_CHAT_ID" value="" force="true"/>

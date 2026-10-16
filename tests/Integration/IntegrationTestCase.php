@@ -52,7 +52,8 @@ abstract class IntegrationTestCase extends BaseTestCase
     /** @return array<string, mixed>|null */
     protected function esDocument(string $index, string $id): ?array
     {
-        $response = $this->es()->get("/{$index}/_doc/{$id}");
+        // Elasticsearch 9 leaves dense_vector fields out of _source unless asked for them.
+        $response = $this->es()->get("/{$index}/_doc/{$id}", ['_source_exclude_vectors' => 'false']);
 
         return $response->successful() && $response->json('found') === true ? (array) $response->json('_source') : null;
     }
@@ -67,7 +68,11 @@ abstract class IntegrationTestCase extends BaseTestCase
 
     private function resetMongo(): void
     {
-        $this->mongo()->dropDatabase((string) config('mongodb.database'));
+        // Collections are dropped one by one: the least-privilege test user (readWrite) cannot dropDatabase.
+        $database = $this->mongo()->selectDatabase((string) config('mongodb.database'));
+        foreach ($database->listCollectionNames() as $collection) {
+            $database->dropCollection($collection);
+        }
     }
 
     private function resetElasticsearch(): void
@@ -98,7 +103,11 @@ abstract class IntegrationTestCase extends BaseTestCase
 
     protected function mongo(): MongoClient
     {
-        return new MongoClient(sprintf('mongodb://%s:%d', config('mongodb.host'), config('mongodb.port')));
+        $uri = config('mongodb.uri');
+
+        return new MongoClient(is_string($uri) && $uri !== ''
+            ? $uri
+            : sprintf('mongodb://%s:%d', config('mongodb.host'), config('mongodb.port')));
     }
 
     private function es(): PendingRequest

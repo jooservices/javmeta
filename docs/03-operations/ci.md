@@ -65,3 +65,20 @@ removes them afterwards):
 docker/ci/integration                      # or: make test-integration
 docker/ci/integration --filter Performer   # extra PHPUnit arguments
 ```
+
+The CI services use the same versions as the Workspaces shared Docker (PostgreSQL 18.6,
+MongoDB 9.0.4, Elasticsearch 9.5.5, OpenObserve 1.0.4, Redis 8.2.10). For local development and QA,
+run the same suite against the shared services instead of starting a second stack:
+
+```bash
+scripts/docker/shared provision-javmeta-test     # once, from the Workspaces root: creates the JAVMETA_IT_* namespaces
+docker/ci/integration-shared                     # whole suite against the shared services
+docker/ci/integration-shared --filter Performer  # extra PHPUnit arguments
+```
+
+The runner reads `JAVMETA_IT_*` from the private Workspaces `.env` into a temporary 0600 file and
+never prints values. The test accounts are least-privilege (Mongo `readWrite`, Elasticsearch role on
+`javmeta_it_*`, an OpenObserve organization of their own), so the suite resets Mongo by dropping
+collections rather than the database. The Mongo outage scenario stays CI-only because it stops the
+service. Elasticsearch 9 leaves `dense_vector` fields out of `_source`; tests that read vectors
+back pass `_source_exclude_vectors=false`.
