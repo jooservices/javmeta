@@ -8,6 +8,7 @@ use App\Jobs\FetchDetailJob;
 use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Observability\Sentry\SentryScrubber;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
@@ -134,11 +135,13 @@ final class SentryReportingTest extends TestCase
     public function test_scheduler_command_exception_is_sent_with_scheduler_role(): void
     {
         config()->set('sentry.role', 'scheduler');
-        Artisan::command('javmeta:test-scheduler-failure', function (): never {
+        $schedule = new Schedule();
+        $schedule->call(static function (): never {
             throw new RuntimeException('Scheduled operation failed');
-        });
+        })->everyMinute();
+        $this->app->instance(Schedule::class, $schedule);
 
-        $this->artisan('javmeta:test-scheduler-failure')->assertFailed();
+        $this->artisan('schedule:run');
 
         self::assertCount(1, $this->transport->events);
         self::assertSame('scheduler', $this->transport->events[0]->getTags()['role'] ?? null);
