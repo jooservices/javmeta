@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Lean quality-gate image: same PHP + extensions as the app image, plus pcov
 # for coverage. No browser libraries, no Node. Used locally and in CI.
-FROM php:8.5-cli-bookworm
+FROM php:8.5.11-cli-bookworm
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -18,7 +18,7 @@ RUN apt-get update \
     && mkdir -p /tmp/composer-cache \
     && chmod 1777 /tmp/composer-cache
 
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+COPY --from=composer:2.10.3 /usr/bin/composer /usr/bin/composer
 
 ENV COMPOSER_CACHE_DIR=/tmp/composer-cache \
     COMPOSER_ALLOW_SUPERUSER=1

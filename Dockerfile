@@ -1,4 +1,8 @@
-FROM php:8.5-cli-bookworm
+# syntax=docker/dockerfile:1
+
+FROM node:22.23.3-bookworm-slim AS node-runtime
+
+FROM php:8.5.11-cli-bookworm
 
 WORKDIR /var/www/html
 
@@ -32,14 +36,13 @@ RUN apt-get update \
         xvfb \
         xauth \
         zip \
-    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
     && pecl install mongodb \
     && docker-php-ext-enable mongodb \
     && docker-php-ext-install intl pcntl pdo_pgsql pdo_mysql \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+COPY --from=node-runtime /usr/local/ /usr/local/
+COPY --from=composer:2.10.3 /usr/bin/composer /usr/bin/composer
 
 COPY docker/crawlerx-fetch-ready.sh /usr/local/bin/crawlerx-fetch-ready
 COPY docker/worker-queues.sh /usr/local/bin/worker-queues
