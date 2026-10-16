@@ -31,6 +31,8 @@ final class CoverageReportTest extends TestCase
 
             $report = file_get_contents($reportPath);
             self::assertIsString($report);
+            self::assertStringStartsWith('# Coverage Gaps', $report);
+            self::assertStringNotContainsString('JAVM-24', $report);
             self::assertStringContainsString('**50.00% (1/2)**', $report);
             self::assertStringContainsString('`app/Http/Controllers/McpHttpController.php` | 48 |', $report);
             self::assertStringContainsString('SSE response callback is not drained', $report);

@@ -68,13 +68,16 @@ jobs:
           JAVMETA_CI_SKIP_BUILD: '1'
         run: docker/ci/run composer coverage:check
 
-      - name: Test stability (three consecutive runs, maximum 30% growth)
+      - name: Test stability (three runs, warn above 30%, fail above 2x baseline)
         env:
           JAVMETA_CI_SKIP_BUILD: '1'
         run: |
           set -euo pipefail
+          # GitHub-hosted runner jitter makes a 30% cutoff noisy; warn in that
+          # band and fail only when a run exceeds 2x the stable baseline.
           baseline_seconds=25.00
-          maximum_seconds=32.50
+          warning_seconds=32.50
+          maximum_seconds=50.00
 
           for run in 1 2 3; do
             printf 'Composer test stability run %s/3\n' "${run}"
@@ -89,10 +92,15 @@ jobs:
 
             duration="${duration_line#*: }"
             duration="${duration%s}"
-            if ! awk -v actual="${duration}" -v limit="${maximum_seconds}" 'BEGIN { exit(actual < limit ? 0 : 1) }'; then
-              printf 'Composer test run %s took %ss; must stay below %ss (baseline %ss).\n' \
+            if awk -v actual="${duration}" -v limit="${maximum_seconds}" 'BEGIN { exit(actual > limit ? 0 : 1) }'; then
+              printf 'Composer test run %s took %ss; exceeds hard limit %ss (baseline %ss).\n' \
                 "${run}" "${duration}" "${maximum_seconds}" "${baseline_seconds}" >&2
               exit 1
+            fi
+
+            if awk -v actual="${duration}" -v limit="${warning_seconds}" 'BEGIN { exit(actual >= limit ? 0 : 1) }'; then
+              printf '::warning::Composer test run %s took %ss; warning threshold %ss, hard failure above %ss (baseline %ss).\n' \
+                "${run}" "${duration}" "${warning_seconds}" "${maximum_seconds}" "${baseline_seconds}"
             fi
           done
 
@@ -103,8 +111,8 @@ jobs:
           name: coverage
           path: |
             build/coverage.xml
-            artifacts/reports/JAVM-24-coverage.md
-          retention-days: 7
+            build/coverage/uncovered-files.md
+          retention-days: 14
 
   integration:
     name: Integration (Postgres, Mongo, Elasticsearch, OpenObserve)

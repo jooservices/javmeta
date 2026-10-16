@@ -79,7 +79,7 @@ $statements = (int) $metrics['statements'];
 $covered = (int) $metrics['coveredstatements'];
 $percentage = $statements > 0 ? ($covered / $statements) * 100 : 0;
 $report = [
-    '# JAVM-24 Coverage Gaps',
+    '# Coverage Gaps',
     '',
     sprintf('Combined unit and feature statement coverage: **%.2f%% (%d/%d)**.', $percentage, $covered, $statements),
     '',
