@@ -88,9 +88,11 @@ final class CrawlerxFailureContractTest extends CrawlerxContractTestCase
         $this->assertNothingStored($errorCode, $eventKind);
     }
 
-    /** @param \Closure(): (ResponseInterface|Throwable) $response */
+    /**
+     * @param \Closure(): (ResponseInterface|Throwable) $response
+     */
     #[DataProvider('retryableFailures')]
-    public function test_retryable_failure_at_max_attempts_fails_the_row(\Closure $response, string $errorCode, string $eventKind): void
+    public function test_retryable_failure_at_max_attempts_fails_the_row(\Closure $response, string $errorCode, string $eventKind, int $delaySeconds): void
     {
         $row = $this->detailRow(attempts: 3);
         $this->respondWith(self::URL, $response(), $response(), $response());

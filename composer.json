@@ -22,25 +22,25 @@
         "jooservices/laravel-logging": "^4.0",
         "jooservices/laravel-notifications": "^1.0.1",
         "jooservices/laravel-repository": "^4.0",
-        "laravel/framework": "^12.0",
-        "laravel/tinker": "^2.10.1",
+        "laravel/framework": "^13",
+        "laravel/tinker": "^3",
         "mongodb/mongodb": "^2.0"
     },
     "require-dev": {
+        "captainhook/captainhook": "^5.23",
         "fakerphp/faker": "^1.23",
-    "captainhook/captainhook": "^5.23",
-    "friendsofphp/php-cs-fixer": "^3.75",
-    "larastan/larastan": "^3.0",
-    "laravel/pail": "^1.2.2",
-    "laravel/pint": "^1.24",
-    "laravel/sail": "^1.41",
-    "mockery/mockery": "^1.6",
-    "nunomaduro/collision": "^8.6",
-    "phpmd/phpmd": "^2.15",
-    "phpstan/phpstan": "^2.1",
-    "phpstan/phpstan-phpunit": "^2.1",
-    "phpunit/phpunit": "^11.5.50",
-    "squizlabs/php_codesniffer": "^3.13.6 || ^4.0.0"
+        "friendsofphp/php-cs-fixer": "^3.75",
+        "larastan/larastan": "^3.0",
+        "laravel/pail": "^1.2.2",
+        "laravel/pint": "^1.24",
+        "laravel/sail": "^1.41",
+        "mockery/mockery": "^1.6",
+        "nunomaduro/collision": "^8.6",
+        "phpmd/phpmd": "^3.0",
+        "phpstan/phpstan": "^2.1",
+        "phpstan/phpstan-phpunit": "^2.0",
+        "phpunit/phpunit": "^12.0",
+        "squizlabs/php_codesniffer": "^3.13.6 || ^4.0.0"
     },
     "autoload": {
         "psr-4": {
@@ -59,7 +59,7 @@
         "lint:pint": "pint --test",
         "lint:pint:fix": "pint",
         "lint:phpcs": "phpcs --standard=phpcs.xml",
-        "lint:phpmd": "php -d error_reporting=6143 vendor/bin/phpmd app,tests text phpmd.xml",
+        "lint:phpmd": "vendor/bin/phpmd analyze app tests --format text --ruleset phpmd.xml --no-progress",
         "lint:phpstan": "XDEBUG_MODE=off phpstan analyse --configuration=phpstan.neon --memory-limit=512M",
         "lint:cs": "php-cs-fixer fix --config=.php-cs-fixer.dist.php --dry-run --diff --sequential",
         "lint:cs:fix": "php-cs-fixer fix --config=.php-cs-fixer.dist.php --sequential",
@@ -148,6 +148,6 @@
             "php-http/discovery": true
         }
     },
-    "minimum-stability": "dev",
+    "minimum-stability": "stable",
     "prefer-stable": true
 }
