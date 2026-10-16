@@ -79,7 +79,9 @@ services:
       HOME: /tmp
       DB_HOST: postgres
       DB_PORT: "5432"
+      DB_CONNECTION: pgsql
       DB_DATABASE: jvmeta_it
+      JAVMETA_E2E_POSTGRES_DATABASE: jvmeta_it
       MONGO_HOST: mongo
       MONGO_PORT: "27017"
       MONGO_DATABASE: javmeta_it_archive

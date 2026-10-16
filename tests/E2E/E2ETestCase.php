@@ -54,6 +54,7 @@ abstract class E2ETestCase extends TestCase
     {
         parent::setUp();
 
+        self::useTestDatabase();
         self::initializeProcesses();
         config()->set('javmeta_auth.owner_admin_token', self::$ownerToken);
         config()->set('javmeta_auth.mcp_api_key', self::$mcpToken);
@@ -304,6 +305,25 @@ abstract class E2ETestCase extends TestCase
         if (DB::getDriverName() !== 'pgsql') {
             throw new RuntimeException('The E2E suite requires the PostgreSQL test database.');
         }
+    }
+
+    private static function useTestDatabase(): void
+    {
+        $database = getenv('JAVMETA_E2E_POSTGRES_DATABASE');
+        if (! is_string($database) || $database === '') {
+            throw new RuntimeException('The E2E PostgreSQL database was not configured.');
+        }
+
+        putenv('DB_CONNECTION=pgsql');
+        putenv('DB_DATABASE=' . $database);
+        $_ENV['DB_CONNECTION'] = 'pgsql';
+        $_ENV['DB_DATABASE'] = $database;
+        $_SERVER['DB_CONNECTION'] = 'pgsql';
+        $_SERVER['DB_DATABASE'] = $database;
+        config()->set('database.default', 'pgsql');
+        config()->set('database.connections.pgsql.database', $database);
+        DB::purge('pgsql');
+        DB::setDefaultConnection('pgsql');
     }
 
     private static function resetPostgres(): void

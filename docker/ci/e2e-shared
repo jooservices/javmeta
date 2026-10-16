@@ -141,6 +141,7 @@ env = {
     "APP_ENV": "testing", "APP_NAME": "javmeta", "APP_KEY": "base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
     "DB_CONNECTION": "pgsql", "DB_HOST": host, "DB_PORT": values.get("JAVMETA_IT_POSTGRES_PORT", "15435"),
     "DB_DATABASE": database, "DB_USERNAME": values["JAVMETA_IT_POSTGRES_USER"], "DB_PASSWORD": values["JAVMETA_IT_POSTGRES_PASSWORD"],
+    "JAVMETA_E2E_POSTGRES_DATABASE": database,
     "DB_URL": "", "MONGO_URI": mongo_uri, "MONGO_DATABASE": mongo_database,
     "ELASTICSEARCH_HOST": elastic_url, "ELASTICSEARCH_MOVIES_INDEX": movie_index, "ELASTICSEARCH_PERFORMERS_INDEX": performer_index,
     "ELASTICSEARCH_VERIFY_SSL": "false", "EMBEDDER_URL": "http://127.0.0.1:1",
