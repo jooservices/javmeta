@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage>
+  <project>
+    <package name="App\Http\Controllers">
+      <file name="app/Http/Controllers/McpHttpController.php">
+        <line num="48" type="stmt" count="0"/>
+        <line num="50" type="stmt" count="1"/>
+        <metrics statements="2" coveredstatements="1"/>
+      </file>
+    </package>
+    <metrics statements="2" coveredstatements="1"/>
+  </project>
+</coverage>
