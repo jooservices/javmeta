@@ -25,7 +25,8 @@
         "laravel/framework": "^13",
         "laravel/horizon": "^5.50",
         "laravel/tinker": "^3",
-        "mongodb/mongodb": "^2.0"
+        "mongodb/mongodb": "^2.0",
+        "sentry/sentry-laravel": "^4.29"
     },
     "require-dev": {
         "captainhook/captainhook": "^5.23",

@@ -1,6 +1,7 @@
 DOCKER_COMPOSE ?= docker compose
 PHP_SERVICE ?= api
 MODE ?= local
+SENTRY_RELEASE ?= $(shell git rev-parse --verify HEAD 2>/dev/null || echo unknown)
 
 # Profile flag groups (repeat --profile per value: comma form is not parsed).
 PROFILE_ALL = --profile app --profile data --profile openobserve --profile flare --profile control --profile embed
@@ -30,7 +31,7 @@ LOCAL_SERVICES = $(API_SERVICES) $(WORKER_SERVICES) $(DATA_SERVICES) $(OBS_SERVI
 .PHONY: build crawl down install lint migrate scheduler setup shell test test-integration up validate
 
 build:
-	$(DOCKER_COMPOSE) build
+	SENTRY_RELEASE=$(SENTRY_RELEASE) $(DOCKER_COMPOSE) build
 
 install:
 	$(DOCKER_COMPOSE) run --rm $(PHP_SERVICE) composer install

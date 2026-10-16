@@ -64,6 +64,8 @@ services:
   api:
     build:
       context: .
+      args:
+        SENTRY_RELEASE: ${SENTRY_RELEASE:-unknown}
     image: jooservices/javmeta:php85
     working_dir: /var/www/html
     command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
