@@ -31,6 +31,9 @@ same location in the backup container and Elasticsearch nodes, and it must be
 allowed by the server's static <code>path.repo</code> setting. Elasticsearch requires
 each filesystem repository location to be under a configured <code>path.repo</code> entry
 ([official filesystem repository requirements](https://www.elastic.co/docs/reference/elasticsearch/configuration-reference/fs-repository-settings)).
+Before writing a full backup, the script checks that the configured snapshot
+path is allowed by <code>path.repo</code> on every node. It stops before creating backup
+artifacts when the setting is absent or does not include that path.
 
 Use <code>backup.sh --weekly</code> for a weekly copy. Retention defaults to seven daily
 folders and four weekly folders. <code>backup.sh --dry-run --namespace=&lt;name&gt;</code> checks
@@ -58,6 +61,13 @@ all encrypted artifact hashes before decrypting or connecting.
 For an isolated shared-service rehearsal, pass only a <code>javmeta_it*</code> namespace
 to <code>rehearse.sh</code>; it creates unique fixtures and removes only those fixtures
 and the backup folder it created.
+
+When Elasticsearch filesystem snapshots are unavailable, run
+<code>rehearse.sh --namespace=javmeta_it --postgres-mongo-only</code>. This explicitly
+backs up and restores only PostgreSQL and MongoDB. The manifest lists the two
+included components, the rehearsal reports Elasticsearch as pending, and the
+partial backup cannot update <code>latest.json</code>. Elasticsearch is not considered
+verified by this mode.
 
 MongoDB uses the Database Tools archive and gzip options documented by MongoDB
 ([mongodump](https://www.mongodb.com/docs/database-tools/mongodump/),

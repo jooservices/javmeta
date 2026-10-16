@@ -9,10 +9,11 @@ source "${SCRIPT_DIR}/common.sh"
 usage() {
   cat <<'USAGE'
 Usage: backup.sh --namespace=<name> [--weekly] [--dry-run] [--prune-only]
+       backup.sh --namespace=<name> --postgres-mongo-only [--dry-run]
 
 Required environment: BACKUP_ROOT, AGE_RECIPIENT, PGHOST, PGPORT, PGUSER,
-PGPASSWORD, PGDATABASE, MONGO_URI, ELASTICSEARCH_HOST, and
-ELASTICSEARCH_SNAPSHOT_PATH.
+PGPASSWORD, PGDATABASE, and MONGO_URI. Full backups also require
+ELASTICSEARCH_HOST and ELASTICSEARCH_SNAPSHOT_PATH.
 USAGE
 }
 
@@ -20,6 +21,7 @@ namespace=''
 backup_kind='daily'
 dry_run=0
 prune_only=0
+postgres_mongo_only=0
 
 for argument in "$@"; do
   case "$argument" in
@@ -27,6 +29,7 @@ for argument in "$@"; do
     --weekly) backup_kind='weekly' ;;
     --dry-run) dry_run=1 ;;
     --prune-only) prune_only=1 ;;
+    --postgres-mongo-only) postgres_mongo_only=1 ;;
     --help|-h) usage; exit 0 ;;
     *) fail "Unknown argument: ${argument}" ;;
   esac
@@ -34,6 +37,8 @@ done
 
 [[ -n "$namespace" ]] || { usage >&2; fail 'An explicit --namespace=<name> is required.'; }
 validate_namespace "$namespace"
+(( postgres_mongo_only == 0 || prune_only == 0 )) \
+  || fail '--postgres-mongo-only cannot be combined with --prune-only.'
 require_env BACKUP_ROOT
 require_env PGHOST
 require_env PGPORT
@@ -41,12 +46,18 @@ require_env PGUSER
 require_env PGPASSWORD
 require_env PGDATABASE
 require_env MONGO_URI
-require_env ELASTICSEARCH_HOST
+if (( postgres_mongo_only == 0 )); then
+  require_env ELASTICSEARCH_HOST
+fi
 
 mongo_database="$(mongo_database_from_uri "$MONGO_URI")"
 [[ -n "$mongo_database" ]] || fail 'MONGO_URI must name its database in the path.'
 index_pattern="${ELASTICSEARCH_INDEX_PATTERN:-${namespace}*}"
-validate_namespace_targets "$namespace" "$mongo_database" "$index_pattern"
+if (( postgres_mongo_only == 1 )); then
+  validate_database_namespace_targets "$namespace" "$mongo_database"
+else
+  validate_namespace_targets "$namespace" "$mongo_database" "$index_pattern"
+fi
 
 retention_daily="${BACKUP_RETENTION_DAILY:-7}"
 retention_weekly="${BACKUP_RETENTION_WEEKLY:-4}"
@@ -93,12 +104,24 @@ if (( prune_only == 1 )); then
 fi
 
 require_env AGE_RECIPIENT
-require_env ELASTICSEARCH_SNAPSHOT_PATH
-validate_snapshot_path "$ELASTICSEARCH_SNAPSHOT_PATH"
+if (( postgres_mongo_only == 1 )); then
+  if (( dry_run == 0 )); then
+    [[ "${BACKUP_PUBLISH_LATEST:-1}" == '0' ]] \
+      || fail 'A PostgreSQL and MongoDB-only backup cannot publish latest.json; set BACKUP_PUBLISH_LATEST=0.'
+  fi
+else
+  require_env ELASTICSEARCH_SNAPSHOT_PATH
+  validate_snapshot_path "$ELASTICSEARCH_SNAPSHOT_PATH"
+fi
 
 if (( dry_run == 1 )); then
-  printf 'DRY RUN: namespace=%s kind=%s postgres=%s mongo=%s elasticsearch=%s\n' \
-    "$namespace" "$backup_kind" "$PGDATABASE" "$mongo_database" "$index_pattern"
+  if (( postgres_mongo_only == 1 )); then
+    printf 'DRY RUN: namespace=%s kind=%s postgres=%s mongo=%s elasticsearch=not-included\n' \
+      "$namespace" "$backup_kind" "$PGDATABASE" "$mongo_database"
+  else
+    printf 'DRY RUN: namespace=%s kind=%s postgres=%s mongo=%s elasticsearch=%s\n' \
+      "$namespace" "$backup_kind" "$PGDATABASE" "$mongo_database" "$index_pattern"
+  fi
   exit 0
 fi
 
@@ -106,16 +129,28 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Required command is missing: $1."
 }
 
-for command_name in pg_dump mongodump age curl jq tar sha256sum; do
+required_commands=(pg_dump mongodump age jq tar sha256sum)
+if (( postgres_mongo_only == 0 )); then
+  required_commands+=(curl)
+  require_cmd jq
+  require_cmd curl
+  require_elasticsearch_snapshot_path_repo "$ELASTICSEARCH_SNAPSHOT_PATH"
+fi
+for command_name in "${required_commands[@]}"; do
   require_cmd "$command_name"
 done
 
 backup_id="$(date -u '+%Y%m%dT%H%M%SZ')"
 backup_parent="${BACKUP_ROOT%/}/${backup_kind}"
 backup_dir="${backup_parent}/${backup_id}"
-snapshot_repository="javmeta_${namespace}_${backup_id//[^a-zA-Z0-9]/_}"
-snapshot_name="snapshot_${backup_id}"
-snapshot_path="${ELASTICSEARCH_SNAPSHOT_PATH%/}/${snapshot_repository}"
+snapshot_repository=''
+snapshot_name=''
+snapshot_path=''
+if (( postgres_mongo_only == 0 )); then
+  snapshot_repository="javmeta_${namespace}_${backup_id//[^a-zA-Z0-9]/_}"
+  snapshot_name="snapshot_${backup_id}"
+  snapshot_path="${ELASTICSEARCH_SNAPSHOT_PATH%/}/${snapshot_repository}"
+fi
 repo_registered=0
 backup_created=0
 snapshot_path_created=0
@@ -124,10 +159,11 @@ latest_tmp=''
 cleanup() {
   local status="$1"
 
-  if (( repo_registered == 1 )); then
+  if (( postgres_mongo_only == 0 && repo_registered == 1 )); then
     elasticsearch_request DELETE "/_snapshot/${snapshot_repository}" >/dev/null 2>&1 || true
   fi
-  if [[ -n "$snapshot_path" && "$snapshot_path" == "${ELASTICSEARCH_SNAPSHOT_PATH%/}/"* && -d "$snapshot_path" ]] && (( snapshot_path_created == 1 )); then
+  if (( postgres_mongo_only == 0 && snapshot_path_created == 1 )) \
+    && [[ "$snapshot_path" == "${ELASTICSEARCH_SNAPSHOT_PATH%/}/"* && -d "$snapshot_path" ]]; then
     rm -rf -- "$snapshot_path"
   fi
   if (( status != 0 && backup_created == 1 )) && [[ -d "$backup_dir" ]]; then
@@ -143,7 +179,9 @@ trap 'status=$?; cleanup "$status"; exit "$status"' EXIT
 mkdir -p "$backup_dir"
 chmod 700 "$backup_dir"
 backup_created=1
-mkdir -p "$ELASTICSEARCH_SNAPSHOT_PATH"
+if (( postgres_mongo_only == 0 )); then
+  mkdir -p "$ELASTICSEARCH_SNAPSHOT_PATH"
+fi
 
 pg_dump_args=(--format=custom --no-password --no-owner --no-privileges --dbname="$PGDATABASE")
 if [[ -n "${PG_DUMP_SCHEMA:-}" ]]; then
@@ -161,30 +199,32 @@ fi
 mongodump "${mongodump_args[@]}" | age --encrypt --recipient "$AGE_RECIPIENT" --output "${backup_dir}/mongo.archive.age"
 printf 'MongoDB archive encrypted.\n'
 
-[[ ! -e "$snapshot_path" ]] || fail 'The generated Elasticsearch snapshot path already exists.'
-mkdir -p "$snapshot_path"
-snapshot_path_created=1
-snapshot_repository_body="$(jq -cn --arg location "$snapshot_path" '{type:"fs",settings:{location:$location,compress:true}}')"
-snapshot_registered="$(elasticsearch_request PUT "/_snapshot/${snapshot_repository}" "$snapshot_repository_body" 2>/dev/null)" \
-  || fail 'Elasticsearch could not register the filesystem repository; verify path.repo and the shared snapshot mount.'
-jq -e '.acknowledged == true' >/dev/null <<<"$snapshot_registered" \
-  || fail 'Elasticsearch did not acknowledge the filesystem repository registration.'
-repo_registered=1
+if (( postgres_mongo_only == 0 )); then
+  [[ ! -e "$snapshot_path" ]] || fail 'The generated Elasticsearch snapshot path already exists.'
+  mkdir -p "$snapshot_path"
+  snapshot_path_created=1
+  snapshot_repository_body="$(jq -cn --arg location "$snapshot_path" '{type:"fs",settings:{location:$location,compress:true}}')"
+  snapshot_registered="$(elasticsearch_request PUT "/_snapshot/${snapshot_repository}" "$snapshot_repository_body" 2>/dev/null)" \
+    || fail 'Elasticsearch could not register the filesystem repository; verify path.repo and the shared snapshot mount.'
+  jq -e '.acknowledged == true' >/dev/null <<<"$snapshot_registered" \
+    || fail 'Elasticsearch did not acknowledge the filesystem repository registration.'
+  repo_registered=1
 
-snapshot_result="$(elasticsearch_request PUT "/_snapshot/${snapshot_repository}/${snapshot_name}?wait_for_completion=true" "{\"indices\":\"$index_pattern\",\"include_global_state\":false,\"ignore_unavailable\":false}" 2>/dev/null)" \
-  || fail 'Elasticsearch snapshot failed; verify the explicitly named index namespace and repository permissions.'
-jq -e '.snapshot.state == "SUCCESS" and (.snapshot.failures | length) == 0' >/dev/null <<<"$snapshot_result" \
-  || fail 'Elasticsearch snapshot did not finish successfully.'
+  snapshot_result="$(elasticsearch_request PUT "/_snapshot/${snapshot_repository}/${snapshot_name}?wait_for_completion=true" "{\"indices\":\"$index_pattern\",\"include_global_state\":false,\"ignore_unavailable\":false}" 2>/dev/null)" \
+    || fail 'Elasticsearch snapshot failed; verify the explicitly named index namespace and repository permissions.'
+  jq -e '.snapshot.state == "SUCCESS" and (.snapshot.failures | length) == 0' >/dev/null <<<"$snapshot_result" \
+    || fail 'Elasticsearch snapshot did not finish successfully.'
 
-find "$snapshot_path" -mindepth 1 -print -quit | grep -q . \
-  || fail 'Elasticsearch returned success but created no filesystem snapshot files.'
-tar -C "$snapshot_path" -czf - . | age --encrypt --recipient "$AGE_RECIPIENT" --output "${backup_dir}/elasticsearch.snapshot.tar.gz.age"
-elasticsearch_request DELETE "/_snapshot/${snapshot_repository}" >/dev/null 2>&1 \
-  || fail 'Elasticsearch snapshot completed but its temporary repository could not be unregistered.'
-repo_registered=0
-rm -rf -- "$snapshot_path"
-snapshot_path_created=0
-printf 'Elasticsearch snapshot encrypted.\n'
+  find "$snapshot_path" -mindepth 1 -print -quit | grep -q . \
+    || fail 'Elasticsearch returned success but created no filesystem snapshot files.'
+  tar -C "$snapshot_path" -czf - . | age --encrypt --recipient "$AGE_RECIPIENT" --output "${backup_dir}/elasticsearch.snapshot.tar.gz.age"
+  elasticsearch_request DELETE "/_snapshot/${snapshot_repository}" >/dev/null 2>&1 \
+    || fail 'Elasticsearch snapshot completed but its temporary repository could not be unregistered.'
+  repo_registered=0
+  rm -rf -- "$snapshot_path"
+  snapshot_path_created=0
+  printf 'Elasticsearch snapshot encrypted.\n'
+fi
 
 created_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 jq -n \
@@ -197,13 +237,24 @@ jq -n \
   --arg mongo_collection "${MONGO_COLLECTION:-}" \
   --arg es_indices "$index_pattern" \
   --arg es_snapshot "$snapshot_name" \
-  '{namespace:$namespace,kind:$kind,created_at:$created_at,targets:{postgres:{database:$pg_database,schema:$pg_schema},mongodb:{database:$mongo_database,collection:$mongo_collection},elasticsearch:{indices:$es_indices,snapshot:$es_snapshot}},artifacts:["postgres.dump.age","mongo.archive.age","elasticsearch.snapshot.tar.gz.age"]}' \
+  --argjson postgres_mongo_only "$postgres_mongo_only" \
+  'if $postgres_mongo_only == 1 then
+    {namespace:$namespace,kind:$kind,created_at:$created_at,components:["postgres","mongodb"],targets:{postgres:{database:$pg_database,schema:$pg_schema},mongodb:{database:$mongo_database,collection:$mongo_collection}},artifacts:["postgres.dump.age","mongo.archive.age"]}
+  else
+    {namespace:$namespace,kind:$kind,created_at:$created_at,components:["postgres","mongodb","elasticsearch"],targets:{postgres:{database:$pg_database,schema:$pg_schema},mongodb:{database:$mongo_database,collection:$mongo_collection},elasticsearch:{indices:$es_indices,snapshot:$es_snapshot}},artifacts:["postgres.dump.age","mongo.archive.age","elasticsearch.snapshot.tar.gz.age"]}
+  end' \
   > "${backup_dir}/manifest.json"
-(cd "$backup_dir" && sha256sum postgres.dump.age mongo.archive.age elasticsearch.snapshot.tar.gz.age > manifest.sha256)
+artifacts=(postgres.dump.age mongo.archive.age)
+if (( postgres_mongo_only == 0 )); then
+  artifacts+=(elasticsearch.snapshot.tar.gz.age)
+fi
+(cd "$backup_dir" && sha256sum "${artifacts[@]}" > manifest.sha256)
 chmod 600 "$backup_dir"/manifest.json "$backup_dir"/manifest.sha256 "$backup_dir"/*.age
 
-prune_category daily "$retention_daily"
-prune_category weekly "$retention_weekly"
+if (( postgres_mongo_only == 0 )); then
+  prune_category daily "$retention_daily"
+  prune_category weekly "$retention_weekly"
+fi
 
 if [[ "${BACKUP_PUBLISH_LATEST:-1}" == '1' ]]; then
   latest_tmp="${BACKUP_ROOT%/}/.latest-${backup_id}.tmp"

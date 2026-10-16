@@ -50,6 +50,8 @@ Set <code>path.repo</code> on every Elasticsearch node and mount the snapshot di
 at the same path in each node and the backup container. The Elasticsearch
 filesystem repository API only accepts locations underneath this static
 setting ([Elasticsearch documentation](https://www.elastic.co/docs/reference/elasticsearch/configuration-reference/fs-repository-settings)).
+Live full backup, restore, and rehearsal commands check the node settings first
+and stop with an explicit JOOS-114 message if the configured path is not allowed.
 The Workspaces shared Elasticsearch service currently has no <code>path.repo</code> value
 or snapshot mount; JOOS-114 tracks that shared infrastructure prerequisite.
 Do not add a repository to shared Elasticsearch until that isolated
@@ -78,3 +80,10 @@ PostgreSQL row, MongoDB document, and Elasticsearch index counts, prints a
 timing/result table, then removes only those fixtures and its own test backup.
 Use Workspaces shared Docker services only; do not start this repository's
 database/search compose stack for the rehearsal.
+
+Until JOOS-114 provisions Elasticsearch <code>path.repo</code> and its shared snapshot
+mount, the full rehearsal must stop before writing fixtures. PostgreSQL and
+MongoDB can be rehearsed with
+<code>rehearse.sh --namespace=javmeta_it --postgres-mongo-only</code>; this mode
+reports Elasticsearch as pending and cannot publish a partial manifest as the
+latest complete backup.

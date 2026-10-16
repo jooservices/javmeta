@@ -7,30 +7,48 @@ SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 
 namespace=''
+postgres_mongo_only=0
 for argument in "$@"; do
   case "$argument" in
     --namespace=*) namespace="${argument#*=}" ;;
-    --help|-h) printf 'Usage: rehearse.sh --namespace=javmeta_it\n'; exit 0 ;;
+    --postgres-mongo-only) postgres_mongo_only=1 ;;
+    --help|-h) printf 'Usage: rehearse.sh --namespace=javmeta_it [--postgres-mongo-only]\n'; exit 0 ;;
     *) fail "Unknown argument: ${argument}" ;;
   esac
 done
 
 [[ "$namespace" == javmeta_it* ]] || fail 'Rehearsal requires an explicit javmeta_it* namespace.'
 validate_namespace "$namespace"
-for name in BACKUP_ROOT BACKUP_NAMESPACE AGE_RECIPIENT AGE_IDENTITY PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE MONGO_URI ELASTICSEARCH_HOST ELASTICSEARCH_SNAPSHOT_PATH; do
+required_names=(BACKUP_ROOT BACKUP_NAMESPACE AGE_RECIPIENT AGE_IDENTITY PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE MONGO_URI)
+if (( postgres_mongo_only == 0 )); then
+  required_names+=(ELASTICSEARCH_HOST ELASTICSEARCH_SNAPSHOT_PATH)
+fi
+for name in "${required_names[@]}"; do
   require_env "$name"
 done
 [[ "$BACKUP_NAMESPACE" == "$namespace" ]] || fail 'BACKUP_NAMESPACE must match --namespace.'
 
 mongo_database="$(mongo_database_from_uri "$MONGO_URI")"
 [[ -n "$mongo_database" ]] || fail 'MONGO_URI must name its database in the path.'
-validate_namespace_targets "$namespace" "$mongo_database" "${namespace}*"
-validate_snapshot_path "$ELASTICSEARCH_SNAPSHOT_PATH"
-for command_name in psql mongosh jq curl age; do
+if (( postgres_mongo_only == 1 )); then
+  validate_database_namespace_targets "$namespace" "$mongo_database"
+else
+  validate_namespace_targets "$namespace" "$mongo_database" "${namespace}*"
+  validate_snapshot_path "$ELASTICSEARCH_SNAPSHOT_PATH"
+fi
+required_commands=(psql mongosh jq age)
+if (( postgres_mongo_only == 0 )); then
+  required_commands+=(curl)
+fi
+for command_name in "${required_commands[@]}"; do
   command -v "$command_name" >/dev/null 2>&1 || fail "Required command is missing: $command_name."
 done
+if (( postgres_mongo_only == 0 )); then
+  require_elasticsearch_snapshot_path_repo "$ELASTICSEARCH_SNAPSHOT_PATH"
+fi
 
-run_id="$(date -u '+%Y%m%dT%H%M%S%NZ')_${RANDOM}"
+# Keep schema names lowercase because pg_dump folds unquoted patterns to lowercase.
+run_id="$(date -u '+%Y%m%d_%H%M%S_%N')_${RANDOM}"
 fixture="${namespace}_backup_${run_id}"
 pg_schema="$fixture"
 mongo_collection="$fixture"
@@ -43,6 +61,7 @@ es_created=0
 current_phase=''
 phase_start=0
 overall='PASS'
+if (( postgres_mongo_only == 1 )); then overall='PARTIAL'; fi
 printed=0
 
 pg_status='NOT RUN'; mongo_status='NOT RUN'; es_status='NOT RUN'
@@ -51,6 +70,9 @@ pg_restore_status='NOT RUN'; mongo_restore_status='NOT RUN'; es_restore_status='
 pg_ms=0; mongo_ms=0; es_ms=0; backup_ms=0; restore_ms=0
 pg_restore_ms=0; mongo_restore_ms=0; es_restore_ms=0
 pg_counts='-'; mongo_counts='-'; es_counts='-'
+if (( postgres_mongo_only == 1 )); then
+  es_status='PENDING'; es_restore_status='PENDING'; es_counts='JOOS-114: path.repo unavailable'
+fi
 
 begin_phase() { current_phase="$1"; phase_start="$(date -u '+%s%3N')"; }
 elapsed_ms() { printf '%s' "$(( $(date -u '+%s%3N') - phase_start ))"; }
@@ -77,7 +99,7 @@ cleanup() {
     PGPASSWORD="$PGPASSWORD" psql --no-password --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --set=ON_ERROR_STOP=1 --command="DROP SCHEMA IF EXISTS \"$pg_schema\" CASCADE;" >/dev/null 2>&1 || failed=1
   fi
   if (( mongo_created )); then
-    mongosh --quiet "$MONGO_URI" --eval="db.dropCollection('$mongo_collection')" >/dev/null 2>&1 || failed=1
+    mongo_drop_collection "$mongo_collection" >/dev/null 2>&1 || failed=1
   fi
   if (( es_created )); then
     elasticsearch_request DELETE "/$es_index?ignore_unavailable=true&allow_no_indices=true" >/dev/null 2>&1 || failed=1
@@ -124,28 +146,34 @@ pg_counts="expected=3 actual=$(PGPASSWORD="$PGPASSWORD" psql --no-password --hos
 pg_ms="$(elapsed_ms)"; pg_status='PASS'
 
 begin_phase 'MongoDB seed'
-collection_exists="$(mongosh --quiet "$MONGO_URI" --eval="db.getCollectionNames().includes('$mongo_collection') ? 1 : 0")"
+collection_exists="$(mongo_collection_exists "$mongo_collection")"
 [[ "$collection_exists" == '0' ]] || fail 'Generated MongoDB rehearsal collection already exists.'
 mongo_created=1
 mongosh --quiet "$MONGO_URI" --eval="db.createCollection('$mongo_collection'); db.getCollection('$mongo_collection').insertMany([{_id:1,value:'one'},{_id:2,value:'two'},{_id:3,value:'three'}]);" >/dev/null
-mongo_counts="expected=3 actual=$(mongosh --quiet "$MONGO_URI" --eval="db.getCollection('$mongo_collection').countDocuments()")"
+mongo_counts="expected=3 actual=$(mongo_document_count "$mongo_collection")"
 [[ "$mongo_counts" == 'expected=3 actual=3' ]] || fail 'MongoDB seed count did not match.'
 mongo_ms="$(elapsed_ms)"; mongo_status='PASS'
 
-begin_phase 'Elasticsearch seed'
-[[ "$(elasticsearch_index_count "$es_index")" == '0' ]] || fail 'Generated Elasticsearch rehearsal index already exists.'
-es_created=1
-elasticsearch_request PUT "/$es_index" '{"mappings":{"properties":{"value":{"type":"keyword"}}}}' >/dev/null
-for document in one two three; do
-  body="$(jq -cn --arg value "$document" '{value:$value}')"
-  elasticsearch_request PUT "/$es_index/_doc/$document?refresh=true" "$body" >/dev/null
-done
-es_counts="expected=3 actual=$(jq -er '.count' <<<"$(elasticsearch_request GET "/$es_index/_count")")"
-[[ "$es_counts" == 'expected=3 actual=3' ]] || fail 'Elasticsearch seed count did not match.'
-es_ms="$(elapsed_ms)"; es_status='PASS'
+if (( postgres_mongo_only == 0 )); then
+  begin_phase 'Elasticsearch seed'
+  [[ "$(elasticsearch_index_count "$es_index")" == '0' ]] || fail 'Generated Elasticsearch rehearsal index already exists.'
+  es_created=1
+  elasticsearch_request PUT "/$es_index" '{"mappings":{"properties":{"value":{"type":"keyword"}}}}' >/dev/null
+  for document in one two three; do
+    body="$(jq -cn --arg value "$document" '{value:$value}')"
+    elasticsearch_request PUT "/$es_index/_doc/$document?refresh=true" "$body" >/dev/null
+  done
+  es_counts="expected=3 actual=$(jq -er '.count' <<<"$(elasticsearch_request GET "/$es_index/_count")")"
+  [[ "$es_counts" == 'expected=3 actual=3' ]] || fail 'Elasticsearch seed count did not match.'
+  es_ms="$(elapsed_ms)"; es_status='PASS'
+fi
 
 begin_phase 'Encrypted backup'
-backup_output="$(BACKUP_NAMESPACE="$namespace" BACKUP_PUBLISH_LATEST=0 PG_DUMP_SCHEMA="$pg_schema" MONGO_COLLECTION="$mongo_collection" ELASTICSEARCH_INDEX_PATTERN="$es_index" "$SCRIPT_DIR/backup.sh" --namespace="$namespace")"
+backup_arguments=("--namespace=$namespace")
+if (( postgres_mongo_only == 1 )); then
+  backup_arguments+=(--postgres-mongo-only)
+fi
+backup_output="$(BACKUP_NAMESPACE="$namespace" BACKUP_PUBLISH_LATEST=0 PG_DUMP_SCHEMA="$pg_schema" MONGO_COLLECTION="$mongo_collection" ELASTICSEARCH_INDEX_PATTERN="$es_index" "$SCRIPT_DIR/backup.sh" "${backup_arguments[@]}")"
 backup_dir="$(sed -n 's/^Backup created: //p' <<<"$backup_output" | tail -n 1)"
 [[ -n "$backup_dir" ]] || fail 'Backup script did not report its output directory.'
 backup_ms="$(elapsed_ms)"; backup_status='PASS'
@@ -160,14 +188,20 @@ pg_counts="expected=3 actual=$pg_actual"; [[ "$pg_actual" == '3' ]] || fail 'Pos
 pg_restore_ms="$(elapsed_ms)"; pg_restore_status='PASS'
 
 begin_phase 'MongoDB restore'
-mongo_actual="$(mongosh --quiet "$MONGO_URI" --eval="db.getCollection('$mongo_collection').countDocuments()")"
+mongo_actual="$(mongo_document_count "$mongo_collection")"
 mongo_counts="expected=3 actual=$mongo_actual"; [[ "$mongo_actual" == '3' ]] || fail 'MongoDB restored document count did not match.'
 mongo_restore_ms="$(elapsed_ms)"; mongo_restore_status='PASS'
 
-begin_phase 'Elasticsearch restore'
-es_actual="$(jq -er '.count' <<<"$(elasticsearch_request GET "/$es_index/_count")")"
-es_counts="expected=3 actual=$es_actual"; [[ "$es_actual" == '3' ]] || fail 'Elasticsearch restored document count did not match.'
-es_restore_ms="$(elapsed_ms)"; es_restore_status='PASS'
+if (( postgres_mongo_only == 0 )); then
+  begin_phase 'Elasticsearch restore'
+  es_actual="$(jq -er '.count' <<<"$(elasticsearch_request GET "/$es_index/_count")")"
+  es_counts="expected=3 actual=$es_actual"; [[ "$es_counts" == 'expected=3 actual=3' ]] || fail 'Elasticsearch restored document count did not match.'
+  es_restore_ms="$(elapsed_ms)"; es_restore_status='PASS'
+fi
 
 current_phase=''
-printf 'PASS: fixture counts restored for PostgreSQL, MongoDB and Elasticsearch.\n'
+if (( postgres_mongo_only == 1 )); then
+  printf 'PARTIAL PASS: PostgreSQL and MongoDB fixtures restored; Elasticsearch remains pending (JOOS-114: path.repo unavailable).\n'
+else
+  printf 'PASS: fixture counts restored for PostgreSQL, MongoDB and Elasticsearch.\n'
+fi

@@ -37,14 +37,21 @@ validate_namespace_targets() {
   local index
   local -a indices=()
 
-  [[ "${PGDATABASE}" == "$namespace"* ]] || fail 'PGDATABASE must start with the explicitly named backup namespace.'
-  [[ "$mongo_database" == "$namespace"* ]] || fail 'MONGO_URI database must start with the explicitly named backup namespace.'
+  validate_database_namespace_targets "$namespace" "$mongo_database"
   IFS=',' read -r -a indices <<<"$index_pattern"
   (( ${#indices[@]} > 0 )) || fail 'At least one Elasticsearch index pattern is required.'
   for index in "${indices[@]}"; do
     [[ "$index" == "$namespace"* ]] || fail 'Every Elasticsearch index pattern must start with the explicitly named backup namespace.'
     [[ "$index" =~ ^[A-Za-z0-9_.\*-]+$ ]] || fail 'Elasticsearch index pattern contains unsupported characters.'
   done
+}
+
+validate_database_namespace_targets() {
+  local namespace="$1"
+  local mongo_database="$2"
+
+  [[ "${PGDATABASE}" == "$namespace"* ]] || fail 'PGDATABASE must start with the explicitly named backup namespace.'
+  [[ "$mongo_database" == "$namespace"* ]] || fail 'MONGO_URI database must start with the explicitly named backup namespace.'
 }
 
 curl_config_escape() {
@@ -79,6 +86,30 @@ validate_snapshot_path() {
   [[ "$path" != *'/../'* && "$path" != */.. ]] || fail 'ELASTICSEARCH_SNAPSHOT_PATH must not contain parent-directory segments.'
 }
 
+require_elasticsearch_snapshot_path_repo() {
+  local path="$1"
+  local response
+
+  response="$(elasticsearch_request GET '/_nodes/settings?filter_path=nodes.*.settings.path.repo' 2>/dev/null)" \
+    || fail 'Could not inspect Elasticsearch node settings for path.repo; snapshot backup and restore remain pending (JOOS-114).'
+
+  jq -e --arg requested "$path" '
+    (.nodes // {}) as $nodes
+    | ($nodes | length) > 0
+      and all($nodes[];
+        (.settings["path.repo"] // []) as $repositories
+        | ($repositories | type) == "array"
+          and any($repositories[];
+            . as $repository
+            | ($repository | type) == "string"
+              and (($repository | sub("/+$"; "")) as $root
+                | $requested == $root or ($requested | startswith($root + "/")))
+          )
+      )
+  ' >/dev/null <<<"$response" \
+    || fail 'Elasticsearch path.repo is missing or does not include ELASTICSEARCH_SNAPSHOT_PATH on every node; snapshot backup and restore remain pending (JOOS-114).'
+}
+
 postgres_user_object_count() {
   PGPASSWORD="$PGPASSWORD" psql \
     --no-password \
@@ -93,7 +124,30 @@ postgres_user_object_count() {
 }
 
 mongo_collection_count() {
-  mongosh --quiet "$MONGO_URI" --eval "db.getCollectionNames().filter((name) => !name.startsWith('system.')).length"
+  mongosh --quiet "$MONGO_URI" --eval "print(db.getCollectionNames().filter((name) => !name.startsWith('system.')).length)"
+}
+
+mongo_collection_exists() {
+  local collection="$1"
+
+  [[ "$collection" =~ ^[A-Za-z0-9_-]+$ ]] || fail 'MongoDB collection name is invalid.'
+  mongosh --quiet "$MONGO_URI" --eval "print(db.getCollectionNames().includes('$collection') ? 1 : 0)"
+}
+
+mongo_document_count() {
+  local collection="$1"
+
+  [[ "$collection" =~ ^[A-Za-z0-9_-]+$ ]] || fail 'MongoDB collection name is invalid.'
+  mongosh --quiet "$MONGO_URI" --eval "print(db.getCollection('$collection').countDocuments())"
+}
+
+mongo_drop_collection() {
+  local collection="$1"
+  local remaining
+
+  [[ "$collection" =~ ^[A-Za-z0-9_-]+$ ]] || fail 'MongoDB collection name is invalid.'
+  remaining="$(mongosh --quiet "$MONGO_URI" --eval "db.getCollection('$collection').drop(); print(db.getCollectionNames().includes('$collection') ? 1 : 0)")"
+  [[ "$remaining" == '0' ]] || fail 'MongoDB rehearsal collection cleanup did not remove the collection.'
 }
 
 elasticsearch_index_count() {
