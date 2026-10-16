@@ -21,6 +21,8 @@ abstract class Scenario
 
     public function run(Context $context): Context
     {
+        $scenarioName = $this->name();
+
         foreach ($this->steps() as $step) {
             try {
                 $context = $step->run($context);
@@ -31,7 +33,7 @@ abstract class Scenario
                 $exchange = $this->redactor->formatExchange($failedContext->lastRequest, $failedContext->lastResponse, $failedContext->secrets());
 
                 throw new ScenarioFailure(
-                    "Scenario {$this->name()} failed at step {$stepName}: {$message}\nHTTP exchange:\n{$exchange}",
+                    "Scenario {$scenarioName} failed at step {$stepName}: {$message}\nHTTP exchange:\n{$exchange}",
                     previous: $exception,
                 );
             }

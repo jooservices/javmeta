@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\E2E\Unit;
 
+use GuzzleHttp\Psr7\Response as PsrResponse;
 use Illuminate\Http\Client\Request;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Tests\E2E\Context;
 use Tests\E2E\Scenario;
@@ -27,8 +29,10 @@ use Tests\E2E\Support\ApiKeyCredential;
 use Tests\E2E\Support\CatalogSeed;
 use Tests\E2E\Support\CrawlResult;
 use Tests\E2E\Support\FixtureSeed;
+use Tests\E2E\Support\HttpStep;
 use Tests\E2E\Support\Redactor;
 use Tests\E2E\Support\ScenarioFailure;
+use Tests\E2E\Support\StepFailure;
 use Tests\TestCase;
 
 final class E2EStepTest extends TestCase
@@ -160,6 +164,31 @@ final class E2EStepTest extends TestCase
         self::assertSame(200, (new CallMcp('get_movie', [], ['code' => 'SSIS-001']))->run($this->contextWithMcp())->lastResponse['status']);
     }
 
+    public function test_mcp_step_reports_invalid_results_and_accepts_generic_tools(): void
+    {
+        Http::fake(['https://api.test/api/v1/mcp' => Http::sequence()
+            ->push(['result' => ['isError' => true, 'content' => []]])
+            ->push(['result' => ['content' => [['text' => '{"code":"SSIS-001"}']]]])
+            ->push(['result' => ['content' => [['text' => '{"code":123}']]]])
+            ->push(['result' => ['content' => [['text' => '{"ok":true}']]]])]);
+        $context = $this->contextWithMcp();
+
+        foreach ([
+            new CallMcp('get_movie'),
+            new CallMcp('get_movie', [], ['code' => 'WRONG']),
+            new CallMcp('get_movie'),
+        ] as $step) {
+            try {
+                $step->run($context);
+                self::fail('An invalid MCP result should fail the step.');
+            } catch (StepFailure $failure) {
+                self::assertStringContainsString('MCP tool', $failure->getMessage());
+            }
+        }
+
+        self::assertSame(200, (new CallMcp('custom_tool'))->run($context)->lastResponse['status']);
+    }
+
     public function test_wait_for_movie_returns_when_crawl_result_is_visible(): void
     {
         Http::fake(['https://api.test/api/v1/movies/*' => Http::response(['data' => ['code' => 'SSIS-001']])]);
@@ -220,6 +249,51 @@ final class E2EStepTest extends TestCase
         self::assertSame('[REDACTED]', $value['headers']['X-Owner-Token']);
         self::assertStringNotContainsString('private-value', json_encode($value) ?: '');
         self::assertStringNotContainsString('owner-secret', json_encode($value) ?: '');
+    }
+
+    public function test_redactor_formats_an_exchange_that_was_not_recorded(): void
+    {
+        self::assertSame('No HTTP exchange recorded.', (new Redactor())->formatExchange(null, null));
+    }
+
+    public function test_http_step_wraps_transport_errors_and_checks_context_and_status(): void
+    {
+        $step = new class extends HttpStep {
+            public function run(Context $context): Context
+            {
+                return $this->exchange($context, 'PUT', '/not-supported')->context;
+            }
+
+            public function checkStatus(Context $context): void
+            {
+                $this->expectStatus($context, new Response(new PsrResponse(500)), 200);
+            }
+
+            public function checkCredential(Context $context): void
+            {
+                $this->credential($context);
+            }
+        };
+        try {
+            $step->run($this->context());
+            self::fail('An unsupported HTTP method should be wrapped as a step failure.');
+        } catch (StepFailure $failure) {
+            self::assertStringContainsString('HTTP request failed (InvalidArgumentException)', $failure->getMessage());
+        }
+
+        try {
+            $step->checkStatus($this->context());
+            self::fail('An unexpected HTTP status should fail the step.');
+        } catch (StepFailure $failure) {
+            self::assertStringContainsString('Expected HTTP 200; received 500.', $failure->getMessage());
+        }
+
+        try {
+            $step->checkCredential($this->context());
+            self::fail('A missing credential should fail the step.');
+        } catch (StepFailure $failure) {
+            self::assertStringContainsString('No consumer API key is available', $failure->getMessage());
+        }
     }
 
     private function context(): Context
