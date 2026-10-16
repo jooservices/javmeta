@@ -18,6 +18,10 @@ RUN apt-get update \
     && mkdir -p /tmp/composer-cache \
     && chmod 1777 /tmp/composer-cache
 
+RUN pecl install redis-6.3.0 \
+    && docker-php-ext-enable redis \
+    && rm -rf /tmp/pear
+
 COPY --from=composer:2.10.3 /usr/bin/composer /usr/bin/composer
 
 ENV COMPOSER_CACHE_DIR=/tmp/composer-cache \

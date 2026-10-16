@@ -5,6 +5,11 @@ dependencies recover. Readiness checks do not gate container startup. The API
 container healthcheck uses `/api/health/live`, which reports only whether the
 HTTP process is serving requests.
 
+The application, production, and CI PHP images include the phpredis 6.3.0
+extension, which is required by Composer as `ext-redis`. Redis is available to
+the application, while the default queue, cache, and session drivers remain
+database-backed.
+
 ## Dependency policy
 
 `JAVMETA_ROLE` identifies each `api`, `mcp`, `scheduler`, or `worker` container.

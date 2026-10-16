@@ -30,6 +30,7 @@
         <env name="EMBEDDER_URL" value="http://embedder.test" force="true"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="REDIS_PREFIX" value="javmeta_it:" force="true"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="PULSE_ENABLED" value="false"/>

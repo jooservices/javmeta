@@ -27,6 +27,14 @@ services:
       timeout: 5s
       retries: 30
 
+  redis:
+    image: redis:8.2.10-bookworm
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
     environment:
@@ -75,10 +83,15 @@ services:
       OPENOBSERVE_URL: http://openobserve:5080
       OPENOBSERVE_EMAIL: root@javmeta.test
       OPENOBSERVE_PASSWORD: Integration#123
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PREFIX: "javmeta_it:"
     depends_on:
       postgres:
         condition: service_healthy
       mongo:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       elasticsearch:
         condition: service_healthy

@@ -11,6 +11,7 @@
     ],
     "license": "MIT",
     "require": {
+        "ext-redis": "^6.3",
         "php": "^8.5",
         "jooservices/client": "^4.4.1",
         "jooservices/crawlerx": "^1.3",
