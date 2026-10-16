@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Run E2E against the isolated CI-only backing-service stack.
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+project="javmeta-e2e-$$"
+cache_volume="javmeta-e2e-composer-cache-$$"
+cache_volume_created=0
+compose=(docker compose --project-name "$project" --file "${root}/docker/ci/compose.integration.yml")
+export JAVMETA_CI_UID="$(id -u)" JAVMETA_CI_GID="$(id -g)"
+export JAVMETA_CI_COMPOSER_CACHE_VOLUME="$cache_volume"
+
+cleanup() {
+  status=$?
+  "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || status=1
+  if (( cache_volume_created == 1 )); then
+    docker volume rm "$cache_volume" >/dev/null || status=1
+  fi
+  exit "$status"
+}
+trap cleanup EXIT
+
+docker volume create "$cache_volume" >/dev/null
+cache_volume_created=1
+
+if [[ "${JAVMETA_CI_SKIP_BUILD:-0}" != "1" ]]; then
+  "${compose[@]}" build --quiet gate
+fi
+"${compose[@]}" pull --quiet postgres mongo redis elasticsearch openobserve
+"${compose[@]}" up --detach --wait postgres mongo redis elasticsearch openobserve
+"${compose[@]}" run --rm gate php artisan migrate --force --ansi
+"${compose[@]}" run --rm gate composer test:e2e

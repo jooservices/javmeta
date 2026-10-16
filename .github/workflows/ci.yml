@@ -147,6 +147,45 @@ jobs:
           JAVMETA_CI_SKIP_BUILD: '1'
         run: docker/ci/integration
 
+  e2e:
+    name: E2E journeys (isolated services)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build CI image
+        run: docker build --tag javmeta-ci:local --file docker/ci/Dockerfile docker/ci
+
+      - name: Cache Composer vendor
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: vendor-cache
+        with:
+          path: vendor
+          key: composer-vendor-${{ hashFiles('composer.json', 'composer.lock', 'docker/ci/Dockerfile') }}
+
+      - name: Install dependencies
+        if: steps.vendor-cache.outputs.cache-hit != 'true'
+        env:
+          JAVMETA_CI_SKIP_BUILD: '1'
+        run: docker/ci/run composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Run E2E journeys and coverage gate
+        env:
+          JAVMETA_CI_SKIP_BUILD: '1'
+        run: docker/ci/e2e
+
+      - name: Upload E2E coverage report
+        if: always() && hashFiles('.tmp/e2e-coverage.xml') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-coverage
+          path: .tmp/e2e-coverage.xml
+          retention-days: 14
+
   secrets:
     name: Secrets scan
     runs-on: ubuntu-latest
