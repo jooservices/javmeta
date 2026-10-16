@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Jobs;
 
+use App\Enums\CrawlErrorCode;
 use App\Jobs\FetchDetailJob;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
@@ -26,6 +27,11 @@ final class FetchDetailJobTest extends TestCase
     {
         $source = $this->source('onejav');
         $row = $this->detailRow($source);
+        $row->forceFill([
+            'error_code' => CrawlErrorCode::Network->value,
+            'last_error' => 'Previous attempt failed.',
+            'last_failed_at' => now()->subMinute(),
+        ])->save();
         $sink = new FakeMovieDraftSink();
         $this->app->instance(MovieDraftSink::class, $sink);
 
@@ -44,6 +50,9 @@ final class FetchDetailJobTest extends TestCase
         self::assertNotNull($draft->crawledAt);
 
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
+        self::assertNull($row->refresh()->error_code);
+        self::assertNull($row->last_error);
+        self::assertNull($row->last_failed_at);
         $this->assertNotNull(Source::query()->find('onejav')?->last_success_at);
         self::assertNotNull($source->refresh()->last_success_at);
         $this->assertSame(0, Movie::query()->count());
@@ -82,7 +91,13 @@ final class FetchDetailJobTest extends TestCase
         self::assertSame([], $sink->drafts);
         $this->assertSame(0, Movie::query()->count());
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_BLOCKED]);
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'attempts' => 1]);
+        $this->assertDatabaseHas('crawl_queue', [
+            'id' => $row->id,
+            'status' => CrawlQueue::STATUS_FAILED,
+            'attempts' => 1,
+            'error_code' => CrawlErrorCode::Blocked->value,
+            'last_error' => 'Blocked by site.',
+        ]);
         $this->assertNotNull(Source::query()->find('onejav')?->last_error_at);
     }
 
@@ -107,7 +122,7 @@ final class FetchDetailJobTest extends TestCase
         self::assertSame([], $sink->drafts);
         $this->assertSame(0, Movie::query()->count());
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_PARSE_DRIFT]);
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'error_code' => CrawlErrorCode::NormalizationFailed->value]);
         $this->assertNotNull(Source::query()->find('onejav')?->last_error_at);
     }
 
@@ -127,7 +142,7 @@ final class FetchDetailJobTest extends TestCase
         FetchDetailJob::dispatch($row->id);
 
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'mystery', 'kind' => CrawlEvent::KIND_PARSE_DRIFT]);
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'error_code' => CrawlErrorCode::NormalizerMissing->value]);
         $this->assertNotNull(Source::query()->find('mystery')?->last_error_at);
     }
 
@@ -145,7 +160,7 @@ final class FetchDetailJobTest extends TestCase
         FetchDetailJob::dispatch($row->id);
 
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'ghost', 'kind' => CrawlEvent::KIND_PARSE_DRIFT]);
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'error_code' => CrawlErrorCode::UnknownSource->value]);
         $this->assertDatabaseMissing('sources', ['slug' => 'ghost']);
     }
 
@@ -163,6 +178,8 @@ final class FetchDetailJobTest extends TestCase
         self::assertSame(CrawlQueue::STATUS_PENDING, $row->status);
         self::assertSame(1, $row->attempts);
         self::assertSame($message, $row->last_error);
+        self::assertSame(CrawlErrorCode::RateLimited->value, $row->error_code);
+        self::assertNotNull($row->last_failed_at);
         self::assertNull($row->claimed_at);
         self::assertSame(now()->addSeconds(60)->getTimestamp(), $row->next_attempt_at?->getTimestamp());
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_BLOCKED]);
@@ -181,6 +198,7 @@ final class FetchDetailJobTest extends TestCase
         $row->refresh();
         self::assertSame(CrawlQueue::STATUS_PENDING, $row->status);
         self::assertSame(2, $row->attempts);
+        self::assertSame(CrawlErrorCode::Network->value, $row->error_code);
         self::assertSame(now()->addSeconds(300)->getTimestamp(), $row->next_attempt_at?->getTimestamp());
     }
 
@@ -193,7 +211,7 @@ final class FetchDetailJobTest extends TestCase
 
         FetchDetailJob::dispatch($row->id);
 
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'attempts' => 3]);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'attempts' => 3, 'error_code' => CrawlErrorCode::Network->value]);
     }
 
     public function test_not_found_fails_the_row_without_retry(): void
@@ -204,7 +222,7 @@ final class FetchDetailJobTest extends TestCase
 
         FetchDetailJob::dispatch($row->id);
 
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'attempts' => 1, 'next_attempt_at' => null]);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'attempts' => 1, 'next_attempt_at' => null, 'error_code' => CrawlErrorCode::NotFound->value]);
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_SOFT404]);
     }
 
@@ -216,7 +234,7 @@ final class FetchDetailJobTest extends TestCase
 
         FetchDetailJob::dispatch($row->id);
 
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'error_code' => CrawlErrorCode::SsrfBlocked->value]);
         $event = CrawlEvent::query()->where('source_slug', 'onejav')->sole();
         self::assertSame(CrawlEvent::KIND_BLOCKED, $event->kind);
         self::assertSame(CrawlerxClient::ERROR_SSRF_BLOCKED, $event->detail['error_code'] ?? null);
