@@ -10,7 +10,8 @@ services:
       POSTGRES_USER: jvmeta
       POSTGRES_PASSWORD: jvmeta
     tmpfs:
-      - /var/lib/postgresql/data
+      # PostgreSQL 18+ images keep PGDATA below /var/lib/postgresql/<major>/docker; mounting the old /data path fails.
+      - /var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U jvmeta -d jvmeta_it"]
       interval: 2s
