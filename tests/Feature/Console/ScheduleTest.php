@@ -39,6 +39,7 @@ final class ScheduleTest extends TestCase
             'crawler:seed' => '* * * * *',
             'crawler:sync-sources' => '*/15 * * * *',
             'crawler:watchdog' => '*/5 * * * *',
+            'javmeta:backup-status' => '* * * * *',
             'obs:publish-metrics' => '* * * * *',
         ];
 
