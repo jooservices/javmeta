@@ -29,28 +29,6 @@ updates:
         patterns:
           - "jooservices/*"
 
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "UTC"
-    open-pull-requests-limit: 10
-    labels:
-      - "dependencies"
-      - "npm"
-    commit-message:
-      prefix: "chore"
-      include: "scope"
-    cooldown:
-      default-days: 7
-    groups:
-      dev-dependencies:
-        dependency-type: "development"
-        patterns:
-          - "*"
-
   - package-ecosystem: "pip"
     directory: "/embedder"
     schedule:
