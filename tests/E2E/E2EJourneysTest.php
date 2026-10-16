@@ -25,11 +25,18 @@ final class E2EJourneysTest extends E2ETestCase
         /** @var \Closure(): CatalogSeed $seedCatalog */
         $seedCatalog = fn(): CatalogSeed => $this->seedCatalog();
 
-        (new J1HealthScenario($reset, $seedFixture, $crawl))->run($this->journeyContext());
-        (new J2ApiKeyScenario($reset))->run($this->journeyContext());
-        (new J3MovieLookupScenario($reset, $seedFixture, $crawl, $seedCatalog))->run($this->journeyContext());
-        (new J4MovieSearchScenario($reset, $seedFixture, $crawl, $seedCatalog))->run($this->journeyContext());
-        (new J5PerformerScenario($reset, $seedFixture, $crawl, $seedCatalog))->run($this->journeyContext());
-        (new J6McpScenario($reset, $seedFixture, $crawl, $seedCatalog))->run($this->journeyContext());
+        $results = [
+            (new J1HealthScenario($reset, $seedFixture, $crawl))->run($this->journeyContext()),
+            (new J2ApiKeyScenario($reset))->run($this->journeyContext()),
+            (new J3MovieLookupScenario($reset, $seedFixture, $crawl, $seedCatalog))->run($this->journeyContext()),
+            (new J4MovieSearchScenario($reset, $seedFixture, $crawl, $seedCatalog))->run($this->journeyContext()),
+            (new J5PerformerScenario($reset, $seedFixture, $crawl, $seedCatalog))->run($this->journeyContext()),
+            (new J6McpScenario($reset, $seedFixture, $crawl, $seedCatalog))->run($this->journeyContext()),
+        ];
+
+        self::assertCount(6, $results);
+        foreach ($results as $result) {
+            self::assertNotNull($result->lastResponse, 'Each completed journey should leave its final HTTP response in context.');
+        }
     }
 }

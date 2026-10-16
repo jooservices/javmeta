@@ -178,6 +178,14 @@ jobs:
           JAVMETA_CI_SKIP_BUILD: '1'
         run: docker/ci/e2e
 
+      - name: Upload E2E coverage report
+        if: always() && hashFiles('.tmp/e2e-coverage.xml') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-coverage
+          path: .tmp/e2e-coverage.xml
+          retention-days: 14
+
   secrets:
     name: Secrets scan
     runs-on: ubuntu-latest
