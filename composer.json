@@ -100,6 +100,12 @@
             "bash tests/Shell/worker-queues.test.sh",
             "bash tests/Shell/run-captainhook.test.sh"
         ],
+        "test:e2e": [
+            "@php -r \"is_dir('.tmp') || mkdir('.tmp', 0700);\"",
+            "@php artisan config:clear --ansi",
+            "php -d pcov.enabled=1 -d pcov.directory=/app/tests/E2E vendor/bin/phpunit --configuration phpunit.e2e.xml --do-not-cache-result --coverage-clover=${JAVMETA_E2E_COVERAGE_FILE:-.tmp/e2e-coverage.xml}",
+            "@php tools/coverage-enforce.php ${JAVMETA_E2E_COVERAGE_FILE:-.tmp/e2e-coverage.xml} 90"
+        ],
         "coverage:report": "php tools/coverage-report.php build/coverage.xml build/coverage/uncovered-files.md",
         "coverage:check": "php tools/coverage-enforce.php build/coverage.xml 90",
         "check": [
