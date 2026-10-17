@@ -25,7 +25,9 @@ final class MigrationsTest extends BaseTestCase
             self::assertTrue(Schema::hasTable($table), "missing table {$table}");
         }
 
-        self::assertSame(0, Artisan::call('migrate:rollback', ['--step' => 1, '--force' => true]), Artisan::output());
+        // The last two migrations: performers.retired_date (JAVM-57) and the failure-reason backfill (JAVM-37).
+        self::assertSame(0, Artisan::call('migrate:rollback', ['--step' => 2, '--force' => true]), Artisan::output());
+        self::assertFalse(Schema::hasColumn('performers', 'retired_date'));
         self::assertFalse(Schema::hasColumn('crawl_queue', 'error_code'));
 
         DB::table('crawl_queue')->insert([
