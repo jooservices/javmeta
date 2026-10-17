@@ -67,19 +67,26 @@ docker/ci/integration --filter Performer   # extra PHPUnit arguments
 ```
 
 The CI services use the same versions as the Workspaces shared Docker (PostgreSQL 18.6,
-MongoDB 9.0.4, Elasticsearch 9.5.5, OpenObserve 1.0.4, Redis 8.2.10). For local development and QA,
-run the same suite against the shared services instead of starting a second stack:
+MongoDB 9.0.4, Elasticsearch 9.5.5, OpenObserve 1.0.4, Redis 8.2.10).
+
+## Local development and QA (Workspaces shared services)
+
+On a developer machine nothing is built or started per run. `docker/ci/run` is a `docker exec` into the
+single long-lived PHP 8.5 runtime (`scripts/docker/runtime php`); on GitHub Actions (or with
+`JAVMETA_CI_DOCKER=1`) it still builds and runs the isolated `javmeta-ci` image. Backing services are the
+shared ones, with the project databases created by `provision-project` (one root account, no project users):
 
 ```bash
-scripts/docker/shared provision-javmeta-test     # once: creates the Postgres/Mongo/ES/OpenObserve namespaces
-scripts/docker/shared provision-javmeta-redis    # once: creates the restricted Redis queue identity
-docker/ci/integration-shared                     # whole suite against the shared services
-docker/ci/integration-shared --filter Performer  # extra PHPUnit arguments
+scripts/docker/shared provision-project javmeta --postgres --mongodb --redis --db <id>   # once; <id> = 1-12 lowercase letters/digits
+docker/ci/integration-shared                          # whole suite on javmeta_test
+JAVMETA_MODE=wt:<id> docker/ci/integration-shared    # on this worktree's database javmeta_wt<id>
+docker/ci/integration-shared --filter Performer       # extra PHPUnit arguments
 ```
 
-The runner reads `JAVMETA_IT_*` from the private Workspaces `.env` into a temporary 0600 file and
-never prints values. The test accounts are least-privilege (Mongo `readWrite`, Elasticsearch role on
-`javmeta_it_*`, an OpenObserve organization of their own), so the suite resets Mongo by dropping
-collections rather than the database. The Mongo outage scenario stays CI-only because it stops the
-service. Elasticsearch 9 leaves `dense_vector` fields out of `_source`; tests that read vectors
-back pass `_source_exclude_vectors=false`.
+`docker/dev/shared-run --mode test|wt:<id> -- <command>` generates the environment with
+`scripts/docker/shared env-project javmeta` (which runs `check-project` and refuses another project's
+database), derives the Elasticsearch indexes, OpenObserve stream and Redis prefix from the same name, and
+executes the command in the runtime. No credential is written to a tracked file, printed or left on disk.
+Live mode is never accepted. The Mongo outage scenario stays CI-only because it stops the service.
+Elasticsearch 9 leaves `dense_vector` fields out of `_source`; tests that read vectors back pass
+`_source_exclude_vectors=false`.

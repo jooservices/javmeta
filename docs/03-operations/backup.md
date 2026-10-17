@@ -73,8 +73,8 @@ Elasticsearch filesystem snapshot path tracked by JOOS-114 is a prerequisite.
 
 ## Test rehearsal
 
-Build the backup image, provide an age test identity and the isolated
-<code>JAVMETA_IT_*</code> service variables, and run <code>rehearse.sh --namespace=javmeta_it</code>.
+Build the backup image, provide an age test identity and the shared-service variables for
+<code>javmeta_test</code> or the worktree database <code>javmeta_wt&lt;id&gt;</code> (from <code>docker/dev/shared-run</code>), and run <code>rehearse.sh --namespace=javmeta_test</code>.
 The script seeds uniquely named fixtures, encrypts and restores them, compares
 PostgreSQL row, MongoDB document, and Elasticsearch index counts, prints a
 timing/result table, then removes only those fixtures and its own test backup.

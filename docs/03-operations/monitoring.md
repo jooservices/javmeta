@@ -278,24 +278,24 @@ OpenObserve and Telegram credentials only from environment configuration.
 Run the offline plan in the CI/PHP image:
 
 ```bash
-JAVMETA_CI_SKIP_BUILD=1 docker/ci/run php artisan observability:import --dry-run
+docker/ci/run php artisan observability:import --dry-run
 ```
 
-For live verification, add test-only
+For live verification against the shared OpenObserve, add test-only
 `JAVMETA_IT_TELEGRAM_BOT_TOKEN` and `JAVMETA_IT_TELEGRAM_CHAT_ID` values to the
-private Workspaces root `.env`, then run the scoped helper twice:
+private Workspaces root `.env`, then run the helper twice (it writes into the shared
+`default` organization with the `javmeta_test` / `javmeta_wt<id>` stream prefix, so use
+`--dry-run` unless you intend to create the named dashboards and alerts):
 
 ```bash
 docker/ci/observability-import-shared
 docker/ci/observability-import-shared
 ```
 
-The helper resolves the `javmeta_it` organization identifier using the
-test-only OpenObserve account, runs the command in `javmeta-ci:local`, and
-removes its temporary environment file. It does not start a Compose stack.
-The second run should update the same named resources without creating
-duplicates. Keep Telegram test credentials out of project `.env` files and
-source control.
+The helper runs through `docker/dev/shared-run` in the shared PHP runtime and starts no
+container or Compose stack. The second run should update the same named resources
+without creating duplicates. Keep Telegram test credentials out of project `.env` files
+and source control.
 
 ### Failure injection: stale source alert
 

@@ -16,8 +16,8 @@ validate_namespace() {
 
   [[ "$namespace" =~ ^[a-z][a-z0-9_-]{0,62}$ ]] || fail 'Namespace must be lowercase and contain only letters, digits, underscores, or hyphens.'
 
-  if [[ "${JAVMETA_SHARED_DOCKER:-0}" == '1' && "$namespace" != javmeta_it* ]]; then
-    fail 'Shared Docker writes are restricted to javmeta_it* namespaces.'
+  if [[ "${JAVMETA_SHARED_DOCKER:-0}" == '1' && "$namespace" != javmeta_it* && "$namespace" != javmeta_test* && "$namespace" != javmeta_wt* ]]; then
+    fail 'Shared Docker writes are restricted to javmeta_it*, javmeta_test* and javmeta_wt* namespaces.'
   fi
 }
 

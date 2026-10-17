@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+"""Run a command in the shared Workspaces PHP runtime against the javmeta test or worktree databases.
+
+    docker/dev/shared-run --mode test|wt:<id> [--e2e] -- <command> [args...]
+
+Databases come from `scripts/docker/shared env-project javmeta` (which runs check-project); no
+credential is written to a tracked file, printed, or left on disk. The command runs as a
+`docker exec` in the long-lived workspaces-cli-php-8.5 container (no per-job container or image).
+Elasticsearch indexes and OpenObserve streams use the same `javmeta_test` / `javmeta_wt<id>` prefix.
+"""
+import argparse
+import base64
+import json
+import os
+import secrets
+import subprocess
+import sys
+import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def find_workspaces() -> Path:
+    override = os.environ.get("JAVMETA_WORKSPACES_ROOT")
+    candidates = [Path(override)] if override else list(ROOT.parents)
+    for candidate in candidates:
+        if (candidate / "scripts" / "docker" / "runtime").is_file() and (candidate / ".env").is_file():
+            return candidate
+    sys.exit("Workspaces root (scripts/docker/runtime and .env) was not found above this checkout.")
+
+
+def parse_env(text: str) -> dict:
+    values = {}
+    for line in text.splitlines():
+        row = line.strip()
+        if row and not row.startswith("#") and "=" in row:
+            key, value = row.split("=", 1)
+            values[key.removeprefix("export ").strip()] = value.strip().strip('"').strip("'")
+    return values
+
+
+def project_env(workspaces: Path, mode: str) -> dict:
+    root_env = workspaces / ".env"
+    if root_env.is_symlink() or (root_env.stat().st_mode & 0o077):
+        sys.exit("Workspaces root .env must be a regular file with mode 0600.")
+    with tempfile.TemporaryDirectory(prefix="javmeta-env-", dir=workspaces / ".tmp") as directory:
+        target = Path(directory) / "project.env"
+        result = subprocess.run(
+            [str(workspaces / "scripts/docker/shared"), "env-project", "javmeta", "--mode", mode, "--output", str(target)],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            sys.stderr.write(result.stderr or result.stdout)
+            sys.exit("env-project/check-project failed; nothing was run.")
+        return {**parse_env(target.read_text(encoding="utf-8")), **{k: v for k, v in parse_env(root_env.read_text(encoding="utf-8")).items() if k.startswith(("WORKSPACES_", "JAVMETA_IT_TELEGRAM"))}}
+
+
+def build_env(values: dict, mode: str, e2e: bool) -> tuple[dict, str]:
+    database = values["DB_DATABASE"]
+    prefix = database  # javmeta_test or javmeta_wt<id>
+    tag = ("_e2e_" + secrets.token_hex(5)) if e2e else ""
+    redis_prefix = values["REDIS_PREFIX"] + (tag.lstrip("_") + ":" if e2e else "")
+    mongo_uri = values["MONGODB_URI"].replace("/?", "/" + database + "?", 1)
+    stream = prefix + "_logs" + tag
+    env = {
+        "APP_ENV": "testing", "APP_NAME": "javmeta", "APP_KEY": "base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "DB_CONNECTION": "pgsql", "DB_HOST": values["DB_HOST"], "DB_PORT": values["DB_PORT"], "DB_DATABASE": database,
+        "DB_USERNAME": values["DB_USERNAME"], "DB_PASSWORD": values["DB_PASSWORD"], "DB_URL": "",
+        "MONGO_URI": mongo_uri, "MONGO_DATABASE": database,
+        "ELASTICSEARCH_HOST": "http://elastic:" + urllib.parse.quote(values["WORKSPACES_ELASTIC_PASSWORD"], safe="") + "@elasticsearch:9200",
+        "ELASTICSEARCH_MOVIES_INDEX": prefix + "_movies" + tag, "ELASTICSEARCH_PERFORMERS_INDEX": prefix + "_performers" + tag,
+        "ELASTICSEARCH_VERIFY_SSL": "false",
+        "REDIS_HOST": values["REDIS_HOST"], "REDIS_PORT": values.get("REDIS_PORT", "6379"), "REDIS_USERNAME": "default",
+        "REDIS_PASSWORD": values["REDIS_PASSWORD"], "REDIS_DB": values["REDIS_DB"], "REDIS_CACHE_DB": values["REDIS_CACHE_DB"],
+        "REDIS_PREFIX": redis_prefix, "HORIZON_PREFIX": redis_prefix + "horizon:",
+        "OPENOBSERVE_URL": "http://openobserve:5080", "OPENOBSERVE_ORG": "default",
+        "OPENOBSERVE_EMAIL": values["WORKSPACES_ZO_ROOT_USER_EMAIL"], "OPENOBSERVE_PASSWORD": values["WORKSPACES_ZO_ROOT_USER_PASSWORD"],
+        "OPENOBSERVE_ENABLED": "true", "OPENOBSERVE_STREAM_LOGS": stream, "OPENOBSERVE_STREAM_METRICS": prefix + "_metrics" + tag,
+        "LOG_STACK": "single",
+    }
+    if e2e:
+        env.update({
+            "JAVMETA_E2E_SHARED": "1", "JAVMETA_E2E_POSTGRES_DATABASE": database, "EMBEDDER_URL": "http://127.0.0.1:1",
+            "CACHE_STORE": "database", "CACHE_PREFIX": prefix + tag + "_", "QUEUE_CONNECTION": "sync",
+        })
+    return env, stream
+
+
+def delete_stream(env: dict, stream: str) -> bool:
+    credentials = base64.b64encode((env["OPENOBSERVE_EMAIL"] + ":" + env["OPENOBSERVE_PASSWORD"]).encode()).decode()
+    url = "http://127.0.0.1:15080/api/default/streams/" + urllib.parse.quote(stream, safe="") + "?type=logs"
+    request = urllib.request.Request(url, method="DELETE", headers={"Authorization": "Basic " + credentials})
+    try:
+        urllib.request.urlopen(request, timeout=20).close()
+    except urllib.error.HTTPError as error:
+        return error.code == 404
+    except Exception:  # noqa: BLE001 - never leak details
+        return False
+    return True
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--mode", required=True, help="test or wt:<id>")
+    parser.add_argument("--e2e", action="store_true", help="per-run tagged indexes/streams/prefix; stream is deleted afterwards")
+    parser.add_argument("command", nargs=argparse.REMAINDER)
+    args = parser.parse_args()
+    command = args.command[1:] if args.command[:1] == ["--"] else args.command
+    if not command or args.mode == "live":
+        parser.error("a command and --mode test|wt:<id> are required (live is never allowed here)")
+    workspaces = find_workspaces()
+    values = project_env(workspaces, args.mode)
+    env, stream = build_env(values, args.mode, args.e2e)
+    for key in ("JAVMETA_E2E_COVERAGE_FILE", "JAVMETA_SEED_STREAMS"):
+        if os.environ.get(key):
+            env[key] = os.environ[key]
+    for key in ("JAVMETA_IT_TELEGRAM_BOT_TOKEN", "JAVMETA_IT_TELEGRAM_CHAT_ID"):
+        if values.get(key):
+            env[key.replace("JAVMETA_IT_", "NOTIFICATION_")] = values[key]
+    run_env = {**os.environ, **env, "RUNTIME_PASS_ENV": " ".join(env)}
+    status = subprocess.run([str(workspaces / "scripts/docker/runtime"), "php", *command], cwd=ROOT, env=run_env).returncode
+    if args.e2e and not delete_stream(env, stream):
+        sys.stderr.write("Could not clean the OpenObserve stream created by this run.\n")
+        status = status or 1
+    return status
+
+
+if __name__ == "__main__":
+    sys.exit(main())

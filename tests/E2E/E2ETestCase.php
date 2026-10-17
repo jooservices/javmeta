@@ -295,11 +295,8 @@ abstract class E2ETestCase extends TestCase
         $stream = (string) config('openobserve.stream_logs');
 
         foreach (['Postgres database' => $database, 'Mongo database' => $mongoDatabase, 'movie index' => $movieIndex, 'performer index' => $performerIndex, 'OpenObserve stream' => $stream] as $label => $name) {
-            $validPrefix = $label === 'Postgres database'
-                ? str_starts_with($name, 'javmeta_it') || str_starts_with($name, 'jvmeta_it')
-                : str_starts_with($name, 'javmeta_it');
-            if (! $validPrefix) {
-                throw new RuntimeException($label . ' must use the javmeta_it test namespace.');
+            if (! self::isTestNamespace($name, $label === 'Postgres database')) {
+                throw new RuntimeException($label . ' must use a javmeta test namespace (javmeta_test, javmeta_wt<id> or the CI javmeta_it).');
             }
         }
         if (DB::getDriverName() !== 'pgsql') {
@@ -338,11 +335,28 @@ abstract class E2ETestCase extends TestCase
         }
     }
 
+    /** Test namespaces: shared javmeta_test / javmeta_wt<id> (provision-project) and the isolated CI javmeta_it. */
+    private static function isTestNamespace(string $name, bool $allowLegacyPostgres = false): bool
+    {
+        $prefixes = ['javmeta_test', 'javmeta_wt', 'javmeta_it'];
+        if ($allowLegacyPostgres) {
+            $prefixes[] = 'jvmeta_it';
+        }
+
+        foreach ($prefixes as $prefix) {
+            if (str_starts_with($name, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static function resetMongo(): void
     {
         $databaseName = (string) config('mongodb.database');
-        if (! str_starts_with($databaseName, 'javmeta_it')) {
-            throw new RuntimeException('Mongo cleanup refused a database outside the javmeta_it namespace.');
+        if (! self::isTestNamespace($databaseName)) {
+            throw new RuntimeException('Mongo cleanup refused a database outside the javmeta test namespaces.');
         }
         $uri = config('mongodb.uri');
         $client = new MongoClient(is_string($uri) && $uri !== ''
@@ -374,8 +388,8 @@ abstract class E2ETestCase extends TestCase
     {
         $indexes = [(string) config('elasticsearch.movies_index'), (string) config('elasticsearch.performers_index')];
         foreach ($indexes as $index) {
-            if (! str_starts_with($index, 'javmeta_it')) {
-                throw new RuntimeException('Elasticsearch cleanup refused an index outside the javmeta_it namespace.');
+            if (! self::isTestNamespace($index)) {
+                throw new RuntimeException('Elasticsearch cleanup refused an index outside the javmeta test namespaces.');
             }
             $response = Http::baseUrl(rtrim((string) config('elasticsearch.host'), '/'))->timeout(10)->delete('/' . $index);
             if (! $response->successful() && $response->status() !== 404) {

@@ -14,6 +14,8 @@ DOCKER_LOG="${TEST_TMP}/docker.log"
 MAIN="${TEST_TMP}/main"
 WORKTREE="${TEST_TMP}/wt"
 export DOCKER_LOG
+# This test covers the isolated CI-image path of docker/ci/run; local runs use the shared runtime instead.
+export JAVMETA_CI_DOCKER=1
 
 fail() {
   echo "FAIL: $*" >&2

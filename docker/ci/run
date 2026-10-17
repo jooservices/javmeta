@@ -1,11 +1,31 @@
 #!/usr/bin/env bash
-# Run a command inside the CI image with the repository mounted at /app.
+# Run a command with the repository's PHP toolchain.
 #   docker/ci/run composer lint
+#
+# On a developer machine (Workspaces checkout): runs in the ONE shared long-lived PHP 8.5 runtime
+# (scripts/docker/runtime php, a docker exec). No container, image or mount is created per run.
+# On GitHub Actions (or JAVMETA_CI_DOCKER=1): builds and runs the isolated CI image as before.
 set -euo pipefail
 
-image="${JAVMETA_CI_IMAGE:-javmeta-ci:local}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+if [[ "${GITHUB_ACTIONS:-}" != "true" && "${JAVMETA_CI_DOCKER:-0}" != "1" ]]; then
+  dir="$root"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -x "$dir/scripts/docker/runtime" ]]; then
+      cd "$root"
+      # The shared runtime ships pcov disabled; enable it for this process only (coverage gate).
+      export PHP_INI_SCAN_DIR="/usr/local/etc/php/conf.d:${root}/docker/dev/php.d"
+      export RUNTIME_PASS_ENV="${RUNTIME_PASS_ENV:-} PHP_INI_SCAN_DIR"
+      exec "$dir/scripts/docker/runtime" php "$@"
+    fi
+    dir="$(dirname "$dir")"
+  done
+  echo "Workspaces shared runtime not found above $root; set JAVMETA_CI_DOCKER=1 to use the CI image." >&2
+  exit 2
+fi
+
+image="${JAVMETA_CI_IMAGE:-javmeta-ci:local}"
 if [[ "${JAVMETA_CI_SKIP_BUILD:-0}" != "1" ]]; then
   docker build --quiet --tag "${image}" --file "${root}/docker/ci/Dockerfile" "${root}/docker/ci" >/dev/null
 fi
