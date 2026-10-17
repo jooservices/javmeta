@@ -5,6 +5,11 @@ set -euo pipefail
 SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 RUN="${SCRIPT_DIR}/../../docker/dev/shared-run"
 
+if ! command -v python3 >/dev/null 2>&1; then
+  echo 'shared-run guard tests: SKIP (python3 is a host tool and is not installed here)'
+  exit 0
+fi
+
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
 if output="$(python3 -I "$RUN" --mode live -- true 2>&1)"; then

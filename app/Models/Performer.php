@@ -25,7 +25,7 @@ class Performer extends Model
     protected $fillable = [
         'uuid', 'source_slug', 'external_id', 'name_romaji', 'name_kanji', 'name_kana',
         'birth_date', 'height_cm', 'bust', 'waist', 'hip', 'cup', 'blood_type', 'bio_text',
-        'debut_date', 'location', 'profile_url', 'image_url', 'attrs', 'needs_review',
+        'debut_date', 'retired_date', 'location', 'profile_url', 'image_url', 'attrs', 'needs_review',
         'first_seen_at', 'updated_at', 'crawled_at',
     ];
 
@@ -80,6 +80,7 @@ class Performer extends Model
         return [
             'birth_date' => 'date',
             'debut_date' => 'date',
+            'retired_date' => 'date',
             'height_cm' => 'integer',
             'bust' => 'integer',
             'waist' => 'integer',
