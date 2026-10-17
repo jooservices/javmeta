@@ -17,7 +17,7 @@ for argument in "$@"; do
   esac
 done
 
-[[ "$namespace" == javmeta_it* ]] || fail 'Rehearsal requires an explicit javmeta_it* namespace.'
+[[ "$namespace" == javmeta_it* || "$namespace" == javmeta_test* || "$namespace" == javmeta_wt* ]] || fail 'Rehearsal requires an explicit javmeta_it*, javmeta_test* or javmeta_wt* namespace.'
 validate_namespace "$namespace"
 required_names=(BACKUP_ROOT BACKUP_NAMESPACE AGE_RECIPIENT AGE_IDENTITY PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE MONGO_URI)
 if (( postgres_mongo_only == 0 )); then

@@ -38,7 +38,7 @@ JAVMETA_QUEUE_DEPTH_LIMIT=100
 
 Each `config/javmeta_queues.php` name becomes a Horizon supervisor in `production`, `local`, and `testing`. Supervisors read their process count and timeout from `JAVMETA_WORKERS_PER_QUEUE` and `JAVMETA_QUEUE_TIMEOUT`. Keep the timeout below the queue connection's `retry_after`; the defaults leave a 60-second margin.
 
-The Redis ACL identity for shared integration tests is separate from the application identity. From the Workspaces root, provision it with `scripts/docker/shared provision-javmeta-redis`; pair it with `scripts/docker/shared provision-javmeta-test` before running `docker/ci/integration-shared`. The test identity is limited to `javmeta_it:*` keys and channels. Its credentials live in the Workspaces root `.env`, not this repository.
+Shared integration tests use the Workspaces root Redis account on the project's own database indexes (`provision-project javmeta --redis`: live index and test index) and the key prefixes `javmeta:`, `javmeta_test:` and `javmeta_wt<id>:`; there are no per-project Redis users or ACLs. `docker/ci/integration-shared` verifies the target with `check-project` first.
 
 ## Backpressure
 

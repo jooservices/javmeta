@@ -1,192 +1,22 @@
 #!/usr/bin/env bash
-# Run the JAVmeta E2E journeys against Workspaces shared services.
-#   docker/ci/e2e-shared
+# Run the E2E journeys against the Workspaces SHARED services in the shared PHP runtime.
+#   docker/ci/e2e-shared                            # javmeta_test
+#   JAVMETA_MODE=wt:<id> docker/ci/e2e-shared       # a worktree database
+#
+# Indexes, Redis prefix, cache prefix and the OpenObserve stream carry a per-run tag; the stream is
+# deleted afterwards. Databases are verified with check-project first. The run must finish in 480 s.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-workspaces="${JAVMETA_WORKSPACES_ROOT:-$(cd "${root}/../../.." && pwd)}"
-workspaces_env="${workspaces}/.env"
-image="${JAVMETA_CI_IMAGE:-javmeta-ci:local}"
-
-[[ -f "$workspaces_env" && ! -L "$workspaces_env" ]] || { echo "Workspaces root .env not found: $workspaces_env" >&2; exit 2; }
-[[ "$(stat -f '%Lp' "$workspaces_env" 2>/dev/null || stat -c '%a' "$workspaces_env")" == "600" ]] || { echo "Workspaces root .env must be mode 0600." >&2; exit 2; }
-
-temp_dir="${root}/.tmp"
-temp_dir_created=0
-if [[ ! -d "$temp_dir" ]]; then
-  mkdir -p "$temp_dir"
-  temp_dir_created=1
-  chmod 700 "$temp_dir"
-fi
-env_file="$(mktemp "${temp_dir}/javmeta-e2e-env.XXXXXX")"
-coverage_file="$(mktemp "${temp_dir}/javmeta-e2e-coverage.XXXXXX")"
-coverage_container_file="/app/.tmp/$(basename "$coverage_file")"
-coverage_created=1
-cache_dir=""
-chmod 600 "$env_file"
-stream=""
-
-cleanup() {
-  status=$?
-  if [[ -n "$stream" && -f "$env_file" ]]; then
-    if ! python3 -I - "$env_file" "$stream" <<'PY'
-import base64, sys, urllib.error, urllib.parse, urllib.request
-
-env_path, stream = sys.argv[1:]
-values = {}
-for line in open(env_path, encoding="utf-8"):
-    key, value = line.rstrip("\n").split("=", 1)
-    values[key] = value
-url = values["OPENOBSERVE_CLEANUP_URL"].rstrip("/") + "/api/" + urllib.parse.quote(values["OPENOBSERVE_ORG"], safe="") + "/streams/" + urllib.parse.quote(stream, safe="") + "?type=logs&delete_all=true"
-credentials = base64.b64encode((values["OPENOBSERVE_EMAIL"] + ":" + values["OPENOBSERVE_PASSWORD"]).encode()).decode()
-request = urllib.request.Request(url, method="DELETE", headers={"Authorization": "Basic " + credentials})
-try:
-    with urllib.request.urlopen(request, timeout=20) as response:
-        if response.status not in (200, 202, 204):
-            raise RuntimeError("unexpected status")
-except urllib.error.HTTPError as error:
-    if error.code != 404:
-        sys.exit("OpenObserve E2E stream cleanup failed with HTTP " + str(error.code) + ".")
-except Exception as error:
-    sys.exit("OpenObserve E2E stream cleanup failed (" + type(error).__name__ + ").")
-PY
-    then
-      echo "Could not clean the OpenObserve stream created by this E2E run." >&2
-      status=1
-    fi
-  fi
-  rm -f "$env_file"
-  if (( coverage_created == 1 )); then
-    rm -f "$coverage_file"
-  fi
-  if [[ -n "$cache_dir" ]]; then
-    rm -rf "$cache_dir"
-  fi
-  if (( temp_dir_created == 1 )); then
-    rmdir "$temp_dir" 2>/dev/null || true
-  fi
-  exit "$status"
-}
-trap cleanup EXIT
-
-python3 -I - "$workspaces_env" "$env_file" <<'PY'
-import base64, json, secrets, sys, time, urllib.parse, urllib.request
-
-source, target = sys.argv[1:]
-values = {}
-for line in open(source, encoding="utf-8"):
-    row = line.strip()
-    if row and not row.startswith("#") and "=" in row:
-        key, value = row.split("=", 1)
-        values[key.removeprefix("export ").strip()] = value.strip().strip('"').strip("'")
-
-required = (
-    "JAVMETA_IT_POSTGRES_USER", "JAVMETA_IT_POSTGRES_PASSWORD", "JAVMETA_IT_POSTGRES_DATABASE",
-    "JAVMETA_IT_MONGODB_USER", "JAVMETA_IT_MONGODB_PASSWORD", "JAVMETA_IT_MONGODB_DATABASE",
-    "JAVMETA_IT_ELASTIC_USER", "JAVMETA_IT_ELASTIC_PASSWORD",
-    "JAVMETA_IT_OPENOBSERVE_EMAIL", "JAVMETA_IT_OPENOBSERVE_PASSWORD",
-)
-missing = [key for key in required if not values.get(key)]
-if missing:
-    sys.exit("Missing JAVMETA_IT_* settings in Workspaces .env: " + ", ".join(missing))
-
-database = values["JAVMETA_IT_POSTGRES_DATABASE"]
-mongo_database = values["JAVMETA_IT_MONGODB_DATABASE"]
-index_pattern = values.get("JAVMETA_IT_ELASTIC_INDEX_PATTERN", "javmeta_it_{type}")
-stream_base = values.get("JAVMETA_IT_OPENOBSERVE_STREAM", "javmeta_it_logs")
-for label, value in (("Postgres database", database), ("Mongo database", mongo_database), ("Elasticsearch index pattern", index_pattern), ("OpenObserve stream", stream_base)):
-    if not value.startswith(("javmeta_it", "jvmeta_it")):
-        sys.exit(label + " is outside the JAVMETA_IT namespace.")
-if "{type}" in index_pattern:
-    movie_index = index_pattern.replace("{type}", "movies")
-    performer_index = index_pattern.replace("{type}", "performers")
-elif index_pattern.count("*") == 1:
-    movie_index = index_pattern.replace("*", "movies")
-    performer_index = index_pattern.replace("*", "performers")
-elif index_pattern.endswith("_"):
-    movie_index = index_pattern + "movies"
-    performer_index = index_pattern + "performers"
-else:
-    sys.exit("JAVMETA_IT_ELASTIC_INDEX_PATTERN must contain {type}, one *, or end with an underscore.")
-
-quote = lambda value: urllib.parse.quote(value, safe="")
-host = "host.docker.internal"
-run_tag = secrets.token_hex(5)
-stream = stream_base + "_e2e_" + run_tag
-redis_prefix = values.get("JAVMETA_IT_REDIS_PREFIX", "javmeta_it:") + "e2e_" + run_tag + ":"
-auth_database = values.get("JAVMETA_IT_MONGODB_AUTH_DATABASE", mongo_database)
-mongo_uri = "mongodb://" + quote(values["JAVMETA_IT_MONGODB_USER"]) + ":" + quote(values["JAVMETA_IT_MONGODB_PASSWORD"]) + "@" + host + ":" + values.get("JAVMETA_IT_MONGODB_PORT", "27022") + "/" + quote(mongo_database) + "?authSource=" + quote(auth_database)
-elastic_url = "http://" + quote(values["JAVMETA_IT_ELASTIC_USER"]) + ":" + quote(values["JAVMETA_IT_ELASTIC_PASSWORD"]) + "@" + host + ":" + values.get("JAVMETA_IT_ELASTIC_PORT", "19200")
-email = values["JAVMETA_IT_OPENOBSERVE_EMAIL"]
-password = values["JAVMETA_IT_OPENOBSERVE_PASSWORD"]
-auth = base64.b64encode((email + ":" + password).encode()).decode()
-request = urllib.request.Request("http://127.0.0.1:15080/api/organizations", headers={"Authorization": "Basic " + auth})
-payload = None
-for attempt in range(3):
-    try:
-        with urllib.request.urlopen(request, timeout=15) as response:
-            payload = json.load(response)
-        break
-    except Exception as error:
-        if attempt == 2:
-            sys.exit("Could not list the OpenObserve organization with the E2E account (" + type(error).__name__ + ").")
-        time.sleep(3)
-items = payload.get("data") or payload.get("organizations") or payload.get("list") or payload if isinstance(payload, dict) else payload
-wanted = values.get("JAVMETA_IT_OPENOBSERVE_ORG", "javmeta_it")
-matches = [item for item in items if isinstance(item, dict) and item.get("name") == wanted]
-if len(matches) != 1 or not matches[0].get("identifier"):
-    sys.exit("The JAVMETA_IT OpenObserve organization was not found.")
-
-env = {
-    "APP_ENV": "testing", "APP_NAME": "javmeta", "APP_KEY": "base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-    "DB_CONNECTION": "pgsql", "DB_HOST": host, "DB_PORT": values.get("JAVMETA_IT_POSTGRES_PORT", "15435"),
-    "DB_DATABASE": database, "DB_USERNAME": values["JAVMETA_IT_POSTGRES_USER"], "DB_PASSWORD": values["JAVMETA_IT_POSTGRES_PASSWORD"],
-    "JAVMETA_E2E_POSTGRES_DATABASE": database,
-    "DB_URL": "", "MONGO_URI": mongo_uri, "MONGO_DATABASE": mongo_database,
-    "ELASTICSEARCH_HOST": elastic_url, "ELASTICSEARCH_MOVIES_INDEX": movie_index, "ELASTICSEARCH_PERFORMERS_INDEX": performer_index,
-    "ELASTICSEARCH_VERIFY_SSL": "false", "EMBEDDER_URL": "http://127.0.0.1:1",
-    "REDIS_HOST": host, "REDIS_PORT": values.get("JAVMETA_IT_REDIS_PORT", "16382"),
-    "REDIS_PREFIX": redis_prefix, "HORIZON_PREFIX": redis_prefix + "horizon:",
-    "CACHE_STORE": "database", "CACHE_PREFIX": "javmeta_it_e2e_" + run_tag + "_", "QUEUE_CONNECTION": "sync",
-    "OPENOBSERVE_ENABLED": "true", "OPENOBSERVE_URL": "http://" + host + ":15080",
-    "OPENOBSERVE_CLEANUP_URL": "http://127.0.0.1:15080",
-    "OPENOBSERVE_ORG": matches[0]["identifier"], "OPENOBSERVE_EMAIL": email, "OPENOBSERVE_PASSWORD": password,
-    "OPENOBSERVE_STREAM_LOGS": stream, "OPENOBSERVE_STREAM_METRICS": stream + "_metrics",
-    "LOG_STACK": "single", "JAVMETA_E2E_SHARED": "1",
-}
-with open(target, "w", encoding="utf-8") as handle:
-    for key, value in env.items():
-        handle.write(key + "=" + str(value) + "\n")
-PY
-
-stream="$(python3 -I - "$env_file" <<'PY'
-import sys
-for line in open(sys.argv[1], encoding="utf-8"):
-    if line.startswith("OPENOBSERVE_STREAM_LOGS="):
-        print(line.rstrip("\n").split("=", 1)[1])
-        break
-PY
-)"
-
-if [[ "${JAVMETA_CI_SKIP_BUILD:-0}" != "1" ]]; then
-  docker build --quiet --tag "$image" --file "${root}/docker/ci/Dockerfile" "${root}/docker/ci" >/dev/null
-fi
-cache_dir="$(mktemp -d "${temp_dir}/javmeta-e2e-composer-cache.XXXXXX")"
+mkdir -p "$root/.tmp"
+coverage="$root/.tmp/e2e-coverage.xml"
 
 SECONDS=0
-docker run --rm \
-  --user "$(id -u):$(id -g)" \
-  --add-host host.docker.internal:host-gateway \
-  --env HOME=/tmp \
-  --env "JAVMETA_E2E_COVERAGE_FILE=${coverage_container_file}" \
-  --env-file "$env_file" \
-  --volume "${root}:/app" \
-  --volume "${cache_dir}:/tmp/composer-cache" \
-  --workdir /app \
-  "$image" bash -lc 'set -euo pipefail; if [[ ! -d vendor ]]; then composer install --no-interaction --prefer-dist --no-progress; fi; php artisan config:clear --ansi; php artisan migrate --force --ansi; composer test:e2e'
+JAVMETA_E2E_COVERAGE_FILE="$coverage" "$root/docker/dev/shared-run" --mode "${JAVMETA_MODE:-test}" --e2e -- \
+  bash -lc 'set -euo pipefail; if [[ ! -d vendor ]]; then composer install --no-interaction --prefer-dist --no-progress; fi; php artisan config:clear --ansi; php artisan migrate --force --ansi; composer test:e2e'
 elapsed="$SECONDS"
 if (( elapsed > 480 )); then
   echo "JAVMETA E2E run took ${elapsed}s; it must finish in less than 480s." >&2
   exit 1
 fi
-printf 'JAVMETA E2E completed in %ss (limit: 480s).\n' "$elapsed"
+printf 'JAVMETA E2E completed in %ss (limit: 480s). Coverage: %s\n' "$elapsed" "$coverage"

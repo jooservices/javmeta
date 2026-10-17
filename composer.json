@@ -98,14 +98,15 @@
         ],
         "test:shell": [
             "bash tests/Shell/worker-queues.test.sh",
+            "bash tests/Shell/shared-run.test.sh",
             "bash tests/Shell/run-captainhook.test.sh",
             "bash tests/Shell/backup.test.sh",
-            "shellcheck -x deploy/backup/*.sh tests/Shell/backup.test.sh"
+            "if command -v shellcheck >/dev/null 2>&1; then shellcheck -x deploy/backup/*.sh tests/Shell/backup.test.sh; elif [ \"${CI:-}\" = true ]; then echo 'shellcheck is required in CI' >&2; exit 1; else echo 'shellcheck not installed here; it runs in GitHub CI'; fi"
         ],
         "test:e2e": [
             "@php -r \"is_dir('.tmp') || mkdir('.tmp', 0700);\"",
             "@php artisan config:clear --ansi",
-            "php -d pcov.enabled=1 -d pcov.directory=/app/tests/E2E vendor/bin/phpunit --configuration phpunit.e2e.xml --do-not-cache-result --coverage-clover=${JAVMETA_E2E_COVERAGE_FILE:-.tmp/e2e-coverage.xml}",
+            "php -d pcov.enabled=1 -d pcov.directory=${PWD}/tests/E2E vendor/bin/phpunit --configuration phpunit.e2e.xml --do-not-cache-result --coverage-clover=${JAVMETA_E2E_COVERAGE_FILE:-.tmp/e2e-coverage.xml}",
             "@php tools/coverage-enforce.php ${JAVMETA_E2E_COVERAGE_FILE:-.tmp/e2e-coverage.xml} 90"
         ],
         "coverage:report": "php tools/coverage-report.php build/coverage.xml build/coverage/uncovered-files.md",

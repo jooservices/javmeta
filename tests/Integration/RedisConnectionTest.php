@@ -18,7 +18,7 @@ final class RedisConnectionTest extends IntegrationTestCase
             $this->markTestSkipped('REDIS_HOST is not set; skipping the Redis integration test.');
         }
 
-        self::assertSame('javmeta_it:', config('database.redis.options.prefix'));
+        self::assertMatchesRegularExpression('/^javmeta_(it|test|wt[a-z0-9]{1,12}):/', (string) config('database.redis.options.prefix'));
 
         $key = 'integration:' . bin2hex(random_bytes(12));
         $value = bin2hex(random_bytes(16));

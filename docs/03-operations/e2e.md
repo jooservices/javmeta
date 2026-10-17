@@ -3,8 +3,8 @@
 The E2E suite exercises JAVmeta through its real HTTP kernel and shared test
 services. CrawlerX uses the checked-in HTML fixtures, so the test run makes no
 requests to public sites. Run the suite with `composer test:e2e` inside the
-project CI/PHP image; `docker/ci/e2e-shared` supplies the isolated Workspaces
-test-service settings.
+shared PHP runtime; `docker/ci/e2e-shared` (or `JAVMETA_MODE=wt:<id> docker/ci/e2e-shared`) runs it on
+`javmeta_test` / the worktree database through `docker/dev/shared-run`.
 
 ## Journey steps
 
@@ -40,7 +40,7 @@ owner-token values never appear in assertion output.
 
 The runner accepts only the project test database, Mongo database, search
 indexes, cache prefix, Redis prefix, and OpenObserve stream supplied through
-`JAVMETA_IT_*` settings. It uses Laravel's database cache and synchronous queue
+`shared-run` (`javmeta_test`, `javmeta_wt<id>` or the CI-only `javmeta_it`). It uses Laravel's database cache and synchronous queue
 so the journeys do not write Redis or RabbitMQ state. A per-run OpenObserve
 stream is deleted during runner cleanup. PostgreSQL cleanup truncates tables in
 that test database while preserving migrations. Mongo collections are dropped
