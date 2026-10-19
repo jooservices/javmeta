@@ -38,7 +38,7 @@ final class SchemaTest extends TestCase
         'movie_media' => ['id', 'movie_id', 'kind', 'url', 'meta', 'source_slug', 'crawled_at'],
         'performer_media' => ['id', 'performer_id', 'kind', 'url', 'meta', 'source_slug', 'crawled_at'],
         'sources' => ['slug', 'name', 'base_url', 'enabled', 'priority', 'needs_proxy', 'gap_seconds_default', 'gap_seconds_min', 'gap_seconds_max', 'gap_seconds_current', 'consecutive_failures', 'circuit_state', 'circuit_opened_at', 'last_success_at', 'last_error_at', 'last_error', 'soft404_markers'],
-        'crawl_queue' => ['id', 'source_slug', 'url', 'kind', 'status', 'attempts', 'max_attempts', 'next_attempt_at', 'claimed_at', 'locked_by', 'last_error', 'error_code', 'last_failed_at'],
+        'crawl_queue' => ['id', 'source_slug', 'url', 'kind', 'status', 'attempts', 'max_attempts', 'next_attempt_at', 'claimed_at', 'started_at', 'locked_by', 'last_error', 'error_code', 'last_failed_at'],
         'crawl_runs' => ['id', 'source_slug', 'started_at', 'finished_at', 'status', 'pages_fetched', 'movies_new', 'movies_updated', 'failures', 'proxy_requests', 'proxy_bytes', 'browser_fetches'],
         'crawl_events' => ['id', 'source_slug', 'kind', 'url', 'detail', 'created_at'],
         'review_flags' => ['id', 'movie_id', 'code_normalized', 'source_slug', 'consecutive_failures', 'reason', 'flagged_at', 'resolved_at'],

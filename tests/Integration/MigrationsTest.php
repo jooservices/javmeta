@@ -25,8 +25,9 @@ final class MigrationsTest extends BaseTestCase
             self::assertTrue(Schema::hasTable($table), "missing table {$table}");
         }
 
-        // The last two migrations: performers.retired_date (JAVM-57) and the failure-reason backfill (JAVM-37).
-        self::assertSame(0, Artisan::call('migrate:rollback', ['--step' => 2, '--force' => true]), Artisan::output());
+        // The last three migrations: queue start tracking (JAVM-81), performers.retired_date (JAVM-57), and failed reasons (JAVM-37).
+        self::assertSame(0, Artisan::call('migrate:rollback', ['--step' => 3, '--force' => true]), Artisan::output());
+        self::assertFalse(Schema::hasColumn('crawl_queue', 'started_at'));
         self::assertFalse(Schema::hasColumn('performers', 'retired_date'));
         self::assertFalse(Schema::hasColumn('crawl_queue', 'error_code'));
 
@@ -39,12 +40,23 @@ final class MigrationsTest extends BaseTestCase
             'max_attempts' => 3,
             'last_error' => null,
         ]);
+        DB::table('crawl_queue')->insert([
+            'source_slug' => 'legacy-claimed-source',
+            'url' => 'https://legacy.test/claimed-item',
+            'kind' => 'detail',
+            'status' => 'claimed',
+            'attempts' => 1,
+            'max_attempts' => 3,
+            'claimed_at' => '2026-10-19 10:00:00+00',
+        ]);
 
         self::assertSame(0, Artisan::call('migrate', ['--force' => true]), Artisan::output());
         $legacyRow = DB::table('crawl_queue')->where('source_slug', 'legacy-source')->first();
         self::assertSame('legacy_unclassified', $legacyRow?->error_code);
         self::assertSame('Failure reason not recorded before JAVM-37.', $legacyRow?->last_error);
         self::assertNull($legacyRow?->last_failed_at);
+        $legacyClaimedRow = DB::table('crawl_queue')->where('source_slug', 'legacy-claimed-source')->first();
+        self::assertSame($legacyClaimedRow?->claimed_at, $legacyClaimedRow?->started_at);
         $constraintValidation = DB::selectOne("SELECT CASE WHEN convalidated THEN 1 ELSE 0 END AS is_validated FROM pg_constraint WHERE conname = 'crawl_queue_failed_reason_check'");
         self::assertSame(1, (int) $constraintValidation?->is_validated);
 

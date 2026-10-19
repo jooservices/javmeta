@@ -107,6 +107,7 @@ final class CrawlQueueServiceTest extends TestCase
             'attempts' => 1,
             'max_attempts' => 3,
             'claimed_at' => now()->subHour(),
+            'started_at' => now()->subHour(),
             'locked_by' => fake()->uuid(),
         ]);
 
@@ -128,6 +129,7 @@ final class CrawlQueueServiceTest extends TestCase
             'attempts' => 3,
             'max_attempts' => 3,
             'claimed_at' => now()->subHour(),
+            'started_at' => now()->subHour(),
         ]);
 
         $reclaimed = (new CrawlQueueService())->reclaimStaleClaimed(900);
@@ -148,6 +150,7 @@ final class CrawlQueueServiceTest extends TestCase
                 'status' => CrawlQueue::STATUS_CLAIMED,
                 'attempts' => 1,
                 'max_attempts' => 3,
+                'started_at' => now(),
             ]);
 
             (new FetchDetailJob($row->id))->failed(new TimeoutExceededException('Worker timed out.'));
@@ -169,6 +172,7 @@ final class CrawlQueueServiceTest extends TestCase
             'status' => CrawlQueue::STATUS_CLAIMED,
             'attempts' => 3,
             'max_attempts' => 3,
+            'started_at' => now(),
         ]);
 
         (new FetchDetailJob($row->id))->failed(new RuntimeException('Request failed at https://user:pass@example.test/path?token=secret'));
