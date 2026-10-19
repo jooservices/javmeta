@@ -24,15 +24,19 @@ return [
             // fields. The first non-empty match in each alias list wins. A
             // source may override any key via
             // `sources.<slug>.normalize.key_map` (merged over these defaults).
+            // `jp` / `en` force the column a source's page title lands in; `auto` puts a
+            // title with kana/kanji into title_jp and any other title into title_en
+            // (sites that serve either). Set it per source with
+            // `sources.<slug>.normalize.title_locale`.
             'title_locale' => 'jp',
             'key_map' => [
-                'maker' => ['maker', 'Maker', 'メーカー', 'maker_label', 'publisher'],
+                'maker' => ['maker', 'Maker', 'メーカー', 'Studio', 'maker_label', 'publisher'],
                 'label' => ['label', 'Label', 'レーベル'],
-                'series' => ['series', 'Series'],
-                'score' => ['rating', 'Rating', 'score', '評価'],
-                'genres' => ['genres', 'Genre', 'ジャンル', 'categories'],
-                'magnets' => ['downloads', 'download_url'],
-                'hls' => ['stream', 'sample_streams', 'sample_video_url'],
+                'series' => ['series', 'Series', 'シリーズ'],
+                'score' => ['rating', 'Rating', 'score', 'Score', '評価'],
+                'genres' => ['genres', 'Genre', 'ジャンル', 'Categories', 'categories'],
+                'magnets' => ['magnets', 'downloads', 'download_url'],
+                'hls' => ['stream', 'stream_url', 'sample_streams', 'sample_video_url'],
                 'description' => ['description', 'Description', 'あらすじ', '紹介', 'summary'],
                 'directors' => ['director', 'Director', 'directors', '監督'],
             ],
@@ -66,6 +70,7 @@ return [
             'gap_seconds_max' => 45,
             'movie_listing_urls' => ['https://www.javlibrary.com/en/vl_newrelease.php'],
             'performer_listing_urls' => ['https://www.javlibrary.com/en/star_list.php'],
+            'normalize' => ['title_locale' => 'en'],
         ],
         'javbus' => [
             'name' => 'JavBus',
@@ -85,6 +90,7 @@ return [
             'gap_seconds_min' => 2,
             'gap_seconds_max' => 30,
             'movie_listing_urls' => ['https://missav.ws/en/new'],
+            'normalize' => ['title_locale' => 'en'],
         ],
         'fc2' => [
             'name' => 'FC2 Content Market',
@@ -112,6 +118,7 @@ return [
             'gap_seconds_min' => 1,
             'gap_seconds_max' => 20,
             'movie_listing_urls' => ['https://javbtc.com/'],
+            'normalize' => ['title_locale' => 'en'],
         ],
         '141jav' => [
             'name' => '141Jav',
@@ -160,6 +167,7 @@ return [
             'gap_seconds_max' => 30,
             'movie_listing_urls' => ['https://xxx.xcity.jp/avod/list/?style=simple'],
             'performer_listing_urls' => ['https://xxx.xcity.jp/idol/'],
+            'normalize' => ['title_locale' => 'auto'],
         ],
         'warashi' => [
             'name' => 'Warashi',
@@ -198,6 +206,7 @@ return [
             'gap_seconds_min' => 5,
             'gap_seconds_max' => 60,
             'movie_listing_urls' => ['https://en.caribbeancom.com/eng/index2.htm'],
+            'normalize' => ['title_locale' => 'en'],
         ],
         'heyzo' => [
             'name' => 'HEYZO',
@@ -207,6 +216,7 @@ return [
             'gap_seconds_min' => 5,
             'gap_seconds_max' => 60,
             'movie_listing_urls' => ['https://en.heyzo.com/listpages/all_1.html'],
+            'normalize' => ['title_locale' => 'en'],
         ],
         'tokyohot' => [
             'name' => 'Tokyo-Hot',
@@ -216,6 +226,7 @@ return [
             'gap_seconds_min' => 5,
             'gap_seconds_max' => 60,
             'movie_listing_urls' => ['https://my.tokyo-hot.com/index?lang=en'],
+            'normalize' => ['title_locale' => 'en'],
         ],
         'duga' => [
             'name' => 'DUGA',

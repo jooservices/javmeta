@@ -50,6 +50,19 @@ final class SourcePriorityConflictPolicyTest extends TestCase
         $this->assertSame($null->id, $picked?->id);
     }
 
+    public function test_a_source_reporting_nothing_does_not_hide_a_value_from_another_source(): void
+    {
+        config()->set('javmeta_sources.sources.javdb.priority', 10);
+        config()->set('javmeta_sources.sources.onejav.priority', 60);
+
+        $javdbNull = MovieObservation::factory()->create(['source_slug' => 'javdb', 'value' => null, 'crawled_at' => now()]);
+        $onejav = MovieObservation::factory()->create(['source_slug' => 'onejav', 'value' => 'From OneJav', 'crawled_at' => now()->subDay()]);
+
+        $picked = (new SourcePriorityConflictPolicy())->pick('maker', collect([$javdbNull, $onejav]));
+
+        $this->assertSame($onejav->id, $picked?->id);
+    }
+
     public function test_source_missing_from_config_is_least_authoritative(): void
     {
         config()->set('javmeta_sources.sources.javdb.priority', 10);
