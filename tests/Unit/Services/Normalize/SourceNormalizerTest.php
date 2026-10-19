@@ -437,7 +437,6 @@ final class SourceNormalizerTest extends TestCase
             externalId: 's1no1style-yua-mikami-sougouwiki-celebrity',
             title: 'Big Tits Bursting Out Of Her School Swimsuit',
             code: 'SSNI-00916',
-            metadata: ['product_code_raw' => 'ssni00916'],
         );
 
         $draft = $normalizer->normalizeMovie(

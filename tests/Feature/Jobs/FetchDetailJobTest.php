@@ -10,6 +10,7 @@ use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Models\Movie;
+use App\Services\Crawl\CrawlQueueService;
 use App\Services\Crawl\MovieDraftSink;
 use App\Services\Crawler\CrawlerxClient;
 use App\Services\Crawler\CrawlerxFetchResult;
@@ -168,7 +169,7 @@ final class FetchDetailJobTest extends TestCase
         ])->save();
         $sink = new FakeMovieDraftSink();
         $this->app->instance(MovieDraftSink::class, $sink);
-        $this->fakeClient(CrawlerxFetchResult::movie(new MovieDto(
+        $client = $this->fakeClient(CrawlerxFetchResult::movie(new MovieDto(
             externalId: 'no-code-detail',
             title: 'A detail page without a product code',
         )));
@@ -177,6 +178,7 @@ final class FetchDetailJobTest extends TestCase
 
         self::assertSame([], $sink->drafts);
         self::assertSame(0, Movie::query()->count());
+        self::assertSame(1, $client->calls);
         $this->assertDatabaseHas('crawl_queue', [
             'id' => $row->id,
             'status' => CrawlQueue::STATUS_FAILED,
@@ -186,6 +188,7 @@ final class FetchDetailJobTest extends TestCase
             'last_error' => 'JavBTC detail page has no recognizable product code.',
         ]);
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'javbtc', 'kind' => CrawlEvent::KIND_PARSE_DRIFT]);
+        self::assertNull(app(CrawlQueueService::class)->claimNext('javbtc-no-code-retry-check', CrawlQueue::KIND_DETAIL));
     }
 
     public function test_missing_normalizer_fails_row_with_parse_drift(): void
@@ -364,11 +367,11 @@ final class FetchDetailJobTest extends TestCase
         );
     }
 
-    private function fakeClient(CrawlerxFetchResult $detail): void
+    private function fakeClient(CrawlerxFetchResult $detail): FakeCrawlerxClient
     {
-        $this->app->instance(
-            CrawlerxClient::class,
-            new FakeCrawlerxClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'), $detail),
-        );
+        $client = new FakeCrawlerxClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'), $detail);
+        $this->app->instance(CrawlerxClient::class, $client);
+
+        return $client;
     }
 }
