@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Services\Normalize;
 
 use App\Data\Crawl\PerformerDraft;
+use App\Services\Normalize\JavbtcCodeMissingException;
 use App\Services\Normalize\NormalizationFailedException;
 use App\Services\Normalize\Normalizers\DefaultSourceNormalizer;
 use App\Services\Normalize\Normalizers\JavbtcSourceNormalizer;
@@ -480,6 +481,26 @@ final class SourceNormalizerTest extends TestCase
         );
 
         self::assertSame('SSNI-00916', $draft->code);
+    }
+
+    public function test_javbtc_without_a_recognizable_product_code_throws_a_specific_exception(): void
+    {
+        $normalizer = $this->registry()->forSlug('javbtc');
+        $movie = new MovieDto(
+            externalId: 'no-code-detail',
+            title: 'A detail page without a product code',
+        );
+
+        $this->expectException(JavbtcCodeMissingException::class);
+        $this->expectExceptionMessage('JavBTC detail page has no recognizable product code.');
+
+        $normalizer->normalizeMovie(
+            $movie,
+            [],
+            'javbtc',
+            'https://javbtc.com/r18/no-code-detail',
+            CarbonImmutable::now(),
+        );
     }
 
     public function test_missing_title_throws_normalization_failed(): void
