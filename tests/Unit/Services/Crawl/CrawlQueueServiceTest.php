@@ -70,6 +70,19 @@ final class CrawlQueueServiceTest extends TestCase
         $this->assertSame(CrawlQueue::STATUS_FAILED, $row->refresh()->status);
     }
 
+    public function test_rows_of_a_disabled_source_are_not_claimed(): void
+    {
+        $off = Source::factory()->create(['enabled' => false]);
+        $on = Source::factory()->create(['enabled' => true]);
+        $skipped = CrawlQueue::factory()->create(['source_slug' => $off->slug, 'status' => CrawlQueue::STATUS_PENDING, 'next_attempt_at' => null]);
+        $taken = CrawlQueue::factory()->create(['source_slug' => $on->slug, 'status' => CrawlQueue::STATUS_PENDING, 'next_attempt_at' => null]);
+
+        $claimed = (new CrawlQueueService())->claimNext('worker-1');
+
+        $this->assertSame($taken->id, $claimed?->id);
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $skipped->refresh()->status);
+    }
+
     public function test_a_site_waiting_out_a_block_delay_gets_no_new_claims_but_other_sites_do(): void
     {
         $blocked = Source::factory()->create();
