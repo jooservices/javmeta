@@ -158,6 +158,36 @@ final class FetchDetailJobTest extends TestCase
         $this->assertNotNull(Source::query()->find('onejav')?->last_error_at);
     }
 
+    public function test_javbtc_detail_without_a_product_code_is_terminal_parse_failed(): void
+    {
+        $source = $this->source('javbtc');
+        $row = $this->detailRow($source);
+        $row->forceFill([
+            'url' => 'https://javbtc.com/r18/no-code-detail',
+            'attempts' => 1,
+        ])->save();
+        $sink = new FakeMovieDraftSink();
+        $this->app->instance(MovieDraftSink::class, $sink);
+        $this->fakeClient(CrawlerxFetchResult::movie(new MovieDto(
+            externalId: 'no-code-detail',
+            title: 'A detail page without a product code',
+        )));
+
+        FetchDetailJob::dispatch($row->id);
+
+        self::assertSame([], $sink->drafts);
+        self::assertSame(0, Movie::query()->count());
+        $this->assertDatabaseHas('crawl_queue', [
+            'id' => $row->id,
+            'status' => CrawlQueue::STATUS_FAILED,
+            'attempts' => 1,
+            'next_attempt_at' => null,
+            'error_code' => CrawlErrorCode::ParseFailed->value,
+            'last_error' => 'JavBTC detail page has no recognizable product code.',
+        ]);
+        $this->assertDatabaseHas('crawl_events', ['source_slug' => 'javbtc', 'kind' => CrawlEvent::KIND_PARSE_DRIFT]);
+    }
+
     public function test_missing_normalizer_fails_row_with_parse_drift(): void
     {
         $source = Source::factory()->create(['slug' => 'mystery', 'base_url' => 'https://mystery.test']);
@@ -299,7 +329,7 @@ final class FetchDetailJobTest extends TestCase
     {
         return Source::factory()->create([
             'slug' => $slug,
-            'base_url' => 'https://onejav.com',
+            'base_url' => $slug === 'javbtc' ? config('javmeta_sources.sources.javbtc.base_url') : 'https://onejav.com',
             'gap_seconds_default' => 2.0,
             'gap_seconds_min' => 0.5,
             'gap_seconds_max' => 15.0,
