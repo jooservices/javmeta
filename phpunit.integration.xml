@@ -25,6 +25,9 @@
         <env name="DB_PASSWORD" value="jvmeta"/>
         <env name="DB_URL" value="" force="true"/>
         <env name="MONGO_DATABASE" value="javmeta_it_archive"/>
+        <env name="MONGODB_DATABASE" value="javmeta_it_archive" force="true"/>
+        <env name="MONGODB_URI" value="" force="true"/>
+        <env name="MONGO_URI" value="" force="true"/>
         <env name="ELASTICSEARCH_MOVIES_INDEX" value="javmeta_it_movies"/>
         <env name="ELASTICSEARCH_PERFORMERS_INDEX" value="javmeta_it_performers"/>
         <env name="EMBEDDER_URL" value="http://embedder.test" force="true"/>

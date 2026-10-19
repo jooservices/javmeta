@@ -39,6 +39,9 @@
         <env name="ELASTICSEARCH_HOST" value="http://127.0.0.1:9" force="true"/>
         <env name="MONGO_HOST" value="127.0.0.1" force="true"/>
         <env name="MONGO_PORT" value="1" force="true"/>
+        <env name="MONGODB_URI" value="" force="true"/>
+        <env name="MONGO_URI" value="" force="true"/>
+        <env name="MONGODB_DATABASE" value="javmeta_test_archive" force="true"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>

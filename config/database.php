@@ -117,12 +117,12 @@ return [
 
         'mongodb' => [
             'driver' => 'mongodb',
-            'dsn' => env('MONGO_URI') ?: sprintf(
+            'dsn' => env('MONGODB_URI') ?: env('MONGO_URI') ?: sprintf(
                 'mongodb://%s:%s',
                 env('MONGO_HOST', 'mongo'),
                 env('MONGO_PORT', '27017'),
             ),
-            'database' => env('MONGO_DATABASE', 'javmeta_archive'),
+            'database' => env('MONGODB_DATABASE', env('MONGO_DATABASE', 'javmeta_archive')),
         ],
 
     ],

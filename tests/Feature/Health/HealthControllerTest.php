@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Health;
 
 use App\Models\Source;
+use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Crawl\WorkerHeartbeat;
 use App\Services\Dependencies\Dependency;
 use Illuminate\Database\Events\QueryExecuted;
@@ -65,6 +66,27 @@ final class HealthControllerTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('status', 'degraded')
             ->assertJsonPath('worker.stale', true);
+    }
+
+    public function test_health_reports_archive_write_failures_and_recovers_after_a_success(): void
+    {
+        app(WorkerHeartbeat::class)->beat();
+        $archiveWrites = app(MongoArchiveWriteHealth::class);
+        $archiveWrites->recordFailure();
+
+        $this->getJson('/api/health')
+            ->assertOk()
+            ->assertJsonPath('status', 'degraded')
+            ->assertJsonPath('archive.status', 'degraded')
+            ->assertJsonPath('archive.failed_writes', 1);
+
+        $archiveWrites->recordSuccess();
+
+        $this->getJson('/api/health')
+            ->assertOk()
+            ->assertJsonPath('status', 'ok')
+            ->assertJsonPath('archive.status', 'ok')
+            ->assertJsonPath('archive.failed_writes', 1);
     }
 
     public function test_health_reports_each_dependency_with_state_and_hardness(): void

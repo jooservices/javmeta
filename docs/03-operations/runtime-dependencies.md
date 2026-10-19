@@ -36,6 +36,9 @@ OpenObserve is down.
 - `GET /api/health` reports each dependency's hard/soft role, state, and
   availability. It returns HTTP 503 when a hard dependency is unavailable and
   HTTP 200 with a degraded status when only soft dependencies are unavailable.
+- The same endpoint reports `archive.status`, the cumulative
+  `archive.failed_writes` count, and `archive.last_failure_at`. An archive write
+  failure degrades health until a later archive write succeeds.
 - Movie search requires PostgreSQL and Elasticsearch. PostgreSQL-backed data
   routes, including performer listing/search and movie lookup, require
   PostgreSQL.
