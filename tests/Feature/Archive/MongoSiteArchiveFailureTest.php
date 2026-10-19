@@ -40,7 +40,6 @@ final class MongoSiteArchiveFailureTest extends TestCase
             'sentry.node' => 'test-node',
             'sentry.before_send' => null,
             'openobserve.enabled' => false,
-            'mongodb.uri' => 'mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=50',
         ]);
 
         $client = ClientBuilder::create(['dsn' => 'https://public@example.test/1'])
@@ -61,16 +60,31 @@ final class MongoSiteArchiveFailureTest extends TestCase
 
     public function test_unreachable_archive_write_is_logged_sent_to_sentry_and_reported_by_health(): void
     {
-        $logger = Log::spy();
+        $server = stream_socket_server('tcp://127.0.0.1:0', $errorCode, $errorMessage);
+        self::assertIsResource($server, "Could not start MongoDB handshake test server: {$errorMessage} ({$errorCode})");
 
-        $archiveId = app(MongoSiteArchive::class)->upsertMovie(
-            'javdb',
-            'https://javdb.test/movies/1',
-            ['code' => 'SSIS-001'],
-            'SSIS-001',
-        );
+        $address = stream_socket_get_name($server, false);
+        self::assertIsString($address);
+        config()->set('mongodb.uri', "mongodb://{$address}");
+
+        $logger = Log::spy();
+        $started = hrtime(true);
+
+        try {
+            $archiveId = app(MongoSiteArchive::class)->upsertMovie(
+                'javdb',
+                'https://javdb.test/movies/1',
+                ['code' => 'SSIS-001'],
+                'SSIS-001',
+            );
+        } finally {
+            fclose($server);
+        }
+
+        $durationMs = (int) round((hrtime(true) - $started) / 1_000_000);
 
         self::assertNull($archiveId);
+        self::assertLessThan(5000, $durationMs, 'MongoDB server selection exceeded the configured 1.5 second timeout.');
         $logger->shouldHaveReceived('error')
             ->once()
             ->with('Mongo archive write failed.', Mockery::on(

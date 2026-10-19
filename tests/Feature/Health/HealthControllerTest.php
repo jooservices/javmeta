@@ -107,6 +107,7 @@ final class HealthControllerTest extends TestCase
 
     public function test_health_skips_database_dependent_queries_when_postgres_is_down(): void
     {
+        config()->set('cache.default', 'database');
         DependencyMonitorTestHelper::bind([Dependency::Postgres->value => false]);
         $queries = [];
         DB::listen(static function (QueryExecuted $query) use (&$queries): void {
@@ -118,7 +119,9 @@ final class HealthControllerTest extends TestCase
             ->assertJsonPath('status', 'down')
             ->assertJsonPath('database', 'down')
             ->assertJsonPath('queue.pending', 0)
-            ->assertJsonPath('dependencies.postgres.state', 'down');
+            ->assertJsonPath('dependencies.postgres.state', 'down')
+            ->assertJsonPath('archive.status', 'unknown')
+            ->assertJsonPath('archive.failed_writes', null);
 
         self::assertSame([], $queries);
     }

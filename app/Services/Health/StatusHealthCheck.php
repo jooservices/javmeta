@@ -25,7 +25,6 @@ final class StatusHealthCheck
     public function check(): array
     {
         $dependencyStatuses = $this->dependencies->statuses();
-        $archiveStatus = $this->archiveWrites->status();
         $database = ($dependencyStatuses[Dependency::Postgres->value]['available'] ?? false) ? 'ok' : 'down';
 
         if ($database === 'down') {
@@ -38,9 +37,15 @@ final class StatusHealthCheck
                 'queue' => ['pending' => 0, 'claimed' => 0, 'failed' => 0],
                 'sources' => [],
                 'dependencies' => $dependencyStatuses,
-                'archive' => $archiveStatus,
+                'archive' => [
+                    'status' => 'unknown',
+                    'failed_writes' => null,
+                    'last_failure_at' => null,
+                ],
             ];
         }
+
+        $archiveStatus = $this->archiveWrites->status();
 
         $sources = Source::query()
             ->orderBy('priority')

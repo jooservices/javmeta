@@ -116,6 +116,9 @@ final class MongoSiteArchive
             $uri = "mongodb://{$host}:{$port}";
         }
 
-        return $this->client = new Client($uri, [], ['serverSelectionTimeoutMS' => 1500]);
+        return $this->client = new Client($uri, [
+            'serverSelectionTimeoutMS' => 1500,
+            'connectTimeoutMS' => 1500,
+        ]);
     }
 }

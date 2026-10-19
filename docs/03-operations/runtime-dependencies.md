@@ -39,6 +39,8 @@ OpenObserve is down.
 - The same endpoint reports `archive.status`, the cumulative
   `archive.failed_writes` count, and `archive.last_failure_at`. An archive write
   failure degrades health until a later archive write succeeds.
+- If PostgreSQL is down, archive status is `unknown` and its count and timestamp
+  are `null`; the endpoint skips the archive cache lookup on that down path.
 - Movie search requires PostgreSQL and Elasticsearch. PostgreSQL-backed data
   routes, including performer listing/search and movie lookup, require
   PostgreSQL.
