@@ -363,11 +363,19 @@ class DefaultSourceNormalizer implements SourceNormalizer
 
                 $scale = is_numeric($scale) && (float) $scale > 0 ? (float) $scale : 10.0;
 
-                return $this->clampScore((float) $score / $scale * 10.0);
+                $normalized = $this->clampScore((float) $score / $scale * 10.0);
+                if ($normalized !== null) {
+                    return $normalized;
+                }
+
+                continue;
             }
 
             if (is_int($value) || is_float($value) || (is_string($value) && is_numeric($value))) {
-                return $this->clampScore((float) $value);
+                $normalized = $this->clampScore((float) $value);
+                if ($normalized !== null) {
+                    return $normalized;
+                }
             }
         }
 
@@ -376,7 +384,7 @@ class DefaultSourceNormalizer implements SourceNormalizer
 
     private function clampScore(float $score): ?float
     {
-        return $score < 0.0 || $score > 99.99 ? null : round($score, 2);
+        return $score < 0.0 || $score > 10.0 ? null : round($score, 2);
     }
 
     /**

@@ -204,6 +204,20 @@ final class SourceNormalizerTest extends TestCase
         $draft = $normalizer->normalizeMovie($movie, $movie->metadata, 'javdb', 'https://javdb.com/v/1', CarbonImmutable::now());
 
         self::assertNull($draft->extras['score']);
+
+        $above = new MovieDto(title: 'T', code: 'SSIS-001', metadata: ['rating' => ['score' => 8, 'scale' => 5]]);
+        $draft = $normalizer->normalizeMovie($above, $above->metadata, 'javdb', 'https://javdb.com/v/1', CarbonImmutable::now());
+        self::assertNull($draft->extras['score']);
+    }
+
+    public function test_the_next_score_alias_is_tried_after_an_invalid_rating(): void
+    {
+        $normalizer = $this->registry()->forSlug('javdb');
+        $movie = new MovieDto(title: 'T', code: 'SSIS-001', metadata: ['rating' => ['score' => 500, 'scale' => 5], 'score' => 8]);
+
+        $draft = $normalizer->normalizeMovie($movie, $movie->metadata, 'javdb', 'https://javdb.com/v/1', CarbonImmutable::now());
+
+        self::assertSame(8.0, $draft->extras['score']);
     }
 
     public function test_per_source_key_map_override_is_applied(): void
