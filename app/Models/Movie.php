@@ -19,6 +19,7 @@ class Movie extends Model
 
     public const CENSORED_UNCENSORED = 0;
     public const CENSORED_CENSORED = 1;
+    public const RECRAWL_STATUS_COMPLETE_AS_POSSIBLE = 'complete_as_possible';
 
     protected $table = 'movies';
 
@@ -29,7 +30,7 @@ class Movie extends Model
         'uuid', 'display_code', 'code_normalized', 'title_jp', 'title_en', 'description',
         'release_date', 'runtime_minutes', 'censored', 'maker', 'label', 'series',
         'community_score', 'cover_url', 'cover_thumb_url', 'attrs', 'completeness_tier',
-        'delisted_at', 'needs_review', 'first_seen_at', 'updated_at', 'crawled_at',
+        'recrawl_attempts', 'recrawl_status', 'delisted_at', 'needs_review', 'first_seen_at', 'updated_at', 'crawled_at',
     ];
 
     /** @return list<string> */
@@ -95,6 +96,7 @@ class Movie extends Model
             'censored' => 'integer',
             'community_score' => 'decimal:2',
             'completeness_tier' => 'integer',
+            'recrawl_attempts' => 'integer',
             'attrs' => 'array',
             'delisted_at' => 'datetime',
             'needs_review' => 'boolean',

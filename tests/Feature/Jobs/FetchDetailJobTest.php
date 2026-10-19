@@ -90,6 +90,21 @@ final class FetchDetailJobTest extends TestCase
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
     }
 
+    public function test_success_passes_the_recrawl_marker_to_the_sink_and_clears_it_from_the_row(): void
+    {
+        $source = $this->source('onejav');
+        $row = $this->detailRow($source);
+        $row->forceFill(['is_recrawl' => true])->save();
+        $sink = new FakeMovieDraftSink();
+        $this->app->instance(MovieDraftSink::class, $sink);
+        $this->fakeClient(CrawlerxFetchResult::movie($this->movie()));
+
+        FetchDetailJob::dispatch($row->id);
+
+        self::assertSame([true], $sink->recrawlFlags);
+        $this->assertFalse($row->refresh()->is_recrawl);
+    }
+
     public function test_success_persists_movie_through_container_bound_sink(): void
     {
         $source = $this->source('onejav');

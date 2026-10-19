@@ -114,7 +114,7 @@ final class FetchDetailJob implements ShouldQueue
             return;
         }
 
-        $this->deliverDraft($draft);
+        $this->deliverDraft($draft, $row->is_recrawl);
 
         $activity->recordSuccess($source);
         $throttle->onSuccess($source);
@@ -122,15 +122,15 @@ final class FetchDetailJob implements ShouldQueue
         $this->markDone($row);
     }
 
-    private function deliverDraft(MovieDraft $draft): void
+    private function deliverDraft(MovieDraft $draft, bool $isRecrawl): void
     {
         $sink = app()->bound(MovieDraftSink::class) ? app(MovieDraftSink::class) : null;
         if ($sink instanceof MovieDraftSink) {
-            $sink->accept($draft);
+            $sink->accept($draft, $isRecrawl);
 
             return;
         }
 
-        MovieDraftCaptured::dispatch($draft);
+        MovieDraftCaptured::dispatch($draft, $isRecrawl);
     }
 }
