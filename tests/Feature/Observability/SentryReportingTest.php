@@ -90,6 +90,7 @@ final class SentryReportingTest extends TestCase
             'status' => CrawlQueue::STATUS_CLAIMED,
             'attempts' => 1,
             'max_attempts' => 3,
+            'started_at' => now(),
         ]);
 
         (new FetchDetailJob($row->id))->failed(new RuntimeException('Queue job failed'));
@@ -111,6 +112,7 @@ final class SentryReportingTest extends TestCase
             'status' => CrawlQueue::STATUS_CLAIMED,
             'attempts' => 1,
             'max_attempts' => 3,
+            'started_at' => now(),
         ]);
 
         (new FetchDetailJob($row->id))->failed(new TimeoutExceededException('Worker timed out'));

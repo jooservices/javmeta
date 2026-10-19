@@ -46,6 +46,10 @@ Shared integration tests use the Workspaces root Redis account on the project's 
 
 The depth check covers ready jobs. Reserved and delayed Redis jobs do not count toward this buffer. A Redis depth-query failure stops the feed-pool command before it claims rows.
 
+Claiming a crawl row does not increment `attempts`. A worker increments it once when it starts the current claim, and the claim token prevents an older buffered job from starting after that claim has been reclaimed. Stale claims that never started return to pending with the same attempt count; stale started claims retain the existing worker-lost retry behavior. Existing claimed rows are marked started by the schema migration because the previous schema cannot distinguish buffered jobs from jobs already running.
+
+Each stale claim reclaimed before worker start creates a `queue_reclaimed_without_start` crawl event. The count is reported for the previous five minutes by `javmeta_crawl_events_5m` with `kind=queue_reclaimed_without_start`.
+
 ## Deploy and operate
 
 When `QUEUE_CONNECTION=redis`, the Compose worker starts `php artisan horizon`; with the default database connection it keeps running `crawlerx-fetch-ready worker-queues`. The Redis worker healthcheck uses `php artisan horizon:status`.

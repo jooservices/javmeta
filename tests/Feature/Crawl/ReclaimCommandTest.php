@@ -19,6 +19,7 @@ final class ReclaimCommandTest extends TestCase
             'attempts' => 1,
             'max_attempts' => 3,
             'claimed_at' => now()->subHour(),
+            'started_at' => now()->subHour(),
             'locked_by' => fake()->uuid(),
         ]);
         $exhaustedRow = CrawlQueue::factory()->create([
@@ -26,6 +27,7 @@ final class ReclaimCommandTest extends TestCase
             'attempts' => 3,
             'max_attempts' => 3,
             'claimed_at' => now()->subHour(),
+            'started_at' => now()->subHour(),
             'locked_by' => fake()->uuid(),
         ]);
 

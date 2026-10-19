@@ -50,6 +50,7 @@ final class RecrawlIncompleteCommand extends Command
                         'attempts' => 0,
                         'next_attempt_at' => now(),
                         'claimed_at' => null,
+                        'started_at' => null,
                         'locked_by' => null,
                         'last_error' => null,
                         'error_code' => null,

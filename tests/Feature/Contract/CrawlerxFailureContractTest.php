@@ -111,7 +111,7 @@ final class CrawlerxFailureContractTest extends CrawlerxContractTestCase
     {
         $this->source(self::SLUG);
         $row = $this->claimedRow(self::SLUG, self::URL, CrawlQueue::KIND_DETAIL);
-        $row->forceFill(['attempts' => $attempts])->save();
+        $row->forceFill(['attempts' => max(0, $attempts - 1)])->save();
 
         return $row;
     }

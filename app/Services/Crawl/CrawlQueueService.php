@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Crawl;
 
 use App\Enums\CrawlErrorCode;
+use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
 use Illuminate\Support\Carbon;
@@ -48,8 +49,8 @@ final class CrawlQueueService
             $row->forceFill([
                 'status' => CrawlQueue::STATUS_CLAIMED,
                 'claimed_at' => now(),
+                'started_at' => null,
                 'locked_by' => $workerId,
-                'attempts' => $row->attempts + 1,
             ])->save();
 
             return $row->refresh();
@@ -70,6 +71,7 @@ final class CrawlQueueService
                 'max_attempts' => $configuredMaxAttempts,
                 'next_attempt_at' => now()->addSeconds((int) ($source->gap_seconds_current ?? 0)),
                 'claimed_at' => null,
+                'started_at' => null,
                 'locked_by' => null,
                 'last_error' => null,
                 'error_code' => null,
@@ -107,6 +109,7 @@ final class CrawlQueueService
                 'attempts' => 0,
                 'next_attempt_at' => now()->addSeconds($pause),
                 'claimed_at' => null,
+                'started_at' => null,
                 'locked_by' => null,
                 'last_error' => null,
                 'error_code' => null,
@@ -137,12 +140,44 @@ final class CrawlQueueService
         $row->forceFill([
             'status' => $willRetry ? CrawlQueue::STATUS_PENDING : CrawlQueue::STATUS_FAILED,
             'claimed_at' => null,
+            'started_at' => null,
             'locked_by' => null,
             'next_attempt_at' => $willRetry ? ($blockDelay > 0 ? now()->addSeconds(max($blockDelay, (int) $retryAfterSeconds)) : $this->retryAt($row, $retryAfterSeconds)) : null,
             'error_code' => $errorCode->value,
             'last_error' => $safeMessage,
             'last_failed_at' => now(),
         ])->save();
+    }
+
+    public function startClaimedRow(int $id, string $expectedKind, ?string $claimToken): ?CrawlQueue
+    {
+        return DB::transaction(function () use ($id, $expectedKind, $claimToken): ?CrawlQueue {
+            $query = CrawlQueue::query()
+                ->whereKey($id)
+                ->where('status', CrawlQueue::STATUS_CLAIMED)
+                ->where('kind', $expectedKind);
+
+            if ($claimToken !== null) {
+                $query->where('locked_by', $claimToken);
+            }
+
+            if (DB::getDriverName() === 'pgsql') {
+                $query->lockForUpdate();
+            }
+
+            $row = $query->first();
+            if (! $row instanceof CrawlQueue || $row->started_at !== null) {
+                return null;
+            }
+
+            $row->forceFill([
+                'started_at' => now(),
+                'claimed_at' => now(),
+                'attempts' => $row->attempts + 1,
+            ])->save();
+
+            return $row->refresh();
+        });
     }
 
     public static function sanitizeErrorMessage(string $message): string
@@ -179,19 +214,46 @@ final class CrawlQueueService
             $reclaimed = 0;
             $query->chunkById(100, function (Collection $staleRows) use (&$reclaimed): void {
                 foreach ($staleRows as $row) {
-                    $this->markFailed(
-                        $row,
-                        CrawlErrorCode::WorkerLost,
-                        'Worker claim expired before the crawl row was completed.',
-                        $row->attempts < $row->max_attempts,
-                        0,
-                    );
+                    if ($row->started_at === null) {
+                        CrawlEvent::query()->create([
+                            'source_slug' => $row->source_slug,
+                            'kind' => CrawlEvent::KIND_QUEUE_RECLAIMED_WITHOUT_START,
+                            'url' => null,
+                            'detail' => ['crawl_queue_id' => $row->id],
+                            'created_at' => now(),
+                        ]);
+
+                        $this->returnUnstartedClaimToPending($row);
+                    } else {
+                        $this->markFailed(
+                            $row,
+                            CrawlErrorCode::WorkerLost,
+                            'Worker claim expired before the crawl row was completed.',
+                            $row->attempts < $row->max_attempts,
+                            0,
+                        );
+                    }
+
                     $reclaimed++;
                 }
             });
 
             return $reclaimed;
         });
+    }
+
+    private function returnUnstartedClaimToPending(CrawlQueue $row): void
+    {
+        $row->forceFill([
+            'status' => CrawlQueue::STATUS_PENDING,
+            'claimed_at' => null,
+            'started_at' => null,
+            'locked_by' => null,
+            'next_attempt_at' => null,
+            'error_code' => CrawlErrorCode::WorkerLost->value,
+            'last_error' => 'Worker claim expired before the crawl row started.',
+            'last_failed_at' => now(),
+        ])->save();
     }
 
     /**
