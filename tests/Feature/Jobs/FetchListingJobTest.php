@@ -171,7 +171,7 @@ final class FetchListingJobTest extends TestCase
         ]);
     }
 
-    public function test_blocked_failure_records_blocked_event_and_fails_row(): void
+    public function test_blocked_failure_records_blocked_event_and_retries_after_a_delay(): void
     {
         $source = $this->source('onejav');
         $row = $this->listingRow($source);
@@ -183,7 +183,7 @@ final class FetchListingJobTest extends TestCase
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_BLOCKED]);
         $this->assertDatabaseHas('crawl_queue', [
             'id' => $row->id,
-            'status' => CrawlQueue::STATUS_FAILED,
+            'status' => CrawlQueue::STATUS_PENDING,
             'attempts' => 1,
             'last_error' => 'Blocked by site.',
             'error_code' => CrawlErrorCode::Blocked->value,
@@ -202,7 +202,7 @@ final class FetchListingJobTest extends TestCase
         FetchListingJob::dispatch($row->id);
 
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_CHALLENGE]);
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'error_code' => CrawlErrorCode::Challenge->value]);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_PENDING, 'error_code' => CrawlErrorCode::Challenge->value]);
     }
 
     public function test_parse_failure_records_parse_drift_event(): void
