@@ -17,5 +17,6 @@ if (! app()->runningUnitTests()) {
     Schedule::command('crawler:feed-pool')->everyMinute()->withoutOverlapping();
     Schedule::command('obs:publish-metrics')->everyMinute();
     Schedule::command('javmeta:backup-status')->everyMinute();
+    Schedule::command('crawler:recrawl-incomplete')->hourly()->withoutOverlapping();
     Schedule::command('crawler:watchdog')->everyFiveMinutes();
 }

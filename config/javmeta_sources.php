@@ -19,6 +19,13 @@ return [
         'queue' => [
             'stale_claim_timeout_seconds' => 900,
         ],
+        'recrawl' => [
+            // A movie whose completeness tier is below `min_tier` is crawled again once its last crawl is older
+            // than `incomplete_after_days`. Env: JAVMETA_RECRAWL_DAYS, JAVMETA_RECRAWL_MIN_TIER, JAVMETA_RECRAWL_BATCH.
+            'incomplete_after_days' => max(1, (int) env('JAVMETA_RECRAWL_DAYS', 7)),
+            'min_tier' => (int) env('JAVMETA_RECRAWL_MIN_TIER', 3),
+            'batch' => max(1, (int) env('JAVMETA_RECRAWL_BATCH', 200)),
+        ],
         'normalize' => [
             // Per-source mapping of crawlerx metadata{} keys onto MovieDraft
             // fields. The first non-empty match in each alias list wins. A

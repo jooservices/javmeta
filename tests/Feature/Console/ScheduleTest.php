@@ -36,6 +36,7 @@ final class ScheduleTest extends TestCase
         $expectedFrequencies = [
             'crawler:feed-pool' => '* * * * *',
             'crawler:reclaim' => '* * * * *',
+            'crawler:recrawl-incomplete' => '0 * * * *',
             'crawler:seed' => '* * * * *',
             'crawler:sync-sources' => '*/15 * * * *',
             'crawler:watchdog' => '*/5 * * * *',
@@ -46,6 +47,7 @@ final class ScheduleTest extends TestCase
         $this->assertCount(count($expectedFrequencies), $events);
         $this->assertSame($expectedFrequencies, $actualFrequencies);
         $this->assertTrue($scheduled['crawler:feed-pool']->withoutOverlapping);
+        $this->assertTrue($scheduled['crawler:recrawl-incomplete']->withoutOverlapping);
         foreach ($events as $event) {
             $this->assertFalse($event->onOneServer);
         }
