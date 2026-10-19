@@ -1,10 +1,10 @@
 {
-  "source_url": "https://my.tokyo-hot.com/index?lang=en",
-  "final_url": "https://my.tokyo-hot.com/index?lang=en",
-  "captured_at": "2026-09-09T04:18:05.025Z",
+  "source_url": "https://my.tokyo-hot.com/index",
+  "final_url": "https://my.tokyo-hot.com/index",
+  "captured_at": "2026-10-18T20:30:02.000Z",
   "http_status": 200,
-  "content_hash": "1d387d884bad76ac59e66e01e3643d07b67b246bec64780dca4003b449344328",
+  "content_hash": "2c4872f5daf8da817b9011e74f39c436509ce8a6b3fec6567db445ccae912b12",
   "target_type": "listing",
-  "fetch_method": "playwright",
+  "fetch_method": "http",
   "sanitized": false
 }

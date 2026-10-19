@@ -1,0 +1,10 @@
+{
+  "source_url": "https://www.javbus.com/en/star/okq",
+  "final_url": "https://www.javbus.com/en/star/okq",
+  "captured_at": "2026-10-18T19:23:20.000Z",
+  "http_status": 200,
+  "content_hash": "81d9d5414630ae14462e965a123326af5b426f1ac409006fb32afae8fa18287f",
+  "target_type": "performer_detail",
+  "fetch_method": "playwright",
+  "sanitized": false
+}
