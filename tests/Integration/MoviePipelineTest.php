@@ -31,6 +31,12 @@ final class MoviePipelineTest extends IntegrationTestCase
 
         $movie = Movie::query()->sole();
         $link = MovieSource::query()->where(['movie_id' => $movie->id, 'site_slug' => $slug])->sole();
+        $this->assertDatabaseHas('movie_sources', [
+            'movie_id' => $movie->id,
+            'site_slug' => $slug,
+            'mongo_id' => $link->mongo_id,
+            'source_url' => $url,
+        ]);
         self::assertSame($url, $link->source_url);
         self::assertNotEmpty($link->mongo_id);
 

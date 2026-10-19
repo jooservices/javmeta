@@ -6,6 +6,7 @@ namespace App\Services\Health;
 
 use App\Models\CrawlQueue;
 use App\Models\Source;
+use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Crawl\WorkerHeartbeat;
 use App\Services\Dependencies\Dependency;
 use App\Services\Dependencies\DependencyMonitor;
@@ -15,6 +16,7 @@ final class StatusHealthCheck
     public function __construct(
         private readonly WorkerHeartbeat $heartbeat,
         private readonly DependencyMonitor $dependencies,
+        private readonly MongoArchiveWriteHealth $archiveWrites,
     ) {}
 
     /**
@@ -35,8 +37,15 @@ final class StatusHealthCheck
                 'queue' => ['pending' => 0, 'claimed' => 0, 'failed' => 0],
                 'sources' => [],
                 'dependencies' => $dependencyStatuses,
+                'archive' => [
+                    'status' => 'unknown',
+                    'failed_writes' => null,
+                    'last_failure_at' => null,
+                ],
             ];
         }
+
+        $archiveStatus = $this->archiveWrites->status();
 
         $sources = Source::query()
             ->orderBy('priority')
@@ -86,7 +95,7 @@ final class StatusHealthCheck
 
         $status = $hardDependencyDown
             ? 'down'
-            : (($softDependencyDown || $workerStale) ? 'degraded' : 'ok');
+            : (($softDependencyDown || $workerStale || $archiveStatus['status'] === 'degraded') ? 'degraded' : 'ok');
 
         return [
             'status' => $status,
@@ -100,6 +109,7 @@ final class StatusHealthCheck
             'queue' => $queue,
             'sources' => $sourceRows,
             'dependencies' => $dependencyStatuses,
+            'archive' => $archiveStatus,
         ];
     }
 }
