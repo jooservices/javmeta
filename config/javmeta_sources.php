@@ -29,6 +29,11 @@ return [
                 static fn(int $seconds): bool => $seconds > 0,
             )),
         ],
+        'loop' => [
+            // When every listing page of a source has been crawled (the last page has no next page) the
+            // listing is started again from page 1 after this many seconds. Env: JAVMETA_LOOP_PAUSE_SECONDS.
+            'pause_seconds' => max(0, (int) env('JAVMETA_LOOP_PAUSE_SECONDS', 300)),
+        ],
         'recrawl' => [
             // A movie whose completeness tier is below `min_tier` is crawled again once its last crawl is older
             // than `incomplete_after_days`. Env: JAVMETA_RECRAWL_DAYS, JAVMETA_RECRAWL_MIN_TIER, JAVMETA_RECRAWL_BATCH.
@@ -125,7 +130,7 @@ return [
             'gap_seconds_default' => 2,
             'gap_seconds_min' => 0.5,
             'gap_seconds_max' => 15,
-            'movie_listing_urls' => ['https://onejav.com/new', 'https://onejav.com/popular/', 'https://onejav.com/tag/'],
+            'movie_listing_urls' => ['https://onejav.com/new'],
         ],
         'javbtc' => [
             'name' => 'JavBTC',
@@ -144,7 +149,7 @@ return [
             'gap_seconds_default' => 2,
             'gap_seconds_min' => 0.5,
             'gap_seconds_max' => 15,
-            'movie_listing_urls' => ['https://www.141jav.com/new', 'https://www.141jav.com/popular/', 'https://www.141jav.com/tag/'],
+            'movie_listing_urls' => ['https://www.141jav.com/new'],
         ],
         'ffjav' => [
             'name' => 'FFJav',
@@ -153,7 +158,7 @@ return [
             'gap_seconds_default' => 4,
             'gap_seconds_min' => 1,
             'gap_seconds_max' => 20,
-            'movie_listing_urls' => ['https://ffjav.com/javtorrent/', 'https://ffjav.com/popular/'],
+            'movie_listing_urls' => ['https://ffjav.com/javtorrent/'],
         ],
         'avfan' => [
             'name' => 'Avfan',
@@ -242,7 +247,7 @@ return [
             'gap_seconds_default' => 10,
             'gap_seconds_min' => 5,
             'gap_seconds_max' => 60,
-            'movie_listing_urls' => ['https://my.tokyo-hot.com/index?lang=en'],
+            'movie_listing_urls' => ['https://my.tokyo-hot.com/product/'],
             'normalize' => ['title_locale' => 'en'],
         ],
         'duga' => [

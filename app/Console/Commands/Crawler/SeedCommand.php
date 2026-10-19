@@ -62,7 +62,19 @@ final class SeedCommand extends Command
         ]);
 
         $queued = 0;
-        $seeds = array_slice($this->seedUrls($source->slug), 0, $limit);
+        $allSeeds = $this->seedUrls($source->slug);
+        $seeds = array_slice($allSeeds, 0, $limit);
+
+        // Listing finished (last page reached)? Start again from page 1.
+        foreach ([CrawlQueue::KIND_LISTING, CrawlQueue::KIND_PERFORMER_LISTING] as $listingKind) {
+            $urls = array_values(array_map(
+                static fn(array $seed): string => $seed[1],
+                array_filter($allSeeds, static fn(array $seed): bool => $seed[0] === $listingKind),
+            ));
+            if ($queue->restartListingLoopIfFinished($source->slug, $listingKind, $urls)) {
+                $observability->emitOps('crawl_loop_restart', ['source' => $source->slug, 'kind' => $listingKind]);
+            }
+        }
 
         foreach ($seeds as [$kind, $url]) {
             $beforeExists = CrawlQueue::query()->where('source_slug', $source->slug)->where('url', $url)->exists();

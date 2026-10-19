@@ -78,6 +78,49 @@ final class CrawlQueueService
         );
     }
 
+    /**
+     * Starts a source's listing again from page 1 once every listing chain of that kind has reached its last
+     * page: the finished page rows are removed (so the pages can be queued again), the seed pages are reset and
+     * they wait the configured pause. Detail rows are left alone: the movies already known stay known, new ones
+     * are queued as the pages are read again.
+     *
+     * @param  list<string>  $seedUrls
+     */
+    public function restartListingLoopIfFinished(string $sourceSlug, string $kind, array $seedUrls): bool
+    {
+        if ($seedUrls === [] || ! in_array($kind, [CrawlQueue::KIND_LISTING, CrawlQueue::KIND_PERFORMER_LISTING], true)) {
+            return false;
+        }
+
+        $rows = CrawlQueue::query()->where('source_slug', $sourceSlug)->where('kind', $kind);
+        if ((clone $rows)->whereIn('status', [CrawlQueue::STATUS_PENDING, CrawlQueue::STATUS_CLAIMED])->exists()
+            || ! (clone $rows)->exists()) {
+            return false;
+        }
+
+        $pause = max(0, (int) config('javmeta_sources.defaults.loop.pause_seconds', 300));
+
+        DB::transaction(function () use ($rows, $sourceSlug, $kind, $seedUrls, $pause): void {
+            (clone $rows)->whereNotIn('url', $seedUrls)->where('status', CrawlQueue::STATUS_DONE)->delete();
+            (clone $rows)->whereIn('url', $seedUrls)->update([
+                'status' => CrawlQueue::STATUS_PENDING,
+                'attempts' => 0,
+                'next_attempt_at' => now()->addSeconds($pause),
+                'claimed_at' => null,
+                'locked_by' => null,
+                'last_error' => null,
+                'error_code' => null,
+                'last_failed_at' => null,
+            ]);
+
+            foreach ($seedUrls as $url) {
+                $this->enqueue($url, $sourceSlug, $kind);
+            }
+        });
+
+        return true;
+    }
+
     public function markFailed(
         CrawlQueue $row,
         CrawlErrorCode $errorCode,
