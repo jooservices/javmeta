@@ -13,6 +13,7 @@ use App\Models\Performer;
 use App\Models\ReviewFlag;
 use App\Models\Source;
 use App\Observability\OpenObserveClient;
+use App\Services\Archive\MongoArchiveWriteHealth;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -27,7 +28,7 @@ final class PublishMetricsCommand extends Command
 
     protected $description = 'Publish javmeta ops and quality aggregate metrics to OpenObserve.';
 
-    public function handle(OpenObserveClient $client): int
+    public function handle(OpenObserveClient $client, MongoArchiveWriteHealth $archiveWrites): int
     {
         if (! $client->enabled()) {
             $this->components->info('OpenObserve disabled; skipping metrics publish.');
@@ -44,6 +45,10 @@ final class PublishMetricsCommand extends Command
             $this->crawlRunMetrics(),
             $this->catalogMetrics(),
             $this->failedJobMetrics(),
+            [[
+                'name' => 'javmeta_mongo_archive_write_failures',
+                'value' => $archiveWrites->failureCount(),
+            ]],
             $this->dependencyProbeMetrics(),
         );
 

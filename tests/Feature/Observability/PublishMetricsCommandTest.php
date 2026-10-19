@@ -7,8 +7,10 @@ namespace Tests\Feature\Observability;
 use App\Console\Commands\Observability\PublishMetricsCommand;
 use App\Models\CrawlEvent;
 use App\Models\Source;
+use App\Services\Archive\MongoArchiveWriteHealth;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -89,5 +91,33 @@ final class PublishMetricsCommandTest extends TestCase
 
         $this->artisan('obs:publish-metrics')->assertSuccessful();
         Http::assertNothingSent();
+    }
+
+    public function test_command_publishes_the_cumulative_mongo_archive_write_failure_metric(): void
+    {
+        Cache::store('array')->flush();
+        app(MongoArchiveWriteHealth::class)->recordFailure();
+        config()->set([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.email' => 'root@javmeta.local',
+            'openobserve.password' => 'secret',
+            'openobserve.timeout' => 1,
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
+
+        $this->artisan('obs:publish-metrics')->assertSuccessful();
+
+        Http::assertSent(static function ($request): bool {
+            $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [];
+            foreach ($metrics as $metric) {
+                if (($metric['name'] ?? null) === 'javmeta_mongo_archive_write_failures') {
+                    return ($metric['gauge']['dataPoints'][0]['asDouble'] ?? null) === 1.0;
+                }
+            }
+
+            return false;
+        });
     }
 }
