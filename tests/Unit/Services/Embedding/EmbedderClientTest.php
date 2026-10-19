@@ -19,6 +19,20 @@ final class EmbedderClientTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_switched_off_embedder_or_search_makes_no_request(): void
+    {
+        Http::fake();
+
+        config()->set('elasticsearch.embedder_enabled', false);
+        $this->assertNull((new EmbedderClient())->embedTexts([fake()->sentence()]));
+
+        config()->set('elasticsearch.embedder_enabled', true);
+        config()->set('elasticsearch.enabled', false);
+        $this->assertNull((new EmbedderClient())->embedOne(fake()->sentence(), true));
+
+        Http::assertNothingSent();
+    }
+
     public function test_successful_response_returns_float_vectors_and_query_model(): void
     {
         $text = fake()->sentence();

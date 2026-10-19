@@ -30,6 +30,31 @@ final class ElasticsearchIndexerTest extends TestCase
         Http::assertNotSent(static fn(ClientRequest $request): bool => str_contains($request->url(), '/javmeta_movies/_doc/'));
     }
 
+    public function test_search_switched_off_skips_indexing_without_any_request(): void
+    {
+        config()->set('elasticsearch.enabled', false);
+        $movie = Movie::factory()->create(['title_en' => fake()->sentence()]);
+        $performer = Performer::factory()->create();
+        Http::fake();
+
+        $this->assertFalse(app(ElasticsearchIndexer::class)->indexMovie($movie));
+        $this->assertFalse(app(ElasticsearchIndexer::class)->indexPerformer($performer));
+
+        Http::assertNothingSent();
+    }
+
+    public function test_embedder_switched_off_still_indexes_the_document_without_a_vector(): void
+    {
+        config()->set('elasticsearch.embedder_enabled', false);
+        $movie = Movie::factory()->create(['title_en' => fake()->sentence()]);
+        Http::fake(['*' => Http::response(['result' => 'created'])]);
+
+        $this->assertTrue(app(ElasticsearchIndexer::class)->indexMovie($movie));
+
+        Http::assertNotSent(static fn(ClientRequest $request): bool => str_ends_with($request->url(), '/v1/embeddings'));
+        Http::assertSent(static fn(ClientRequest $request): bool => str_contains($request->url(), '/javmeta_movies/_doc/') && ! isset($request->data()['embedding_movie']));
+    }
+
     public function test_movie_indexing_remains_fail_open_when_vector_is_unavailable(): void
     {
         $movie = Movie::factory()->create(['title_en' => fake()->sentence()]);
