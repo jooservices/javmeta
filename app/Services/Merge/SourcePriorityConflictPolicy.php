@@ -14,8 +14,8 @@ use Illuminate\Support\Collection;
  * number is the highest authority (D-7 order, javdb=10). Ties resolve to
  * the most recently crawled observation, then to the newest row id for
  * determinism. A slug missing from the config is treated as the least
- * authoritative source. Null-valued observations are ordinary values here
- * (the source reported nothing for the field) and can win the pick.
+ * authoritative source. Null-valued observations only win when no source
+ * reported a value (they keep the drift signal for the sharp-drop guard).
  */
 final class SourcePriorityConflictPolicy implements ConflictPolicy
 {
@@ -26,6 +26,19 @@ final class SourcePriorityConflictPolicy implements ConflictPolicy
         if ($observations->isEmpty()) {
             return null;
         }
+
+        // Only each source's latest observation counts (an older crawl of the
+        // same source is history). A source that reported nothing for the field
+        // must not hide a value another source did report, so observations that
+        // carry a value are preferred; the null ones win only when every source
+        // reported nothing, which keeps the drift signal for the sharp-drop guard.
+        $latest = $observations
+            ->sortBy([['crawled_at', 'desc'], ['id', 'desc']])
+            ->groupBy('source_slug')
+            ->map(static fn(Collection $bySource): MovieObservation => $bySource->first())
+            ->values();
+        $withValue = $latest->filter(static fn(MovieObservation $observation): bool => $observation->value !== null);
+        $observations = $withValue->isNotEmpty() ? $withValue->values() : $latest;
 
         // Primary: source priority (ascending number = highest authority).
         // Secondary: most recent crawled_at, then newest id. PHP sort is
