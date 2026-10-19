@@ -287,7 +287,7 @@ final class FetchListingJobTest extends TestCase
             'url' => 'https://onejav.com/new',
             'kind' => CrawlQueue::KIND_LISTING,
             'status' => CrawlQueue::STATUS_CLAIMED,
-            'attempts' => 1,
+            'attempts' => 0,
             'max_attempts' => 3,
         ]);
     }

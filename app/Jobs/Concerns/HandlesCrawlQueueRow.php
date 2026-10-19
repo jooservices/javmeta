@@ -26,26 +26,20 @@ use Throwable;
  * state transitions, crawlerx-driven retry scheduling, crawl event recording,
  * and the per-source bookkeeping (throttle, last success / error).
  *
- * attempts is incremented once per execution by CrawlQueueService::claimNext.
+ * attempts is incremented once when the worker starts the claimed row.
  */
 trait HandlesCrawlQueueRow
 {
     private function queueRow(int $id, string $expectedKind): ?CrawlQueue
     {
-        $row = CrawlQueue::query()->find($id);
-
-        // The job runs only for the feed that claimed the row: a row reclaimed (and fed again) while this job
-        // waited in the buffer belongs to the newer job.
-        $claimedByAnotherFeed = $row instanceof CrawlQueue
-            && ($this->claimToken ?? null) !== null
-            && $row->locked_by !== $this->claimToken;
-
-        if (! $row instanceof CrawlQueue || $row->status !== CrawlQueue::STATUS_CLAIMED || $claimedByAnotherFeed) {
+        $row = app(CrawlQueueService::class)->startClaimedRow($id, $expectedKind, $this->claimToken ?? null);
+        if (! $row instanceof CrawlQueue) {
+            $current = CrawlQueue::query()->find($id);
             $kind = $expectedKind;
             $status = 'missing';
-            if ($row instanceof CrawlQueue) {
-                $kind = $row->kind;
-                $status = $row->status;
+            if ($current instanceof CrawlQueue) {
+                $kind = $current->kind;
+                $status = $current->status;
             }
 
             app(ObservabilityEmitter::class)->emitOps('crawl_job_skipped', [
@@ -58,9 +52,6 @@ trait HandlesCrawlQueueRow
             return null;
         }
 
-        // Stale-claim time counts from the moment the job starts, not from when it entered the buffer.
-        $row->forceFill(['claimed_at' => now()])->save();
-
         return $row;
     }
 
@@ -69,6 +60,7 @@ trait HandlesCrawlQueueRow
         $row->forceFill([
             'status' => CrawlQueue::STATUS_DONE,
             'claimed_at' => null,
+            'started_at' => null,
             'locked_by' => null,
             'last_error' => null,
             'error_code' => null,
@@ -89,7 +81,10 @@ trait HandlesCrawlQueueRow
     public function failed(Throwable $exception): void
     {
         $row = CrawlQueue::query()->find($this->crawlQueueId);
-        if (! $row instanceof CrawlQueue || $row->status !== CrawlQueue::STATUS_CLAIMED) {
+        if (! $row instanceof CrawlQueue
+            || $row->status !== CrawlQueue::STATUS_CLAIMED
+            || $row->started_at === null
+            || (($this->claimToken ?? null) !== null && $row->locked_by !== $this->claimToken)) {
             return;
         }
 

@@ -101,7 +101,7 @@ trait RunsCrawlerxFixtures
             'url' => $url,
             'kind' => $kind,
             'status' => CrawlQueue::STATUS_CLAIMED,
-            'attempts' => 1,
+            'attempts' => 0,
             'max_attempts' => 3,
         ]);
     }

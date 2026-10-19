@@ -46,6 +46,9 @@ same name as the emitted metric. Metric attributes are stored as labels/fields.
 The seven `javmeta_crawl_run_*_1h` streams are emitted from a fixed suffix list
 in `PublishMetricsCommand`; no other dynamic metric names are generated.
 
+The `kind=queue_reclaimed_without_start` series on `javmeta_crawl_events_5m`
+counts stale queue claims returned to pending before a worker started them.
+
 ## Logs and traces
 
 | Signal | OpenObserve endpoint / stream | Source |

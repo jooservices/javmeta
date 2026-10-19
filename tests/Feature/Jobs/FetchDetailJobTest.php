@@ -50,6 +50,7 @@ final class FetchDetailJobTest extends TestCase
         self::assertNotNull($draft->crawledAt);
 
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
+        self::assertSame(1, $row->refresh()->attempts);
         self::assertNull($row->refresh()->error_code);
         self::assertNull($row->last_error);
         self::assertNull($row->last_failed_at);
@@ -220,7 +221,7 @@ final class FetchDetailJobTest extends TestCase
     {
         $this->freezeSecond();
         $row = $this->detailRow($this->source('onejav'));
-        $row->forceFill(['attempts' => 2])->save();
+        $row->forceFill(['attempts' => 1])->save();
 
         $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_NETWORK, fake()->sentence(), retryable: true));
 
@@ -236,7 +237,7 @@ final class FetchDetailJobTest extends TestCase
     public function test_retryable_failure_at_max_attempts_fails_the_row(): void
     {
         $row = $this->detailRow($this->source('onejav'));
-        $row->forceFill(['attempts' => 3])->save();
+        $row->forceFill(['attempts' => 2])->save();
 
         $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_NETWORK, fake()->sentence(), retryable: true));
 
@@ -313,7 +314,7 @@ final class FetchDetailJobTest extends TestCase
             'url' => 'https://onejav.com/torrent/ymds282',
             'kind' => CrawlQueue::KIND_DETAIL,
             'status' => CrawlQueue::STATUS_CLAIMED,
-            'attempts' => 1,
+            'attempts' => 0,
             'max_attempts' => 3,
         ]);
     }
