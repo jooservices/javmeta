@@ -21,6 +21,54 @@ final class PerformerNormalizerTest extends TestCase
         $this->faker = Factory::create();
     }
 
+    public function test_japanese_dates_and_labeled_measurements_are_read(): void
+    {
+        $dto = PerformerDto::fromParsed('1', 'Mai Arisu', [
+            'birth_date_raw' => '2000年2月10日',
+            'height_raw' => '161cm',
+            'size_raw' => 'T161 B83(D) W58 H94',
+            'debut_date_raw' => '20230322',
+        ], 'https://av-fan.tokyo/actress/1.html');
+
+        $draft = (new PerformerNormalizer())->normalize($dto, 'avfan_profiles', 'https://av-fan.tokyo/actress/1.html');
+
+        self::assertSame('2000-02-10', $draft?->birthDate);
+        self::assertSame('2023-03-22', $draft?->debutDate);
+        self::assertSame(161, $draft?->heightCm);
+        self::assertSame([83, 58, 94, 'D'], [$draft?->bust, $draft?->waist, $draft?->hip, $draft?->cup]);
+    }
+
+    public function test_an_impossible_date_is_dropped(): void
+    {
+        $dto = PerformerDto::fromParsed('1', 'X', ['birth_date_raw' => '2000年2月31日'], 'https://example.test/1');
+
+        self::assertNull((new PerformerNormalizer())->normalize($dto, 'xcity', 'https://example.test/1')?->birthDate);
+    }
+
+    public function test_profile_fields_without_a_column_are_kept_in_attrs_extra(): void
+    {
+        $dto = PerformerDto::fromParsed('2', 'Y', [
+            'age' => 33,
+            'hobby' => '音楽鑑賞',
+            'agency' => 'バンビ',
+            'sns' => ['https://x.com/y'],
+            'rating' => ['score' => 4.46, 'scale' => 5, 'votes' => 35],
+            'filmography' => [['code' => 'AAA-001'], ['code' => 'BBB-002']],
+            'external_url' => 'https://example.test/2',
+            'height_raw' => '150cm',
+        ], 'https://example.test/2');
+
+        $attrs = (new PerformerNormalizer())->normalize($dto, 'javdatabase', 'https://example.test/2')?->attrs;
+
+        self::assertSame('33', $attrs['age']);
+        self::assertSame('音楽鑑賞', $attrs['extra']['hobby']);
+        self::assertSame('バンビ', $attrs['extra']['agency']);
+        self::assertSame(35, $attrs['extra']['rating']['votes']);
+        self::assertCount(2, $attrs['extra']['filmography']);
+        self::assertArrayNotHasKey('external_url', $attrs['extra']);
+        self::assertArrayNotHasKey('height_raw', $attrs['extra']);
+    }
+
     public function test_maps_warashi_shaped_performer_dto(): void
     {
         $dto = PerformerDto::fromParsed(

@@ -27,7 +27,8 @@ final class PerformerNormalizer
         $attrs = array_filter([
             'tags' => $performer->tags !== [] ? $performer->tags : null,
             'zodiac_sign' => is_string($meta['zodiac_sign'] ?? null) ? $meta['zodiac_sign'] : null,
-            'age' => is_string($meta['age'] ?? null) ? $meta['age'] : null,
+            'age' => is_int($meta['age'] ?? null) || is_string($meta['age'] ?? null) ? (string) $meta['age'] : null,
+            'extra' => $this->extraMetadata($meta),
             'shoe_size_raw' => is_string($meta['shoe_size_raw'] ?? null) ? $meta['shoe_size_raw'] : null,
             'hair_length' => is_string($meta['hair_length'] ?? null) ? $meta['hair_length'] : null,
             'hair_color' => is_string($meta['hair_color'] ?? null) ? $meta['hair_color'] : null,
@@ -62,6 +63,37 @@ final class PerformerNormalizer
             location: is_string($meta['birthplace'] ?? null) ? $meta['birthplace'] : null,
             attrs: $attrs,
         );
+    }
+
+    /** Metadata keys already stored in columns or only noise; everything else is kept in attrs.extra. */
+    private const COLUMN_OR_NOISE_KEYS = [
+        'external_url', 'raw_profile', 'fields', 'name_kana', 'name_romaji', 'birth_date_raw', 'height_raw', 'size_raw',
+        'bust_raw', 'waist_raw', 'hip_raw', 'cup_size', 'cup', 'bust', 'waist', 'hips', 'blood_type', 'birthplace',
+        'debut_date_raw', 'zodiac_sign', 'age', 'shoe_size_raw', 'hair_length', 'hair_color', 'favorite_count_raw',
+    ];
+
+    /** Longest list kept per extra key, so one crowded profile cannot bloat the row. */
+    private const EXTRA_LIST_LIMIT = 200;
+
+    /**
+     * The CrawlerX profile fields that have no column (hobby, agency, sns, rating, filmography, related and similar
+     * performers, ranking...) are kept as they came, under their own key.
+     *
+     * @param  array<string, mixed>  $meta
+     * @return array<string, mixed>|null
+     */
+    private function extraMetadata(array $meta): ?array
+    {
+        $extra = [];
+        foreach ($meta as $key => $value) {
+            if (in_array($key, self::COLUMN_OR_NOISE_KEYS, true) || $value === null || $value === '' || $value === []) {
+                continue;
+            }
+
+            $extra[$key] = is_array($value) && array_is_list($value) ? array_slice($value, 0, self::EXTRA_LIST_LIMIT) : $value;
+        }
+
+        return $extra === [] ? null : $extra;
     }
 
     /**
@@ -154,6 +186,16 @@ final class PerformerNormalizer
             $cup = strtoupper($cupMatch[1]);
         }
 
+        // "T161 B83(D) W58 H94": the labeled B/W/H numbers, never the height that comes first.
+        if (preg_match('/B\s*(\d{2,3}).*?W\s*(\d{2,3}).*?H\s*(\d{2,3})/i', $raw, $labeled) === 1) {
+            return [
+                'bust' => (int) $labeled[1],
+                'waist' => (int) $labeled[2],
+                'hip' => (int) $labeled[3],
+                'cup' => $cup,
+            ];
+        }
+
         if (preg_match('/(\d{2,3}).*?(\d{2,3}).*?(\d{2,3})/', $raw, $m) === 1) {
             return [
                 'bust' => (int) $m[1],
@@ -172,14 +214,27 @@ final class PerformerNormalizer
             return null;
         }
 
-        try {
-            return \Carbon\CarbonImmutable::parse(trim($raw))->format('Y-m-d');
-        } catch (Throwable) {
-            if (preg_match('/(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/', $raw, $m) === 1) {
-                return sprintf('%04d-%02d-%02d', (int) $m[1], (int) $m[2], (int) $m[3]);
-            }
+        $raw = trim($raw);
 
+        // 2000年2月10日, 2003/03/06, 1993-08-16, 1990.10.27
+        if (preg_match('/(\d{4})\s*[-\/.年]\s*(\d{1,2})\s*[-\/.月]\s*(\d{1,2})/u', $raw, $m) === 1) {
+            return $this->validYmd((int) $m[1], (int) $m[2], (int) $m[3]);
+        }
+
+        // 20230322
+        if (preg_match('/^(\d{4})(\d{2})(\d{2})$/', $raw, $m) === 1) {
+            return $this->validYmd((int) $m[1], (int) $m[2], (int) $m[3]);
+        }
+
+        try {
+            return \Carbon\CarbonImmutable::parse($raw)->format('Y-m-d');
+        } catch (Throwable) {
             return null;
         }
+    }
+
+    private function validYmd(int $year, int $month, int $day): ?string
+    {
+        return checkdate($month, $day, $year) ? sprintf('%04d-%02d-%02d', $year, $month, $day) : null;
     }
 }
