@@ -30,6 +30,9 @@ final class CrawlQueueService
                 $query->where('kind', $kind);
             }
 
+            // Rows of a disabled source stay queued until it is enabled again.
+            $query->whereNotIn('source_slug', Source::query()->where('enabled', false)->pluck('slug')->all());
+
             // A site that is waiting out a block delay gets no new claims until the delay is over.
             $query->whereNotIn('source_slug', $this->sourcesHeldByBlockDelay());
 

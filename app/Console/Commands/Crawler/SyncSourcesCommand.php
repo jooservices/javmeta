@@ -33,7 +33,8 @@ final class SyncSourcesCommand extends Command
                 [
                     'name' => (string) Arr::get($source, 'name'),
                     'base_url' => (string) Arr::get($source, 'base_url'),
-                    'enabled' => (bool) Arr::get($source, 'enabled', config('javmeta_sources.defaults.enabled', true)),
+                    'enabled' => ! in_array($slug, (array) config('javmeta_sources.disabled', []), true)
+                        && (bool) Arr::get($source, 'enabled', config('javmeta_sources.defaults.enabled', true)),
                     'priority' => (int) Arr::get($source, 'priority'),
                     'needs_proxy' => (bool) Arr::get($source, 'needs_proxy', config('javmeta_sources.defaults.needs_proxy', false)),
                     'gap_seconds_default' => $defaultGap,

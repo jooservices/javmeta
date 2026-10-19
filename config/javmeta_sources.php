@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 return [
+    // Sources JavMeta does not crawl (comma separated slugs, JAVMETA_DISABLED_SOURCES). avfan (the movie site) is off.
+    // Keep CRAWLERX_DISABLED_SITES in step so CrawlerX refuses the same sites.
+    'disabled' => array_values(array_filter(array_map('trim', explode(',', (string) env('JAVMETA_DISABLED_SOURCES', 'avfan'))))),
     'defaults' => [
         'enabled' => true,
         'needs_proxy' => false,
