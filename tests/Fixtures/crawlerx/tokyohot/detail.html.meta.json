@@ -1,10 +1,10 @@
 {
-  "source_url": "https://my.tokyo-hot.com/product/crazyasia097085/",
-  "final_url": "https://my.tokyo-hot.com/product/crazyasia097085/",
-  "captured_at": "2026-09-09T04:18:37.783Z",
+  "source_url": "https://my.tokyo-hot.com/product/n1700/",
+  "final_url": "https://my.tokyo-hot.com/product/n1700/",
+  "captured_at": "2026-10-18T20:29:45.000Z",
   "http_status": 200,
-  "content_hash": "1c6764e6c6df61c0bd3c3242ea35459971c764404e676085e9d5133592e64b15",
+  "content_hash": "94834476886a8932a3f269d05b02cad4669e516d5e65448a02e4f2ae1df9e6b8",
   "target_type": "detail",
-  "fetch_method": "playwright",
+  "fetch_method": "http",
   "sanitized": false
 }

@@ -1,4 +1,7 @@
-<!DOCTYPE html><html lang="ja"><head>
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -89,10 +92,19 @@
     
     <!-- Google Analytics（本番環境で有効化） -->
         <!-- Google tag (gtag.js) -->
-    <script async="" src="https://www.googletagmanager.com/gtag/js?id=G-BLXHM27SBT"></script>
     <script>
         window.dataLayer = window.dataLayer || [];
         function gtag(){dataLayer.push(arguments);}
+        // Declare advertising consent before Google loads or any config/event command.
+        // No advertising consent is granted here; existing analytics consent is not overridden.
+        gtag('consent', 'default', {
+            'ad_storage': 'denied',
+            'ad_user_data': 'denied',
+            'ad_personalization': 'denied'
+        });
+    </script>
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-BLXHM27SBT"></script>
+    <script>
         gtag('js', new Date());
         gtag('config', 'G-BLXHM27SBT', {
             'anonymize_ip': true,
@@ -102,25 +114,56 @@
     
     <!-- KARTE Tag -->
     <script>!function(n){if(!window[n]){var o=window[n]=function(){var n=[].slice.call(arguments);return o.x?o.x.apply(0,n):o.q.push(n)};o.q=[],o.i=Date.now(),o.allow=function(){o.o="allow"},o.deny=function(){o.o="deny"}}}("krt")</script>
-    <script async="" src="https://cdn-edge.karte.io/d8fe170212c6ef953dbea657d4460f27/edge.js"></script>
+    <script async src="https://cdn-edge.karte.io/d8fe170212c6ef953dbea657d4460f27/edge.js"></script>
     <!-- End KARTE Tag -->
 
     <!-- Fonts - 官能的タイポグラフィ -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&amp;family=Playfair+Display:wght@400;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- CSS -->
     <link rel="stylesheet" href="/assets/css/style.css?v=2026090301">
     
         <!-- Particles.js CDN -->
     <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
-    </head>
+        <style id="site-usability">
+/* Accessibility improvements 2026-10-07: preserve existing theme */
+.site-skip-link {
+    position: fixed; top: 12px; left: 12px; z-index: 10001;
+    padding: 12px 16px; min-height: 44px; border: 2px solid var(--secondary, var(--accent-lavender, #C9A0DC));
+    border-radius: 8px; background: var(--surface-1, #1A0A2E); color: #F2F0FF;
+    font: inherit; font-size: 16px; line-height: 1.5;
+    transform: translateY(calc(-100% - 24px));
+}
+.site-skip-link:focus { transform: translateY(0); }
+#site-content-start { scroll-margin-top: 16px; }
+#site-content-start:focus { outline: none; box-shadow: none; }
+@media (max-width: 768px) {
+    input[type="text"], input[type="email"], input[type="url"], input[type="search"],
+    input[type="password"], input[type="number"], select, textarea { font-size: 16px !important; }
+    textarea { resize: vertical; }
+}
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto !important; }
+    #particles-js, .cursor-glow { display: none !important; }
+}
+
+@media (max-width: 768px) {
+    .faq-wrapper { padding-left: 16px !important; padding-right: 16px !important; }
+    .faq-wrapper .faq-description { font-size: 1rem; line-height: 1.75; }
+    .faq-answer { font-size: 1rem !important; overflow-wrap: anywhere; }
+}
+    </style>
+</head>
 <body>
+    <a class="site-skip-link" href="#site-content-start">本文へ移動</a>
         <!-- パーティクル背景 -->
-    <div id="particles-js" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;"><canvas class="particles-js-canvas-el" width="1440" height="900" style="width: 100%; height: 100%;"></canvas></div>
+    <div id="particles-js" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;"></div>
     
     
+    <div id="site-content-start" tabindex="-1"></div>
+
 <style>
 /* 広告コンテナ共通スタイル */
 .ad-container {
@@ -704,7 +747,7 @@
                 <span>▶️ 無料サンプル動画</span>
             </div>
             <div style="position: relative; width: 100%; max-width: 720px; margin: 0 auto; aspect-ratio: 3 / 2; background: #000; border-radius: 12px; overflow: hidden;">
-                <iframe src="https://www.dmm.co.jp/litevideo/-/part/=/cid=1sdca00017ai/size=720_480/affi_id=petmovie-990/" loading="lazy" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" allow="autoplay; fullscreen" allowfullscreen="" scrolling="no" title="【AIリマスター】第2回 シンデレラオーディショングランプリ AV Debut 相内しおり 無料サンプル動画"></iframe>
+                <iframe src="https://www.dmm.co.jp/litevideo/-/part/=/cid=1sdca00017ai/size=720_480/affi_id=petmovie-990/" loading="lazy" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;" allow="autoplay; fullscreen" allowfullscreen scrolling="no" title="【AIリマスター】第2回 シンデレラオーディショングランプリ AV Debut 相内しおり 無料サンプル動画"></iframe>
             </div>
                         <div style="text-align: center; margin-top: 1rem;">
                 <a href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3D1sdca00017ai&amp;af_id=petmovie-990&amp;ch=api" target="_blank" rel="sponsored nofollow noopener noreferrer" class="btn btn-primary">
@@ -722,7 +765,10 @@
                     <div class="popular-work-rank">1</div>
                     <a href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3D1sdca00017ai&amp;af_id=petmovie-990&amp;ch=api" target="_blank" rel="sponsored nofollow noopener noreferrer" class="popular-work-link">
                         <div class="popular-work-image">
-                                                        <img src="https://pics.dmm.co.jp/digital/video/1sdca00017ai/1sdca00017aipl.jpg" alt="【AIリマスター】第2回 シンデレラオーディショングランプリ AV Debut 相内しおり" loading="lazy" onerror="this.onerror=null; this.src='https://via.placeholder.com/135x190/8B0A50/ffffff?text=No+Image';">
+                                                        <img src="https://pics.dmm.co.jp/digital/video/1sdca00017ai/1sdca00017aipl.jpg"
+                                 alt="【AIリマスター】第2回 シンデレラオーディショングランプリ AV Debut 相内しおり"
+                                 loading="lazy"
+                                 onerror="this.onerror=null; this.src='https://via.placeholder.com/135x190/8B0A50/ffffff?text=No+Image';">
                                                     </div>
                         <div class="popular-work-info">
                             <h4 class="popular-work-title-text">【AIリマスター】第2回 シンデレラオー...</h4>
@@ -738,7 +784,10 @@
                     <div class="popular-work-rank">2</div>
                     <a href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3D1sdca00024ai&amp;af_id=petmovie-990&amp;ch=api" target="_blank" rel="sponsored nofollow noopener noreferrer" class="popular-work-link">
                         <div class="popular-work-image">
-                                                        <img src="https://pics.dmm.co.jp/digital/video/1sdca00024ai/1sdca00024aipl.jpg" alt="【AIリマスター】失禁するほど…。 相内しおり" loading="lazy" onerror="this.onerror=null; this.src='https://via.placeholder.com/135x190/8B0A50/ffffff?text=No+Image';">
+                                                        <img src="https://pics.dmm.co.jp/digital/video/1sdca00024ai/1sdca00024aipl.jpg"
+                                 alt="【AIリマスター】失禁するほど…。 相内しおり"
+                                 loading="lazy"
+                                 onerror="this.onerror=null; this.src='https://via.placeholder.com/135x190/8B0A50/ffffff?text=No+Image';">
                                                     </div>
                         <div class="popular-work-info">
                             <h4 class="popular-work-title-text">【AIリマスター】失禁するほど…。 相内...</h4>
@@ -754,7 +803,10 @@
                     <div class="popular-work-rank">3</div>
                     <a href="https://al.fanza.co.jp/?lurl=https%3A%2F%2Fvideo.dmm.co.jp%2Fav%2Fcontent%2F%3Fid%3D1sdca00028&amp;af_id=petmovie-990&amp;ch=api" target="_blank" rel="sponsored nofollow noopener noreferrer" class="popular-work-link">
                         <div class="popular-work-image">
-                                                        <img src="https://pics.dmm.co.jp/digital/video/1sdca00028/1sdca00028pl.jpg" alt="東京露出セックス 相内しおり" loading="lazy" onerror="this.onerror=null; this.src='https://via.placeholder.com/135x190/8B0A50/ffffff?text=No+Image';">
+                                                        <img src="https://pics.dmm.co.jp/digital/video/1sdca00028/1sdca00028pl.jpg"
+                                 alt="東京露出セックス 相内しおり"
+                                 loading="lazy"
+                                 onerror="this.onerror=null; this.src='https://via.placeholder.com/135x190/8B0A50/ffffff?text=No+Image';">
                                                     </div>
                         <div class="popular-work-info">
                             <h4 class="popular-work-title-text">東京露出セックス 相内しおり</h4>
@@ -858,10 +910,10 @@
             <div class="ad-container ad-responsive ad-profile-middle">
     <div class="ad-label">広告</div>
     <div class="ad-responsive-pc">
-        <ins class="widget-banner"><a href="https://al.fanza.co.jp?lurl=https%3A%2F%2Fwww.dmm.co.jp%2Fdigital%2Fvideoa%2F-%2Flist%2F%3D%2Farticle%3Dkeyword%2Fid%3D1034%2Fsort%3Dsaleranking_asc%2F&amp;ch=banner&amp;ch_id=69_728_90&amp;af_id=petmovie-003" target="_blank" rel="sponsored"><img src="https://pics.dmm.co.jp/af/a_digi_videoa001/728_90.jpg" alt="ギャルのサンプル動画が見放題！" width="728" height="90"></a></ins><script class="widget-banner-script" src="https://widget-view.dmm.co.jp/js/banner_placement.js?affiliate_id=petmovie-003&amp;banner_id=69_728_90"></script>
+        <ins class="widget-banner"></ins><script class="widget-banner-script" src="https://widget-view.dmm.co.jp/js/banner_placement.js?affiliate_id=petmovie-003&banner_id=69_728_90"></script>
     </div>
     <div class="ad-responsive-mobile">
-        <ins class="widget-banner"><a href="https://al.fanza.co.jp?lurl=https%3A%2F%2Fwww.dmm.co.jp%2Fdigital%2Fvideoa%2F-%2Flist%2F%3Factress%3D1069330%26sort%3Ddate&amp;ch=banner&amp;ch_id=1261_300_250&amp;af_id=petmovie-003" target="_blank" rel="sponsored"><img src="https://pics.dmm.com/af/a_digital_joyu1/300_250.gif" alt="小宵こなん" width="300" height="250"></a></ins><script class="widget-banner-script" src="https://widget-view.dmm.co.jp/js/banner_placement.js?affiliate_id=petmovie-003&amp;banner_id=1261_300_250"></script>
+        <ins class="widget-banner"></ins><script class="widget-banner-script" src="https://widget-view.dmm.co.jp/js/banner_placement.js?affiliate_id=petmovie-003&banner_id=1261_300_250"></script>
     </div>
 </div>        </div>
 
@@ -869,64 +921,64 @@
         <div class="section-container" style="margin-bottom: 2rem;">
             <h2 class="section-title">似ている女優</h2>
             <div class="actress-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem;">
-                                                                            <a href="/actress/22301/" class="actress-card" style="text-decoration: none; color: inherit; display: block; transition: 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55); opacity: 1; transform: translateX(0px) rotateY(0deg);">
+                                                                            <a href="/actress/1046149/" class="actress-card" style="text-decoration: none; color: inherit; display: block; transition: transform 0.2s;">
                         <div class="actress-thumbnail" style="aspect-ratio: 2/3; overflow: hidden; border-radius: 8px; margin-bottom: 0.5rem; background: #1a0a22;">
-                            <img src="http://pics.dmm.co.jp/mono/actjpgs/airi_hina.jpg" alt="愛里ひな" style="width: 100%; height: 100%; object-fit: cover;" loading="lazy" onerror="this.src='/assets/images/no-image.jpg'; this.parentElement.classList.add('no-image');">
+                            <img src="http://pics.dmm.co.jp/mono/actjpgs/nanami_thina.jpg" alt="七海ティナ" style="width: 100%; height: 100%; object-fit: cover;" loading="lazy" onerror="this.src='/assets/images/no-image.jpg'; this.parentElement.classList.add('no-image');">
                         </div>
                         <div class="actress-info" style="padding: 0.5rem;">
-                            <h3 style="font-size: 0.9rem; margin: 0;">愛里ひな</h3>
+                            <h3 style="font-size: 0.9rem; margin: 0;">七海ティナ</h3>
                             <p style="font-size: 0.8rem; color: rgba(255,255,255,0.6); margin: 0;">
                                 Dカップ                            </p>
                         </div>
                     </a>
-                                                                            <a href="/actress/1014549/" class="actress-card" style="text-decoration: none; color: inherit; display: block; transition: 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55); opacity: 1; transform: translateX(0px) rotateY(0deg);">
+                                                                            <a href="/actress/1051972/" class="actress-card" style="text-decoration: none; color: inherit; display: block; transition: transform 0.2s;">
                         <div class="actress-thumbnail" style="aspect-ratio: 2/3; overflow: hidden; border-radius: 8px; margin-bottom: 0.5rem; background: #1a0a22;">
-                            <img src="http://pics.dmm.co.jp/mono/actjpgs/aiba_miu.jpg" alt="愛葉みう" style="width: 100%; height: 100%; object-fit: cover;" loading="lazy" onerror="this.src='/assets/images/no-image.jpg'; this.parentElement.classList.add('no-image');">
+                            <img src="http://pics.dmm.co.jp/mono/actjpgs/haruna_megumi.jpg" alt="春菜めぐみ" style="width: 100%; height: 100%; object-fit: cover;" loading="lazy" onerror="this.src='/assets/images/no-image.jpg'; this.parentElement.classList.add('no-image');">
                         </div>
                         <div class="actress-info" style="padding: 0.5rem;">
-                            <h3 style="font-size: 0.9rem; margin: 0;">愛葉みう</h3>
+                            <h3 style="font-size: 0.9rem; margin: 0;">春菜めぐみ</h3>
                             <p style="font-size: 0.8rem; color: rgba(255,255,255,0.6); margin: 0;">
-                                Cカップ                            </p>
+                                                            </p>
                         </div>
                     </a>
-                                                                            <a href="/actress/1024259/" class="actress-card" style="text-decoration: none; color: inherit; display: block; transition: 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55); opacity: 1; transform: translateX(0px) rotateY(0deg);">
+                                                                            <a href="/actress/1060409/" class="actress-card" style="text-decoration: none; color: inherit; display: block; transition: transform 0.2s;">
                         <div class="actress-thumbnail" style="aspect-ratio: 2/3; overflow: hidden; border-radius: 8px; margin-bottom: 0.5rem; background: #1a0a22;">
-                            <img src="http://pics.dmm.co.jp/mono/actjpgs/asakura_ai.jpg" alt="浅倉愛" style="width: 100%; height: 100%; object-fit: cover;" loading="lazy" onerror="this.src='/assets/images/no-image.jpg'; this.parentElement.classList.add('no-image');">
+                            <img src="http://pics.dmm.co.jp/mono/actjpgs/matuoka_suzu.jpg" alt="松岡すず" style="width: 100%; height: 100%; object-fit: cover;" loading="lazy" onerror="this.src='/assets/images/no-image.jpg'; this.parentElement.classList.add('no-image');">
                         </div>
                         <div class="actress-info" style="padding: 0.5rem;">
-                            <h3 style="font-size: 0.9rem; margin: 0;">浅倉愛</h3>
+                            <h3 style="font-size: 0.9rem; margin: 0;">松岡すず</h3>
                             <p style="font-size: 0.8rem; color: rgba(255,255,255,0.6); margin: 0;">
-                                Cカップ                            </p>
+                                Dカップ                            </p>
                         </div>
                     </a>
-                                                                            <a href="/actress/19801/" class="actress-card" style="text-decoration: none; color: inherit; display: block; transition: 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55); opacity: 1; transform: translateX(0px) rotateY(0deg);">
+                                                                            <a href="/actress/1034541/" class="actress-card" style="text-decoration: none; color: inherit; display: block; transition: transform 0.2s;">
                         <div class="actress-thumbnail" style="aspect-ratio: 2/3; overflow: hidden; border-radius: 8px; margin-bottom: 0.5rem; background: #1a0a22;">
-                            <img src="http://pics.dmm.co.jp/mono/actjpgs/aotuki_hikari.jpg" alt="蒼月ひかり" style="width: 100%; height: 100%; object-fit: cover;" loading="lazy" onerror="this.src='/assets/images/no-image.jpg'; this.parentElement.classList.add('no-image');">
+                            <img src="http://pics.dmm.co.jp/mono/actjpgs/manabe_yuuki.jpg" alt="真鍋ゆうき" style="width: 100%; height: 100%; object-fit: cover;" loading="lazy" onerror="this.src='/assets/images/no-image.jpg'; this.parentElement.classList.add('no-image');">
                         </div>
                         <div class="actress-info" style="padding: 0.5rem;">
-                            <h3 style="font-size: 0.9rem; margin: 0;">蒼月ひかり</h3>
+                            <h3 style="font-size: 0.9rem; margin: 0;">真鍋ゆうき</h3>
                             <p style="font-size: 0.8rem; color: rgba(255,255,255,0.6); margin: 0;">
-                                Eカップ                            </p>
+                                                            </p>
                         </div>
                     </a>
-                                                                            <a href="/actress/1052706/" class="actress-card" style="text-decoration: none; color: inherit; display: block; transition: 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55); opacity: 1; transform: translateX(0px) rotateY(0deg);">
+                                                                            <a href="/actress/1064719/" class="actress-card" style="text-decoration: none; color: inherit; display: block; transition: transform 0.2s;">
                         <div class="actress-thumbnail" style="aspect-ratio: 2/3; overflow: hidden; border-radius: 8px; margin-bottom: 0.5rem; background: #1a0a22;">
-                            <img src="http://pics.dmm.co.jp/mono/actjpgs/aizawa_sara.jpg" alt="愛沢さら" style="width: 100%; height: 100%; object-fit: cover;" loading="lazy" onerror="this.src='/assets/images/no-image.jpg'; this.parentElement.classList.add('no-image');">
+                            <img src="http://pics.dmm.co.jp/mono/actjpgs/sakura_hinano.jpg" alt="紗倉ひなの" style="width: 100%; height: 100%; object-fit: cover;" loading="lazy" onerror="this.src='/assets/images/no-image.jpg'; this.parentElement.classList.add('no-image');">
                         </div>
                         <div class="actress-info" style="padding: 0.5rem;">
-                            <h3 style="font-size: 0.9rem; margin: 0;">愛沢さら</h3>
+                            <h3 style="font-size: 0.9rem; margin: 0;">紗倉ひなの</h3>
                             <p style="font-size: 0.8rem; color: rgba(255,255,255,0.6); margin: 0;">
-                                Cカップ                            </p>
+                                                            </p>
                         </div>
                     </a>
-                                                                            <a href="/actress/1024265/" class="actress-card" style="text-decoration: none; color: inherit; display: block; transition: 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55); opacity: 1; transform: translateX(0px) rotateY(0deg);">
+                                                                            <a href="/actress/1078814/" class="actress-card" style="text-decoration: none; color: inherit; display: block; transition: transform 0.2s;">
                         <div class="actress-thumbnail" style="aspect-ratio: 2/3; overflow: hidden; border-radius: 8px; margin-bottom: 0.5rem; background: #1a0a22;">
-                            <img src="http://pics.dmm.co.jp/mono/actjpgs/akane_siho.jpg" alt="あかね志帆" style="width: 100%; height: 100%; object-fit: cover;" loading="lazy" onerror="this.src='/assets/images/no-image.jpg'; this.parentElement.classList.add('no-image');">
+                            <img src="http://pics.dmm.co.jp/mono/actjpgs/mizukawa_zyun.jpg" alt="水川潤" style="width: 100%; height: 100%; object-fit: cover;" loading="lazy" onerror="this.src='/assets/images/no-image.jpg'; this.parentElement.classList.add('no-image');">
                         </div>
                         <div class="actress-info" style="padding: 0.5rem;">
-                            <h3 style="font-size: 0.9rem; margin: 0;">あかね志帆</h3>
+                            <h3 style="font-size: 0.9rem; margin: 0;">水川潤</h3>
                             <p style="font-size: 0.8rem; color: rgba(255,255,255,0.6); margin: 0;">
-                                Eカップ                            </p>
+                                                            </p>
                         </div>
                     </a>
                             </div>
@@ -944,12 +996,42 @@
                                                                                                     <span class="genre-tag">中出し</span>
                                                 </div>
                     </section>
-        
+                        <section class="section-container actress-unique-summary actress-work-data">
+            <h2 class="section-title">📊相内しおりの掲載作品データ</h2>
+            <p>このページに掲載している6作品の商品情報から集計しました。掲載作品6件のうち約83%がSODクリエイトの作品です。</p>
+            <dl style="margin:1.25rem 0;overflow-wrap:anywhere;">
+                                    <dt style="font-weight:bold;margin-top:0.6rem;">掲載作品の配信日</dt>
+                    <dd style="margin:0.2rem 0 0;color:rgba(255,255,255,0.85);">2010-07-10 〜 2026-05-25</dd>
+                                    <dt style="font-weight:bold;margin-top:0.6rem;">直近1年の掲載作品</dt>
+                    <dd style="margin:0.2rem 0 0;color:rgba(255,255,255,0.85);">1件</dd>
+                                    <dt style="font-weight:bold;margin-top:0.6rem;">配信が多い年</dt>
+                    <dd style="margin:0.2rem 0 0;color:rgba(255,255,255,0.85);">2010年（3件）</dd>
+                                    <dt style="font-weight:bold;margin-top:0.6rem;">掲載作品のメーカー（上位）</dt>
+                    <dd style="margin:0.2rem 0 0;color:rgba(255,255,255,0.85);">SODクリエイト：5件 ／ ワンズファクトリー：1件</dd>
+                                    <dt style="font-weight:bold;margin-top:0.6rem;">レーベル数</dt>
+                    <dd style="margin:0.2rem 0 0;color:rgba(255,255,255,0.85);">2レーベル</dd>
+                                    <dt style="font-weight:bold;margin-top:0.6rem;">複数作に出ているシリーズ</dt>
+                    <dd style="margin:0.2rem 0 0;color:rgba(255,255,255,0.85);">AIリマスター（SODクリエイト）（2件）</dd>
+                                    <dt style="font-weight:bold;margin-top:0.6rem;">よく付いている分類（上位5件）</dt>
+                    <dd style="margin:0.2rem 0 0;color:rgba(255,255,255,0.85);">3P・4P：3件 ／ 潮吹き：3件 ／ クラシック：2件 ／ 処女：2件 ／ 羞恥：2件</dd>
+                                    <dt style="font-weight:bold;margin-top:0.6rem;">画質・配信形態</dt>
+                    <dd style="margin:0.2rem 0 0;color:rgba(255,255,255,0.85);">単体作品：6件 ／ ハイビジョン：2件 ／ 独占配信：1件</dd>
+                                    <dt style="font-weight:bold;margin-top:0.6rem;">レビュー平均（評価のある4件）</dt>
+                    <dd style="margin:0.2rem 0 0;color:rgba(255,255,255,0.85);">3.33 / 5</dd>
+                                    <dt style="font-weight:bold;margin-top:0.6rem;">サンプル画像</dt>
+                    <dd style="margin:0.2rem 0 0;color:rgba(255,255,255,0.85);">1作品あたり平均20枚</dd>
+                                    <dt style="font-weight:bold;margin-top:0.6rem;">掲載価格の範囲</dt>
+                    <dd style="margin:0.2rem 0 0;color:rgba(255,255,255,0.85);">300円 〜 400円</dd>
+                            </dl>
+            <p style="font-size:0.85em;color:rgba(255,255,255,0.6);">出典：DMM/FANZAの商品情報。掲載作品のみの集計で、全出演作品数ではありません。配信先の最新情報とは異なる場合があります。</p>
+        </section>
+
         <!-- 動画アフィリエイトにつながる主要なサイト内導線 -->
         <nav class="section-container" aria-label="女優・動画の関連ページ" style="margin-bottom: 2rem;">
             <h2 class="section-title">🎬 好みの女優・動画をさらに探す</h2>
             <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
-                <a class="genre-tag" href="/new/">新作動画から探す</a>
+                                                <a class="genre-tag" href="/genre/30s/">30代のAV女優</a>
+                                <a class="genre-tag" href="/new/">新作動画から探す</a>
                 <a class="genre-tag" href="/ranking/">人気女優ランキング</a>
                 <a class="genre-tag" href="/diagnosis/">顔の好みから女優を診断</a>
                 <a class="genre-tag" href="/actress/">AV女優一覧</a>
@@ -973,13 +1055,14 @@
         <div class="section-container">
             <div class="ad-container ad-rectangle ad-profile-bottom">
     <div class="ad-label">広告</div>
-    <ins class="widget-banner"><a href="https://al.fanza.co.jp?lurl=https%3A%2F%2Fwww.dmm.co.jp%2Fdigital%2Fvideoa%2F-%2Flist%2F%3Factress%3D1069330%26sort%3Ddate&amp;ch=banner&amp;ch_id=1261_300_250&amp;af_id=petmovie-003" target="_blank" rel="sponsored"><img src="https://pics.dmm.com/af/a_digital_joyu1/300_250.gif" alt="小宵こなん" width="300" height="250"></a></ins><script class="widget-banner-script" src="https://widget-view.dmm.co.jp/js/banner_placement.js?affiliate_id=petmovie-003&amp;banner_id=1261_300_250"></script>
+    <ins class="widget-banner"></ins><script class="widget-banner-script" src="https://widget-view.dmm.co.jp/js/banner_placement.js?affiliate_id=petmovie-003&banner_id=1261_300_250"></script>
 </div>        </div>
 
         <!-- 女優紹介セクション（SEO用説明文） -->
                 <div class="section-container actress-description-section" id="actress-description-section" style="margin-bottom: 4rem;">
             <h2 class="section-title">📝 相内しおりのプロフィール詳細</h2>
-            <div class="actress-description-content" id="actress-description-content">相内しおり：大人の色気が漂う、熟女系AV女優<br><br>相内しおりは、落ち着いた雰囲気と艶やかな魅力でファンを魅了するAV女優だ。その佇まいからは、大人の女性ならではの余裕と色気が感じられる。<br><br>身長161cmの相内しおりは、B85（Dカップ）W58 H88という、メリハリの効いたプロポーションの持ち主だ。特にDカップのバストは、その豊かな膨らみと柔らかさで見る者を釘付けにする。<br><br>彼女の魅力は、そのスタイルだけではない。憂いを帯びた表情や、時に見せる妖艶な笑顔は、見る者の心を掴んで離さない。演技においても、自然体でありながらも、内に秘めた情熱を感じさせる表現力を持っている。<br><br>大人の女性の魅力を堪能したいファンには、相内しおりはまさにうってつけのAV女優だ。</div>
+            <div class="actress-description-content" id="actress-description-content">
+                相内しおりのプロフィールと出演傾向を紹介します。基本データは年齢35歳・身長161cm・Dカップ・出身地新潟県です。出演作品のジャンル傾向は「単体作品」「3P・4P」「潮吹き」「クラシック」「中出し」で、好みのタイプから関連作品を探せます。掲載中の出演作品から、配信情報や無料サンプルを確認できます。            </div>
         </div>
         <style>
         .actress-description-section {
@@ -1074,6 +1157,8 @@
                     <span style="color: rgba(255, 255, 255, 0.3);">|</span>
                     <a href="/actress/" style="color: rgba(255, 255, 255, 0.8); text-decoration: none; margin: 0 1rem; transition: color 0.3s ease;">女優一覧</a>
                     <span style="color: rgba(255, 255, 255, 0.3);">|</span>
+                    <a href="/new/" style="color: rgba(255, 255, 255, 0.8); text-decoration: none; margin: 0 1rem; transition: color 0.3s ease;">女優一覧</a>
+                    <span style="color: rgba(255, 255, 255, 0.3);">|</span>
                     <a href="/comic/" style="color: rgba(255, 255, 255, 0.8); text-decoration: none; margin: 0 1rem; transition: color 0.3s ease;">エロ漫画診断</a>
                     <span style="color: rgba(255, 255, 255, 0.3);">|</span>
                     <a href="/faq/" style="color: rgba(255, 255, 255, 0.8); text-decoration: none; margin: 0 1rem; transition: color 0.3s ease;">よくある質問</a>
@@ -1089,7 +1174,7 @@
                     ※ アフィリエイトプログラムを利用しています
                 </p>
                 <p class="footer-copyright">
-                    © 2026 Avnator. All Rights Reserved.
+                    &copy; 2026 Avnator. All Rights Reserved.
                 </p>
             </div>
         </div>
@@ -1149,6 +1234,5 @@
         });
     });
     </script>
-
-
-<div class="cursor-glow" style="left: 0px; top: 0px;"></div></body></html>
+</body>
+</html>

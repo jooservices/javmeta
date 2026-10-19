@@ -29,6 +29,7 @@ foreach ($installed['packages'] ?? [] as $package) {
 }
 
 $copied = 0;
+$kept = [];
 foreach (glob($from . '/*/*.meta.json') ?: [] as $metaPath) {
     $bodyPath = substr($metaPath, 0, -strlen('.meta.json'));
     if (! is_file($bodyPath)) {
@@ -48,7 +49,18 @@ foreach (glob($from . '/*/*.meta.json') ?: [] as $metaPath) {
 
     copy($bodyPath, $targetDir . '/' . basename($bodyPath));
     copy($metaPath, $targetDir . '/' . basename($metaPath));
+    $kept[$targetDir . '/' . basename($bodyPath)] = true;
+    $kept[$targetDir . '/' . basename($metaPath)] = true;
     $copied++;
+}
+
+// Fixtures crawlerx no longer ships (renamed or replaced samples) must not linger as stale contract cases.
+$removed = 0;
+foreach (glob($to . '/*/*') ?: [] as $existing) {
+    if (is_file($existing) && ! isset($kept[$existing])) {
+        unlink($existing);
+        $removed++;
+    }
 }
 
 file_put_contents($to . '/SOURCE.json', json_encode([
@@ -57,4 +69,4 @@ file_put_contents($to . '/SOURCE.json', json_encode([
     'fixtures' => $copied,
 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
 
-fwrite(STDOUT, "Copied {$copied} fixtures from jooservices/crawlerx {$version}.\n");
+fwrite(STDOUT, "Copied {$copied} fixtures from jooservices/crawlerx {$version}" . ($removed > 0 ? ", removed {$removed} stale files" : '') . ".\n");
