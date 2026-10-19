@@ -40,6 +40,7 @@ final class FetchDetailJob implements ShouldQueue
     public function __construct(
         public readonly int $crawlQueueId,
         public readonly ?string $traceparent = null,
+        public readonly ?string $claimToken = null,
     ) {
         $this->onQueue(LaravelCrawlQueue::forDetail());
     }
