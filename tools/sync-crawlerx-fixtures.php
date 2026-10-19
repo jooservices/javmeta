@@ -54,6 +54,11 @@ foreach (glob($from . '/*/*.meta.json') ?: [] as $metaPath) {
     $copied++;
 }
 
+if ($copied === 0) {
+    fwrite(STDERR, "No crawlerx fixtures copied from {$from}. Leaving existing fixtures untouched.\n");
+    exit(1);
+}
+
 // Fixtures crawlerx no longer ships (renamed or replaced samples) must not linger as stale contract cases.
 $removed = 0;
 foreach (glob($to . '/*/*') ?: [] as $existing) {
