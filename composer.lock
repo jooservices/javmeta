@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "8fdc60b153c277b8b8a93c1339647f16",
+    "content-hash": "3269318eb3f6d58b960e6cb6bb77e690",
     "packages": [
         {
             "name": "brick/math",
@@ -1181,16 +1181,16 @@
         },
         {
             "name": "jooservices/crawlerx",
-            "version": "v1.4.0",
+            "version": "v1.4.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/jooservices/crawlerx.git",
-                "reference": "ee781a3bbfe1f9cac7166f1e73edb6ecd332eb6b"
+                "reference": "313416a02ecc47129ed37ab0ad93032637e20957"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/jooservices/crawlerx/zipball/ee781a3bbfe1f9cac7166f1e73edb6ecd332eb6b",
-                "reference": "ee781a3bbfe1f9cac7166f1e73edb6ecd332eb6b",
+                "url": "https://api.github.com/repos/jooservices/crawlerx/zipball/313416a02ecc47129ed37ab0ad93032637e20957",
+                "reference": "313416a02ecc47129ed37ab0ad93032637e20957",
                 "shasum": ""
             },
             "require": {
@@ -1231,9 +1231,9 @@
             "description": "URL-driven crawl and parse library for JAV catalog sites.",
             "support": {
                 "issues": "https://github.com/jooservices/crawlerx/issues",
-                "source": "https://github.com/jooservices/crawlerx/tree/v1.4.0"
+                "source": "https://github.com/jooservices/crawlerx/tree/v1.4.1"
             },
-            "time": "2026-10-19T00:01:51+00:00"
+            "time": "2026-10-19T03:42:27+00:00"
         },
         {
             "name": "jooservices/dto",
