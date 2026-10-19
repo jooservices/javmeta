@@ -12,6 +12,10 @@ final class ElasticsearchProbe implements DependencyProbe
 {
     public function probe(): bool
     {
+        if (! (bool) config('elasticsearch.enabled', true)) {
+            return true;
+        }
+
         $host = rtrim((string) config('elasticsearch.host', 'http://elasticsearch:9200'), '/');
 
         try {

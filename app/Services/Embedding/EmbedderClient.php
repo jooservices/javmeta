@@ -19,6 +19,10 @@ final class EmbedderClient
      */
     public function embedTexts(array $texts, bool $isQuery = false): ?array
     {
+        if (! (bool) config('elasticsearch.enabled', true) || ! (bool) config('elasticsearch.embedder_enabled', true)) {
+            return null;
+        }
+
         $texts = array_values(array_filter($texts, static fn(string $t): bool => trim($t) !== ''));
         if ($texts === []) {
             return [];

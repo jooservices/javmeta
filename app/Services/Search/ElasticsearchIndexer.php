@@ -22,6 +22,10 @@ final class ElasticsearchIndexer
 
     public function indexMovie(Movie $movie, bool $requireVector = false): bool
     {
+        if (! (bool) config('elasticsearch.enabled', true)) {
+            return false;
+        }
+
         $movie->loadMissing(['genres', 'performers']);
 
         $document = [
@@ -69,6 +73,10 @@ final class ElasticsearchIndexer
 
     public function indexPerformer(Performer $performer, bool $requireVector = false): bool
     {
+        if (! (bool) config('elasticsearch.enabled', true)) {
+            return false;
+        }
+
         $performer->loadMissing('aliases');
 
         $aliases = $performer->aliases->pluck('alias')->filter()->values()->all();
