@@ -107,7 +107,7 @@ final class FetchDetailJobTest extends TestCase
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
     }
 
-    public function test_crawl_failure_never_creates_movie_and_fails_row(): void
+    public function test_crawl_failure_never_creates_movie_and_retries_a_block_after_a_delay(): void
     {
         $source = $this->source('onejav');
         $row = $this->detailRow($source);
@@ -123,11 +123,12 @@ final class FetchDetailJobTest extends TestCase
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_BLOCKED]);
         $this->assertDatabaseHas('crawl_queue', [
             'id' => $row->id,
-            'status' => CrawlQueue::STATUS_FAILED,
+            'status' => CrawlQueue::STATUS_PENDING,
             'attempts' => 1,
             'error_code' => CrawlErrorCode::Blocked->value,
             'last_error' => 'Blocked by site.',
         ]);
+        self::assertSame(now()->addSeconds(60)->getTimestamp(), $row->refresh()->next_attempt_at?->getTimestamp());
         $this->assertNotNull(Source::query()->find('onejav')?->last_error_at);
     }
 

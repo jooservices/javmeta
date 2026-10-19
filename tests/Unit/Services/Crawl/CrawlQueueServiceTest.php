@@ -33,6 +33,60 @@ final class CrawlQueueServiceTest extends TestCase
         $this->assertSame(1, CrawlQueue::query()->where('source_slug', $source->slug)->where('url', $url)->count());
     }
 
+    public function test_a_blocked_crawl_is_retried_after_60_then_120_then_180_seconds_then_fails(): void
+    {
+        Carbon::setTestNow('2026-10-19 10:00:00');
+        $service = new CrawlQueueService();
+        $row = CrawlQueue::factory()->create(['status' => CrawlQueue::STATUS_CLAIMED, 'attempts' => 1, 'max_attempts' => 3]);
+
+        foreach ([1 => 60, 2 => 120, 3 => 180] as $attempt => $delay) {
+            $row->forceFill(['status' => CrawlQueue::STATUS_CLAIMED, 'attempts' => $attempt])->save();
+            $service->markFailed($row, CrawlErrorCode::Blocked, 'Blocked.', true);
+
+            $row->refresh();
+            $this->assertSame(CrawlQueue::STATUS_PENDING, $row->status, "attempt {$attempt}");
+            $this->assertSame(now()->addSeconds($delay)->getTimestamp(), $row->next_attempt_at?->getTimestamp(), "attempt {$attempt}");
+        }
+
+        $row->forceFill(['status' => CrawlQueue::STATUS_CLAIMED, 'attempts' => 4])->save();
+        $service->markFailed($row, CrawlErrorCode::Blocked, 'Blocked.', true);
+
+        $this->assertSame(CrawlQueue::STATUS_FAILED, $row->refresh()->status);
+        $this->assertNull($row->next_attempt_at);
+        Carbon::setTestNow();
+    }
+
+    public function test_a_challenge_follows_the_same_delays_and_the_delays_are_configurable(): void
+    {
+        config()->set('javmeta_sources.defaults.queue.block_delays_seconds', [10, 20]);
+        $service = new CrawlQueueService();
+        $row = CrawlQueue::factory()->create(['status' => CrawlQueue::STATUS_CLAIMED, 'attempts' => 2, 'max_attempts' => 3]);
+
+        $service->markFailed($row, CrawlErrorCode::Challenge, 'Challenge.', false);
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $row->refresh()->status);
+
+        $row->forceFill(['status' => CrawlQueue::STATUS_CLAIMED, 'attempts' => 3])->save();
+        $service->markFailed($row, CrawlErrorCode::Challenge, 'Challenge.', true);
+        $this->assertSame(CrawlQueue::STATUS_FAILED, $row->refresh()->status);
+    }
+
+    public function test_a_site_waiting_out_a_block_delay_gets_no_new_claims_but_other_sites_do(): void
+    {
+        $blocked = Source::factory()->create();
+        $other = Source::factory()->create();
+        CrawlQueue::factory()->create([
+            'source_slug' => $blocked->slug, 'status' => CrawlQueue::STATUS_PENDING,
+            'error_code' => CrawlErrorCode::Blocked->value, 'next_attempt_at' => now()->addMinute(),
+        ]);
+        $waiting = CrawlQueue::factory()->create(['source_slug' => $blocked->slug, 'status' => CrawlQueue::STATUS_PENDING, 'next_attempt_at' => null]);
+        $free = CrawlQueue::factory()->create(['source_slug' => $other->slug, 'status' => CrawlQueue::STATUS_PENDING, 'next_attempt_at' => null]);
+
+        $claimed = (new CrawlQueueService())->claimNext('worker-1');
+
+        $this->assertSame($free->id, $claimed?->id);
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $waiting->refresh()->status);
+    }
+
     public function test_stale_claimed_rows_are_reclaimed_to_pending_when_attempts_remain(): void
     {
         $row = CrawlQueue::factory()->create([

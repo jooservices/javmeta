@@ -18,6 +18,13 @@ return [
         ],
         'queue' => [
             'stale_claim_timeout_seconds' => 900,
+            // A blocked or challenged crawl is retried after these delays (seconds, one per retry); the next
+            // block after the last delay fails the row. While a site waits out a delay none of its other
+            // rows is claimed. Env: JAVMETA_BLOCK_DELAYS="60,120,180".
+            'block_delays_seconds' => array_values(array_filter(
+                array_map('intval', explode(',', (string) env('JAVMETA_BLOCK_DELAYS', '60,120,180'))),
+                static fn(int $seconds): bool => $seconds > 0,
+            )),
         ],
         'recrawl' => [
             // A movie whose completeness tier is below `min_tier` is crawled again once its last crawl is older
