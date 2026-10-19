@@ -34,7 +34,13 @@ trait HandlesCrawlQueueRow
     {
         $row = CrawlQueue::query()->find($id);
 
-        if (! $row instanceof CrawlQueue || $row->status !== CrawlQueue::STATUS_CLAIMED) {
+        // The job runs only for the feed that claimed the row: a row reclaimed (and fed again) while this job
+        // waited in the buffer belongs to the newer job.
+        $claimedByAnotherFeed = $row instanceof CrawlQueue
+            && ($this->claimToken ?? null) !== null
+            && $row->locked_by !== $this->claimToken;
+
+        if (! $row instanceof CrawlQueue || $row->status !== CrawlQueue::STATUS_CLAIMED || $claimedByAnotherFeed) {
             $kind = $expectedKind;
             $status = 'missing';
             if ($row instanceof CrawlQueue) {
@@ -51,6 +57,9 @@ trait HandlesCrawlQueueRow
 
             return null;
         }
+
+        // Stale-claim time counts from the moment the job starts, not from when it entered the buffer.
+        $row->forceFill(['claimed_at' => now()])->save();
 
         return $row;
     }

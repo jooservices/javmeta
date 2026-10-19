@@ -58,6 +58,36 @@ final class FetchDetailJobTest extends TestCase
         $this->assertSame(0, Movie::query()->count());
     }
 
+    public function test_a_job_from_an_older_feed_is_skipped_after_the_row_was_claimed_again(): void
+    {
+        $source = $this->source('onejav');
+        $row = $this->detailRow($source);
+        $row->forceFill(['locked_by' => 'host:newer-feed'])->save();
+        $sink = new FakeMovieDraftSink();
+        $this->app->instance(MovieDraftSink::class, $sink);
+        $this->fakeClient(CrawlerxFetchResult::movie($this->movie()));
+
+        FetchDetailJob::dispatch($row->id, null, 'host:older-feed');
+
+        self::assertSame([], $sink->drafts);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_CLAIMED, 'locked_by' => 'host:newer-feed']);
+    }
+
+    public function test_the_job_of_the_current_feed_runs_and_restarts_the_claim_clock(): void
+    {
+        $source = $this->source('onejav');
+        $row = $this->detailRow($source);
+        $row->forceFill(['locked_by' => 'host:feed', 'claimed_at' => now()->subMinutes(30)])->save();
+        $sink = new FakeMovieDraftSink();
+        $this->app->instance(MovieDraftSink::class, $sink);
+        $this->fakeClient(CrawlerxFetchResult::movie($this->movie()));
+
+        FetchDetailJob::dispatch($row->id, null, 'host:feed');
+
+        self::assertCount(1, $sink->drafts);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
+    }
+
     public function test_success_persists_movie_through_container_bound_sink(): void
     {
         $source = $this->source('onejav');

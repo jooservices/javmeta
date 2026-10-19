@@ -67,11 +67,11 @@ final class FeedPoolCommand extends Command
                 }
 
                 match ($row->kind) {
-                    CrawlQueue::KIND_LISTING => FetchListingJob::dispatch($row->id, $traceparent),
-                    CrawlQueue::KIND_DETAIL => FetchDetailJob::dispatch($row->id, $traceparent),
-                    CrawlQueue::KIND_PERFORMER_LISTING => FetchPerformerListingJob::dispatch($row->id, $traceparent),
-                    CrawlQueue::KIND_PERFORMER_DETAIL => FetchPerformerDetailJob::dispatch($row->id, $traceparent),
-                    CrawlQueue::KIND_GALLERY => FetchGalleryJob::dispatch($row->id, $traceparent),
+                    CrawlQueue::KIND_LISTING => FetchListingJob::dispatch($row->id, $traceparent, $workerId),
+                    CrawlQueue::KIND_DETAIL => FetchDetailJob::dispatch($row->id, $traceparent, $workerId),
+                    CrawlQueue::KIND_PERFORMER_LISTING => FetchPerformerListingJob::dispatch($row->id, $traceparent, $workerId),
+                    CrawlQueue::KIND_PERFORMER_DETAIL => FetchPerformerDetailJob::dispatch($row->id, $traceparent, $workerId),
+                    CrawlQueue::KIND_GALLERY => FetchGalleryJob::dispatch($row->id, $traceparent, $workerId),
                     default => null,
                 };
 
