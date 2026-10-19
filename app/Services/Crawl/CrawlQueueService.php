@@ -30,6 +30,9 @@ final class CrawlQueueService
                 $query->where('kind', $kind);
             }
 
+            // A site that is waiting out a block delay gets no new claims until the delay is over.
+            $query->whereNotIn('source_slug', $this->sourcesHeldByBlockDelay());
+
             if (DB::getDriverName() === 'pgsql') {
                 $query->lockForUpdate();
             }
@@ -80,13 +83,16 @@ final class CrawlQueueService
         ?int $retryAfterSeconds = null,
     ): void {
         $safeMessage = self::sanitizeErrorMessage($message);
-        $willRetry = $retryable && $row->attempts < $row->max_attempts;
+        $blockDelay = $this->blockDelay($errorCode, $row);
+        $willRetry = $blockDelay !== null
+            ? $blockDelay > 0
+            : $retryable && $row->attempts < $row->max_attempts;
 
         $row->forceFill([
             'status' => $willRetry ? CrawlQueue::STATUS_PENDING : CrawlQueue::STATUS_FAILED,
             'claimed_at' => null,
             'locked_by' => null,
-            'next_attempt_at' => $willRetry ? $this->retryAt($row, $retryAfterSeconds) : null,
+            'next_attempt_at' => $willRetry ? ($blockDelay > 0 ? now()->addSeconds(max($blockDelay, (int) $retryAfterSeconds)) : $this->retryAt($row, $retryAfterSeconds)) : null,
             'error_code' => $errorCode->value,
             'last_error' => $safeMessage,
             'last_failed_at' => now(),
@@ -140,6 +146,34 @@ final class CrawlQueueService
 
             return $reclaimed;
         });
+    }
+
+    /**
+     * Seconds to wait before retrying a blocked or challenged crawl: the configured delay for this retry
+     * (60, 120, 180 by default). 0 means the delays are used up and the row fails; null means the error is not a block.
+     */
+    private function blockDelay(CrawlErrorCode $errorCode, CrawlQueue $row): ?int
+    {
+        if (! in_array($errorCode, [CrawlErrorCode::Blocked, CrawlErrorCode::Challenge], true)) {
+            return null;
+        }
+
+        /** @var list<int> $delays */
+        $delays = array_values((array) config('javmeta_sources.defaults.queue.block_delays_seconds', [60, 120, 180]));
+
+        return (int) ($delays[max($row->attempts, 1) - 1] ?? 0);
+    }
+
+    /** @return list<string> */
+    private function sourcesHeldByBlockDelay(): array
+    {
+        return CrawlQueue::query()
+            ->where('status', CrawlQueue::STATUS_PENDING)
+            ->whereIn('error_code', [CrawlErrorCode::Blocked->value, CrawlErrorCode::Challenge->value])
+            ->where('next_attempt_at', '>', now())
+            ->distinct()
+            ->pluck('source_slug')
+            ->all();
     }
 
     private function retryAt(CrawlQueue $row, ?int $retryAfterSeconds): Carbon

@@ -94,14 +94,16 @@ final class CrawlerxFailureContractTest extends CrawlerxContractTestCase
     #[DataProvider('retryableFailures')]
     public function test_retryable_failure_at_max_attempts_fails_the_row(\Closure $response, string $errorCode, string $eventKind, int $delaySeconds): void
     {
-        $row = $this->detailRow(attempts: 3);
+        // A block has three delayed retries (60, 120, 180 s) so it fails on the fourth attempt.
+        $attempts = $errorCode === 'challenge' ? 4 : 3;
+        $row = $this->detailRow(attempts: $attempts);
         $this->respondWith(self::URL, $response(), $response(), $response());
 
         $this->dispatchFor($row);
 
         $row->refresh();
         self::assertSame(CrawlQueue::STATUS_FAILED, $row->status);
-        self::assertSame(3, $row->attempts);
+        self::assertSame($attempts, $row->attempts);
         $this->assertNothingStored($errorCode, $eventKind);
     }
 
