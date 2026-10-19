@@ -73,7 +73,10 @@ final class SeedCommand extends Command
             ));
             if ($queue->restartListingLoopIfFinished($source->slug, $listingKind, $urls)) {
                 $observability->emitOps('crawl_loop_restart', ['source' => $source->slug, 'kind' => $listingKind]);
+                continue;
             }
+
+            $queue->refreshListingSeedsIfDue($source->slug, $listingKind, $urls);
         }
 
         foreach ($seeds as [$kind, $url]) {
