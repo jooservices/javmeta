@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Services\Health\SchedulerHeartbeat;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -11,6 +12,10 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 if (! app()->runningUnitTests()) {
+    Schedule::call(static function (): void {
+        app(SchedulerHeartbeat::class)->beat();
+    })->everyMinute()->name('javmeta:scheduler-heartbeat');
+
     Schedule::command('crawler:sync-sources')->everyFifteenMinutes();
     Schedule::command('crawler:reclaim')->everyMinute();
     Schedule::command('crawler:seed')->everyMinute();

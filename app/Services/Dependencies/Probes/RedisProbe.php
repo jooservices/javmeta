@@ -43,6 +43,11 @@ final class RedisProbe implements DependencyProbe
             $connections[] = (string) config('session.connection', 'default') ?: 'default';
         }
 
+        $horizonConnection = (string) config('horizon.use', 'default');
+        if ($horizonConnection !== '') {
+            $connections[] = $horizonConnection;
+        }
+
         return array_values(array_unique($connections));
     }
 
