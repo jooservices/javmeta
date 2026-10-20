@@ -29,6 +29,14 @@ circuit for 30 seconds before a half-open retry. Dependency state changes are
 written to the application log; OpenObserve state changes go to stderr while
 OpenObserve is down.
 
+Elasticsearch clients use `ELASTICSEARCH_USERNAME` and `ELASTICSEARCH_PASSWORD`
+for Basic authentication, or `ELASTICSEARCH_API_KEY` for API key authentication.
+When both forms are configured, the API key takes precedence. Failed requests
+are logged with their operation and HTTP status code, counted by
+`javmeta_elasticsearch_request_failures`, and reported in the Elasticsearch
+health dependency as `request_failures` and `last_failure`. The health state
+recovers after a successful Elasticsearch operation.
+
 ## API health and route behavior
 
 - `GET /api/health/live` checks process liveness only and is not gated by a

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Health;
 
+use App\Services\Search\ElasticsearchHttpClient;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use MongoDB\Driver\Command;
@@ -16,6 +17,8 @@ use Throwable;
  */
 final class SystemStatusService
 {
+    public function __construct(private readonly ElasticsearchHttpClient $elasticsearch) {}
+
     /**
      * @return array<string, mixed>
      */
@@ -61,10 +64,8 @@ final class SystemStatusService
     /** @return array{status: string, detail?: string} */
     private function probeElasticsearch(): array
     {
-        $host = rtrim((string) config('elasticsearch.host', 'http://elasticsearch:9200'), '/');
-
         try {
-            $response = Http::timeout(3)->withoutVerifying()->get($host . '/');
+            $response = $this->elasticsearch->get('health', '/', 3);
 
             return $response->successful() ? ['status' => 'ok'] : ['status' => 'down'];
         } catch (Throwable $exception) {

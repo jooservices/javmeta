@@ -330,6 +330,7 @@ final class McpToolServiceTest extends TestCase
             'http://embedder.example/*' => Http::response(['status' => 'ok'], 200),
         ]);
         config(['elasticsearch.host' => 'http://es.example']);
+        config(['elasticsearch.api_key' => 'test-encoded-api-key']);
         config(['elasticsearch.embedder_url' => 'http://embedder.example']);
         config(['openobserve.enabled' => false]);
 
@@ -340,5 +341,7 @@ final class McpToolServiceTest extends TestCase
         $this->assertSame('ok', $payload['services']['embedder']['status']);
         $this->assertSame('disabled', $payload['services']['observability']['status']);
         $this->assertContains($payload['status'], ['ok', 'degraded']);
+        Http::assertSent(static fn($request): bool => $request->url() === 'http://es.example/'
+            && $request->hasHeader('Authorization', 'ApiKey test-encoded-api-key'));
     }
 }
