@@ -483,7 +483,8 @@ final class MovieSearchControllerTest extends TestCase
         }
     }
 
-    public function test_search_p95_smoke_at_5k_scale(): void
+    // The CI stability job owns elapsed-time budgets; this test checks result correctness at scale.
+    public function test_search_returns_expected_results_at_5k_scale(): void
     {
         $movies = Movie::factory()->count(self::SEED_COUNT)->create();
         $target = $movies->first();
@@ -495,25 +496,16 @@ final class MovieSearchControllerTest extends TestCase
             'source_slug' => 'javdb',
         ]);
 
-        $start = hrtime(true);
         $filtered = $this->getJson('/api/v1/movies?q=nebulazero&genre=drama&sort=release_date&per_page=5', ['X-API-Key' => $this->apiKey]);
-        $filteredMs = (int) round((hrtime(true) - $start) / 1_000_000);
 
         $filtered->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.code', $target->display_code);
 
-        $start = hrtime(true);
         $broad = $this->getJson('/api/v1/movies?sort=release_date&per_page=20', ['X-API-Key' => $this->apiKey]);
-        $broadMs = (int) round((hrtime(true) - $start) / 1_000_000);
 
         $broad->assertOk()
             ->assertJsonCount(20, 'data')
             ->assertJsonPath('meta.pagination.total', self::SEED_COUNT);
-
-        // NFR search p95 <= 1.5s at POC scale; a generous bound absorbs CI
-        // variance while still catching pathological query patterns.
-        $this->assertLessThan(5000, $filteredMs);
-        $this->assertLessThan(5000, $broadMs);
     }
 }
