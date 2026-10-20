@@ -25,6 +25,7 @@ if ! grep -Eq '^CRAWLERX_FLARESOLVERR_REQUIRED=(false|0|no)$' "${JAVMETA_APP_DIR
   die 'control deployment requires CRAWLERX_FLARESOLVERR_REQUIRED=false in .env'
 fi
 
+export_sentry_release
 compose config --quiet
 compose build "${JAVMETA_PHP_SERVICE}"
 compose run --rm --no-deps --entrypoint composer "${JAVMETA_PHP_SERVICE}" \

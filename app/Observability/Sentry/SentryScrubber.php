@@ -7,6 +7,7 @@ namespace App\Observability\Sentry;
 use Sentry\Breadcrumb;
 use Sentry\Event;
 use Sentry\EventHint;
+use Throwable;
 
 final class SentryScrubber
 {
@@ -25,8 +26,12 @@ final class SentryScrubber
         'resolved',
     ];
 
-    public static function beforeSend(Event $event, ?EventHint $hint = null): Event
+    public static function beforeSend(Event $event, ?EventHint $hint = null): ?Event
     {
+        if ($hint?->exception instanceof Throwable && CrawlFailureReporter::wasReported($hint->exception)) {
+            return null;
+        }
+
         $request = $event->getRequest();
         $safeRequest = [];
 
@@ -44,7 +49,7 @@ final class SentryScrubber
 
         $tags = $event->getTags();
         foreach ($tags as $key => $value) {
-            if (preg_match('/authorization|cookie|api[_ -]?key|token|secret|password/i', $key) === 1) {
+            if (preg_match('/authorization|cookie|api[_ -]?key|mcp[_ -]?key|token|secret|password/i', $key) === 1) {
                 unset($tags[$key]);
 
                 continue;
@@ -111,7 +116,7 @@ final class SentryScrubber
     {
         $value = preg_replace('/\b(Bearer|Basic)\s+[A-Za-z0-9._~+\/-]+=*/i', '$1 [Filtered]', $value) ?? $value;
         $value = preg_replace(
-            '/(["\']?(?:authorization|cookie|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|token|secret|password)["\']?\s*[:=]\s*)(?:"[^"]*"|\'[^\']*\'|[^\s,;]+)/i',
+            '/(["\']?(?:authorization|cookie|api[_ -]?key|mcp[_ -]?key|access[_ -]?token|refresh[_ -]?token|token|secret|password)["\']?\s*[:=]\s*)(?:"[^"]*"|\'[^\']*\'|[^\s,;]+)/i',
             '$1[Filtered]',
             $value,
         ) ?? $value;
