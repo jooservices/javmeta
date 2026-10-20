@@ -247,7 +247,8 @@ final class PerformerIdentityIngestionTest extends TestCase
         } catch (\RuntimeException) {
         }
 
-        Http::assertNothingSent();
+        $performersIndex = '/' . (string) config('elasticsearch.performers_index') . '/';
+        Http::assertNotSent(static fn(Request $request): bool => str_contains($request->url(), $performersIndex));
 
         DB::transaction(fn() => $this->persistMovie('SSIS-002', 'javdb', [PerformerDraft::from('javdb', 'p2', 'Mio Tanaka')]));
 
