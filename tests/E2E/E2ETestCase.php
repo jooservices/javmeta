@@ -364,6 +364,9 @@ abstract class E2ETestCase extends TestCase
             : sprintf('mongodb://%s:%d', config('mongodb.host'), config('mongodb.port')));
         $database = $client->selectDatabase($databaseName);
         foreach ($database->listCollectionNames() as $collection) {
+            if ($collection === '_workspaces') {
+                continue; // the ownership marker of the shared Docker project database
+            }
             $database->dropCollection($collection);
         }
     }
