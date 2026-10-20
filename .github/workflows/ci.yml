@@ -216,7 +216,7 @@ jobs:
           persist-credentials: false
 
       - name: Build Dockerfile.production (no push)
-        run: docker build --build-arg SENTRY_RELEASE="${GITHUB_SHA}" --tag javmeta:ci --file Dockerfile.production .
+        run: docker build --build-arg "SENTRY_RELEASE=$(git rev-parse --short HEAD)" --tag javmeta:ci --file Dockerfile.production .
 
       - name: Report image size
         run: docker image inspect javmeta:ci --format '{{.Size}}' | numfmt --to=iec

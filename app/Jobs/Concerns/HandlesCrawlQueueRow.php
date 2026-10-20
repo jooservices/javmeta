@@ -19,6 +19,7 @@ use App\Services\Crawler\CrawlerxClient;
 use App\Services\Crawler\CrawlerxFetchResult;
 use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Event;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -82,8 +83,15 @@ trait HandlesCrawlQueueRow
         string $message,
         bool $retryable = false,
         ?int $retryAfterSeconds = null,
+        ?Throwable $exception = null,
     ): void {
         app(CrawlQueueService::class)->markFailed($row, $errorCode, $message, $retryable, $retryAfterSeconds);
+        app(CrawlFailureReporter::class)->report(
+            $exception ?? new RuntimeException(CrawlQueueService::sanitizeErrorMessage($message)),
+            $row->source_slug,
+            $row->kind,
+            $errorCode->value,
+        );
     }
 
     public function failed(Throwable $exception): void
@@ -103,9 +111,8 @@ trait HandlesCrawlQueueRow
             $errorCode,
             $timedOut ? 'Worker timed out while processing the crawl row.' : $exception->getMessage(),
             $row->attempts < $row->max_attempts,
+            exception: $exception,
         );
-
-        app(CrawlFailureReporter::class)->report($exception, $row->source_slug, $errorCode->value);
     }
 
     /**

@@ -21,6 +21,7 @@ use App\Support\Code\NormalizedCode;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use App\Services\Search\ElasticsearchHttpClient;
 use MongoDB\Client as MongoClient;
 use RuntimeException;
 use Tests\E2E\Support\ApiKeyCredential;
@@ -394,7 +395,7 @@ abstract class E2ETestCase extends TestCase
             if (! self::isTestNamespace($index)) {
                 throw new RuntimeException('Elasticsearch cleanup refused an index outside the javmeta test namespaces.');
             }
-            $response = Http::baseUrl(rtrim((string) config('elasticsearch.host'), '/'))->timeout(10)->delete('/' . $index);
+            $response = app(ElasticsearchHttpClient::class)->delete('e2e_cleanup', '/' . $index, acceptedStatuses: [404]);
             if (! $response->successful() && $response->status() !== 404) {
                 throw new RuntimeException('Could not clear an E2E Elasticsearch index.');
             }

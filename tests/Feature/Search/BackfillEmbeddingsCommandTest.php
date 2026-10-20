@@ -24,6 +24,9 @@ final class BackfillEmbeddingsCommandTest extends TestCase
 
         config()->set([
             'elasticsearch.host' => 'http://elasticsearch.test',
+            'elasticsearch.username' => 'javmeta-test-user',
+            'elasticsearch.password' => 'javmeta-test-password',
+            'elasticsearch.api_key' => '',
             'elasticsearch.embedder_url' => 'http://embedder.test',
         ]);
 
@@ -71,6 +74,16 @@ final class BackfillEmbeddingsCommandTest extends TestCase
                 && array_key_exists('embedding_performer', $request->data());
         });
         Http::assertSent(static fn(ClientRequest $request): bool => str_ends_with($request->url(), '/healthz'));
+        $elasticsearchRequests = Http::recorded()
+            ->map(static fn(array $recorded): ClientRequest => $recorded[0])
+            ->filter(static fn(ClientRequest $request): bool => str_starts_with($request->url(), 'http://elasticsearch.test'));
+        self::assertCount(4, $elasticsearchRequests);
+        foreach ($elasticsearchRequests as $request) {
+            self::assertTrue($request->hasHeader(
+                'Authorization',
+                'Basic ' . base64_encode('javmeta-test-user:javmeta-test-password'),
+            ));
+        }
     }
 
     public function test_command_stops_before_indexing_when_embedder_health_is_down(): void
@@ -286,6 +299,7 @@ final class BackfillEmbeddingsCommandTest extends TestCase
         config()->set([
             'elasticsearch.host' => 'http://elasticsearch.test',
             'elasticsearch.embedder_url' => 'http://embedder.test',
+            'openobserve.enabled' => false,
         ]);
         $embeddingNumber = 0;
 

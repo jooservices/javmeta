@@ -60,11 +60,13 @@ final class OpenObserveClient
         $payload = [];
         foreach ($records as $record) {
             $payload[] = array_merge(
+                $this->sanitizer->sanitizeContext($record),
                 [
                     '_timestamp' => (int) ((float) ($record['_timestamp'] ?? (microtime(true) * 1_000_000))),
                     'service' => (string) config('openobserve.service_name'),
+                    'environment' => (string) config('app.env', 'production'),
+                    'role' => (string) config('dependencies.role', 'api'),
                 ],
-                $this->sanitizer->sanitizeContext($record),
             );
         }
 
@@ -102,6 +104,8 @@ final class OpenObserveClient
         $scopeMetrics = [];
         foreach ($points as $point) {
             $labels = $point['labels'] ?? [];
+            $labels['environment'] = (string) config('app.env', 'production');
+            $labels['role'] = (string) config('dependencies.role', 'api');
             $attributes = [];
             foreach ($labels as $key => $value) {
                 $attributes[] = [

@@ -229,6 +229,12 @@ JAVMETA_WORKER_INSTANCES=2 /home/joos/javmeta/deploy/crawler.sh
 
 ### Elasticsearch mapping and reindex
 
+Set `ELASTICSEARCH_HOST` to the Elasticsearch URL. Configure either
+`ELASTICSEARCH_USERNAME` with `ELASTICSEARCH_PASSWORD`, or
+`ELASTICSEARCH_API_KEY`; the API key takes precedence when both are present.
+Keep credential values in the deployment environment, not in a tracked file or
+the URL.
+
 When the release changes the vector field names, update the mappings and then
 reindex existing data after the Laravel services are prepared. Run both
 commands from the application directory:

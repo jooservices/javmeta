@@ -8,6 +8,9 @@ return [
     'enabled' => (bool) env('JAVMETA_SEARCH_ENABLED', true),
     'embedder_enabled' => (bool) env('JAVMETA_EMBEDDER_ENABLED', true),
     'host' => env('ELASTICSEARCH_HOST', 'http://elasticsearch:9200'),
+    'username' => (string) env('ELASTICSEARCH_USERNAME', ''),
+    'password' => (string) env('ELASTICSEARCH_PASSWORD', ''),
+    'api_key' => (string) env('ELASTICSEARCH_API_KEY', ''),
     // Internal ES often uses a self-signed cert; disable verification by default.
     'verify_ssl' => (bool) env('ELASTICSEARCH_VERIFY_SSL', false),
     'embedder_url' => env('EMBEDDER_URL', 'http://embedder:8000'),

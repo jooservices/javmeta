@@ -60,7 +60,7 @@ ENV CRAWLERX_ROOT=/var/www/html/vendor/jooservices/crawlerx \
     CRAWLERX_NODE=node \
     CRAWLERX_PLAYWRIGHT_SCRIPT=/var/www/html/vendor/jooservices/crawlerx/scripts/playwright-fetch.mjs \
     CRAWLERX_PUPPETEER_SCRIPT=/var/www/html/vendor/jooservices/crawlerx/scripts/puppeteer-stealth-fetch.mjs \
-    CRAWLERX_FLARESOLVERR_URL=http://flaresolverr:8191/v1 \
+    FLARESOLVERR_URL=http://flaresolverr:8191/v1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
