@@ -22,8 +22,10 @@ description = "A sample default password that must not return to the repository"
 regex = '''(Complexpass#123|local-Observe-2026!)'''
 
 [[rules.allowlists]]
-description = "The boot check and its test list the sample values on purpose"
+description = "The rule itself, the boot check with its test, and the local-only monitoring fixture list the sample values on purpose"
 paths = [
+  '''^\.gitleaks\.toml$''',
   '''^config/insecure_defaults\.php$''',
   '''^tests/Unit/Support/InsecureDefaultsTest\.php$''',
+  '''^deploy/monitoring/(compose\.local-test\.yml|verify\.sh)$''',
 ]
