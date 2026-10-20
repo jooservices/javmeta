@@ -174,6 +174,7 @@ final class PerformerIdentityService
         }
 
         $details = $this->mergeDetails($merge);
+        $this->assertMergeCanBeSplit($merge, $details);
         $split = DB::transaction(function () use ($merge, $details): PerformerIdentityEvent {
             DB::table('performer_sources')->whereIn('id', $details['source_link_ids'])
                 ->update(['performer_id' => $merge->from_performer_id]);
@@ -224,6 +225,7 @@ final class PerformerIdentityService
             throw new RuntimeException('The split event has no merge event to restore.');
         }
         $details = $this->mergeDetails($merge);
+        $this->assertSplitCanBeUndone($merge, $details);
 
         $undo = DB::transaction(function () use ($split, $merge, $details): PerformerIdentityEvent {
             DB::table('performer_sources')->whereIn('id', $details['source_link_ids'])
@@ -490,15 +492,82 @@ final class PerformerIdentityService
                 'candidate_performer_id' => $review['candidate_performer_id'],
                 'status' => 'open',
             ],
-            [
+            static fn(bool $exists): array => [
                 'reason' => $review['reason'],
                 'similarity' => $review['similarity'],
-                'created_at' => now(),
                 'resolved_at' => null,
+                ...($exists ? [] : ['created_at' => now()]),
             ],
         );
         Performer::query()->whereKey($review['source_performer_id'])->update(['needs_review' => true]);
         Performer::query()->whereKey($review['candidate_performer_id'])->update(['needs_review' => true]);
+    }
+
+    /** @param array<string, mixed> $details */
+    private function assertMergeCanBeSplit(PerformerIdentityEvent $merge, array $details): void
+    {
+        $canonicalId = (int) $merge->to_performer_id;
+        $canonical = Performer::query()->find($canonicalId);
+        if (! $canonical instanceof Performer || $canonical->canonical_performer_id !== null) {
+            throw new RuntimeException('Split later merge events first; the recorded canonical performer has changed.');
+        }
+
+        $members = Performer::query()->whereIn('id', $details['source_performer_ids'])
+            ->get(['id', 'canonical_performer_id'])->keyBy('id');
+        foreach ($details['source_performer_ids'] as $performerId) {
+            $member = $members->get($performerId);
+            if (! $member instanceof Performer || (int) $member->canonical_performer_id !== $canonicalId) {
+                throw new RuntimeException('Split later merge events first; the recorded performer group has changed.');
+            }
+        }
+
+        $sourceLinksChanged = DB::table('performer_sources')->whereIn('id', $details['source_link_ids'])
+            ->where('performer_id', '<>', $canonicalId)->exists();
+        if ($sourceLinksChanged) {
+            throw new RuntimeException('Split later merge events first; the recorded source links have changed.');
+        }
+    }
+
+    /** @param array<string, mixed> $details */
+    private function assertSplitCanBeUndone(PerformerIdentityEvent $merge, array $details): void
+    {
+        if ($merge->reversed_at === null) {
+            throw new RuntimeException('The merge event is not currently split.');
+        }
+
+        $fromId = (int) $merge->from_performer_id;
+        $toId = (int) $merge->to_performer_id;
+        $from = Performer::query()->find($fromId);
+        $to = Performer::query()->find($toId);
+        if (! $from instanceof Performer || $from->canonical_performer_id !== null
+            || ! $to instanceof Performer || $to->canonical_performer_id !== null) {
+            throw new RuntimeException('Restore later identity changes before undoing this split.');
+        }
+
+        if (! in_array($fromId, $details['source_performer_ids'], true)) {
+            throw new RuntimeException('The split event does not contain its original source performer.');
+        }
+
+        $children = array_values(array_diff($details['source_performer_ids'], [$fromId]));
+        if ($children !== []) {
+            $linkedChildren = Performer::query()->whereIn('id', $children)
+                ->where('canonical_performer_id', $fromId)->count();
+            if ($linkedChildren !== count($children)) {
+                throw new RuntimeException('Restore later identity changes before undoing this split.');
+            }
+        }
+
+        $unexpectedChildren = Performer::query()->where('canonical_performer_id', $fromId)
+            ->whereNotIn('id', $details['source_performer_ids'])->exists();
+        if ($unexpectedChildren) {
+            throw new RuntimeException('Restore later identity changes before undoing this split.');
+        }
+
+        $sourceLinksChanged = DB::table('performer_sources')->whereIn('id', $details['source_link_ids'])
+            ->where('performer_id', '<>', $fromId)->exists();
+        if ($sourceLinksChanged) {
+            throw new RuntimeException('Restore later identity changes before undoing this split.');
+        }
     }
 
     /** @return list<PerformerSource> */

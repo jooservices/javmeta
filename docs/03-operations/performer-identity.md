@@ -74,3 +74,6 @@ php artisan performers:undo-split <split_event_id>
 ```
 
 Both operations are recorded and update the canonical search documents.
+They verify that the recorded performer group and source links still match the
+event before changing them. Resolve later identity changes first if a split or
+undo is rejected.

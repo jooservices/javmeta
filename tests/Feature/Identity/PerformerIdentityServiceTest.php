@@ -19,6 +19,9 @@ use App\Services\Identity\PerformerIdentityService;
 use App\Services\Mcp\McpToolService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
 use Tests\TestCase;
 
 final class PerformerIdentityServiceTest extends TestCase
@@ -159,6 +162,16 @@ final class PerformerIdentityServiceTest extends TestCase
         self::assertNull($second->fresh()->canonical_performer_id);
         self::assertTrue((bool) $first->fresh()->needs_review);
         self::assertTrue((bool) $second->fresh()->needs_review);
+
+        $createdAt = (string) DB::table('performer_identity_reviews')->value('created_at');
+        try {
+            Carbon::setTestNow(Carbon::now()->addDay());
+            app(PerformerIdentityService::class)->backfill();
+        } finally {
+            Carbon::setTestNow();
+        }
+        self::assertSame($createdAt, (string) DB::table('performer_identity_reviews')->value('created_at'));
+
         $this->artisan('performers:identity-report')->expectsOutputToContain('birth_date_missing_or_conflicting')->assertSuccessful();
     }
 
@@ -266,6 +279,56 @@ final class PerformerIdentityServiceTest extends TestCase
         self::assertCount(1, $searchHits);
         self::assertSame((int) $first->id, (int) $searchHits->first()->id);
         self::assertCount(2, $searchHits->first()->sources);
+    }
+
+    public function test_split_and_undo_reject_stale_identity_groups(): void
+    {
+        $first = $this->sourcePerformer('source-a', 'person-a', 'Different Name', '1979-01-01');
+        $second = $this->sourcePerformer('source-b', 'person-b', 'Mika Aoi', '1986-01-01');
+        $third = $this->sourcePerformer('source-c', 'person-c', 'Mika Aoi', '1986-01-01');
+        $identity = app(PerformerIdentityService::class);
+
+        self::assertCount(1, $identity->backfill()['merges']);
+        $firstMerge = PerformerIdentityEvent::query()->where('event_type', 'merge')->orderBy('id')->firstOrFail();
+
+        foreach ([$first, $second] as $performer) {
+            $source = $this->sourceFor((string) $performer->source_slug, (string) $performer->external_id);
+            $source->fill(['cross_link_source' => 'shared-catalog', 'cross_link_id' => 'person-42']);
+            $source->save();
+        }
+
+        self::assertCount(1, $identity->backfill()['merges']);
+        $laterMerge = PerformerIdentityEvent::query()->where('event_type', 'merge')->orderByDesc('id')->firstOrFail();
+
+        try {
+            $identity->split((int) $firstMerge->id);
+            self::fail('A prior merge must not be split while its recorded canonical performer is merged again.');
+        } catch (RuntimeException $exception) {
+            self::assertStringContainsString('Split later merge events first', $exception->getMessage());
+        }
+        self::assertSame((int) $first->id, (int) $second->fresh()->canonical_performer_id);
+        self::assertSame((int) $first->id, (int) $third->fresh()->canonical_performer_id);
+
+        $split = $identity->split((int) $laterMerge->id);
+        foreach ([$first, $second] as $performer) {
+            $source = $this->sourceFor((string) $performer->source_slug, (string) $performer->external_id);
+            $source->fill(['cross_link_source' => null, 'cross_link_id' => null]);
+            $source->save();
+        }
+
+        $fourth = $this->sourcePerformer('source-d', 'person-d', 'Mika Aoi', '1986-01-01');
+        self::assertCount(1, $identity->backfill()['merges']);
+        self::assertSame((int) $second->id, (int) $fourth->fresh()->canonical_performer_id);
+
+        try {
+            $identity->undoSplit((int) $split->id);
+            self::fail('Undo must not overwrite a performer group that changed after the split.');
+        } catch (RuntimeException $exception) {
+            self::assertStringContainsString('Restore later identity changes', $exception->getMessage());
+        }
+
+        self::assertSame((int) $second->id, (int) $fourth->fresh()->canonical_performer_id);
+        self::assertSame((int) $second->id, (int) $this->sourceFor('source-d', 'person-d')->performer_id);
     }
 
     /** @return array{Performer, Performer} */
