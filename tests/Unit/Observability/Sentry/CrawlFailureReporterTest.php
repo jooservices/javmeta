@@ -24,6 +24,7 @@ final class CrawlFailureReporterTest extends TestCase
         $scope->shouldReceive('setTag')->once()->with('role', 'worker')->andReturnSelf();
         $scope->shouldReceive('setTag')->once()->with('node', 'crawl-a')->andReturnSelf();
         $scope->shouldReceive('setTag')->once()->with('source', 'sample-source')->andReturnSelf();
+        $scope->shouldReceive('setTag')->once()->with('crawl_kind', 'detail')->andReturnSelf();
         $scope->shouldReceive('setTag')->once()->with('error_code', 'worker_failed')->andReturnSelf();
         $scope->shouldReceive('setFingerprint')->once()->with(['worker_failed', 'sample-source'])->andReturnSelf();
 
@@ -33,7 +34,7 @@ final class CrawlFailureReporterTest extends TestCase
         });
         $hub->shouldReceive('captureException')->once()->with($exception)->andReturn(null);
 
-        (new CrawlFailureReporter($hub))->report($exception, 'sample-source', 'worker_failed');
+        (new CrawlFailureReporter($hub))->report($exception, 'sample-source', 'detail', 'worker_failed');
     }
 
     public function test_report_skips_when_sentry_client_is_not_bound(): void
@@ -43,6 +44,6 @@ final class CrawlFailureReporterTest extends TestCase
         $hub->shouldNotReceive('withScope');
         $hub->shouldNotReceive('captureException');
 
-        (new CrawlFailureReporter($hub))->report(new RuntimeException('crawl failed'), 'sample-source', 'worker_failed');
+        (new CrawlFailureReporter($hub))->report(new RuntimeException('crawl failed'), 'sample-source', 'detail', 'worker_failed');
     }
 }

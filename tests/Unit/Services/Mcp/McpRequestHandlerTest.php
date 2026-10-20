@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Services\Mcp;
 
+use App\Services\Auth\ApiKeyService;
 use App\Services\Mcp\McpRequestHandler;
+use App\Services\Mcp\McpToolService;
 use Tests\TestCase;
 
 final class McpRequestHandlerTest extends TestCase
@@ -63,5 +65,22 @@ final class McpRequestHandlerTest extends TestCase
 
         self::assertTrue($response['result']['isError']);
         self::assertSame('{"error":"unauthorized"}', $response['result']['content'][0]['text']);
+    }
+
+    public function test_it_wraps_invalid_tool_arguments_as_a_clear_tool_error(): void
+    {
+        config()->set('javmeta_auth.mcp_api_key', '');
+
+        $response = (new McpRequestHandler(app(McpToolService::class), app(ApiKeyService::class)))->handle([
+            'id' => 12,
+            'method' => 'tools/call',
+            'params' => ['name' => 'get_movie', 'arguments' => []],
+        ], true);
+
+        self::assertTrue($response['result']['isError']);
+        self::assertSame([
+            'error' => 'invalid_filter',
+            'message' => 'code is required.',
+        ], json_decode($response['result']['content'][0]['text'], true, 512, JSON_THROW_ON_ERROR));
     }
 }

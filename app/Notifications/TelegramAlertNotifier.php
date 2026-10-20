@@ -42,7 +42,7 @@ final class TelegramAlertNotifier implements AlertNotifier
 
         $result = $channel->send(
             Message::make(
-                subject: '[javmeta] ' . $subject,
+                subject: '[javmeta:' . $this->stringConfig('app.env', 'unknown') . '] ' . $subject,
                 body: $body,
                 context: $this->scalarContext($context),
             ),

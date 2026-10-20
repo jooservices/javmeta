@@ -7,6 +7,7 @@ namespace Tests\Unit\Services\Search;
 use App\Models\Movie;
 use App\Repositories\MovieRepository;
 use App\Services\Embedding\EmbedderClient;
+use App\Services\Search\ElasticsearchHttpClient;
 use App\Services\Search\ElasticsearchIndexer;
 use App\Services\Search\MovieSearchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -30,7 +31,7 @@ final class MovieSearchServiceTest extends TestCase
         ], 200));
 
         $service = new MovieSearchService(
-            new ElasticsearchIndexer(new EmbedderClient()),
+            new ElasticsearchIndexer(new EmbedderClient(), app(ElasticsearchHttpClient::class)),
             app(MovieRepository::class),
         );
         $this->enableElasticsearch();
@@ -51,7 +52,7 @@ final class MovieSearchServiceTest extends TestCase
 
         $this->enableElasticsearch();
         $result = (new MovieSearchService(
-            new ElasticsearchIndexer(new EmbedderClient()),
+            new ElasticsearchIndexer(new EmbedderClient(), app(ElasticsearchHttpClient::class)),
             app(MovieRepository::class),
         ))
             ->search(['q' => $movie->title_en], 'relevance', null, 1);
@@ -74,7 +75,7 @@ final class MovieSearchServiceTest extends TestCase
 
         $this->enableElasticsearch();
         $result = (new MovieSearchService(
-            new ElasticsearchIndexer(new EmbedderClient()),
+            new ElasticsearchIndexer(new EmbedderClient(), app(ElasticsearchHttpClient::class)),
             app(MovieRepository::class),
         ))
             ->semanticSearch(fake()->sentence(), 1);

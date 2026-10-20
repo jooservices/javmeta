@@ -8,6 +8,7 @@ use App\Console\Commands\Observability\PublishMetricsCommand;
 use App\Models\CrawlEvent;
 use App\Models\Source;
 use App\Services\Archive\MongoArchiveWriteHealth;
+use App\Services\Search\ElasticsearchRequestHealth;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -113,6 +114,45 @@ final class PublishMetricsCommandTest extends TestCase
             $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [];
             foreach ($metrics as $metric) {
                 if (($metric['name'] ?? null) === 'javmeta_mongo_archive_write_failures') {
+                    return ($metric['gauge']['dataPoints'][0]['asDouble'] ?? null) === 1.0;
+                }
+            }
+
+            return false;
+        });
+    }
+
+    public function test_command_publishes_the_cumulative_elasticsearch_request_failure_metric(): void
+    {
+        Cache::store('array')->flush();
+        app(ElasticsearchRequestHealth::class)->recordFailure('search', 503);
+        config()->set([
+            'elasticsearch.host' => 'http://elasticsearch.test',
+            'elasticsearch.username' => 'javmeta-test-user',
+            'elasticsearch.password' => 'javmeta-test-password',
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.email' => 'root@javmeta.local',
+            'openobserve.password' => 'secret',
+            'openobserve.timeout' => 1,
+        ]);
+        Http::fake([
+            'openobserve.test/*' => Http::response(['code' => 200], 200),
+            'elasticsearch.test/*' => Http::response(['status' => 'green'], 200),
+        ]);
+
+        $this->artisan('obs:publish-metrics')->assertSuccessful();
+
+        Http::assertSent(static fn($request): bool => str_contains($request->url(), 'elasticsearch.test')
+            && $request->hasHeader(
+                'Authorization',
+                'Basic ' . base64_encode('javmeta-test-user:javmeta-test-password'),
+            ));
+        Http::assertSent(static function ($request): bool {
+            $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [];
+            foreach ($metrics as $metric) {
+                if (($metric['name'] ?? null) === 'javmeta_elasticsearch_request_failures') {
                     return ($metric['gauge']['dataPoints'][0]['asDouble'] ?? null) === 1.0;
                 }
             }

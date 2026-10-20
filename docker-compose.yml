@@ -13,7 +13,7 @@ x-app-environment: &app-environment
   DB_PORT: ${DB_PORT:-5432}
   DB_DATABASE: ${DB_DATABASE:-jvmeta}
   DB_USERNAME: ${DB_USERNAME:-jvmeta}
-  DB_PASSWORD: ${DB_PASSWORD:-jvmeta}
+  DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
   DB_SSLMODE: ${DB_SSLMODE:-prefer}
   MONGO_URI: ${MONGO_URI:-}
   MONGO_HOST: ${MONGO_HOST:-mongo}
@@ -33,9 +33,11 @@ x-app-environment: &app-environment
   FLARESOLVERR_URL: ${FLARESOLVERR_URL:-${CRAWLERX_FLARESOLVERR_URL:-http://flaresolverr:8191/v1}}
   PLAYWRIGHT_URL: ${PLAYWRIGHT_URL:-}
   PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
-  QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
+  QUEUE_CONNECTION: ${QUEUE_CONNECTION:-redis}
+  REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
+  REDIS_PORT: ${REDIS_PORT:-16382}
   JAVMETA_WORKERS_PER_QUEUE: ${JAVMETA_WORKERS_PER_QUEUE:-1}
-  JAVMETA_QUEUE_NAMES: ${JAVMETA_QUEUE_NAMES:-listing,detail,performer_listing,performer_detail,gallery}
+  JAVMETA_QUEUE_NAMES: ${JAVMETA_QUEUE_NAMES:-listing,detail,performer_listing,performer_detail,gallery,search}
   OPENOBSERVE_ENABLED: ${OPENOBSERVE_ENABLED:-true}
   OPENOBSERVE_URL: ${OPENOBSERVE_URL:-http://openobserve:5080}
   OPENOBSERVE_ORG: ${OPENOBSERVE_ORG:-default}
@@ -45,7 +47,7 @@ x-app-environment: &app-environment
 x-worker: &worker
   image: jooservices/javmeta:php85
   working_dir: /var/www/html
-  command: ["sh", "-ec", "if [ \"$${QUEUE_CONNECTION:-database}\" = redis ]; then exec php artisan horizon; else exec crawlerx-fetch-ready worker-queues; fi"]
+  command: ["sh", "-ec", "if [ \"$${QUEUE_CONNECTION:-redis}\" = redis ]; then exec php artisan horizon; else exec crawlerx-fetch-ready worker-queues; fi"]
   env_file:
     - .env
   environment:
@@ -53,7 +55,7 @@ x-worker: &worker
   volumes: *app-volumes
   restart: unless-stopped
   healthcheck:
-    test: ["CMD-SHELL", "if [ \"$${QUEUE_CONNECTION:-database}\" = redis ]; then php artisan horizon:status; else kill -0 1; fi"]
+    test: ["CMD-SHELL", "if [ \"$${QUEUE_CONNECTION:-redis}\" = redis ]; then php artisan horizon:status; else kill -0 1; fi"]
     interval: 30s
     timeout: 10s
     retries: 3
@@ -140,7 +142,7 @@ services:
     environment:
       POSTGRES_DB: ${DB_DATABASE:-jvmeta}
       POSTGRES_USER: ${DB_USERNAME:-jvmeta}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-jvmeta}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-jvmeta} -d ${DB_DATABASE:-jvmeta}"]
       interval: 10s
@@ -205,7 +207,7 @@ services:
       ZO_LOCAL_MODE: "true"
       ZO_TELEMETRY: "false"
       ZO_ROOT_USER_EMAIL: ${ZO_ROOT_USER_EMAIL:-root@javmeta.local}
-      ZO_ROOT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:-Complexpass#123}
+      ZO_ROOT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:?Set ZO_ROOT_USER_PASSWORD in .env}
     ports:
       - "5080:5080"
     volumes:

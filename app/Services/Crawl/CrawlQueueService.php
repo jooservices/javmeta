@@ -8,9 +8,11 @@ use App\Enums\CrawlErrorCode;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
+use App\Observability\Sentry\CrawlFailureReporter;
 use Illuminate\Support\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 final class CrawlQueueService
 {
@@ -260,8 +262,9 @@ final class CrawlQueueService
     public function reclaimStaleClaimed(int $timeoutSeconds): int
     {
         $cutoff = now()->subSeconds($timeoutSeconds);
+        $lostRows = [];
 
-        return DB::transaction(function () use ($cutoff): int {
+        $reclaimed = DB::transaction(function () use ($cutoff, &$lostRows): int {
             $query = CrawlQueue::query()
                 ->where('status', CrawlQueue::STATUS_CLAIMED)
                 ->where('claimed_at', '<', $cutoff)
@@ -272,7 +275,7 @@ final class CrawlQueueService
             }
 
             $reclaimed = 0;
-            $query->chunkById(100, function (Collection $staleRows) use (&$reclaimed): void {
+            $query->chunkById(100, function (Collection $staleRows) use (&$reclaimed, &$lostRows): void {
                 foreach ($staleRows as $row) {
                     if ($row->started_at === null) {
                         CrawlEvent::query()->create([
@@ -284,6 +287,11 @@ final class CrawlQueueService
                         ]);
 
                         $this->returnUnstartedClaimToPending($row);
+                        $lostRows[] = [
+                            $row->source_slug,
+                            $row->kind,
+                            'Worker claim expired before the crawl row started.',
+                        ];
                     } else {
                         $this->markFailed(
                             $row,
@@ -292,6 +300,11 @@ final class CrawlQueueService
                             $row->attempts < $row->max_attempts,
                             0,
                         );
+                        $lostRows[] = [
+                            $row->source_slug,
+                            $row->kind,
+                            'Worker claim expired before the crawl row was completed.',
+                        ];
                     }
 
                     $reclaimed++;
@@ -300,6 +313,17 @@ final class CrawlQueueService
 
             return $reclaimed;
         });
+
+        foreach ($lostRows as [$source, $crawlKind, $message]) {
+            app(CrawlFailureReporter::class)->report(
+                new RuntimeException($message),
+                $source,
+                $crawlKind,
+                CrawlErrorCode::WorkerLost->value,
+            );
+        }
+
+        return $reclaimed;
     }
 
     private function returnUnstartedClaimToPending(CrawlQueue $row): void

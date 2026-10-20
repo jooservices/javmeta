@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Console;
 
+use Illuminate\Console\Scheduling\CallbackEvent;
 use Illuminate\Console\Scheduling\Schedule;
 use Tests\TestCase;
 
@@ -20,8 +21,14 @@ final class ScheduleTest extends TestCase
         }
 
         $scheduled = [];
+        $heartbeatEvents = [];
         $events = app(Schedule::class)->events();
         foreach ($events as $event) {
+            if ($event instanceof CallbackEvent) {
+                $heartbeatEvents[] = $event;
+                continue;
+            }
+
             $matchedCommand = preg_match('/artisan[\'"]?\s+[\'"]?([^\s\'"]+)/', (string) $event->command, $matches);
             $this->assertSame(1, $matchedCommand);
             $scheduled[$matches[1]] = $event;
@@ -44,7 +51,10 @@ final class ScheduleTest extends TestCase
             'obs:publish-metrics' => '* * * * *',
         ];
 
-        $this->assertCount(count($expectedFrequencies), $events);
+        $this->assertCount(count($expectedFrequencies) + 1, $events);
+        $this->assertCount(1, $heartbeatEvents);
+        $this->assertSame('javmeta:scheduler-heartbeat', $heartbeatEvents[0]->description);
+        $this->assertSame('* * * * *', $heartbeatEvents[0]->expression);
         $this->assertSame($expectedFrequencies, $actualFrequencies);
         $this->assertTrue($scheduled['crawler:feed-pool']->withoutOverlapping);
         $this->assertTrue($scheduled['crawler:recrawl-incomplete']->withoutOverlapping);

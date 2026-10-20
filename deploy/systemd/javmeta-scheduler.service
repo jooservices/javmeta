@@ -1,0 +1,15 @@
+[Unit]
+Description=JavMeta scheduler (exactly one instance) in the shared PHP 8.5 runtime
+After=network-online.target docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Workspaces/JOOservices/projects/javmeta
+ExecStart=%h/Workspaces/scripts/docker/runtime php@8.5 php artisan schedule:work
+# schedule:work has no graceful stop through docker exec; end any leftover process of this project.
+ExecStopPost=-%h/Workspaces/scripts/docker/runtime php@8.5 pkill -f "artisan schedule:work"
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=default.target

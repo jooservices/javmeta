@@ -14,6 +14,8 @@ use App\Models\ReviewFlag;
 use App\Models\Source;
 use App\Observability\OpenObserveClient;
 use App\Services\Archive\MongoArchiveWriteHealth;
+use App\Services\Search\ElasticsearchHttpClient;
+use App\Services\Search\ElasticsearchRequestHealth;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -28,8 +30,12 @@ final class PublishMetricsCommand extends Command
 
     protected $description = 'Publish javmeta ops and quality aggregate metrics to OpenObserve.';
 
-    public function handle(OpenObserveClient $client, MongoArchiveWriteHealth $archiveWrites): int
-    {
+    public function handle(
+        OpenObserveClient $client,
+        MongoArchiveWriteHealth $archiveWrites,
+        ElasticsearchHttpClient $elasticsearch,
+        ElasticsearchRequestHealth $elasticsearchHealth,
+    ): int {
         if (! $client->enabled()) {
             $this->components->info('OpenObserve disabled; skipping metrics publish.');
 
@@ -49,7 +55,11 @@ final class PublishMetricsCommand extends Command
                 'name' => 'javmeta_mongo_archive_write_failures',
                 'value' => $archiveWrites->failureCount(),
             ]],
-            $this->dependencyProbeMetrics(),
+            $this->dependencyProbeMetrics($elasticsearch),
+            [[
+                'name' => 'javmeta_elasticsearch_request_failures',
+                'value' => $elasticsearchHealth->failureCount(),
+            ]],
         );
 
         $client->ingestMetrics($points);
@@ -336,7 +346,7 @@ final class PublishMetricsCommand extends Command
     /**
      * @return list<array{name: string, value: float|int, labels?: array<string, string>}>
      */
-    private function dependencyProbeMetrics(): array
+    private function dependencyProbeMetrics(ElasticsearchHttpClient $elasticsearch): array
     {
         $points = [];
 
@@ -347,9 +357,8 @@ final class PublishMetricsCommand extends Command
             $points[] = ['name' => 'javmeta_dep_up', 'value' => 0, 'labels' => ['dependency' => 'postgres']];
         }
 
-        $esHost = rtrim((string) config('elasticsearch.host'), '/');
         try {
-            $ok = Http::timeout(2)->get("{$esHost}/_cluster/health")->successful();
+            $ok = $elasticsearch->get('metrics_probe', '/_cluster/health', 2)->successful();
             $points[] = ['name' => 'javmeta_dep_up', 'value' => $ok ? 1 : 0, 'labels' => ['dependency' => 'elasticsearch']];
         } catch (Throwable) {
             $points[] = ['name' => 'javmeta_dep_up', 'value' => 0, 'labels' => ['dependency' => 'elasticsearch']];
