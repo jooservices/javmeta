@@ -10,12 +10,12 @@ use RuntimeException;
 final class InsecureDefaults
 {
     /**
-     * @param  array{environments: list<string>, settings: list<string>, known_defaults: list<string>}  $rules
+     * @param  array{allow_samples?: bool, environments: list<string>, settings: list<string>, known_defaults: list<string>}  $rules
      * @param  array<string, string|null>  $values  setting name => configured value
      */
     public static function assertSafe(string $environment, array $rules, array $values): void
     {
-        if (! in_array($environment, $rules['environments'], true)) {
+        if (($rules['allow_samples'] ?? false) || ! in_array($environment, $rules['environments'], true)) {
             return;
         }
 

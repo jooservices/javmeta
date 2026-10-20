@@ -36,6 +36,13 @@ final class InsecureDefaultsTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    public function test_throwaway_ci_containers_may_opt_in_to_sample_passwords(): void
+    {
+        InsecureDefaults::assertSafe('production', ['allow_samples' => true] + $this->rules, ['DB_PASSWORD' => 'jvmeta']);
+
+        $this->addToAssertionCount(1);
+    }
+
     public function test_local_development_may_use_a_sample_password(): void
     {
         InsecureDefaults::assertSafe('local', $this->rules, ['DB_PASSWORD' => 'jvmeta']);

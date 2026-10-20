@@ -7,6 +7,8 @@ declare(strict_types=1);
  * With APP_ENV staging or production the application refuses to boot when one of the listed settings holds one of them.
  */
 return [
+    // Throwaway CI containers use sample passwords on purpose; only their compose file sets this to true.
+    'allow_samples' => (bool) env('JAVMETA_ALLOW_SAMPLE_SECRETS', false),
     'environments' => ['staging', 'production'],
     'settings' => ['DB_PASSWORD', 'OPENOBSERVE_PASSWORD', 'ZO_ROOT_USER_PASSWORD', 'REDIS_PASSWORD'],
     'values' => [

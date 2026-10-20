@@ -38,7 +38,7 @@ class AppServiceProvider extends ServiceProvider
     {
         BrowserServiceEnvironment::applyAliases();
 
-        /** @var array{environments: list<string>, settings: list<string>, values: array<string, string|null>, known_defaults: list<string>} $rules */
+        /** @var array{allow_samples: bool, environments: list<string>, settings: list<string>, values: array<string, string|null>, known_defaults: list<string>} $rules */
         $rules = config('insecure_defaults');
         InsecureDefaults::assertSafe($this->app->environment(), $rules, $rules['values']);
 
