@@ -52,6 +52,12 @@ Claiming a crawl row does not increment `attempts`. A worker increments it once 
 
 Each stale claim reclaimed before worker start creates a `queue_reclaimed_without_start` crawl event. The count is reported for the previous five minutes by `javmeta_crawl_events_5m` with `kind=queue_reclaimed_without_start`.
 
+## Listing freshness
+
+`crawler:seed` runs every minute. It requeues each configured page-one movie, performer, or gallery listing after `JAVMETA_FRESH_INTERVAL_MINUTES` (default `60`), even when later pages in that listing chain are still pending. The existing queue row is reset in place, and the source's current request gap still delays the next attempt. Listing results continue to enqueue detail pages through the existing queue path; already known detail rows are not reset by this refresh.
+
+When every page in a listing chain is finished, the loop still restarts page one after `JAVMETA_LOOP_PAUSE_SECONDS` (default `300`). This end-of-chain pause remains independent of the page-one freshness interval.
+
 ## Deploy and operate
 
 When `QUEUE_CONNECTION=redis`, the Compose worker starts `php artisan horizon`; with the default database connection it keeps running `crawlerx-fetch-ready worker-queues`. The Redis worker healthcheck uses `php artisan horizon:status`.

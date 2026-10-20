@@ -124,6 +124,66 @@ final class CrawlQueueService
         return true;
     }
 
+    /**
+     * Requeues stale page-one listing rows without waiting for the rest of the listing chain to finish.
+     * The due timestamp stored on each completed listing row is the crawl timestamp; legacy rows without one
+     * are treated as due once done.
+     * Detail rows and later listing pages are left untouched.
+     *
+     * @param  list<string>  $seedUrls
+     */
+    public function refreshListingSeedsIfDue(string $sourceSlug, string $kind, array $seedUrls): int
+    {
+        if ($seedUrls === [] || ! in_array($kind, [CrawlQueue::KIND_LISTING, CrawlQueue::KIND_PERFORMER_LISTING], true)) {
+            return 0;
+        }
+
+        $interval = max(1, (int) config('javmeta_sources.defaults.loop.fresh_interval_minutes', 60));
+
+        return DB::transaction(function () use ($sourceSlug, $kind, $seedUrls, $interval): int {
+            $rows = CrawlQueue::query()
+                ->where('source_slug', $sourceSlug)
+                ->where('kind', $kind)
+                ->whereIn('url', $seedUrls)
+                ->whereIn('status', [CrawlQueue::STATUS_DONE, CrawlQueue::STATUS_FAILED])
+                ->lockForUpdate()
+                ->get();
+
+            if ($rows->isEmpty()) {
+                return 0;
+            }
+
+            $source = Source::query()->find($sourceSlug);
+            $nextAttemptAt = now()->addSeconds((int) ($source->gap_seconds_current ?? 0));
+            $refreshed = 0;
+
+            foreach ($rows as $row) {
+                $dueAt = $row->next_attempt_at === null ? null : Carbon::parse($row->next_attempt_at);
+                if ($dueAt === null && $row->last_failed_at !== null) {
+                    $dueAt = Carbon::parse($row->last_failed_at)->addMinutes($interval);
+                }
+
+                if ($dueAt !== null && $dueAt->gt(now())) {
+                    continue;
+                }
+
+                $row->forceFill([
+                    'status' => CrawlQueue::STATUS_PENDING,
+                    'attempts' => 0,
+                    'next_attempt_at' => $nextAttemptAt,
+                    'claimed_at' => null,
+                    'locked_by' => null,
+                    'last_error' => null,
+                    'error_code' => null,
+                    'last_failed_at' => null,
+                ])->save();
+                $refreshed++;
+            }
+
+            return $refreshed;
+        });
+    }
+
     public function markFailed(
         CrawlQueue $row,
         CrawlErrorCode $errorCode,

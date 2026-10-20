@@ -57,7 +57,7 @@ trait HandlesCrawlQueueRow
 
     private function markDone(CrawlQueue $row): void
     {
-        $row->forceFill([
+        $values = [
             'status' => CrawlQueue::STATUS_DONE,
             'claimed_at' => null,
             'started_at' => null,
@@ -65,7 +65,14 @@ trait HandlesCrawlQueueRow
             'last_error' => null,
             'error_code' => null,
             'last_failed_at' => null,
-        ])->save();
+        ];
+
+        if (in_array($row->kind, [CrawlQueue::KIND_LISTING, CrawlQueue::KIND_PERFORMER_LISTING], true)) {
+            $interval = max(1, (int) config('javmeta_sources.defaults.loop.fresh_interval_minutes', 60));
+            $values['next_attempt_at'] = now()->addMinutes($interval);
+        }
+
+        $row->forceFill($values)->save();
     }
 
     private function markFailed(
