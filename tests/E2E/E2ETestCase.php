@@ -239,6 +239,9 @@ abstract class E2ETestCase extends TestCase
     /** The source answers 503 so the detail crawl fails and the queue row is retried later, not completed. */
     protected function runCrawlOutage(FixtureSeed $seed): void
     {
+        // Drop the fixture route first: the earliest route registered for a URL wins over a later 503.
+        $this->stopFakingCrawlerxHttp();
+        $this->fakeCrawlerxHttp();
         $this->respondWith($seed->url, TestResponse::make(503, ['Retry-After' => '30'], 'Service unavailable'));
         $row = CrawlQueue::query()->findOrFail($seed->queueId);
         $this->dispatchFor($row);
