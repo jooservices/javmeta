@@ -163,6 +163,24 @@ or a failed command. They never print the `.env` contents.
 The script intentionally leaves `scheduler` stopped until the control services
 have been verified.
 
+After the API, scheduler, workers, and their dependencies are running, verify
+the deployment from the application directory:
+
+```bash
+php artisan javmeta:smoke
+php artisan javmeta:smoke --json
+```
+
+The command checks the configured databases and service probes, Horizon,
+per-queue backlog limits, a temporary-key API lookup and MCP initialize, the
+scheduler heartbeat, and enabled observability connections. Disabled
+Elasticsearch, embedder, Sentry, and OpenObserve integrations are reported as
+skipped. A failed required check returns exit code 1. The scheduler records a
+heartbeat every minute; the check treats one as stale after 180 seconds. A
+temporary API key is revoked after the API checks. `APP_URL` must be reachable
+from the command process. When Sentry is enabled, the command sends one
+informational smoke-check event to verify delivery.
+
 ### Python embedder deployment
 
 `deploy/python.sh` performs:
