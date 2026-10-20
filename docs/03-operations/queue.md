@@ -18,6 +18,8 @@ flowchart LR
 
 The default `QUEUE_CONNECTION=database` remains supported. Its depth check counts rows in the configured `jobs` table that are not reserved and are available now. Redis mode uses `LLEN queues:<name>` through Laravel's Redis connection. Redis keys use `REDIS_PREFIX=javmeta:`; test runs use `javmeta_it:`.
 
+A JavBTC detail that has no recognizable product code is stored as a terminal `parse_failed` crawl row with a plain reason. JavBTC codes found in the page fields, title, or URL are normalized; no code is inferred when those sources contain none.
+
 ## Redis and Horizon configuration
 
 Set these values in the application environment when enabling Redis. Keep credentials in the private environment file and leave `QUEUE_CONNECTION=database` for installs that do not use Redis.

@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Tests\Unit\Services\Normalize;
 
 use App\Data\Crawl\PerformerDraft;
+use App\Services\Normalize\JavbtcCodeMissingException;
 use App\Services\Normalize\NormalizationFailedException;
 use App\Services\Normalize\Normalizers\DefaultSourceNormalizer;
+use App\Services\Normalize\Normalizers\JavbtcSourceNormalizer;
 use App\Services\Normalize\Normalizers\JableSourceNormalizer;
 use App\Services\Normalize\SourceNormalizerRegistry;
 use Carbon\CarbonImmutable;
@@ -424,6 +426,80 @@ final class SourceNormalizerTest extends TestCase
         $this->expectException(NormalizationFailedException::class);
 
         $normalizer->normalizeMovie($movie, [], 'missav', 'https://missav.ws/en/1', CarbonImmutable::now());
+    }
+
+    public function test_javbtc_product_code_from_page_fields_is_normalized(): void
+    {
+        $normalizer = $this->registry()->forSlug('javbtc');
+        self::assertInstanceOf(JavbtcSourceNormalizer::class, $normalizer);
+
+        $movie = new MovieDto(
+            externalId: 's1no1style-yua-mikami-sougouwiki-celebrity',
+            title: 'Big Tits Bursting Out Of Her School Swimsuit',
+            code: 'SSNI-00916',
+        );
+
+        $draft = $normalizer->normalizeMovie(
+            $movie,
+            $movie->metadata,
+            'javbtc',
+            'https://javbtc.com/r18/s1no1style-yua-mikami-sougouwiki-celebrity',
+            CarbonImmutable::now(),
+        );
+
+        self::assertSame('SSNI-00916', $draft->code);
+    }
+
+    public function test_javbtc_product_code_in_title_is_normalized(): void
+    {
+        $normalizer = $this->registry()->forSlug('javbtc');
+        $movie = new MovieDto(title: 'SSNI-00916 Big Tits');
+
+        $draft = $normalizer->normalizeMovie(
+            $movie,
+            [],
+            'javbtc',
+            'https://javbtc.com/r18/s1no1style-yua-mikami',
+            CarbonImmutable::now(),
+        );
+
+        self::assertSame('SSNI-00916', $draft->code);
+    }
+
+    public function test_javbtc_product_code_in_url_is_normalized(): void
+    {
+        $normalizer = $this->registry()->forSlug('javbtc');
+        $movie = new MovieDto(externalId: 'detail-page', title: 'A video title');
+
+        $draft = $normalizer->normalizeMovie(
+            $movie,
+            [],
+            'javbtc',
+            'https://javbtc.com/r18/ssni00916',
+            CarbonImmutable::now(),
+        );
+
+        self::assertSame('SSNI-00916', $draft->code);
+    }
+
+    public function test_javbtc_without_a_recognizable_product_code_throws_a_specific_exception(): void
+    {
+        $normalizer = $this->registry()->forSlug('javbtc');
+        $movie = new MovieDto(
+            externalId: 'no-code-detail',
+            title: 'A detail page without a product code',
+        );
+
+        $this->expectException(JavbtcCodeMissingException::class);
+        $this->expectExceptionMessage('JavBTC detail page has no recognizable product code.');
+
+        $normalizer->normalizeMovie(
+            $movie,
+            [],
+            'javbtc',
+            'https://javbtc.com/r18/no-code-detail',
+            CarbonImmutable::now(),
+        );
     }
 
     public function test_missing_title_throws_normalization_failed(): void

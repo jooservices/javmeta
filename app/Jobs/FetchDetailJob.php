@@ -17,6 +17,7 @@ use App\Services\Crawl\CrawlQueueService;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawl\MovieDraftSink;
 use App\Services\Crawler\CrawlerxClient;
+use App\Services\Normalize\JavbtcCodeMissingException;
 use App\Services\Normalize\NormalizationFailedException;
 use App\Services\Normalize\SourceNormalizerRegistry;
 use App\Support\Crawl\LaravelCrawlQueue;
@@ -95,6 +96,14 @@ final class FetchDetailJob implements ShouldQueue
                 $row->url,
                 CarbonImmutable::now(),
             );
+        } catch (JavbtcCodeMissingException $exception) {
+            $message = CrawlQueueService::sanitizeErrorMessage($exception->getMessage());
+            $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => $message]);
+            $this->markFailed($row, CrawlErrorCode::ParseFailed, $message);
+            $activity->recordFailure($source, $message);
+            $throttle->onFailure($source);
+
+            return;
         } catch (NormalizationFailedException $exception) {
             $message = CrawlQueueService::sanitizeErrorMessage($exception->getMessage());
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => $message]);

@@ -18,6 +18,7 @@ use App\Services\Crawl\PerformerDraftSink;
 use App\Services\Merge\ConflictPolicy;
 use App\Services\Merge\SourcePriorityConflictPolicy;
 use App\Services\Normalize\Normalizers\DefaultSourceNormalizer;
+use App\Services\Normalize\Normalizers\JavbtcSourceNormalizer;
 use App\Services\Normalize\Normalizers\JableSourceNormalizer;
 use App\Services\Normalize\SourceNormalizerRegistry;
 use App\Services\Persist\MoviePersister;
@@ -36,6 +37,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(SourceNormalizerRegistry::class, function (Application $app): SourceNormalizerRegistry {
             return new SourceNormalizerRegistry([
                 $app->make(JableSourceNormalizer::class),
+                $app->make(JavbtcSourceNormalizer::class),
                 $app->make(DefaultSourceNormalizer::class),
             ]);
         });
