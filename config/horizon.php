@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 $queueConfig = require __DIR__ . '/javmeta_queues.php';
-$queueNames = array_values($queueConfig['names']);
+$queueNames = $queueConfig['horizon_names'];
 $workersPerQueue = max(1, (int) $queueConfig['workers_per_queue']);
 $workerTimeout = max(1, (int) $queueConfig['worker_timeout']);
 $queueTries = max(1, (int) env('JAVMETA_QUEUE_TRIES', 3));
