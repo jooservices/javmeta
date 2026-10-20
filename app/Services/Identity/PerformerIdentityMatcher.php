@@ -65,14 +65,15 @@ final class PerformerIdentityMatcher
         }
 
         if ($strongCount > 1) {
-            $review = array_merge($review, array_map(
+            // Strong matches come first so a full list of weaker reviews can never push them out of the report.
+            $review = array_merge(array_map(
                 static fn(array $match): array => [
                     'id' => $match['id'],
                     'reason' => 'multiple_strong_matches',
                     'similarity' => $match['similarity'],
                 ],
                 $strong,
-            ));
+            ), $review);
         }
 
         $review = array_slice($review, 0, $limit);

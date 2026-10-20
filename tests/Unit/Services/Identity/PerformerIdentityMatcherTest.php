@@ -66,6 +66,26 @@ final class PerformerIdentityMatcherTest extends TestCase
         self::assertLessThan(4 * 1024 * 1024, memory_get_peak_usage() - $before);
     }
 
+    public function test_strong_matches_are_reported_even_when_weaker_reviews_fill_the_list(): void
+    {
+        config()->set('performer_identity.max_candidates_per_source', 2);
+        $candidate = static fn(int $id, string $birth): array => [
+            'id' => $id,
+            'names' => ['Mina Hope'],
+            'birth_dates' => [$birth],
+            'cross_links' => [],
+        ];
+
+        $result = (new PerformerIdentityMatcher())->evaluate(
+            ['id' => 9, 'names' => ['Mina Hope'], 'birth_dates' => ['1990-01-01'], 'cross_links' => []],
+            [$candidate(1, '1991-02-02'), $candidate(2, '1992-03-03'), $candidate(3, '1990-01-01'), $candidate(4, '1990-01-01')],
+        );
+
+        self::assertSame('review', $result['decision']);
+        self::assertSame([3, 4], array_column($result['review_candidates'], 'id'));
+        self::assertSame(['multiple_strong_matches'], array_unique(array_column($result['review_candidates'], 'reason')));
+    }
+
     public function test_many_strong_matches_are_counted_but_only_the_limit_is_reported(): void
     {
         config()->set('performer_identity.max_candidates_per_source', 3);

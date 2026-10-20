@@ -42,7 +42,7 @@ items cuối cùng chốt **tại gate** (chi tiết ở mục 10–11):
 | **REQ-2** Crawl nền 24/7 | `sources` (config + AIMD throttle + circuit breaker) + `crawl_queue` (resume, edge case 29) + `crawl:tick` scheduler + `FetchListingJob`/`FetchDetailJob` (queue worker) + `crawlerx` làm fetch/parse engine + `crawl_runs` (AC-2.5/G-4) + `crawl_events` (AC-2.4) |
 | **REQ-3** Lookup theo code | `GET /api/v1/movies/{code}` + `NormalizedCode` VO (BR-9) + `movie_codes.code_normalized` UNIQUE index + 404 `movie_not_found` / 401 (AC-3.2/3.3/3.4) |
 | **REQ-4** Search + filter + sort + pagination | `GET /api/v1/movies` + `laravel-repository` v4 (filter/order/request-query allowlist) + `tsvector` GIN + `pg_trgm` GIN + composite sort indexes + **keyset/cursor pagination** (AC-4.3/4.4, edge case 28) |
-| **REQ-5** Performer catalog | `performers` (identity **per source**, AC-5.2) + `performer_aliases` (AC-5.3) + `movie_performers` (AC-5.1 count, AC-5.5 reverse link) + `GET /performers`, `/performers/{id}` |
+| **REQ-5** Performer catalog | `performers` (canonical record, one per real person) + `performer_sources` (links each source record to one canonical performer; merges only on strong signals, reversible via `performer_identity_events`, JAVM-84) + `performer_aliases` (AC-5.3) + `movie_performers` (AC-5.1 count, AC-5.5 reverse link) + `GET /performers`, `/performers/{id}` |
 | **REQ-6** Bulk lookup | `POST /api/v1/movies:bulk` ≤100, `WHERE code_normalized = ANY(...)` 1 round-trip, per-code status (AC-6.1/6.3), 413 khi vượt (AC-6.2) |
 | **REQ-7** API key + usage log | `api_keys` (prefix + **hash only**, AC-7.1) + revoke không cache → 401 ngay (AC-7.2) + `api_usage_log` (AC-7.3) + Laravel rate limiter theo `abuse_rpm` (default 60, per-key — OQ-12 resolved) → 429 (AC-7.4) + `/admin/keys` |
 | **REQ-8** Báo cáo chất lượng & chi phí | `movie_observations` (nguồn số liệu conflict G-5) + `crawl_runs` (proxy requests/giờ/lỗi G-4) + `GenerateReportJob` + `/admin/report/{quality,cost,sample-verification}` (AC-8.1..8.4) + **merge statistics** định lượng rủi ro exact-only merge (AD-10) |
@@ -256,14 +256,22 @@ genres      ( id serial PK, label_normalized text UNIQUE, label_raw text )
 movie_genres ( movie_id, genre_id, source_slug, crawled_at,
               PRIMARY KEY (movie_id, genre_id, source_slug) )
 
--- REQ-5 / AC-5.2: định danh performer là PER SOURCE, không phải per name
+-- REQ-5 / AC-5.2 (JAVM-84, AD-9): one canonical performer per real person across sources.
+-- Source records link to it through performer_sources; a name alone never merges.
 performers (
-  id bigserial PK, source_slug text NOT NULL, external_id text NOT NULL,
+  id bigserial PK,                             -- canonical record
   name_romaji text, name_kanji text, name_kana text,
   profile_url text, image_url text,            -- URL reference only (BR-4)
-  crawled_at timestamptz NOT NULL,
-  UNIQUE (source_slug, external_id)            -- AC-5.2: trùng tên → 2 row, không gộp
+  crawled_at timestamptz NOT NULL
 )
+performer_sources (
+  id, performer_id FK -> performers,           -- canonical performer
+  source_slug text NOT NULL, external_id text NOT NULL, -- per-source identity and names kept
+  UNIQUE (source_slug, external_id)
+)
+-- Merge only on same normalised name + birth date, or same namespaced cross-link id.
+-- Ambiguous matches stay separate and appear in the review report; merges are recorded
+-- (performer_identity_events) and can be split/undone. See docs/03-operations/performer-identity.md.
 performer_aliases ( id, performer_id FK, alias text, kind text, UNIQUE(performer_id, alias) )
 movie_performers   ( movie_id, performer_id, source_slug, crawled_at,
                     PRIMARY KEY (movie_id, performer_id) )
