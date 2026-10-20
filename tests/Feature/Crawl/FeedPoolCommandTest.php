@@ -80,6 +80,23 @@ final class FeedPoolCommandTest extends TestCase
         }
     }
 
+    public function test_search_is_in_the_feed_pool_queue_list_but_is_not_claimed_as_crawl_work(): void
+    {
+        $row = CrawlQueue::factory()->create([
+            'source_slug' => fake()->slug(2),
+            'kind' => 'search',
+        ]);
+        Queue::fake();
+
+        $this->assertContains('search', config('javmeta_queues.feed_pool_names'));
+        $this->assertArrayNotHasKey('search', config('javmeta_queues.names'));
+
+        $this->artisan('crawler:feed-pool')->assertSuccessful();
+
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $row->refresh()->status);
+        Queue::assertNothingPushed();
+    }
+
     public function test_feed_pool_leaves_rows_pending_and_emits_pool_gated_when_queue_depth_is_full(): void
     {
         $row = CrawlQueue::factory()->create([

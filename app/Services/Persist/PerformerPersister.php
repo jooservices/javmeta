@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace App\Services\Persist;
 
 use App\Data\Crawl\PerformerDraft;
+use App\Jobs\IndexPerformerJob;
 use App\Models\Performer;
 use App\Models\PerformerAlias;
 use App\Models\PerformerMedia;
 use App\Models\PerformerSource;
 use App\Services\Archive\MongoSiteArchive;
 use App\Services\Crawl\PerformerDraftSink;
-use App\Services\Search\ElasticsearchIndexer;
 use App\Observability\ObservabilityEmitter;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +23,6 @@ final class PerformerPersister implements PerformerDraftSink
 {
     public function __construct(
         private readonly MongoSiteArchive $archive,
-        private readonly ElasticsearchIndexer $searchIndex,
     ) {}
 
     public function accept(PerformerDraft $draft): void
@@ -112,7 +111,11 @@ final class PerformerPersister implements PerformerDraftSink
             ],
         );
 
-        $this->searchIndex->indexPerformer($performer);
+        if ((bool) config('elasticsearch.enabled', true)) {
+            IndexPerformerJob::dispatch((int) $performer->getKey())
+                ->onQueue((string) config('javmeta_queues.search_queue', 'search'))
+                ->afterCommit();
+        }
 
         app(ObservabilityEmitter::class)->emitPersist('performer', [
             'source_slug' => $draft->sourceSlug,

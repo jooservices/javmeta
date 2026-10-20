@@ -11,6 +11,8 @@ $crawlQueueNames = [
     CrawlQueue::KIND_PERFORMER_DETAIL => 'performer_detail',
     CrawlQueue::KIND_GALLERY => 'gallery',
 ];
+$searchQueueName = 'search';
+$workerQueueNames = [...array_values($crawlQueueNames), $searchQueueName];
 
 /**
  * Laravel queue names for crawl jobs (1:1 with crawl_queue.kind).
@@ -19,8 +21,13 @@ $crawlQueueNames = [
 return [
     'names' => $crawlQueueNames,
 
-    /** Queues supervised by Horizon, including search jobs outside the feed pool. */
-    'horizon_names' => [...array_values($crawlQueueNames), 'search'],
+    /** Queue names included in the feed-pool queue set; only crawl kinds map to crawl_queue rows. */
+    'feed_pool_names' => $workerQueueNames,
+
+    'search_queue' => $searchQueueName,
+
+    /** Queues supervised by Horizon; search is not backed by a crawl_queue kind. */
+    'horizon_names' => $workerQueueNames,
 
     /** Workers per queue name on each instance (POC: 1). */
     'workers_per_queue' => max(1, (int) env('JAVMETA_WORKERS_PER_QUEUE', 1)),
