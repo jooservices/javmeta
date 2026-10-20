@@ -25,6 +25,7 @@ final class RecrawlIncompleteCommandTest extends TestCase
         $this->assertSame(0, $row->attempts);
         $this->assertNull($row->last_error);
         $this->assertNotNull($row->next_attempt_at);
+        $this->assertTrue($row->is_recrawl);
     }
 
     public function test_a_recent_or_complete_movie_is_left_alone(): void
@@ -59,6 +60,45 @@ final class RecrawlIncompleteCommandTest extends TestCase
         $this->artisan('crawler:recrawl-incomplete', ['--limit' => 1])->expectsOutputToContain('Queued 1')->assertSuccessful();
 
         $this->assertSame(1, CrawlQueue::query()->where('status', CrawlQueue::STATUS_PENDING)->count());
+    }
+
+    public function test_a_stopped_movie_is_not_queued_again(): void
+    {
+        [$movie, $row] = $this->movieWithDoneRow(tier: 1, crawledDaysAgo: 8);
+        $movie->forceFill([
+            'recrawl_attempts' => 3,
+            'recrawl_status' => Movie::RECRAWL_STATUS_COMPLETE_AS_POSSIBLE,
+        ])->save();
+
+        $this->artisan('crawler:recrawl-incomplete')->assertSuccessful();
+
+        $this->assertSame(CrawlQueue::STATUS_DONE, $row->refresh()->status);
+        $this->assertFalse($row->is_recrawl);
+    }
+
+    public function test_stopped_movies_can_be_listed_and_reset(): void
+    {
+        [$movie, $row] = $this->movieWithDoneRow(tier: 1, crawledDaysAgo: 8);
+        $movie->forceFill([
+            'display_code' => 'STP-001',
+            'recrawl_attempts' => 3,
+            'recrawl_status' => Movie::RECRAWL_STATUS_COMPLETE_AS_POSSIBLE,
+        ])->save();
+
+        $this->artisan('crawler:recrawl-stopped')
+            ->expectsOutputToContain('STP-001')
+            ->assertSuccessful();
+
+        $this->artisan('crawler:recrawl-stopped', ['--reset' => true])
+            ->expectsOutputToContain('Reset 1')
+            ->assertSuccessful();
+
+        $this->assertSame(0, $movie->refresh()->recrawl_attempts);
+        $this->assertNull($movie->recrawl_status);
+
+        $this->artisan('crawler:recrawl-incomplete')->assertSuccessful();
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $row->refresh()->status);
+        $this->assertTrue($row->is_recrawl);
     }
 
     /** @return array{0: Movie, 1: CrawlQueue} */

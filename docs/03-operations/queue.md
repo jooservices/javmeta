@@ -58,6 +58,12 @@ Each stale claim reclaimed before worker start creates a `queue_reclaimed_withou
 
 When every page in a listing chain is finished, the loop still restarts page one after `JAVMETA_LOOP_PAUSE_SECONDS` (default `300`). This end-of-chain pause remains independent of the page-one freshness interval.
 
+## Incomplete movie recrawls
+
+`crawler:recrawl-incomplete` keeps using `JAVMETA_RECRAWL_DAYS` (7 days by default) and only selects movies below `JAVMETA_RECRAWL_MIN_TIER`. `JAVMETA_RECRAWL_MAX` defaults to 3 consecutive successful recrawls without a newly populated movie field. New movie data resets the count; at the limit, the movie is marked `complete_as_possible` and later recrawl runs skip it.
+
+Use `php artisan crawler:recrawl-stopped` to list stopped movies by code and no-progress rounds. `php artisan crawler:recrawl-stopped --reset` clears the stopped status and counter for all stopped movies so they can be considered by a later recrawl run.
+
 ## Deploy and operate
 
 When `QUEUE_CONNECTION=redis`, the Compose worker starts `php artisan horizon`; with the default database connection it keeps running `crawlerx-fetch-ready worker-queues`. The Redis worker healthcheck uses `php artisan horizon:status`.

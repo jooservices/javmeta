@@ -74,18 +74,18 @@ final class MoviePersister implements MovieDraftSink
         private readonly \App\Services\Search\ElasticsearchIndexer $searchIndex,
     ) {}
 
-    public function accept(MovieDraft $draft): void
+    public function accept(MovieDraft $draft, bool $isRecrawl = false): void
     {
-        $this->persist($draft);
+        $this->persist($draft, isRecrawl: $isRecrawl);
     }
 
-    public function persist(MovieDraft $draft, ?int $crawlRunId = null): Movie
+    public function persist(MovieDraft $draft, ?int $crawlRunId = null, bool $isRecrawl = false): Movie
     {
         $sharpDrop = false;
         $drop = 0;
         $isNewMovie = false;
 
-        $movie = DB::transaction(function () use ($draft, $crawlRunId, &$sharpDrop, &$drop, &$isNewMovie): Movie {
+        $movie = DB::transaction(function () use ($draft, $crawlRunId, $isRecrawl, &$sharpDrop, &$drop, &$isNewMovie): Movie {
             $crawledAt = $draft->crawledAt ?? CarbonImmutable::now();
             $code = NormalizedCode::from($draft->code);
 
@@ -95,7 +95,8 @@ final class MoviePersister implements MovieDraftSink
             $this->appendObservations($movieId, $draft, $crawledAt);
 
             $observations = $this->observationsFor($movieId);
-            $movie = Movie::query()->findOrFail($movieId);
+            $movie = Movie::query()->lockForUpdate()->findOrFail($movieId);
+            $fieldsBefore = $this->populatedMovieFields($movie);
             $projection = $this->projectCoreFields($movie, $observations);
             $sharpDrop = $projection['sharp_drop'];
             $drop = $projection['drop'];
@@ -128,6 +129,19 @@ final class MoviePersister implements MovieDraftSink
 
             if ($projection['sharp_drop']) {
                 $attributes['needs_review'] = true;
+            }
+
+            if ($this->gainedMovieField($fieldsBefore, $this->populatedMovieFields($movie))) {
+                $attributes['recrawl_attempts'] = 0;
+                $attributes['recrawl_status'] = null;
+            } elseif ($isRecrawl) {
+                $maxRounds = max(1, (int) config('javmeta_sources.defaults.recrawl.max_rounds', 3));
+                $attempts = min($maxRounds, (int) $movie->recrawl_attempts + 1);
+                $attributes['recrawl_attempts'] = $attempts;
+
+                if ($attempts >= $maxRounds) {
+                    $attributes['recrawl_status'] = Movie::RECRAWL_STATUS_COMPLETE_AS_POSSIBLE;
+                }
             }
 
             $movie->forceFill($attributes);
@@ -486,6 +500,40 @@ final class MoviePersister implements MovieDraftSink
             && $sourceSlugs->every(fn(mixed $slug): bool => is_string($slug) && $this->tierCalculator->isOriginSource($slug));
 
         return $this->tierCalculator->tier((int) array_sum($present), $originOnly);
+    }
+
+    /** @return array<string, bool> */
+    private function populatedMovieFields(Movie $movie): array
+    {
+        $fields = [];
+
+        foreach ([
+            'title_jp', 'title_en', 'description', 'release_date', 'runtime_minutes', 'censored',
+            'maker', 'label', 'series', 'community_score', 'cover_url',
+        ] as $column) {
+            $value = $movie->getAttribute($column);
+            $fields[$column] = $value !== null && (! is_string($value) || trim($value) !== '');
+        }
+
+        $fields['genres'] = MovieGenre::query()->where('movie_id', $movie->id)->exists();
+        $fields['performers'] = MoviePerformer::query()->where('movie_id', $movie->id)->exists();
+
+        return $fields;
+    }
+
+    /**
+     * @param array<string, bool> $before
+     * @param array<string, bool> $after
+     */
+    private function gainedMovieField(array $before, array $after): bool
+    {
+        foreach ($after as $field => $populated) {
+            if ($populated && ! ($before[$field] ?? false)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function flagSharpDrop(Movie $movie, MovieDraft $draft, int $drop, CarbonImmutable $crawledAt): void

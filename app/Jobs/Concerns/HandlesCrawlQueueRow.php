@@ -65,6 +65,7 @@ trait HandlesCrawlQueueRow
             'last_error' => null,
             'error_code' => null,
             'last_failed_at' => null,
+            'is_recrawl' => false,
         ];
 
         if (in_array($row->kind, [CrawlQueue::KIND_LISTING, CrawlQueue::KIND_PERFORMER_LISTING], true)) {

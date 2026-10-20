@@ -55,6 +55,41 @@ final class MoviePersisterTest extends TestCase
         $this->assertDatabaseHas('movie_observations', ['field' => 'title_jp', 'value' => 'Via Sink']);
     }
 
+    public function test_successful_recrawls_without_new_fields_stop_at_the_configured_maximum(): void
+    {
+        config()->set('javmeta_sources.defaults.recrawl.max_rounds', 3);
+        $persister = $this->persister();
+        $draft = $this->draft(['code' => 'SSIS-001']);
+        $movie = $persister->persist($draft);
+
+        foreach ([1, 2, 3] as $round) {
+            $movie = $persister->persist($draft, isRecrawl: true);
+
+            $this->assertSame($round, $movie->recrawl_attempts);
+        }
+
+        $this->assertSame(Movie::RECRAWL_STATUS_COMPLETE_AS_POSSIBLE, $movie->recrawl_status);
+    }
+
+    public function test_gaining_a_new_field_resets_the_recrawl_count_and_stopped_status(): void
+    {
+        $persister = $this->persister();
+        $draft = $this->draft(['code' => 'SSIS-001', 'title_jp' => 'Japanese Title']);
+        $movie = $persister->persist($draft);
+        $movie->forceFill([
+            'recrawl_attempts' => 2,
+            'recrawl_status' => Movie::RECRAWL_STATUS_COMPLETE_AS_POSSIBLE,
+        ])->save();
+
+        $movie = $persister->persist(
+            $this->draft(['code' => 'SSIS-001', 'title_jp' => 'Japanese Title', 'title_en' => 'English Title']),
+            isRecrawl: true,
+        );
+
+        $this->assertSame(0, $movie->recrawl_attempts);
+        $this->assertNull($movie->recrawl_status);
+    }
+
     public function test_re_persist_is_append_only_and_never_updates_old_observations(): void
     {
         $first = $this->persister()->persist($this->draft(['code' => 'SSIS-001', 'title_jp' => 'First Title']));
