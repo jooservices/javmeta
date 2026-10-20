@@ -29,7 +29,12 @@ final class MovieSearchService
     {
         $q = $filters['q'] ?? null;
 
-        if ($this->canUseElasticsearch($filters, $sort, $cursor) && is_string($q) && trim($q) !== '') {
+        if (
+            (bool) config('elasticsearch.enabled', true)
+            && $this->canUseElasticsearch($filters, $sort, $cursor)
+            && is_string($q)
+            && trim($q) !== ''
+        ) {
             $uuids = $this->elasticsearch->searchMovieUuids(trim($q), min(100, max($perPage * 5, $perPage)));
             if ($uuids !== []) {
                 $pageUuids = array_slice($uuids, 0, $perPage);
@@ -83,7 +88,7 @@ final class MovieSearchService
      */
     public function semanticSearch(string $query, int $perPage): array
     {
-        if (app()->environment('testing')) {
+        if (! (bool) config('elasticsearch.enabled', true) || app()->environment('testing')) {
             return $this->movies->search(['q' => $query], 'relevance', null, $perPage);
         }
 

@@ -46,4 +46,6 @@ mcp_call '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"system
 mcp_call '{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"get_performer","arguments":{"id":"123"}}}'
 ```
 
+The `search` tool uses semantic search when vectors are available and falls back to keyword search when the embedder or search service is disabled. The REST movie endpoint exposes the same movie search with `GET /api/v1/movies?q=<query>&semantic=true`; omit `semantic` for keyword search.
+
 The endpoint also supports `initialize` and `tools/list`. Movie and performer detail calls return the same resource fields as `GET /api/v1/movies/{code}` and `GET /api/v1/performers/{id}`.

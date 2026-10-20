@@ -17,27 +17,32 @@ final class MovieSearchController extends BaseApiController
     public function index(MovieSearchRequest $request, MovieSearchService $search, CursorCodec $codec): JsonResponse
     {
         $perPage = (int) $request->validated('per_page', 10);
-        $sort = (string) $request->validated('sort', 'relevance');
+        $semantic = $request->boolean('semantic');
+        $cursorParam = $semantic ? null : $request->validated('cursor');
 
-        $cursorParam = $request->validated('cursor');
-        $cursor = null;
+        if ($semantic) {
+            $result = $search->semanticSearch((string) $request->validated('q'), $perPage);
+        } else {
+            $sort = (string) $request->validated('sort', 'relevance');
+            $cursor = null;
 
-        if (is_string($cursorParam) && $cursorParam !== '') {
-            $cursor = $codec->decode($cursorParam);
+            if (is_string($cursorParam) && $cursorParam !== '') {
+                $cursor = $codec->decode($cursorParam);
 
-            // A cursor is only meaningful for the sort that produced it.
-            $explicitSort = $request->validated('sort');
-            if (is_string($explicitSort) && $explicitSort !== $cursor['sort']) {
-                throw new InvalidFilterException('The sort parameter cannot change between pages.');
+                // A cursor is only meaningful for the sort that produced it.
+                $explicitSort = $request->validated('sort');
+                if (is_string($explicitSort) && $explicitSort !== $cursor['sort']) {
+                    throw new InvalidFilterException('The sort parameter cannot change between pages.');
+                }
+
+                $sort = $cursor['sort'];
             }
 
-            $sort = $cursor['sort'];
+            $result = $search->search($request->filters(), $sort, $cursor, $perPage);
         }
 
-        $result = $search->search($request->filters(), $sort, $cursor, $perPage);
-
         $nextCursor = null;
-        if ($result['last_id'] !== null) {
+        if (! $semantic && $result['last_id'] !== null) {
             // Emit cursor for the last row even on the final page so a follow-up
             // request can return an empty page beyond total (AC-4.3).
             $nextCursor = $codec->encode($result['sort'], $result['last_sort'], $result['last_id']);
@@ -52,7 +57,7 @@ final class MovieSearchController extends BaseApiController
                     'per_page' => $perPage,
                     'sort' => $result['sort'],
                     'has_more' => $result['has_more'],
-                    'cursor' => is_string($cursorParam) && $cursorParam !== '' ? $cursorParam : null,
+                    'cursor' => ! $semantic && is_string($cursorParam) && $cursorParam !== '' ? $cursorParam : null,
                     'next_cursor' => $nextCursor,
                 ],
             ],

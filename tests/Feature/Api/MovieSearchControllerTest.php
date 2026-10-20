@@ -62,6 +62,37 @@ final class MovieSearchControllerTest extends TestCase
             ->assertJsonPath('data.0.code', 'SSIS-777');
     }
 
+    public function test_semantic_mode_uses_semantic_search_and_requires_a_query(): void
+    {
+        $movie = Movie::factory()->create(['title_en' => 'Quiet Harbor']);
+
+        $this->getJson('/api/v1/movies?q=quiet%20harbor&semantic=true', [
+            'X-API-Key' => $this->apiKey,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.0.title_en', 'Quiet Harbor')
+            ->assertJsonPath('meta.pagination.sort', 'relevance')
+            ->assertJsonPath('meta.pagination.next_cursor', null);
+
+        $this->getJson('/api/v1/movies?q=quiet%20harbor&semantic=false', [
+            'X-API-Key' => $this->apiKey,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.0.title_en', 'Quiet Harbor');
+
+        $this->getJson('/api/v1/movies?semantic=true', [
+            'X-API-Key' => $this->apiKey,
+        ])
+            ->assertBadRequest()
+            ->assertJsonPath('type', 'invalid_filter');
+
+        $this->getJson('/api/v1/movies?q=quiet&semantic=true&genre=drama', [
+            'X-API-Key' => $this->apiKey,
+        ])
+            ->assertBadRequest()
+            ->assertJsonPath('type', 'invalid_filter');
+    }
+
     public function test_code_filter_matches_display_and_normalized_code(): void
     {
         $movie = Movie::factory()->create([

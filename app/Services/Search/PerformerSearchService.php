@@ -24,7 +24,7 @@ final class PerformerSearchService
      */
     public function semanticSearch(string $query, int $perPage): array
     {
-        if (app()->environment('testing')) {
+        if (! (bool) config('elasticsearch.enabled', true) || app()->environment('testing')) {
             return $this->performers->search(['q' => $query], 'name', null, $perPage);
         }
 

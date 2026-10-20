@@ -84,6 +84,28 @@ final class MovieSearchServiceTest extends TestCase
         $this->assertSame('relevance', $result['sort']);
     }
 
+    public function test_disabled_search_uses_the_repository_for_keyword_and_semantic_queries(): void
+    {
+        $movie = Movie::factory()->create([
+            'title_en' => 'Disabled Search Fallback',
+        ]);
+        $this->enableElasticsearch();
+        config()->set('elasticsearch.enabled', false);
+        Http::fake();
+
+        $service = new MovieSearchService(
+            new ElasticsearchIndexer(new EmbedderClient(), app(ElasticsearchHttpClient::class)),
+            app(MovieRepository::class),
+        );
+
+        $keyword = $service->search(['q' => 'Disabled Search'], 'relevance', null, 10);
+        $semantic = $service->semanticSearch('Disabled Search', 10);
+
+        $this->assertSame([$movie->uuid], $keyword['items']->pluck('uuid')->all());
+        $this->assertSame([$movie->uuid], $semantic['items']->pluck('uuid')->all());
+        Http::assertNothingSent();
+    }
+
     private function enableElasticsearch(): void
     {
         $this->app->instance('env', 'production');
