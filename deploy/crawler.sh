@@ -125,6 +125,7 @@ if [[ "$(running_count worker)" != "0" ]]; then
   die 'running worker containers found; drain and stop them before deployment'
 fi
 
+export_sentry_release
 crawler_compose config --quiet
 crawler_compose build "${JAVMETA_PHP_SERVICE}"
 crawler_compose run --rm --no-deps --entrypoint composer "${JAVMETA_PHP_SERVICE}" \

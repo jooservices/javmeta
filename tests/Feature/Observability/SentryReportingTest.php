@@ -7,6 +7,12 @@ namespace Tests\Feature\Observability;
 use App\Jobs\FetchDetailJob;
 use App\Models\CrawlQueue;
 use App\Models\Source;
+use App\Services\Crawl\CrawlQueueService;
+use App\Services\Crawl\SourceActivityRecorder;
+use App\Services\Crawl\SourceThrottle;
+use App\Services\Crawler\CrawlerxClient;
+use App\Services\Crawler\CrawlerxFetchResult;
+use App\Services\Normalize\SourceNormalizerRegistry;
 use App\Observability\Sentry\SentryScrubber;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -20,6 +26,7 @@ use Sentry\ClientInterface;
 use Sentry\SentrySdk;
 use Sentry\State\Hub;
 use Sentry\State\HubInterface;
+use Sentry\State\Scope;
 use Tests\Support\RecordingSentryTransport;
 use Tests\TestCase;
 
@@ -92,16 +99,101 @@ final class SentryReportingTest extends TestCase
             'max_attempts' => 3,
             'started_at' => now(),
         ]);
+        $exception = new RuntimeException('Queue job failed');
 
-        (new FetchDetailJob($row->id))->failed(new RuntimeException('Queue job failed'));
+        (new FetchDetailJob($row->id))->failed($exception);
+        report($exception);
         logger()->error('Queue job failure was recorded.');
 
         self::assertCount(1, $this->transport->events);
         $event = $this->transport->events[0];
         self::assertSame('worker', $event->getTags()['role'] ?? null);
+        self::assertSame('test-node', $event->getTags()['node'] ?? null);
         self::assertSame('sample-source', $event->getTags()['source'] ?? null);
+        self::assertSame(CrawlQueue::KIND_DETAIL, $event->getTags()['crawl_kind'] ?? null);
         self::assertSame('worker_failed', $event->getTags()['error_code'] ?? null);
         self::assertSame(['worker_failed', 'sample-source'], $event->getFingerprint());
+    }
+
+    public function test_classified_crawl_failure_is_sent_with_source_kind_and_error_code(): void
+    {
+        config()->set('sentry.role', 'worker');
+        Source::factory()->create(['slug' => 'classified-source']);
+        $row = CrawlQueue::factory()->create([
+            'source_slug' => 'classified-source',
+            'kind' => CrawlQueue::KIND_DETAIL,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'attempts' => 0,
+            'max_attempts' => 3,
+        ]);
+        $client = Mockery::mock(CrawlerxClient::class);
+        $client->shouldReceive('fetchDetail')->once()->with('classified-source', $row->url)->andReturn(
+            CrawlerxFetchResult::failure('blocked', 'Request failed at https://source.example/item?api_key=private', true),
+        );
+        (new FetchDetailJob($row->id))->handle(
+            $client,
+            new SourceNormalizerRegistry([]),
+            new SourceActivityRecorder(),
+            new SourceThrottle(),
+        );
+
+        self::assertCount(1, $this->transport->events);
+        $event = $this->transport->events[0];
+        self::assertSame('worker', $event->getTags()['role'] ?? null);
+        self::assertSame('test-node', $event->getTags()['node'] ?? null);
+        self::assertSame('classified-source', $event->getTags()['source'] ?? null);
+        self::assertSame(CrawlQueue::KIND_DETAIL, $event->getTags()['crawl_kind'] ?? null);
+        self::assertSame('blocked', $event->getTags()['error_code'] ?? null);
+        self::assertSame(['blocked', 'classified-source'], $event->getFingerprint());
+        self::assertStringNotContainsString('api_key=private', $event->getExceptions()[0]->getValue());
+    }
+
+    public function test_stale_started_crawl_is_sent_with_worker_lost_tags(): void
+    {
+        config()->set('sentry.role', 'scheduler');
+        $row = CrawlQueue::factory()->create([
+            'source_slug' => 'stale-source',
+            'kind' => CrawlQueue::KIND_GALLERY,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'attempts' => 1,
+            'max_attempts' => 3,
+            'claimed_at' => now()->subHour(),
+            'started_at' => now()->subHour(),
+        ]);
+
+        self::assertSame(1, app(CrawlQueueService::class)->reclaimStaleClaimed(900));
+
+        self::assertCount(1, $this->transport->events);
+        $event = $this->transport->events[0];
+        self::assertSame('scheduler', $event->getTags()['role'] ?? null);
+        self::assertSame('stale-source', $event->getTags()['source'] ?? null);
+        self::assertSame(CrawlQueue::KIND_GALLERY, $event->getTags()['crawl_kind'] ?? null);
+        self::assertSame('worker_lost', $event->getTags()['error_code'] ?? null);
+        self::assertSame(['worker_lost', 'stale-source'], $event->getFingerprint());
+    }
+
+    public function test_stale_unstarted_crawl_is_sent_with_worker_lost_tags(): void
+    {
+        config()->set('sentry.role', 'scheduler');
+        CrawlQueue::factory()->create([
+            'source_slug' => 'stale-unstarted-source',
+            'kind' => CrawlQueue::KIND_LISTING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'attempts' => 0,
+            'max_attempts' => 3,
+            'claimed_at' => now()->subHour(),
+            'started_at' => null,
+        ]);
+
+        self::assertSame(1, app(CrawlQueueService::class)->reclaimStaleClaimed(900));
+
+        self::assertCount(1, $this->transport->events);
+        $event = $this->transport->events[0];
+        self::assertSame('scheduler', $event->getTags()['role'] ?? null);
+        self::assertSame('stale-unstarted-source', $event->getTags()['source'] ?? null);
+        self::assertSame(CrawlQueue::KIND_LISTING, $event->getTags()['crawl_kind'] ?? null);
+        self::assertSame('worker_lost', $event->getTags()['error_code'] ?? null);
+        self::assertSame(['worker_lost', 'stale-unstarted-source'], $event->getFingerprint());
     }
 
     public function test_timeout_failure_uses_timeout_error_code(): void
@@ -149,6 +241,17 @@ final class SentryReportingTest extends TestCase
         self::assertSame('scheduler', $this->transport->events[0]->getTags()['role'] ?? null);
     }
 
+    public function test_mcp_process_exception_is_sent_with_mcp_role_and_node_tags(): void
+    {
+        config()->set('sentry.role', 'mcp');
+
+        report(new RuntimeException('MCP request failed'));
+
+        self::assertCount(1, $this->transport->events);
+        self::assertSame('mcp', $this->transport->events[0]->getTags()['role'] ?? null);
+        self::assertSame('test-node', $this->transport->events[0]->getTags()['node'] ?? null);
+    }
+
     public function test_empty_dsn_leaves_client_unbound_and_reporting_sends_no_http_event(): void
     {
         config()->set('sentry.dsn', '');
@@ -169,7 +272,14 @@ final class SentryReportingTest extends TestCase
     {
         $client = Mockery::mock(ClientInterface::class);
         $hub = Mockery::mock(HubInterface::class);
+        $scope = Mockery::mock(Scope::class);
+        $scope->shouldReceive('setTag')->once()->with('role', 'api')->andReturnSelf();
+        $scope->shouldReceive('setTag')->once()->with('node', 'test-node')->andReturnSelf();
+        $scope->shouldReceive('setTag')->once()->with('test_event', 'true')->andReturnSelf();
         $hub->shouldReceive('getClient')->once()->andReturn($client);
+        $hub->shouldReceive('withScope')->once()->andReturnUsing(function (callable $callback) use ($scope): void {
+            $callback($scope);
+        });
         $hub->shouldReceive('captureMessage')->once()->with('Javmeta Sentry integration test event')->andReturn(null);
         $this->app->instance(HubInterface::class, $hub);
 
@@ -185,6 +295,9 @@ final class SentryReportingTest extends TestCase
             ->assertSuccessful();
 
         self::assertCount(1, $this->transport->events);
+        self::assertSame('api', $this->transport->events[0]->getTags()['role'] ?? null);
+        self::assertSame('test-node', $this->transport->events[0]->getTags()['node'] ?? null);
+        self::assertSame('true', $this->transport->events[0]->getTags()['test_event'] ?? null);
         self::assertStringNotContainsString('https://public@example.test/1', Artisan::output());
     }
 }
