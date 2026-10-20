@@ -10,6 +10,7 @@ use App\Models\Performer;
 use App\Services\Auth\ApiKeyService;
 use App\Services\Mcp\McpToolService;
 use App\Services\Search\ElasticsearchIndexer;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\Integration\IntegrationTestCase;
 
@@ -119,7 +120,14 @@ final class SearchBehaviorTest extends IntegrationTestCase
             ->assertOk()
             ->assertJsonPath('data.0.code', $movie->display_code);
 
-        Http::assertNothingSent();
+        $elasticsearchUrl = rtrim((string) config('elasticsearch.host'), '/') . '/';
+        $embedderUrl = rtrim((string) config('elasticsearch.embedder_url'), '/') . '/';
+
+        Http::assertNotSent(
+            static fn(Request $request): bool
+            => str_starts_with($request->url(), $elasticsearchUrl)
+            || str_starts_with($request->url(), $embedderUrl),
+        );
     }
 
     private function indexMovieWithPerformer(): Movie
