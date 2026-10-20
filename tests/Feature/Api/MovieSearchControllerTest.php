@@ -93,6 +93,19 @@ final class MovieSearchControllerTest extends TestCase
             ->assertJsonPath('type', 'invalid_filter');
     }
 
+    public function test_disabled_search_returns_database_results_when_elasticsearch_is_unavailable(): void
+    {
+        $movie = Movie::factory()->create(['title_en' => 'Quiet Harbor']);
+        config()->set('elasticsearch.enabled', false);
+        DependencyMonitorTestHelper::bind(['elasticsearch' => false]);
+
+        $this->getJson('/api/v1/movies?q=quiet%20harbor', [
+            'X-API-Key' => $this->apiKey,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.0.title_en', $movie->title_en);
+    }
+
     public function test_code_filter_matches_display_and_normalized_code(): void
     {
         $movie = Movie::factory()->create([
