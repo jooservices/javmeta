@@ -47,6 +47,30 @@ final class PerformerIdentityServiceTest extends TestCase
         self::assertNull($first->fresh()->canonical_performer_id);
     }
 
+    public function test_dry_run_backfill_query_count_does_not_grow_with_the_catalog(): void
+    {
+        $countQueries = function (int $performers): int {
+            Performer::query()->delete();
+            foreach (range(1, $performers) as $number) {
+                Performer::factory()->create([
+                    'source_slug' => 'source-a',
+                    'external_id' => 'bulk-' . $performers . '-' . $number,
+                    'name_romaji' => 'Bulk Person ' . $performers . ' ' . $number . ' Unique',
+                    'birth_date' => '1990-01-01',
+                ]);
+            }
+            $queries = 0;
+            DB::listen(static function () use (&$queries): void {
+                $queries++;
+            });
+            app(PerformerIdentityService::class)->backfill(true);
+
+            return $queries;
+        };
+
+        self::assertSame($countQueries(3), $countQueries(12));
+    }
+
     public function test_backfill_creates_missing_source_links_and_is_repeatable(): void
     {
         $performer = Performer::factory()->create([

@@ -19,31 +19,43 @@ final class PerformerIdentityService
         private readonly ElasticsearchIndexer $indexer,
     ) {}
 
-    /** @return array{merges: list<array<string, mixed>>, reviews: list<array<string, mixed>>} */
+    /**
+     * Works from one in-memory snapshot of the catalog, so the cost is a fixed number of chunked reads plus
+     * the matcher comparisons, not a set of queries for every source row.
+     *
+     * @return array{merges: list<array<string, mixed>>, reviews: list<array<string, mixed>>}
+     */
     public function backfill(bool $dryRun = false): array
     {
-        $missingSources = $this->ensureSourceLinks($dryRun);
+        $snapshot = $this->loadSnapshot($this->ensureSourceLinks($dryRun));
+        if (! $dryRun) {
+            $this->storeNameKeys($snapshot);
+        }
+
         $merges = [];
         $reviews = [];
         $plannedReviews = [];
-        $sources = PerformerSource::query()->whereNull('removed_at')->orderBy('id')->get()
-            ->concat($missingSources);
         $plannedPairs = [];
 
-        foreach ($sources as $source) {
-            $sourcePerformerId = (int) ($source->source_performer_id ?? $source->performer_id);
-            $currentPerformerId = (int) $source->performer_id;
-            if (! $dryRun && $source->exists) {
-                $this->refreshNameKeys($source);
-            }
-            if ($sourcePerformerId !== $currentPerformerId) {
+        foreach ($snapshot['sources'] as $source) {
+            if ($source['removed_at'] !== null) {
                 continue;
             }
-            if (Performer::query()->whereKey($currentPerformerId)->value('canonical_performer_id') !== null) {
+            $sourcePerformerId = (int) ($source['source_performer_id'] ?? $source['performer_id']);
+            $currentPerformerId = (int) $source['performer_id'];
+            if ($sourcePerformerId !== $currentPerformerId
+                || ($snapshot['root_of'][$currentPerformerId] ?? $currentPerformerId) !== $currentPerformerId) {
                 continue;
             }
 
-            $evaluation = $this->evaluateSource($source, true);
+            $candidates = (function () use ($snapshot, $currentPerformerId) {
+                foreach ($snapshot['roots'] as $rootId => $identity) {
+                    if ($rootId !== $currentPerformerId) {
+                        yield $identity;
+                    }
+                }
+            })();
+            $evaluation = $this->matcher->evaluate($this->snapshotSourceIdentity($snapshot, $source), $candidates);
             if ($evaluation['decision'] === 'merge') {
                 $candidateId = (int) $evaluation['candidate_id'];
                 $fromId = max($currentPerformerId, $candidateId);
@@ -53,16 +65,15 @@ final class PerformerIdentityService
                     continue;
                 }
                 $plannedPairs[$pair] = true;
-                $merge = [
+                $merges[] = [
                     'source_performer_id' => $sourcePerformerId,
                     'from_performer_id' => $fromId,
                     'to_performer_id' => $toId,
                     'reason' => $evaluation['reason'],
                 ];
-                $merges[] = $merge;
 
-                if (! $dryRun) {
-                    $this->mergeRoots($fromId, $toId, $evaluation);
+                if (! $dryRun && $this->mergeRoots($fromId, $toId, $evaluation)) {
+                    $this->foldRootIntoSnapshot($snapshot, $fromId, $toId);
                 }
             } elseif ($evaluation['decision'] === 'review') {
                 foreach ($evaluation['review_candidates'] as $candidate) {
@@ -322,25 +333,19 @@ final class PerformerIdentityService
     }
 
     /**
-     * The crawl path only compares against roots sharing a cross-link or a normalized name; the full scan
-     * (which also finds weak name matches) is reserved for the offline backfill.
+     * The crawl path only compares against roots sharing a cross-link or a normalized name; the backfill
+     * (which also finds weak name matches) compares against its in-memory snapshot of every root.
      *
      * @return array{decision: string, candidate_id: int|null, reason: string|null, similarity: float, review_candidates: list<array{id: int, reason: string, similarity: float}>}
      */
-    private function evaluateSource(PerformerSource $source, bool $fullScan = false): array
+    private function evaluateSource(PerformerSource $source): array
     {
         $currentId = (int) $source->performer_id;
         $incoming = $this->sourceIdentity($source);
-
-        if ($fullScan) {
-            $roots = Performer::query()->whereNull('canonical_performer_id')->where('id', '<>', $currentId)
-                ->with(['aliases', 'sources.sourcePerformer.aliases'])->lazyById(200);
-        } else {
-            $candidateIds = $this->candidateRootIds($source, $incoming['names'], $currentId);
-            $roots = $candidateIds === [] ? [] : Performer::query()->whereNull('canonical_performer_id')
-                ->whereIn('id', $candidateIds)->orderBy('id')
-                ->with(['aliases', 'sources.sourcePerformer.aliases'])->get();
-        }
+        $candidateIds = $this->candidateRootIds($source, $incoming['names'], $currentId);
+        $roots = $candidateIds === [] ? [] : Performer::query()->whereNull('canonical_performer_id')
+            ->whereIn('id', $candidateIds)->orderBy('id')
+            ->with(['aliases', 'sources.sourcePerformer.aliases'])->get();
 
         $candidates = (function () use ($roots) {
             foreach ($roots as $root) {
@@ -714,41 +719,215 @@ final class PerformerIdentityService
         }
     }
 
-    /** @return list<PerformerSource> */
+    /**
+     * Creates the missing source links in batches; a dry run only returns what would be created.
+     *
+     * @return list<array<string, mixed>>
+     */
     private function ensureSourceLinks(bool $dryRun): array
     {
         $missing = [];
-        $unlinked = Performer::query()->whereNotExists(static function ($query): void {
+        Performer::query()->whereNotExists(static function ($query): void {
             $query->selectRaw('1')->from('performer_sources')
                 ->whereColumn('performer_sources.source_performer_id', 'performers.id');
-        })->orderBy('id');
-
-        foreach ($unlinked->get() as $performer) {
-            $attributes = [
-                'performer_id' => $performer->canonical_performer_id ?? $performer->id,
-                'source_performer_id' => $performer->id,
-                'site_slug' => $performer->source_slug,
-                'mongo_id' => 'local:' . $performer->id,
-                'external_id' => $performer->external_id,
-                'source_url' => $performer->profile_url,
-                'name_romaji' => $performer->name_romaji,
-                'name_kanji' => $performer->name_kanji,
-                'name_kana' => $performer->name_kana,
-                'birth_date' => $this->dateString($performer->getAttribute('birth_date')),
-                'crawled_at' => $performer->crawled_at ?? now(),
-            ];
+        })->chunkById(500, function ($performers) use ($dryRun, &$missing): void {
+            $rows = [];
+            foreach ($performers as $performer) {
+                $rows[] = [
+                    'performer_id' => $performer->canonical_performer_id ?? $performer->id,
+                    'source_performer_id' => $performer->id,
+                    'site_slug' => $performer->source_slug,
+                    'mongo_id' => 'local:' . $performer->id,
+                    'external_id' => $performer->external_id,
+                    'source_url' => $performer->profile_url,
+                    'name_romaji' => $performer->name_romaji,
+                    'name_kanji' => $performer->name_kanji,
+                    'name_kana' => $performer->name_kana,
+                    'birth_date' => $this->dateString($performer->getAttribute('birth_date')),
+                    'crawled_at' => ($performer->crawled_at ?? now())->toDateTimeString(),
+                    'removed_at' => null,
+                ];
+            }
 
             if ($dryRun) {
-                $missing[] = new PerformerSource($attributes);
+                array_push($missing, ...$rows);
             } else {
-                PerformerSource::query()->firstOrCreate(
-                    ['site_slug' => $attributes['site_slug'], 'mongo_id' => $attributes['mongo_id']],
-                    $attributes,
-                );
+                DB::table('performer_sources')->insertOrIgnore($rows);
+            }
+        });
+
+        return $missing;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $extraSources planned source rows that are not stored yet (dry run)
+     * @return array<string, mixed>
+     */
+    private function loadSnapshot(array $extraSources): array
+    {
+        $performers = [];
+        $canonicalOf = [];
+        $columns = ['id', 'canonical_performer_id', 'name_romaji', 'name_kanji', 'name_kana', 'birth_date'];
+        foreach (DB::table('performers')->select($columns)->lazyById(1000) as $row) {
+            $performers[(int) $row->id] = [
+                'names' => $this->presentStrings([$row->name_romaji, $row->name_kanji, $row->name_kana]),
+                'birth' => $this->dateString($row->birth_date),
+            ];
+            $canonicalOf[(int) $row->id] = $row->canonical_performer_id === null ? null : (int) $row->canonical_performer_id;
+        }
+
+        $ownerAliases = [];
+        $sourceAliases = [];
+        foreach (DB::table('performer_aliases')->select(['id', 'performer_id', 'source_performer_id', 'alias'])->lazyById(2000) as $row) {
+            $ownerAliases[(int) $row->performer_id][] = (string) $row->alias;
+            if ($row->source_performer_id !== null) {
+                $sourceAliases[(int) $row->source_performer_id][] = (string) $row->alias;
             }
         }
 
-        return $dryRun ? $missing : [];
+        $sourceColumns = [
+            'id', 'performer_id', 'source_performer_id', 'site_slug', 'name_romaji', 'name_kanji', 'name_kana',
+            'birth_date', 'cross_link_source', 'cross_link_id', 'removed_at',
+        ];
+        $sources = [];
+        foreach (DB::table('performer_sources')->select($sourceColumns)->lazyById(1000) as $row) {
+            $sources[] = (array) $row;
+        }
+        foreach ($extraSources as $extra) {
+            $sources[] = $extra + ['id' => null, 'cross_link_source' => null, 'cross_link_id' => null];
+        }
+
+        $rootOf = [];
+        $members = [];
+        foreach ($canonicalOf as $id => $parent) {
+            $root = $id;
+            for ($hops = 0; $parent !== null && $hops < 50; $hops++) {
+                $root = $parent;
+                $parent = $canonicalOf[$parent] ?? null;
+            }
+            $rootOf[$id] = $root;
+            $members[$root][] = $id;
+        }
+
+        $roots = [];
+        foreach ($performers as $id => $performer) {
+            if ($canonicalOf[$id] !== null) {
+                continue;
+            }
+            $roots[$id] = [
+                'id' => $id,
+                'names' => array_merge($performer['names'], $ownerAliases[$id] ?? []),
+                'birth_dates' => $performer['birth'] === null ? [] : [$performer['birth']],
+                'cross_links' => [],
+            ];
+        }
+
+        $snapshot = [
+            'performers' => $performers,
+            'sources' => $sources,
+            'source_aliases' => $sourceAliases,
+            'roots' => $roots,
+            'root_of' => $rootOf,
+            'members' => $members,
+        ];
+
+        foreach ($sources as $source) {
+            $rootId = (int) $source['performer_id'];
+            if (! isset($snapshot['roots'][$rootId])) {
+                continue;
+            }
+            $identity = $this->snapshotSourceIdentity($snapshot, $source);
+            $root = &$snapshot['roots'][$rootId];
+            $root['names'] = array_merge($root['names'], $identity['names']);
+            $root['birth_dates'] = array_merge($root['birth_dates'], $identity['birth_dates']);
+            $root['cross_links'] = array_merge($root['cross_links'], $identity['cross_links']);
+            unset($root);
+        }
+        foreach ($snapshot['roots'] as $rootId => $identity) {
+            $snapshot['roots'][$rootId]['names'] = array_values(array_unique($identity['names']));
+            $snapshot['roots'][$rootId]['birth_dates'] = array_values(array_unique($identity['birth_dates']));
+        }
+
+        return $snapshot;
+    }
+
+    /**
+     * @param array<string, mixed> $snapshot
+     * @param array<string, mixed> $source
+     * @return array{id: int, names: list<string>, birth_dates: list<string>, cross_links: list<array{source: string, id: string}>}
+     */
+    private function snapshotSourceIdentity(array $snapshot, array $source): array
+    {
+        $sourcePerformerId = (int) ($source['source_performer_id'] ?? $source['performer_id']);
+        $performer = $source['source_performer_id'] === null ? null : ($snapshot['performers'][$sourcePerformerId] ?? null);
+        $names = array_merge(
+            $this->presentStrings([$source['name_romaji'], $source['name_kanji'], $source['name_kana']]),
+            $performer['names'] ?? [],
+            $snapshot['source_aliases'][$sourcePerformerId] ?? [],
+        );
+        $birthDate = $this->dateString($source['birth_date'] ?? null) ?? ($performer['birth'] ?? null);
+        $crossLinkId = $source['cross_link_id'] ?? null;
+
+        return [
+            'id' => $sourcePerformerId,
+            'names' => $names,
+            'birth_dates' => $birthDate === null ? [] : [$birthDate],
+            'cross_links' => ! is_string($crossLinkId) || $crossLinkId === '' ? [] : [[
+                'source' => (string) (($source['cross_link_source'] ?? null) ?: $source['site_slug']),
+                'id' => $crossLinkId,
+            ]],
+        ];
+    }
+
+    /** @param array<string, mixed> $snapshot */
+    private function foldRootIntoSnapshot(array &$snapshot, int $fromId, int $toId): void
+    {
+        if (isset($snapshot['roots'][$fromId], $snapshot['roots'][$toId])) {
+            $from = $snapshot['roots'][$fromId];
+            $to = &$snapshot['roots'][$toId];
+            $to['names'] = array_values(array_unique(array_merge($to['names'], $from['names'])));
+            $to['birth_dates'] = array_values(array_unique(array_merge($to['birth_dates'], $from['birth_dates'])));
+            $to['cross_links'] = array_merge($to['cross_links'], $from['cross_links']);
+            unset($to);
+        }
+        unset($snapshot['roots'][$fromId]);
+
+        foreach ($snapshot['members'][$fromId] ?? [$fromId] as $memberId) {
+            $snapshot['root_of'][$memberId] = $toId;
+            $snapshot['members'][$toId][] = $memberId;
+        }
+        unset($snapshot['members'][$fromId]);
+    }
+
+    /** Writes the normalized-name keys of every stored source performer in batches. @param array<string, mixed> $snapshot */
+    private function storeNameKeys(array $snapshot): void
+    {
+        $rows = [];
+        foreach ($snapshot['sources'] as $source) {
+            if ($source['id'] === null) {
+                continue;
+            }
+            $identity = $this->snapshotSourceIdentity($snapshot, $source);
+            foreach ($this->normalizedNames($identity['names']) as $key) {
+                $rows[$identity['id'] . ':' . $key] = ['source_performer_id' => $identity['id'], 'normalized_name' => $key];
+            }
+            if (count($rows) >= 500) {
+                DB::table('performer_name_keys')->insertOrIgnore(array_values($rows));
+                $rows = [];
+            }
+        }
+        if ($rows !== []) {
+            DB::table('performer_name_keys')->insertOrIgnore(array_values($rows));
+        }
+    }
+
+    /**
+     * @param list<mixed> $values
+     * @return list<string>
+     */
+    private function presentStrings(array $values): array
+    {
+        return array_values(array_filter($values, static fn(mixed $value): bool => is_string($value) && trim($value) !== ''));
     }
 
     /**
