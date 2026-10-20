@@ -19,7 +19,7 @@ shared PHP runtime; `docker/ci/e2e-shared` (or `JAVMETA_MODE=wt:<id> docker/ci/e
 | `CallMcp` | Send JSON-RPC tools over `/api/v1/mcp` and validate the decoded tool result. |
 | `SeedCatalog`, `SeedFixtureSource`, `RunCrawlOnce` | Create deterministic API data and run the real crawler/persistence pipeline against a checked-in fixture. |
 | `FindCrawledMovie` | Find the fixture-crawled movie over REST by code lookup, by the `code` filter or by text search, or expect a rejected request (401) without catalog data. |
-| `McpFindCrawledMovie` | Find the fixture-crawled movie through the MCP tools `get_movie`, `lookup_movies` and `search`, or expect a rejected call (401) without a tool result. |
+| `McpFindCrawledMovie` | Find the fixture-crawled movie through the MCP tools `get_movie` and `lookup_movies`, or expect a rejected call (401) without a tool result. |
 | `RunCrawlOutage`, `CheckSourceHealth` | Crawl while the source answers 503 (the crawl fails, nothing is persisted) and check how `/api/health` reports the source: failing, then recovered. |
 
 ## Acceptance coverage

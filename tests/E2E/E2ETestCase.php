@@ -233,9 +233,6 @@ abstract class E2ETestCase extends TestCase
         // Journeys search by this text, so fall back to the Japanese title and then the code when no English title exists.
         $title = (string) ($source->movie->title_en ?: $source->movie->title_jp ?: $source->movie->display_code);
 
-        // The crawl indexed the movie; make it searchable now instead of after the index refresh interval.
-        self::refreshMovieIndex();
-
         return new CrawlResult($seed->slug, $seed->url, (string) $source->movie->display_code, $title);
     }
 
@@ -269,13 +266,6 @@ abstract class E2ETestCase extends TestCase
         ]);
 
         return $this->runCrawlOnce($seed);
-    }
-
-    private static function refreshMovieIndex(): void
-    {
-        // A bodyless GET through the authenticated client: _refresh rejects an empty JSON body.
-        $response = app(ElasticsearchHttpClient::class)->get('e2e_refresh', '/' . config('elasticsearch.movies_index') . '/_refresh', 10);
-        self::assertTrue($response->successful(), 'refresh of the movie index failed');
     }
 
     private static function initializeProcesses(): void

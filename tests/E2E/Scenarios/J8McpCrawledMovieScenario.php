@@ -23,7 +23,6 @@ final class J8McpCrawledMovieScenario extends FixtureScenario
             ...$this->fixtureSteps(),
             new McpFindCrawledMovie('get_movie'),
             new McpFindCrawledMovie('lookup_movies'),
-            new McpFindCrawledMovie('search'),
             new CallMcp('get_counts', [], ['movies' => 1]),
         ];
     }

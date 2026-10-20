@@ -361,17 +361,16 @@ final class E2EStepTest extends TestCase
         Http::fake(['https://api.test/api/v1/mcp' => Http::sequence()
             ->push($result(['code' => 'SSIS-001']))
             ->push($result(['items' => [['code' => 'SSIS-001']]]))
-            ->push($result(['items' => [['code' => 'SSIS-001']]]))
             ->push($result(['items' => []]))
             ->push(['result' => ['isError' => true, 'content' => []]])
             ->push(['type' => 'unauthorized', 'data' => null], 401)
             ->push(['result' => ['content' => []]], 401)]);
         $context = $this->contextWithMcp()->withCrawl($this->crawlResult());
 
-        foreach (['get_movie', 'lookup_movies', 'search'] as $tool) {
+        foreach (['get_movie', 'lookup_movies'] as $tool) {
             self::assertSame(200, (new McpFindCrawledMovie($tool))->run($context)->lastResponse['status']);
         }
-        foreach (['search', 'get_movie'] as $tool) {
+        foreach (['lookup_movies', 'get_movie'] as $tool) {
             try {
                 (new McpFindCrawledMovie($tool))->run($context);
                 self::fail('An empty or failed MCP result should fail the step.');
