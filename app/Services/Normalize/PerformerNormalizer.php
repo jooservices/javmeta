@@ -41,6 +41,11 @@ final class PerformerNormalizer
         )));
 
         $nameKana = is_string($meta['name_kana'] ?? null) ? trim($meta['name_kana']) : null;
+        $crossLink = is_array($meta['cross_link'] ?? null) ? $meta['cross_link'] : [];
+        $crossLinkId = $this->stringValue($meta['cross_link_id'] ?? $meta['crosslink_id'] ?? $crossLink['id'] ?? null);
+        $crossLinkSource = $crossLinkId === null
+            ? null
+            : ($this->stringValue($meta['cross_link_source'] ?? $crossLink['source'] ?? null) ?? $sourceSlug);
 
         return new PerformerDraft(
             sourceSlug: $sourceSlug,
@@ -62,7 +67,20 @@ final class PerformerNormalizer
             debutDate: $this->dateYmd(is_string($meta['debut_date_raw'] ?? null) ? $meta['debut_date_raw'] : null),
             location: is_string($meta['birthplace'] ?? null) ? $meta['birthplace'] : null,
             attrs: $attrs,
+            crossLinkSource: $crossLinkSource,
+            crossLinkId: $crossLinkId,
         );
+    }
+
+    private function stringValue(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+
+        return $value === '' ? null : $value;
     }
 
     /** Metadata keys already stored in columns or only noise; everything else is kept in attrs.extra. */

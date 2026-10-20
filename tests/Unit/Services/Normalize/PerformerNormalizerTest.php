@@ -45,6 +45,18 @@ final class PerformerNormalizerTest extends TestCase
         self::assertNull((new PerformerNormalizer())->normalize($dto, 'xcity', 'https://example.test/1')?->birthDate);
     }
 
+    public function test_namespaced_cross_link_metadata_is_kept_on_the_draft(): void
+    {
+        $dto = PerformerDto::fromParsed('42', 'Mina Hope', [
+            'cross_link' => ['source' => 'shared-catalog', 'id' => 'performer-42'],
+        ], 'https://example.test/42');
+
+        $draft = (new PerformerNormalizer())->normalize($dto, 'source-a', 'https://example.test/42');
+
+        self::assertSame('shared-catalog', $draft?->crossLinkSource);
+        self::assertSame('performer-42', $draft?->crossLinkId);
+    }
+
     public function test_profile_fields_without_a_column_are_kept_in_attrs_extra(): void
     {
         $dto = PerformerDto::fromParsed('2', 'Y', [

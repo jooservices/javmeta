@@ -174,7 +174,7 @@ final class BackfillEmbeddingsCommand extends Command
         if ($entity === 'movies') {
             $models = Movie::query()->whereIn('uuid', $uuids)->get()->keyBy('uuid');
         } else {
-            $models = Performer::query()->whereIn('uuid', $uuids)->get()->keyBy('uuid');
+            $models = Performer::query()->whereNull('canonical_performer_id')->whereIn('uuid', $uuids)->get()->keyBy('uuid');
         }
 
         $modelsToIndex = [];

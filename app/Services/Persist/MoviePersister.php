@@ -9,6 +9,7 @@ use App\Models\CrawlRun;
 use App\Models\Genre;
 use App\Models\Performer;
 use App\Models\PerformerAlias;
+use App\Models\PerformerSource;
 use App\Models\ReviewFlag;
 use App\Models\Source;
 use App\Models\Movie;
@@ -419,6 +420,26 @@ final class MoviePersister implements MovieDraftSink
                 ],
             );
 
+            $source = PerformerSource::query()->firstOrNew([
+                'site_slug' => $performerDraft->sourceSlug,
+                'external_id' => $performerDraft->externalId,
+            ]);
+            $source->fill([
+                'performer_id' => $performer->canonical_performer_id ?? $performer->id,
+                'source_performer_id' => $performer->id,
+                'mongo_id' => $source->mongo_id ?: ('local:' . $performer->id),
+                'source_url' => $performerDraft->profileUrl ?? $source->source_url,
+                'name_romaji' => $performerDraft->nameRomaji ?? $source->name_romaji,
+                'name_kanji' => $performerDraft->nameKanji ?? $source->name_kanji,
+                'name_kana' => $performerDraft->nameKana ?? $source->name_kana,
+                'birth_date' => $performerDraft->birthDate ?? $source->birth_date,
+                'cross_link_source' => $performerDraft->crossLinkSource ?? $source->cross_link_source,
+                'cross_link_id' => $performerDraft->crossLinkId ?? $source->cross_link_id,
+                'removed_at' => null,
+                'crawled_at' => $crawledAt,
+            ]);
+            $source->save();
+
             foreach ($performerDraft->aliases as $alias) {
                 $trimmed = trim($alias);
                 if ($trimmed === '') {
@@ -426,7 +447,12 @@ final class MoviePersister implements MovieDraftSink
                 }
 
                 PerformerAlias::query()->firstOrCreate(
-                    ['performer_id' => (int) $performer->id, 'alias' => $trimmed],
+                    [
+                        'performer_id' => (int) ($performer->canonical_performer_id ?? $performer->id),
+                        'alias' => $trimmed,
+                        'source_slug' => $performerDraft->sourceSlug,
+                        'source_performer_id' => (int) $performer->id,
+                    ],
                     ['kind' => 'source'],
                 );
             }
@@ -435,7 +461,7 @@ final class MoviePersister implements MovieDraftSink
                 [
                     [
                         'movie_id' => $movieId,
-                        'performer_id' => (int) $performer->id,
+                        'performer_id' => (int) ($performer->canonical_performer_id ?? $performer->id),
                         'source_slug' => $draft->sourceSlug,
                         'crawled_at' => $crawledAt,
                     ],

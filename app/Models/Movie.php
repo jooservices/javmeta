@@ -72,7 +72,9 @@ class Movie extends Model
     /** @return BelongsToMany<Performer, $this> */
     public function performers(): BelongsToMany
     {
-        return $this->belongsToMany(Performer::class, 'movie_performers')->withPivot(['source_slug', 'crawled_at']);
+        return $this->belongsToMany(Performer::class, 'movie_performers')
+            ->whereNull('performers.canonical_performer_id')
+            ->withPivot(['source_slug', 'crawled_at']);
     }
 
     /** @return HasMany<MovieSource, $this> */

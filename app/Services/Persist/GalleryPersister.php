@@ -6,6 +6,7 @@ namespace App\Services\Persist;
 
 use App\Models\Performer;
 use App\Models\PerformerMedia;
+use App\Models\PerformerSource;
 use App\Models\Movie;
 use App\Models\MovieCode;
 use App\Models\MovieMedia;
@@ -75,6 +76,21 @@ final class GalleryPersister
                     ],
                 );
 
+                $source = PerformerSource::query()->firstOrNew([
+                    'site_slug' => $sourceSlug,
+                    'external_id' => $externalId,
+                ]);
+                $source->fill([
+                    'performer_id' => $performer->canonical_performer_id ?? $performer->id,
+                    'source_performer_id' => $performer->id,
+                    'mongo_id' => $source->mongo_id ?: ('local:' . $performer->id),
+                    'source_url' => $url,
+                    'name_romaji' => $trimmed,
+                    'removed_at' => null,
+                    'crawled_at' => $crawledAt,
+                ]);
+                $source->save();
+
                 foreach ($gallery->photos as $photo) {
                     $imageUrl = $this->photoUrl($photo);
                     if ($imageUrl === null) {
@@ -83,7 +99,8 @@ final class GalleryPersister
 
                     PerformerMedia::query()->updateOrCreate(
                         [
-                            'performer_id' => (int) $performer->id,
+                            'performer_id' => (int) ($performer->canonical_performer_id ?? $performer->id),
+                            'source_performer_id' => (int) $performer->id,
                             'kind' => PerformerMedia::KIND_GALLERY,
                             'url' => $imageUrl,
                         ],
@@ -97,7 +114,7 @@ final class GalleryPersister
 
                 if ($movie instanceof Movie) {
                     $movie->performers()->syncWithoutDetaching([
-                        (int) $performer->id => [
+                        (int) ($performer->canonical_performer_id ?? $performer->id) => [
                             'source_slug' => $sourceSlug,
                             'crawled_at' => $crawledAt,
                         ],

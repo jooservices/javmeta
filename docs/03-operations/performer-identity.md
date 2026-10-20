@@ -1,0 +1,76 @@
+# Canonical performer identity
+
+Each source performer profile remains stored as its own performer row. The
+`performer_sources` table maps those source records to a canonical performer.
+An identity match is automatic only when normalized names match exactly and
+both records have the same birth date, or when they share the same namespaced
+cross-link ID. Name similarity alone never merges records. Uncertain candidates
+remain separate and are listed by the identity review report.
+
+Names are normalized with Unicode compatibility normalization, case folding,
+punctuation removal, and token sorting. This accepts family/given name order
+changes. A cross-script match requires a shared name variant and the same birth
+date, unless a strong cross-link establishes identity. Source names, aliases,
+source URLs, and active/removal state remain available on canonical API, MCP,
+and search records.
+
+The `performer_identity.merge_name_similarity` threshold remains `1.0` so names
+must match exactly after normalization. `performer_identity.review_name_similarity`
+controls which weaker name matches appear for review; it never permits a merge.
+
+## Deployment
+
+After deploying the code, apply the forward migration, inspect the planned
+merges, and run the backfill:
+
+```bash
+php artisan migrate --force
+php artisan performers:backfill-identities --dry-run
+php artisan performers:backfill-identities
+php artisan performers:identity-report
+```
+
+Reindex search documents after the backfill so existing canonical performer
+documents include all source records:
+
+```bash
+php artisan es:setup --reindex
+```
+
+## Backfill and review
+
+Run a dry run to list planned merges and ambiguous candidates:
+
+```bash
+php artisan performers:backfill-identities --dry-run
+php artisan performers:identity-report
+```
+
+Apply the idempotent backfill after reviewing the plan:
+
+```bash
+php artisan performers:backfill-identities
+```
+
+The command records each merge and leaves ambiguous candidates separate. A
+source removal keeps its mapping and the canonical performer. Mark the source
+profile inactive with:
+
+```bash
+php artisan performers:source-removed <source_slug> <external_id>
+```
+
+When a source record returns, its next crawl marks it active again.
+
+## Split and undo
+
+Every merge creates an event with the moved source links and performer
+associations. Use the merge event ID to split the identities, and the resulting
+split event ID to undo that split:
+
+```bash
+php artisan performers:split <merge_event_id>
+php artisan performers:undo-split <split_event_id>
+```
+
+Both operations are recorded and update the canonical search documents.

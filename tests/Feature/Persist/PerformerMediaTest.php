@@ -9,6 +9,7 @@ use App\Models\MovieCode;
 use App\Models\MovieMedia;
 use App\Models\Performer;
 use App\Models\PerformerMedia;
+use App\Models\PerformerSource;
 use App\Services\Persist\GalleryPersister;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -84,6 +85,10 @@ final class PerformerMediaTest extends TestCase
         foreach ($performerNames as $performerName) {
             $performer = $performers->firstWhere('external_id', Str::slug($performerName));
             $this->assertNotNull($performer);
+            $this->assertTrue(PerformerSource::query()
+                ->where('source_performer_id', $performer->id)
+                ->where('site_slug', $sourceSlug)
+                ->exists());
             $this->assertSame(count($photos), $performer->media()->where('kind', PerformerMedia::KIND_GALLERY)->count());
             $this->assertTrue($performer->movies()->whereKey($movie->id)->exists());
         }
