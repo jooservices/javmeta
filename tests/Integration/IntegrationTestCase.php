@@ -71,6 +71,9 @@ abstract class IntegrationTestCase extends BaseTestCase
         // Collections are dropped one by one: the least-privilege test user (readWrite) cannot dropDatabase.
         $database = $this->mongo()->selectDatabase((string) config('mongodb.database'));
         foreach ($database->listCollectionNames() as $collection) {
+            if ($collection === '_workspaces') {
+                continue; // the ownership marker of the shared Docker project database
+            }
             $database->dropCollection($collection);
         }
     }
