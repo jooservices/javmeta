@@ -20,6 +20,7 @@ use App\Services\Search\CursorCodec;
 use App\Services\Search\MovieSearchService;
 use App\Services\Search\PerformerSearchService;
 use App\Support\Code\NormalizedCode;
+use DateTimeImmutable;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
 
@@ -430,7 +431,11 @@ final class McpToolService
     /** @param array<string, mixed> $arguments */
     private function booleanArgument(array $arguments, string $key): bool
     {
-        $value = $arguments[$key] ?? false;
+        if (! array_key_exists($key, $arguments)) {
+            return false;
+        }
+
+        $value = $arguments[$key];
 
         if (is_bool($value)) {
             return $value;
@@ -440,26 +445,45 @@ final class McpToolService
             return true;
         }
 
-        return false;
+        if ($value === 0 || $value === '0' || $value === 'false') {
+            return false;
+        }
+
+        throw new InvalidFilterException("{$key} must be a boolean.");
     }
 
     /** @param array<string, mixed> $arguments */
     /** @return array<string, mixed> */
     private function movieFilters(array $arguments): array
     {
-        $keys = [
-            'q', 'code', 'genre', 'actress', 'maker', 'series', 'label',
-            'released_from', 'released_to', 'runtime_min', 'runtime_max', 'censored',
-        ];
-
         $filters = [];
-        foreach ($keys as $key) {
+        foreach ([
+            'q', 'code', 'genre', 'actress', 'maker', 'series', 'label',
+            'released_from', 'released_to',
+        ] as $key) {
             if (array_key_exists($key, $arguments)) {
-                $filters[$key] = $arguments[$key];
+                $value = $this->stringArgument($arguments, $key);
+                if ($value !== null) {
+                    if (in_array($key, ['released_from', 'released_to'], true)) {
+                        $this->assertDate($key, $value);
+                    }
+
+                    $filters[$key] = $value;
+                }
             }
         }
 
-        if (isset($filters['censored'])) {
+        foreach (['runtime_min', 'runtime_max'] as $key) {
+            if (array_key_exists($key, $arguments)) {
+                $filters[$key] = $this->integerArgument($arguments, $key);
+            }
+        }
+
+        if (array_key_exists('censored', $arguments)) {
+            $filters['censored'] = $arguments['censored'];
+        }
+
+        if (array_key_exists('censored', $filters)) {
             $filters['censored'] = $this->censoredValue($filters['censored']);
         }
 
@@ -470,15 +494,22 @@ final class McpToolService
     /** @return array<string, mixed> */
     private function performerFilters(array $arguments): array
     {
-        $keys = [
-            'q', 'age_min', 'age_max', 'height_min', 'height_max', 'bust_min', 'bust_max',
-            'waist_min', 'waist_max', 'hip_min', 'hip_max', 'cup', 'blood_type', 'location',
-        ];
-
         $filters = [];
-        foreach ($keys as $key) {
+        foreach (['q', 'cup', 'blood_type', 'location'] as $key) {
             if (array_key_exists($key, $arguments)) {
-                $filters[$key] = $arguments[$key];
+                $value = $this->stringArgument($arguments, $key);
+                if ($value !== null) {
+                    $filters[$key] = $value;
+                }
+            }
+        }
+
+        foreach ([
+            'age_min', 'age_max', 'height_min', 'height_max', 'bust_min', 'bust_max',
+            'waist_min', 'waist_max', 'hip_min', 'hip_max',
+        ] as $key) {
+            if (array_key_exists($key, $arguments)) {
+                $filters[$key] = $this->integerArgument($arguments, $key);
             }
         }
 
@@ -509,7 +540,7 @@ final class McpToolService
     /** @param array<string, mixed> $arguments */
     private function perPage(array $arguments): int
     {
-        $value = $arguments['per_page'] ?? 10;
+        $value = array_key_exists('per_page', $arguments) ? $arguments['per_page'] : 10;
         if (! is_int($value) && ! (is_string($value) && ctype_digit($value))) {
             throw new InvalidFilterException('per_page must be an integer.');
         }
@@ -520,6 +551,29 @@ final class McpToolService
         }
 
         return $perPage;
+    }
+
+    /** @param array<string, mixed> $arguments */
+    private function integerArgument(array $arguments, string $key): int
+    {
+        $value = $arguments[$key] ?? null;
+        if (! is_int($value)) {
+            throw new InvalidFilterException("{$key} must be an integer.");
+        }
+
+        return $value;
+    }
+
+    private function assertDate(string $key, string $value): void
+    {
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+        $errors = DateTimeImmutable::getLastErrors();
+
+        if ($date === false
+            || $date->format('Y-m-d') !== $value
+            || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
+            throw new InvalidFilterException("{$key} must be a valid date in YYYY-MM-DD format.");
+        }
     }
 
     /** @param array<string, mixed> $arguments */
@@ -536,8 +590,15 @@ final class McpToolService
     /** @param array<string, mixed> $arguments */
     private function stringArgument(array $arguments, string $key): ?string
     {
-        $value = $arguments[$key] ?? null;
+        if (! array_key_exists($key, $arguments)) {
+            return null;
+        }
 
-        return is_string($value) && trim($value) !== '' ? trim($value) : null;
+        $value = $arguments[$key];
+        if (! is_string($value)) {
+            throw new InvalidFilterException("{$key} must be a string.");
+        }
+
+        return trim($value) !== '' ? trim($value) : null;
     }
 }

@@ -10,7 +10,7 @@ Status: Beta — v0.1.0-beta
 
 - **Crawl all sites:** `make crawl ACTION=tick` → `make crawl ACTION=dispatch` (worker in compose). 25 sources in `config/javmeta_sources.php` — **movies, performers, and galleries** by capability.
 - **Query API:** `GET /api/v1/movies/{code}` · `GET /api/v1/movies?q=…` · `GET /api/v1/performers` (aliases `/movies`). API key via admin.
-- **MCP for AI:** `docker compose --profile mcp run --rm mcp` — tools `lookup_movies`, `get_movie`, `search`, `lookup_performers`, `get_performer`.
+- **MCP for AI:** stdio and HTTP expose `lookup_movies`, `get_movie`, `search`, `lookup_performers`, `get_counts`, `crawl_status`, `system_status`, and `get_performer`. See the [MCP guide](docs/03-operations/mcp.md) for inputs and examples.
 - **Docker + durable DB:** Postgres / Mongo / ES bind-mounted under `./data/*` (survive container drop; avoid `down -v`).
 
 ## Site capability matrix
@@ -117,7 +117,7 @@ MCP (stdio for AI clients) — set `JAVMETA_MCP_API_KEY` to an **active** `jvm_�
 
 ```bash
 docker compose --profile mcp run --rm mcp
-# tools: lookup_movies, get_movie, search, lookup_performers, get_performer
+# tools: lookup_movies, get_movie, search, lookup_performers, get_counts, crawl_status, system_status, get_performer
 ```
 
 Movie and performer detail responses (`get_movie`, `get_performer`, and the
@@ -169,6 +169,7 @@ curl -s -H "X-Api-Key: $JAVMETA_MCP_API_KEY" \
 
 - Endpoint: `POST /api/v1/mcp` (JSON-RPC 2.0); `GET` returns an SSE stream. Any active API key (`X-Api-Key` header) works.
 - AI clients connect to `https://<host>/api/v1/mcp` via the CF tunnel (port 8080) — no local process needed.
+- See [docs/03-operations/mcp.md](docs/03-operations/mcp.md) for every tool input and an example call for each tool.
 
 **Semantic search** (optional embedder, profile `embed`): movies/performers are embedded with a multilingual E5 model and stored as `dense_vector` in Elasticsearch (kNN). MCP tool `search` answers natural-language queries; keyword search still works when the embedder is off.
 
