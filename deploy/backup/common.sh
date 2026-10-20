@@ -72,6 +72,12 @@ elasticsearch_request() {
     printf 'url = "%s"\n' "$(curl_config_escape "$url")"
     printf 'request = "%s"\n' "$method"
     printf 'silent\nshow-error\nfail\nmax-time = %s\n' "${ELASTICSEARCH_TIMEOUT:-60}"
+    # Credentials travel in this curl config on stdin, never on the command line. A login inside ELASTICSEARCH_HOST still works.
+    if [[ -n "${ELASTICSEARCH_API_KEY:-}" ]]; then
+      printf 'header = "Authorization: ApiKey %s"\n' "$(curl_config_escape "$ELASTICSEARCH_API_KEY")"
+    elif [[ -n "${ELASTICSEARCH_USERNAME:-}" && -n "${ELASTICSEARCH_PASSWORD:-}" ]]; then
+      printf 'user = "%s:%s"\n' "$(curl_config_escape "$ELASTICSEARCH_USERNAME")" "$(curl_config_escape "$ELASTICSEARCH_PASSWORD")"
+    fi
     if [[ -n "$body" ]]; then
       printf 'header = "Content-Type: application/json"\n'
       printf 'data = "%s"\n' "$(curl_config_escape "$body")"
