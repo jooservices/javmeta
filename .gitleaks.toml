@@ -15,3 +15,18 @@ paths = [
   '''(.*?)(png|jpg|gif|svg)$''',
   '''^composer\.lock$''',
 ]
+
+[[rules]]
+id = "javmeta-known-default-password"
+description = "A sample default password that must not return to the repository"
+regex = '''(Complexpass#123|local-Observe-2026!)'''
+
+[[rules.allowlists]]
+description = "The rule itself, the boot check with its test, and the local-only monitoring fixture list the sample values on purpose"
+commits = ["db478397cb638194a895dc27b0337253a2b389c2"]
+paths = [
+  '''^\.gitleaks\.toml$''',
+  '''^config/insecure_defaults\.php$''',
+  '''^tests/Unit/Support/InsecureDefaultsTest\.php$''',
+  '''^deploy/monitoring/(compose\.local-test\.yml|verify\.sh)$''',
+]
