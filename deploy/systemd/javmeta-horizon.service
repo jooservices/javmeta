@@ -1,0 +1,16 @@
+[Unit]
+Description=JavMeta Horizon (queue workers) in the shared PHP 8.5 runtime
+After=network-online.target docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Workspaces/JOOservices/projects/javmeta
+ExecStart=%h/Workspaces/scripts/docker/runtime php@8.5 php artisan horizon
+# docker exec does not forward the stop signal: ask Horizon to finish its jobs, then remove a leftover process.
+ExecStop=-%h/Workspaces/scripts/docker/runtime php@8.5 php artisan horizon:terminate
+ExecStopPost=-/bin/sleep 20
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=default.target
