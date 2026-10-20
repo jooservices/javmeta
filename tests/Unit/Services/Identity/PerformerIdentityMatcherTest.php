@@ -45,4 +45,40 @@ final class PerformerIdentityMatcherTest extends TestCase
 
         self::assertSame('none', $result['decision']);
     }
+
+    public function test_candidate_state_stays_bounded_for_a_huge_candidate_stream(): void
+    {
+        config()->set('performer_identity.max_candidates_per_source', 20);
+        $incoming = ['id' => 1, 'names' => ['yamada abcdefghij'], 'birth_dates' => [], 'cross_links' => []];
+        $candidates = (static function (): \Generator {
+            for ($id = 2; $id <= 100_001; $id++) {
+                yield ['id' => $id, 'names' => ['yamada abcdefghi' . ($id % 7 === 0 ? 'j' : 'k')], 'birth_dates' => [], 'cross_links' => []];
+            }
+        })();
+
+        gc_collect_cycles();
+        $before = memory_get_peak_usage();
+        $result = (new PerformerIdentityMatcher())->evaluate($incoming, $candidates);
+
+        self::assertSame('review', $result['decision']);
+        self::assertCount(20, $result['review_candidates']);
+        self::assertSame(1.0, $result['review_candidates'][0]['similarity']);
+        self::assertLessThan(4 * 1024 * 1024, memory_get_peak_usage() - $before);
+    }
+
+    public function test_many_strong_matches_are_counted_but_only_the_limit_is_reported(): void
+    {
+        config()->set('performer_identity.max_candidates_per_source', 3);
+        $incoming = ['id' => 1, 'names' => ['a b'], 'birth_dates' => ['1990-01-01'], 'cross_links' => []];
+        $candidates = array_map(
+            static fn(int $id): array => ['id' => $id, 'names' => ['b a'], 'birth_dates' => ['1990-01-01'], 'cross_links' => []],
+            range(2, 40),
+        );
+
+        $result = (new PerformerIdentityMatcher())->evaluate($incoming, $candidates);
+
+        self::assertSame('review', $result['decision']);
+        self::assertNull($result['candidate_id']);
+        self::assertCount(3, $result['review_candidates']);
+    }
 }

@@ -14,7 +14,9 @@ final class PerformerIdentityMatcher
      */
     public function evaluate(array $incoming, iterable $candidates): array
     {
+        $limit = max(1, (int) config('performer_identity.max_candidates_per_source', 50));
         $strong = [];
+        $strongCount = 0;
         $review = [];
 
         foreach ($candidates as $candidate) {
@@ -28,11 +30,13 @@ final class PerformerIdentityMatcher
 
             if ($sameCrossLink || ($similarity >= (float) config('performer_identity.merge_name_similarity', 1.0)
                 && $similarity === 1.0 && $sameBirthDate)) {
+                $strongCount++;
                 $strong[] = [
                     'id' => $candidate['id'],
                     'reason' => $sameCrossLink ? 'cross_link' : 'name_and_birth_date',
                     'similarity' => $similarity,
                 ];
+                $strong = $this->trim($strong, $limit);
 
                 continue;
             }
@@ -46,10 +50,11 @@ final class PerformerIdentityMatcher
 
             if ($reason !== null) {
                 $review[] = ['id' => $candidate['id'], 'reason' => $reason, 'similarity' => $similarity];
+                $review = $this->trim($review, $limit);
             }
         }
 
-        if (count($strong) === 1) {
+        if ($strongCount === 1) {
             return [
                 'decision' => 'merge',
                 'candidate_id' => $strong[0]['id'],
@@ -59,7 +64,7 @@ final class PerformerIdentityMatcher
             ];
         }
 
-        if (count($strong) > 1) {
+        if ($strongCount > 1) {
             $review = array_merge($review, array_map(
                 static fn(array $match): array => [
                     'id' => $match['id'],
@@ -70,6 +75,8 @@ final class PerformerIdentityMatcher
             ));
         }
 
+        $review = array_slice($review, 0, $limit);
+
         return [
             'decision' => $review === [] ? 'none' : 'review',
             'candidate_id' => null,
@@ -77,6 +84,25 @@ final class PerformerIdentityMatcher
             'similarity' => 0.0,
             'review_candidates' => $review,
         ];
+    }
+
+    /**
+     * Keeps the most similar entries once the list outgrows twice the limit, so the state stays bounded however
+     * many candidates a common name trigram yields. Ties keep the lower id.
+     *
+     * @template T of array{id: int, similarity: float}
+     * @param list<T> $matches
+     * @return list<T>
+     */
+    private function trim(array $matches, int $limit): array
+    {
+        if (count($matches) < $limit * 2) {
+            return $matches;
+        }
+
+        usort($matches, static fn(array $a, array $b): int => [$b['similarity'], $a['id']] <=> [$a['similarity'], $b['id']]);
+
+        return array_slice($matches, 0, $limit);
     }
 
     public function normalizeName(string $name): string
