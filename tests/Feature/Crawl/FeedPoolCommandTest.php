@@ -13,6 +13,7 @@ use App\Jobs\FetchPerformerListingJob;
 use App\Models\CrawlQueue;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -153,5 +154,38 @@ final class FeedPoolCommandTest extends TestCase
         Queue::assertPushed(FetchListingJob::class, 3);
         $this->assertSame(3, $rows->filter(static fn(CrawlQueue $row): bool => $row->refresh()->status === CrawlQueue::STATUS_CLAIMED)->count());
         $this->assertSame(2, $rows->filter(static fn(CrawlQueue $row): bool => $row->refresh()->status === CrawlQueue::STATUS_PENDING)->count());
+    }
+
+    public function test_feed_pool_uses_redis_depth_instead_of_the_database_jobs_table(): void
+    {
+        $rows = CrawlQueue::factory()->count(2)->create([
+            'source_slug' => fake()->slug(2),
+            'kind' => CrawlQueue::KIND_LISTING,
+        ]);
+        $now = now()->getTimestamp();
+        DB::table('jobs')->insert([
+            'queue' => 'listing',
+            'payload' => '{}',
+            'attempts' => 0,
+            'reserved_at' => null,
+            'available_at' => $now,
+            'created_at' => $now,
+        ]);
+        Queue::fake();
+        config([
+            'queue.default' => 'redis',
+            'queue.connections.redis.driver' => 'redis',
+            'queue.connections.redis.connection' => 'default',
+            'javmeta_queues.depth_limit' => 2,
+        ]);
+        $redis = Mockery::mock();
+        $redis->shouldReceive('llen')->andReturnUsing(static fn(string $key): int => $key === 'queues:listing' ? 1 : 0);
+        Redis::shouldReceive('connection')->andReturn($redis);
+
+        $this->artisan('crawler:feed-pool')->assertSuccessful();
+
+        Queue::assertPushed(FetchListingJob::class, 1);
+        $this->assertSame(1, $rows->filter(static fn(CrawlQueue $row): bool => $row->refresh()->status === CrawlQueue::STATUS_CLAIMED)->count());
+        $this->assertSame(1, $rows->filter(static fn(CrawlQueue $row): bool => $row->refresh()->status === CrawlQueue::STATUS_PENDING)->count());
     }
 }
