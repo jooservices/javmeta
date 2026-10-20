@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Integration;
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
@@ -15,13 +15,13 @@ use Tests\Support\RunsCrawlerxFixtures;
 
 /**
  * Real Postgres, Mongo and Elasticsearch (docker/ci/compose.integration.yml,
- * run through docker/ci/integration). Postgres is reset by RefreshDatabase;
+ * run through docker/ci/integration). Postgres is migrated per test so persister transactions can commit;
  * the Mongo archive database and the test ES indices are dropped before each
  * test. Only the embedder is faked (it is a large model image).
  */
 abstract class IntegrationTestCase extends BaseTestCase
 {
-    use RefreshDatabase;
+    use DatabaseMigrations;
     use RunsCrawlerxFixtures;
 
     protected const EMBED_DIM = 384;

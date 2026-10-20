@@ -86,8 +86,9 @@ final class MoviePipelineTest extends IntegrationTestCase
 
         $this->artisan('search:backfill-embeddings', ['--entity' => 'movies'])
             ->assertSuccessful()
-            ->expectsOutputToContain('Found: 1')
-            ->expectsOutputToContain('Re-indexed: 1');
+            ->expectsOutputToContain('Scanned: 1')
+            ->expectsOutputToContain('Missing: 1')
+            ->expectsOutputToContain('Fixed: 1');
 
         $document = $this->esDocument($index, (string) $movie->uuid);
         self::assertNotNull($document, 'Backfilled Elasticsearch movie document missing');

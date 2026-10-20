@@ -45,8 +45,17 @@ final class RedisQueueTest extends IntegrationTestCase
             $this->assertSame(0, LaravelCrawlQueue::readyDepth($soakQueue));
 
             $names = config('javmeta_queues.names');
+            $defaultListingQueue = $names[CrawlQueue::KIND_LISTING];
             $names[CrawlQueue::KIND_LISTING] = $listingQueue;
-            config(['javmeta_queues.names' => $names]);
+            $feedPoolNames = config('javmeta_queues.feed_pool_names', array_values($names));
+            $feedPoolNames = array_map(
+                static fn(string $queueName): string => $queueName === $defaultListingQueue ? $listingQueue : $queueName,
+                $feedPoolNames,
+            );
+            config([
+                'javmeta_queues.names' => $names,
+                'javmeta_queues.feed_pool_names' => $feedPoolNames,
+            ]);
             $pending = CrawlQueue::factory()->create([
                 'source_slug' => fake()->slug(2),
                 'kind' => CrawlQueue::KIND_LISTING,

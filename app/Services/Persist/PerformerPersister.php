@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Persist;
 
 use App\Data\Crawl\PerformerDraft;
+use App\Jobs\IndexPerformerJob;
 use App\Models\Performer;
 use App\Models\PerformerAlias;
 use App\Models\PerformerMedia;
@@ -12,7 +13,6 @@ use App\Models\PerformerSource;
 use App\Services\Archive\MongoSiteArchive;
 use App\Services\Crawl\PerformerDraftSink;
 use App\Services\Identity\PerformerIdentityService;
-use App\Services\Search\ElasticsearchIndexer;
 use App\Observability\ObservabilityEmitter;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -24,13 +24,18 @@ final class PerformerPersister implements PerformerDraftSink
 {
     public function __construct(
         private readonly MongoSiteArchive $archive,
-        private readonly ElasticsearchIndexer $searchIndex,
         private readonly PerformerIdentityService $identity,
     ) {}
 
     public function accept(PerformerDraft $draft): void
     {
         $this->persistPerformer($draft);
+    }
+
+    /** Same as persistPerformer(); the name the rest of the application and its tests use. */
+    public function persist(PerformerDraft $draft, ?array $rawPayload = null): Performer
+    {
+        return $this->persistPerformer($draft, $rawPayload);
     }
 
     public function persistPerformer(PerformerDraft $draft, ?array $rawPayload = null): Performer
@@ -161,8 +166,10 @@ final class PerformerPersister implements PerformerDraftSink
         $canonicalId = $this->identity->reconcileSource($source);
         $this->identity->syncSourceContributions($source->refresh());
         $canonicalPerformer = Performer::query()->with(['aliases', 'sources'])->find($canonicalId);
-        if ($canonicalPerformer instanceof Performer) {
-            $this->searchIndex->indexPerformer($canonicalPerformer);
+        if ($canonicalPerformer instanceof Performer && (bool) config('elasticsearch.enabled', true)) {
+            IndexPerformerJob::dispatch((int) $canonicalPerformer->getKey())
+                ->onQueue((string) config('javmeta_queues.search_queue', 'search'))
+                ->afterCommit();
         }
     }
 
