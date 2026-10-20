@@ -22,7 +22,9 @@ the official mongosh package for the same architecture. The env file supplies
 <code>BACKUP_ROOT=/backups</code>, <code>BACKUP_NAMESPACE</code>,
 <code>AGE_RECIPIENT</code>, <code>PGHOST</code>, <code>PGPORT</code>, <code>PGUSER</code>,
 <code>PGPASSWORD</code>, <code>PGDATABASE</code>, <code>MONGO_URI</code>,
-<code>ELASTICSEARCH_HOST</code>, and <code>ELASTICSEARCH_SNAPSHOT_PATH</code>. Keep the
+<code>ELASTICSEARCH_HOST</code>, and <code>ELASTICSEARCH_SNAPSHOT_PATH</code>. Elasticsearch with security
+enabled also needs <code>ELASTICSEARCH_API_KEY</code>, or <code>ELASTICSEARCH_USERNAME</code> and <code>ELASTICSEARCH_PASSWORD</code>
+(a login inside <code>ELASTICSEARCH_HOST</code> still works); they reach curl through its stdin config, never the command line. Keep the
 private age identity separate from the public recipient and backup artifacts.
 The script does not print connection values.
 
