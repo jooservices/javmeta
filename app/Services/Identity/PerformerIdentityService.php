@@ -729,19 +729,26 @@ final class PerformerIdentityService
         return $dryRun ? $missing : [];
     }
 
-    /** @param list<int> $performerIds */
+    /**
+     * Indexes after the outermost transaction commits, so a rolled-back crawl never reaches Elasticsearch.
+     *
+     * @param list<int> $performerIds
+     */
     private function reindexPerformers(array $performerIds): void
     {
-        foreach (array_unique($performerIds) as $performerId) {
-            $performer = Performer::query()->whereKey($performerId)
-                ->with(['aliases', 'sources'])
-                ->first();
-            if ($performer instanceof Performer && $performer->canonical_performer_id === null) {
-                $this->indexer->indexPerformer($performer);
-            } elseif ($performer instanceof Performer) {
-                $this->indexer->forgetPerformer($performer);
+        $performerIds = array_values(array_unique($performerIds));
+        DB::afterCommit(function () use ($performerIds): void {
+            foreach ($performerIds as $performerId) {
+                $performer = Performer::query()->whereKey($performerId)
+                    ->with(['aliases', 'sources'])
+                    ->first();
+                if ($performer instanceof Performer && $performer->canonical_performer_id === null) {
+                    $this->indexer->indexPerformer($performer);
+                } elseif ($performer instanceof Performer) {
+                    $this->indexer->forgetPerformer($performer);
+                }
             }
-        }
+        });
     }
 
     private function dateString(mixed $value): ?string

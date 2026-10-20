@@ -229,6 +229,32 @@ final class PerformerIdentityIngestionTest extends TestCase
         }
     }
 
+    public function test_rolled_back_crawl_sends_no_elasticsearch_write_and_committed_state_is_indexed(): void
+    {
+        config()->set([
+            'elasticsearch.enabled' => true,
+            'elasticsearch.embedder_enabled' => false,
+            'elasticsearch.host' => 'http://elasticsearch.test',
+        ]);
+        Http::fake(static fn() => Http::response(['result' => 'created']));
+
+        try {
+            DB::transaction(function (): void {
+                $this->persistMovie('SSIS-001', 'javdb', [PerformerDraft::from('javdb', 'p1', 'Aoi Sakura')]);
+                throw new \RuntimeException('crawl failed');
+            });
+            self::fail('The transaction should have rolled back.');
+        } catch (\RuntimeException) {
+        }
+
+        Http::assertNothingSent();
+
+        DB::transaction(fn() => $this->persistMovie('SSIS-002', 'javdb', [PerformerDraft::from('javdb', 'p2', 'Mio Tanaka')]));
+
+        $needle = '/' . (string) config('elasticsearch.performers_index') . '/_doc/' . (string) Performer::query()->value('uuid');
+        Http::assertSent(static fn(Request $request): bool => str_contains($request->url(), $needle));
+    }
+
     public function test_reconciliation_returns_the_actual_root_after_a_concurrent_merge(): void
     {
         $keeper = $this->persistOne('javdb', 'p1', 'Aoi Sakura', '1990-01-01');
