@@ -54,6 +54,6 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
         });
 
         Route::get('movies', [MovieSearchController::class, 'index'])
-            ->middleware([AuthenticateApiKey::class, 'requires:postgres', 'requires:elasticsearch', LogApiUsage::class]);
+            ->middleware([AuthenticateApiKey::class, 'requires:postgres', LogApiUsage::class]);
     });
 });

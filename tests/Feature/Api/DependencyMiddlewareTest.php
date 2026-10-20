@@ -25,15 +25,14 @@ final class DependencyMiddlewareTest extends TestCase
         DependencyMonitorTestHelper::bind();
     }
 
-    public function test_movie_search_returns_503_when_elasticsearch_is_down(): void
+    public function test_movie_search_returns_database_results_when_elasticsearch_is_down(): void
     {
+        $movie = Movie::factory()->create(['title_en' => 'Quiet Harbor']);
         DependencyMonitorTestHelper::bind([Dependency::Elasticsearch->value => false]);
 
-        $this->getJson('/api/v1/movies', ['X-API-Key' => $this->apiKey])
-            ->assertServiceUnavailable()
-            ->assertHeader('Retry-After', '30')
-            ->assertJsonPath('type', 'dependency_unavailable')
-            ->assertJsonPath('title', 'Dependency Unavailable');
+        $this->getJson('/api/v1/movies?q=quiet%20harbor', ['X-API-Key' => $this->apiKey])
+            ->assertOk()
+            ->assertJsonPath('data.0.title_en', $movie->title_en);
     }
 
     public function test_movie_lookup_remains_available_when_elasticsearch_is_down(): void
@@ -61,7 +60,7 @@ final class DependencyMiddlewareTest extends TestCase
             ->assertJsonPath('type', 'dependency_unavailable');
     }
 
-    public function test_unauthenticated_search_still_returns_401_before_dependency_gates(): void
+    public function test_unauthenticated_search_still_returns_401_when_elasticsearch_is_down(): void
     {
         DependencyMonitorTestHelper::bind([Dependency::Elasticsearch->value => false]);
 

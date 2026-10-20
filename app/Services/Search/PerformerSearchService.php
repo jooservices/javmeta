@@ -6,6 +6,8 @@ namespace App\Services\Search;
 
 use App\Models\Performer;
 use App\Repositories\PerformerRepository;
+use App\Services\Dependencies\Dependency;
+use App\Services\Dependencies\DependencyMonitor;
 use Illuminate\Support\Collection;
 
 /**
@@ -17,6 +19,7 @@ final class PerformerSearchService
     public function __construct(
         private readonly ElasticsearchIndexer $elasticsearch,
         private readonly PerformerRepository $performers,
+        private readonly DependencyMonitor $dependencies,
     ) {}
 
     /**
@@ -24,7 +27,12 @@ final class PerformerSearchService
      */
     public function semanticSearch(string $query, int $perPage): array
     {
-        if (app()->environment('testing')) {
+        if (
+            ! (bool) config('elasticsearch.enabled', true)
+            || app()->environment('testing')
+            || ! $this->dependencies->isAvailable(Dependency::Elasticsearch)
+            || ! $this->dependencies->isAvailable(Dependency::Embedder)
+        ) {
             return $this->performers->search(['q' => $query], 'name', null, $perPage);
         }
 

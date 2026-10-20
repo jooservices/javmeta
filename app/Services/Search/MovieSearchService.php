@@ -6,6 +6,8 @@ namespace App\Services\Search;
 
 use App\Models\Movie;
 use App\Repositories\MovieRepository;
+use App\Services\Dependencies\Dependency;
+use App\Services\Dependencies\DependencyMonitor;
 use Illuminate\Support\Collection;
 
 /**
@@ -18,6 +20,7 @@ final class MovieSearchService
     public function __construct(
         private readonly ElasticsearchIndexer $elasticsearch,
         private readonly MovieRepository $movies,
+        private readonly DependencyMonitor $dependencies,
     ) {}
 
     /**
@@ -29,7 +32,13 @@ final class MovieSearchService
     {
         $q = $filters['q'] ?? null;
 
-        if ($this->canUseElasticsearch($filters, $sort, $cursor) && is_string($q) && trim($q) !== '') {
+        if (
+            (bool) config('elasticsearch.enabled', true)
+            && $this->canUseElasticsearch($filters, $sort, $cursor)
+            && is_string($q)
+            && trim($q) !== ''
+            && $this->dependencies->isAvailable(Dependency::Elasticsearch)
+        ) {
             $uuids = $this->elasticsearch->searchMovieUuids(trim($q), min(100, max($perPage * 5, $perPage)));
             if ($uuids !== []) {
                 $pageUuids = array_slice($uuids, 0, $perPage);
@@ -83,7 +92,12 @@ final class MovieSearchService
      */
     public function semanticSearch(string $query, int $perPage): array
     {
-        if (app()->environment('testing')) {
+        if (
+            ! (bool) config('elasticsearch.enabled', true)
+            || app()->environment('testing')
+            || ! $this->dependencies->isAvailable(Dependency::Elasticsearch)
+            || ! $this->dependencies->isAvailable(Dependency::Embedder)
+        ) {
             return $this->movies->search(['q' => $query], 'relevance', null, $perPage);
         }
 

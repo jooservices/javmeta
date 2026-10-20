@@ -81,8 +81,16 @@ jobs:
 
           for run in 1 2 3; do
             printf 'Composer test stability run %s/3\n' "${run}"
-            output="$(docker/ci/run composer test)"
+            set +e
+            output="$(docker/ci/run composer test 2>&1)"
+            test_status=$?
+            set -e
             printf '%s\n' "${output}"
+            if [[ "${test_status}" -ne 0 ]]; then
+              printf 'Composer test stability run %s failed with exit code %s.\n' \
+                "${run}" "${test_status}" >&2
+              exit "${test_status}"
+            fi
 
             # PHPUnit 12 colours its summary in CI; strip ANSI escapes before parsing.
             plain_output="$(printf '%s\n' "${output}" | sed -E $'s/\x1b\\[[0-9;]*[A-Za-z]//g')"

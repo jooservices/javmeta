@@ -35,6 +35,7 @@ final class MovieSearchRequest extends FormRequest
             'sort' => ['sometimes', 'in:relevance,release_date,update_date,rating'],
             'cursor' => ['sometimes', 'string'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'semantic' => ['sometimes', 'in:0,1,true,false'],
         ];
     }
 
@@ -55,6 +56,20 @@ final class MovieSearchRequest extends FormRequest
             // AC-4.5: a term made only of symbols is not searchable.
             if (is_string($q) && $q !== '' && preg_match('/[\p{L}\p{N}]/u', $q) !== 1) {
                 $validator->errors()->add('q', 'The q parameter must contain at least one letter or digit.');
+            }
+
+            if ($this->boolean('semantic')) {
+                if (! is_string($q) || $q === '') {
+                    $validator->errors()->add('q', 'The q parameter is required for semantic search.');
+                }
+
+                if ($this->hasAny([
+                    'code', 'genre', 'actress', 'maker', 'series', 'label',
+                    'released_from', 'released_to', 'runtime_min', 'runtime_max',
+                    'censored', 'sort', 'cursor',
+                ])) {
+                    $validator->errors()->add('semantic', 'Semantic search supports only q and per_page.');
+                }
             }
 
             $from = $this->input('released_from');
@@ -91,7 +106,7 @@ final class MovieSearchRequest extends FormRequest
     public function filters(): array
     {
         $filters = $this->validated();
-        unset($filters['sort'], $filters['cursor'], $filters['per_page']);
+        unset($filters['sort'], $filters['cursor'], $filters['per_page'], $filters['semantic']);
 
         if (array_key_exists('censored', $filters)) {
             $filters['censored'] = in_array($filters['censored'], [1, '1', 'censored'], true)
