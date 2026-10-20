@@ -1,4 +1,25 @@
-# API field catalog
+# API contract
+
+## Public endpoint contract
+
+`tests/Feature/Api/PublicApiContractTest.php` exercises the public routes and the success and error behavior below.
+Except for `GET /api/health`, the routes require an active key in the `X-API-Key` header. Missing, invalid, and revoked
+keys return HTTP 401 with problem type `unauthorized`. Every protected route uses the key's requests-per-minute limit;
+an exceeded limit returns HTTP 429 with type `rate_limited` and a `Retry-After` header.
+
+Problem responses use `application/problem+json` and include `type`, `title`, `status`, and a human-readable `detail`.
+Invalid filters return HTTP 400 with type `invalid_filter`, a `detail` message, and an `errors` map.
+
+| Route | Success contract | Documented errors |
+|---|---|---|
+| `GET /api/v1/movies/{code}` | Returns one movie resource in `data`. Codes are normalized before lookup; lowercase, omitted hyphens, surrounding spaces, and omitted leading zeros resolve to the stored display code. | `401 unauthorized`, `404 movie_not_found`, `429 rate_limited` |
+| `GET /api/v1/movies` | Returns movie summaries in `data` and cursor metadata in `meta.pagination`, including the unchanged matching `total`. Following the final non-empty page's `next_cursor` returns `data: []`, `has_more: false`, the same `total`, and a null `next_cursor`. | `400 invalid_filter` for invalid filters, `401 unauthorized`, `429 rate_limited` |
+| `POST /api/v1/movies:bulk` | Accepts a `codes` array and returns one `found` or `not_found` entry for each unique normalized code, with the movie resource or `null`. | `400 invalid_filter` for an invalid `codes` value, `401 unauthorized`, `413 bulk_limit_exceeded` above 100 codes, `429 rate_limited` |
+| `GET /api/v1/performers` | Returns performer summaries in `data` and pagination metadata in `meta.pagination`. | `400 invalid_filter` for invalid filters, `401 unauthorized`, `429 rate_limited` |
+| `GET /api/v1/performers/{id}` | Returns one performer resource in `data`; `id` accepts the numeric identifier or UUID. | `401 unauthorized`, `404 performer_not_found`, `429 rate_limited` |
+| `GET /api/v1/meta/genres` | Returns a sorted, deduplicated array containing the union of raw genre labels, falling back to normalized labels when no raw label exists. | `401 unauthorized`, `429 rate_limited` |
+| `GET /api/v1/auth/verify` | Returns `data.status: "ok"` for an active key. | `401 unauthorized`, `429 rate_limited` |
+| `GET /api/health` | Public health payload reports `ok`, `degraded`, or `down`; `ok` and `degraded` return HTTP 200, while `down` returns HTTP 503. | None |
 
 `GET /api/v1/movies/{code}`, `GET /api/v1/performers/{id}` and the MCP tools `get_movie` and `get_performer`
 return the same resources, so the field sets below apply to REST and MCP alike. Missing data is `null` (or an
