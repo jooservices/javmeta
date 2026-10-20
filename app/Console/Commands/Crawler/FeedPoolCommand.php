@@ -31,8 +31,17 @@ final class FeedPoolCommand extends Command
     {
         $limit = max(1, (int) $this->option('limit'));
         $depthLimit = max(1, (int) config('javmeta_queues.depth_limit', 100));
-        /** @var array<string, string> $queues */
-        $queues = config('javmeta_queues.names', []);
+        /** @var array<string, string> $crawlQueueNames */
+        $crawlQueueNames = config('javmeta_queues.names', []);
+        /** @var list<string> $feedPoolNames */
+        $feedPoolNames = config('javmeta_queues.feed_pool_names', array_values($crawlQueueNames));
+        $queues = [];
+        foreach ($feedPoolNames as $queueName) {
+            $kind = array_search($queueName, $crawlQueueNames, true);
+            if (is_string($kind)) {
+                $queues[$kind] = $queueName;
+            }
+        }
         $workerId = gethostname() . ':' . getmypid();
         $dispatched = 0;
         $traceId = TraceContext::newTraceId();

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Persist;
 
 use App\Data\Crawl\MovieDraft;
+use App\Jobs\IndexMovieJob;
 use App\Models\CrawlRun;
 use App\Models\Genre;
 use App\Models\Performer;
@@ -71,7 +72,6 @@ final class MoviePersister implements MovieDraftSink
         private readonly SourceThrottle $throttle,
         private readonly SourceActivityRecorder $activity,
         private readonly \App\Services\Archive\MongoSiteArchive $archive,
-        private readonly \App\Services\Search\ElasticsearchIndexer $searchIndex,
     ) {}
 
     public function accept(MovieDraft $draft, bool $isRecrawl = false): void
@@ -161,7 +161,8 @@ final class MoviePersister implements MovieDraftSink
             return $movie->refresh();
         });
 
-        $this->archiveAndIndex($movie, $draft);
+        $this->dispatchIndex($movie);
+        $this->archive($movie, $draft);
 
         app(ObservabilityEmitter::class)->emitPersist('movie', [
             'source_slug' => $draft->sourceSlug,
@@ -174,7 +175,18 @@ final class MoviePersister implements MovieDraftSink
         return $movie;
     }
 
-    private function archiveAndIndex(Movie $movie, MovieDraft $draft): void
+    private function dispatchIndex(Movie $movie): void
+    {
+        if (! (bool) config('elasticsearch.enabled', true)) {
+            return;
+        }
+
+        IndexMovieJob::dispatch((int) $movie->getKey())
+            ->onQueue((string) config('javmeta_queues.search_queue', 'search'))
+            ->afterCommit();
+    }
+
+    private function archive(Movie $movie, MovieDraft $draft): void
     {
         $payload = [
             'code' => $draft->code,
@@ -210,8 +222,6 @@ final class MoviePersister implements MovieDraftSink
                 ],
             );
         }
-
-        $this->searchIndex->indexMovie($movie->fresh(['genres', 'performers']) ?? $movie);
     }
 
     private function appendObservations(int $movieId, MovieDraft $draft, CarbonImmutable $crawledAt): void
