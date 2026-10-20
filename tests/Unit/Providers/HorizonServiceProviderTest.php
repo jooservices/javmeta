@@ -12,6 +12,7 @@ final class HorizonServiceProviderTest extends TestCase
     {
         $names = ['listing', 'detail', 'performer_listing', 'performer_detail', 'gallery', 'search'];
         $this->assertSame($names, config('javmeta_queues.horizon_names'));
+        $this->assertSame($names, config('javmeta_queues.feed_pool_names'));
         $expectedSupervisorNames = array_map(static fn(string $name): string => 'crawler-' . $name, $names);
 
         foreach (['production', 'local', 'testing'] as $environment) {
