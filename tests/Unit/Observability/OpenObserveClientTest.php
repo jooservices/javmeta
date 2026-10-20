@@ -95,26 +95,82 @@ final class OpenObserveClientTest extends TestCase
             'openobserve.url' => 'http://openobserve.test',
             'openobserve.org' => 'jav meta',
             'openobserve.service_name' => 'javmeta',
+            'app.env' => 'staging',
+            'dependencies.role' => 'scheduler',
         ]);
         Http::fake(['openobserve.test/*' => Http::response([], 200)]);
 
         $client = new OpenObserveClient(new TelemetrySanitizer());
-        $client->ingestMetrics([[
-            'name' => 'crawl.items',
-            'value' => 3,
-            'labels' => ['source' => 'javdb'],
-        ]]);
+        $client->ingestMetrics([
+            [
+                'name' => 'crawl.items',
+                'value' => 3,
+                'labels' => ['source' => 'javdb'],
+            ],
+            [
+                'name' => 'crawl.errors',
+                'value' => 1,
+                'labels' => ['source' => 'onejav', 'environment' => 'production', 'role' => 'api'],
+            ],
+        ]);
 
         Http::assertSent(static function (ClientRequest $request): bool {
-            $metric = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'][0];
+            $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'];
+            $metric = $metrics[0];
+            $secondAttributes = $metrics[1]['gauge']['dataPoints'][0]['attributes'] ?? [];
 
             return $request->url() === 'http://openobserve.test/api/jav%20meta/v1/metrics'
+                && count($metrics) === 2
                 && $metric['name'] === 'crawl.items'
                 && $metric['gauge']['dataPoints'][0]['asDouble'] === 3.0
                 && $metric['gauge']['dataPoints'][0]['attributes'] === [[
                     'key' => 'source',
                     'value' => ['stringValue' => 'javdb'],
-                ]];
+                ], [
+                    'key' => 'environment',
+                    'value' => ['stringValue' => 'staging'],
+                ], [
+                    'key' => 'role',
+                    'value' => ['stringValue' => 'scheduler'],
+                ]]
+                && collect($secondAttributes)->contains([
+                    'key' => 'environment',
+                    'value' => ['stringValue' => 'staging'],
+                ])
+                && collect($secondAttributes)->contains([
+                    'key' => 'role',
+                    'value' => ['stringValue' => 'scheduler'],
+                ]);
+        });
+    }
+
+    public function test_every_log_record_is_labeled_with_the_configured_environment_and_role(): void
+    {
+        config()->set([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.stream_logs' => 'javmeta_logs',
+            'openobserve.service_name' => 'javmeta',
+            'app.env' => 'staging',
+            'dependencies.role' => 'worker',
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response([], 200)]);
+
+        $client = new OpenObserveClient(new TelemetrySanitizer());
+        $client->ingestLogs([
+            ['message' => 'first', 'level' => 'info'],
+            ['message' => 'second', 'level' => 'warning', 'environment' => 'local', 'role' => 'api'],
+        ]);
+
+        Http::assertSent(static function (ClientRequest $request): bool {
+            $records = $request->data();
+
+            return $request->url() === 'http://openobserve.test/api/default/javmeta_logs/_json'
+                && count($records) === 2
+                && collect($records)->every(static fn(array $record): bool => ($record['environment'] ?? null) === 'staging'
+                    && ($record['role'] ?? null) === 'worker'
+                    && ($record['service'] ?? null) === 'javmeta');
         });
     }
 

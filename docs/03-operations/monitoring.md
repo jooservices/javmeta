@@ -282,6 +282,11 @@ Dashboard and scheduled alert definitions are versioned in
 the named resources and its Telegram webhook destination; `--dry-run` reads
 and validates the files without contacting OpenObserve. The command reads
 OpenObserve and Telegram credentials only from environment configuration.
+The `JAVMETA Operations` dashboard includes queue depth, crawl errors grouped
+by source and error code, source freshness, and pages fetched by source in the
+previous hour. Application logs and metric points carry the `APP_ENV` value as
+the `environment` label and `JAVMETA_ROLE` as `role`; staging runtimes should
+therefore report `environment=staging`.
 
 Run the offline plan in the CI/PHP image:
 
@@ -303,7 +308,9 @@ docker/ci/observability-import-shared
 The helper runs through `docker/dev/shared-run` in the shared PHP runtime and starts no
 container or Compose stack. The second run should update the same named resources
 without creating duplicates. Keep Telegram test credentials out of project `.env` files
-and source control.
+and source control. For the staging log, metric, and dashboard check against the
+approved shared staging organisation, follow
+[`telemetry.md`](telemetry.md#staging-manual-check).
 
 ### Failure injection: stale source alert
 
