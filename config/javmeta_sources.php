@@ -30,6 +30,9 @@ return [
             )),
         ],
         'loop' => [
+            // Re-read page-one listing seeds on this interval even while later pages are still being crawled.
+            // Env: JAVMETA_FRESH_INTERVAL_MINUTES.
+            'fresh_interval_minutes' => max(1, (int) env('JAVMETA_FRESH_INTERVAL_MINUTES', 60)),
             // When every listing page of a source has been crawled (the last page has no next page) the
             // listing is started again from page 1 after this many seconds. Env: JAVMETA_LOOP_PAUSE_SECONDS.
             'pause_seconds' => max(0, (int) env('JAVMETA_LOOP_PAUSE_SECONDS', 300)),

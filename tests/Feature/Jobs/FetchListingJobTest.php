@@ -56,10 +56,43 @@ final class FetchListingJobTest extends TestCase
         $this->assertDatabaseHas('crawl_queue', ['source_slug' => 'onejav', 'url' => 'https://onejav.com/torrent/abc123', 'kind' => CrawlQueue::KIND_DETAIL]);
         $this->assertDatabaseHas('crawl_queue', ['source_slug' => 'onejav', 'url' => 'https://onejav.com/new?page=2', 'kind' => CrawlQueue::KIND_LISTING]);
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
+        $this->assertEqualsWithDelta(
+            now()->addMinutes((int) config('javmeta_sources.defaults.loop.fresh_interval_minutes', 60))->getTimestamp(),
+            $row->fresh()->next_attempt_at?->getTimestamp(),
+            3,
+        );
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => 'listing_parsed']);
         $this->assertNotNull(Source::query()->find('onejav')?->last_success_at);
         self::assertNotNull($source->refresh()->last_success_at);
         self::assertLessThan(2.0, (float) $source->refresh()->gap_seconds_current);
+    }
+
+    public function test_recrawled_listing_does_not_requeue_a_known_detail_page(): void
+    {
+        $source = $this->source('onejav');
+        $row = $this->listingRow($source);
+        $detailUrl = 'https://onejav.com/torrent/abc123';
+        $detail = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'url' => $detailUrl,
+            'kind' => CrawlQueue::KIND_DETAIL,
+            'status' => CrawlQueue::STATUS_DONE,
+            'attempts' => 1,
+        ]);
+
+        $this->fakeClient(CrawlerxFetchResult::success(new CrawlListResultDto(
+            url: 'https://onejav.com/new',
+            page: 1,
+            entityType: 'movie',
+            items: [$this->movieItem($detailUrl, 'ABC-123')],
+            pagination: new CrawlPaginationDto(currentPage: 1, lastPage: null, nextPage: null, nextUrl: null, hasNextPage: false),
+        )));
+
+        FetchListingJob::dispatch($row->id);
+
+        self::assertSame(CrawlQueue::STATUS_DONE, $detail->refresh()->status);
+        self::assertSame(1, $detail->attempts);
+        self::assertSame(1, CrawlQueue::query()->where('source_slug', $source->slug)->where('url', $detailUrl)->count());
     }
 
     public function test_success_enqueues_items_by_next_crawl_type_hint(): void

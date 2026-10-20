@@ -62,12 +62,84 @@ final class SeedCommandTest extends TestCase
     {
         $this->syncSources();
         $seed = $this->row('javdb', 'https://javdb.com/', CrawlQueue::KIND_LISTING, CrawlQueue::STATUS_DONE);
+        $seed->forceFill(['next_attempt_at' => now()->addMinutes(60)])->save();
         $page2 = $this->row('javdb', 'https://javdb.com/?page=2', CrawlQueue::KIND_LISTING, CrawlQueue::STATUS_PENDING);
 
         $this->artisan('crawler:seed', ['--source' => 'javdb'])->assertSuccessful();
 
         $this->assertSame(CrawlQueue::STATUS_DONE, $seed->refresh()->status);
         $this->assertNotNull(CrawlQueue::query()->find($page2->id));
+    }
+
+    public function test_page_one_is_refreshed_on_schedule_while_the_listing_chain_continues(): void
+    {
+        config()->set('javmeta_sources.defaults.loop.fresh_interval_minutes', 60);
+        $start = now()->startOfMinute();
+        $this->travelTo($start);
+        $this->syncSources();
+        $seed = $this->row('javdb', 'https://javdb.com/', CrawlQueue::KIND_LISTING, CrawlQueue::STATUS_DONE);
+        $seed->forceFill(['next_attempt_at' => $start->copy()->addMinutes(60)])->save();
+        $page2 = $this->row('javdb', 'https://javdb.com/?page=2', CrawlQueue::KIND_LISTING, CrawlQueue::STATUS_PENDING);
+        $detail = $this->row('javdb', 'https://javdb.com/v/abc', CrawlQueue::KIND_DETAIL, CrawlQueue::STATUS_DONE);
+
+        $this->travelTo($start->copy()->addMinutes(59));
+        $this->artisan('crawler:seed', ['--source' => 'javdb'])->assertSuccessful();
+        $this->assertSame(CrawlQueue::STATUS_DONE, $seed->refresh()->status);
+
+        $this->travelTo($start->copy()->addMinutes(60));
+        $this->artisan('crawler:seed', ['--source' => 'javdb'])->assertSuccessful();
+
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $seed->refresh()->status);
+        $this->assertSame(0, $seed->attempts);
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $page2->refresh()->status);
+        $this->assertSame(CrawlQueue::STATUS_DONE, $detail->refresh()->status);
+
+        $this->artisan('crawler:seed', ['--source' => 'javdb'])->assertSuccessful();
+
+        $this->assertSame(1, CrawlQueue::query()->where('source_slug', 'javdb')->where('url', 'https://javdb.com/')->count());
+        $this->assertSame(1, CrawlQueue::query()->where('source_slug', 'javdb')->where('url', 'https://javdb.com/v/abc')->count());
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $seed->refresh()->status);
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $page2->refresh()->status);
+    }
+
+    public function test_performer_page_one_is_refreshed_on_schedule(): void
+    {
+        config()->set('javmeta_sources.defaults.loop.fresh_interval_minutes', 15);
+        $start = now()->startOfMinute();
+        $this->travelTo($start);
+        $this->syncSources();
+        $seedUrl = 'https://www.javlibrary.com/en/star_list.php';
+        $seed = $this->row('javlibrary', $seedUrl, CrawlQueue::KIND_PERFORMER_LISTING, CrawlQueue::STATUS_DONE);
+        $seed->forceFill(['next_attempt_at' => $start->copy()->addMinutes(15)])->save();
+        $page2 = $this->row('javlibrary', 'https://www.javlibrary.com/en/star_list.php?page=2', CrawlQueue::KIND_PERFORMER_LISTING, CrawlQueue::STATUS_PENDING);
+
+        $this->travelTo($start->copy()->addMinutes(15));
+        $this->artisan('crawler:seed', ['--source' => 'javlibrary'])->assertSuccessful();
+
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $seed->refresh()->status);
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $page2->refresh()->status);
+        $this->assertSame(1, CrawlQueue::query()->where('source_slug', 'javlibrary')->where('url', $seedUrl)->count());
+    }
+
+    public function test_failed_page_one_retries_after_the_fresh_interval_while_later_pages_are_pending(): void
+    {
+        config()->set('javmeta_sources.defaults.loop.fresh_interval_minutes', 10);
+        $start = now()->startOfMinute();
+        $this->travelTo($start);
+        $this->syncSources();
+        $seed = $this->row('javdb', 'https://javdb.com/', CrawlQueue::KIND_LISTING, CrawlQueue::STATUS_FAILED);
+        $seed->forceFill(['last_failed_at' => $start])->save();
+        $page2 = $this->row('javdb', 'https://javdb.com/?page=2', CrawlQueue::KIND_LISTING, CrawlQueue::STATUS_PENDING);
+
+        $this->travelTo($start->copy()->addMinutes(9));
+        $this->artisan('crawler:seed', ['--source' => 'javdb'])->assertSuccessful();
+        $this->assertSame(CrawlQueue::STATUS_FAILED, $seed->refresh()->status);
+
+        $this->travelTo($start->copy()->addMinutes(10));
+        $this->artisan('crawler:seed', ['--source' => 'javdb'])->assertSuccessful();
+
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $seed->refresh()->status);
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $page2->refresh()->status);
     }
 
     public function test_a_failed_seed_page_is_tried_again_when_the_listing_is_finished(): void
