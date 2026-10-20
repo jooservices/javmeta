@@ -17,7 +17,6 @@ use App\Models\PerformerAlias;
 use App\Models\PerformerMedia;
 use App\Services\Auth\ApiKeyService;
 use App\Services\Crawl\WorkerHeartbeat;
-use App\Services\Search\ElasticsearchIndexer;
 use App\Support\Code\NormalizedCode;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -272,32 +271,6 @@ abstract class E2ETestCase extends TestCase
         return $this->runCrawlOnce($seed);
     }
 
-    /**
-     * Queries the movie index directly: keyword relevance, or kNN over the vectors that the stub embedder produced.
-     *
-     * @return list<string> display codes
-     */
-    protected function searchIndex(string $mode, string $query): array
-    {
-        $indexer = app(ElasticsearchIndexer::class);
-        $deadline = microtime(true) + 10;
-
-        do {
-            self::refreshMovieIndex();
-            $uuids = match ($mode) {
-                'text' => $indexer->searchMovieUuids($query),
-                'semantic' => $indexer->semanticMovieUuids($query),
-                default => throw new RuntimeException('Unknown index search mode ' . $mode . '.'),
-            };
-            if ($uuids !== []) {
-                return Movie::query()->whereIn('uuid', $uuids)->pluck('display_code')->map(static fn(mixed $code): string => (string) $code)->values()->all();
-            }
-            usleep(200_000);
-        } while (microtime(true) < $deadline);
-
-        return [];
-    }
-
     private static function refreshMovieIndex(): void
     {
         // A bodyless GET through the authenticated client: _refresh rejects an empty JSON body.
@@ -349,9 +322,6 @@ abstract class E2ETestCase extends TestCase
             [PHP_BINARY, 'artisan', 'serve', '--host=127.0.0.1', '--port=' . $appPort],
             [0 => ['pipe', 'r'], 1 => ['file', self::$appLog, 'a'], 2 => ['file', self::$appLog, 'a']],
             $pipes,
-            null,
-            // Outside the "testing" environment the MCP search takes the real Elasticsearch kNN path with the stub embedder.
-            array_merge(getenv(), ['APP_ENV' => 'e2e']),
         );
         if (! is_resource(self::$appProcess)) {
             throw new RuntimeException('Could not start the JAVmeta E2E HTTP application.');

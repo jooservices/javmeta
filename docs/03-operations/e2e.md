@@ -20,7 +20,6 @@ shared PHP runtime; `docker/ci/e2e-shared` (or `JAVMETA_MODE=wt:<id> docker/ci/e
 | `SeedCatalog`, `SeedFixtureSource`, `RunCrawlOnce` | Create deterministic API data and run the real crawler/persistence pipeline against a checked-in fixture. |
 | `FindCrawledMovie` | Find the fixture-crawled movie over REST by code lookup, by the `code` filter or by text search, or expect a rejected request (401) without catalog data. |
 | `McpFindCrawledMovie` | Find the fixture-crawled movie through the MCP tools `get_movie`, `lookup_movies` and `search`, or expect a rejected call (401) without a tool result. |
-| `QuerySearchIndex` | Query the Elasticsearch movie index directly, by keyword relevance or by kNN over the vectors that the stub embedder produced during the crawl. |
 | `RunCrawlOutage`, `CheckSourceHealth` | Crawl while the source answers 503 (the crawl fails, nothing is persisted) and check how `/api/health` reports the source: failing, then recovered. |
 
 ## Acceptance coverage
@@ -34,15 +33,12 @@ shared PHP runtime; `docker/ci/e2e-shared` (or `JAVMETA_MODE=wt:<id> docker/ci/e
 | AC-9: health, source success and public response boundary | J1 | `HealthControllerTest`, `RuntimeDependencyHealthTest` |
 | MCP HTTP lookup/search/count/status | J6 | `McpToolServiceTest`, MCP controller tests |
 | Performer detail and photo references | J5 | performer controller/resource tests |
-| A crawled movie is found by code, text search and semantic search (stub embedder) | J7 | `MoviePipelineTest`, `MovieSearchControllerTest` |
+| A crawled movie is found by code and text search | J7 | `MoviePipelineTest`, `MovieSearchControllerTest` |
 | The same crawled movie is found through MCP | J8 | `McpToolServiceTest`, MCP controller tests |
 | Revoked consumer and MCP keys lose access immediately | J9 | `ApiKeyControllerTest` |
 | A source goes down (crawl fails, health reports it) and comes back (recrawl succeeds) | J10 | `CrawlerxFailureContractTest`, `HealthControllerTest` |
 
-J7 to J10 follow one movie that the real pipeline crawled from the onejav fixture. The served application runs with
-`APP_ENV=e2e` (loopback only), outside `testing`, so the MCP `search` tool takes the real Elasticsearch kNN path with
-the stub embedder in `tests/E2E/Support/embedder-router.php`. J7 calls that tool for the semantic query and also queries
-the index in-process to prove the indexed document and its vector.
+J7 to J10 follow one movie that the real pipeline crawled from the onejav fixture. Semantic search is proven by JAVM-93, not here.
 
 Each reusable step has a unit test with Laravel's fake HTTP transport. The
 journey suite itself talks to the started application over HTTP. Failures name

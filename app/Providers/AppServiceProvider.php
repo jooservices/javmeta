@@ -61,7 +61,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(OpenObserveClient::class);
         $this->app->singleton(ObservabilityEmitter::class);
 
-        if ($this->app->environment(['testing', 'e2e'])) {
+        if ($this->app->environment('testing')) {
             $this->app->singleton(LogStoreInterface::class, ArrayLogStore::class);
         }
 

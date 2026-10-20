@@ -22,7 +22,6 @@ use Tests\E2E\Steps\GetPerformer;
 use Tests\E2E\Steps\ListApiKeys;
 use Tests\E2E\Steps\LookupMovie;
 use Tests\E2E\Steps\McpFindCrawledMovie;
-use Tests\E2E\Steps\QuerySearchIndex;
 use Tests\E2E\Steps\ResetTestState;
 use Tests\E2E\Steps\RevokeApiKey;
 use Tests\E2E\Steps\RunCrawlOnce;
@@ -395,30 +394,6 @@ final class E2EStepTest extends TestCase
             try {
                 (new McpFindCrawledMovie($tool))->run($context);
                 self::fail('The step should reject this context.');
-            } catch (StepFailure $failure) {
-                self::assertStringContainsString($message, $failure->getMessage());
-            }
-        }
-    }
-
-    public function test_index_search_step_passes_the_mode_and_expects_the_crawled_code(): void
-    {
-        $calls = [];
-        $search = static function (string $mode, string $query) use (&$calls): array {
-            $calls[] = [$mode, $query];
-
-            return ($mode === QuerySearchIndex::SEMANTIC && $query === 'free text') || ($mode === QuerySearchIndex::TEXT && $query === 'Fixture title') ? ['SSIS-001'] : [];
-        };
-        $context = $this->context()->withCrawl($this->crawlResult());
-
-        (new QuerySearchIndex($search, QuerySearchIndex::TEXT))->run($context);
-        (new QuerySearchIndex($search, QuerySearchIndex::SEMANTIC, 'free text'))->run($context);
-        self::assertSame([['text', 'Fixture title'], ['semantic', 'free text']], $calls);
-
-        foreach ([[new QuerySearchIndex($search, QuerySearchIndex::SEMANTIC, 'other'), $context, 'did not return'], [new QuerySearchIndex($search, QuerySearchIndex::TEXT), $this->context(), 'No fixture crawl']] as [$step, $failing, $message]) {
-            try {
-                $step->run($failing);
-                self::fail('The step should fail.');
             } catch (StepFailure $failure) {
                 self::assertStringContainsString($message, $failure->getMessage());
             }

@@ -50,14 +50,13 @@ final class E2EJourneysTest extends E2ETestCase
         $reset = fn(): array => $this->resetTestState();
         $seedFixture = fn(): FixtureSeed => $this->seedFixtureSource();
         $crawl = fn(FixtureSeed $fixture): CrawlResult => $this->runCrawlOnce($fixture);
-        $searchIndex = fn(string $mode, string $query): array => $this->searchIndex($mode, $query);
         $outage = function (FixtureSeed $fixture): void {
             $this->runCrawlOutage($fixture);
         };
         $recover = fn(FixtureSeed $fixture): CrawlResult => $this->recoverSource($fixture);
 
         $results = [
-            (new J7CrawledMovieSearchScenario($reset, $seedFixture, $crawl, $searchIndex))->run($this->journeyContext()),
+            (new J7CrawledMovieSearchScenario($reset, $seedFixture, $crawl))->run($this->journeyContext()),
             (new J8McpCrawledMovieScenario($reset, $seedFixture, $crawl))->run($this->journeyContext()),
             (new J9KeyRevocationScenario($reset, $seedFixture, $crawl))->run($this->journeyContext()),
             (new J10SourceOutageScenario($reset, $seedFixture, $crawl, $outage, $recover))->run($this->journeyContext()),
