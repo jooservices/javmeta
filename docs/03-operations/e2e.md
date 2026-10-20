@@ -40,9 +40,9 @@ shared PHP runtime; `docker/ci/e2e-shared` (or `JAVMETA_MODE=wt:<id> docker/ci/e
 | A source goes down (crawl fails, health reports it) and comes back (recrawl succeeds) | J10 | `CrawlerxFailureContractTest`, `HealthControllerTest` |
 
 J7 to J10 follow one movie that the real pipeline crawled from the onejav fixture. The served application runs with
-`APP_ENV=testing`, where `/api/v1/movies` and the MCP `search` tool answer from PostgreSQL; J7 therefore queries the
-Elasticsearch index in-process (keyword and kNN with the stub embedder in `tests/E2E/Support/embedder-router.php`) to
-prove the indexed document and its vector.
+`APP_ENV=e2e` (loopback only), outside `testing`, so the MCP `search` tool takes the real Elasticsearch kNN path with
+the stub embedder in `tests/E2E/Support/embedder-router.php`. J7 calls that tool for the semantic query and also queries
+the index in-process to prove the indexed document and its vector.
 
 Each reusable step has a unit test with Laravel's fake HTTP transport. The
 journey suite itself talks to the started application over HTTP. Failures name

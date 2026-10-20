@@ -8,6 +8,7 @@ use Closure;
 use Tests\E2E\Step;
 use Tests\E2E\Steps\CreateApiKey;
 use Tests\E2E\Steps\FindCrawledMovie;
+use Tests\E2E\Steps\McpFindCrawledMovie;
 use Tests\E2E\Steps\QuerySearchIndex;
 
 final class J7CrawledMovieSearchScenario extends FixtureScenario
@@ -40,6 +41,7 @@ final class J7CrawledMovieSearchScenario extends FixtureScenario
             new FindCrawledMovie(FindCrawledMovie::TEXT),
             new QuerySearchIndex($this->searchIndex, QuerySearchIndex::TEXT),
             new QuerySearchIndex($this->searchIndex, QuerySearchIndex::SEMANTIC, 'a movie that matches no keyword at all'),
+            new McpFindCrawledMovie('search', 200, 'a movie that matches no keyword at all'),
         ];
     }
 }

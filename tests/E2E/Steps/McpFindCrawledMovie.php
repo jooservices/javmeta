@@ -11,7 +11,7 @@ use Tests\E2E\Support\StepFailure;
 /** Finds the movie produced by the fixture crawl through an MCP tool call (get_movie, lookup_movies or search). */
 final class McpFindCrawledMovie extends HttpStep
 {
-    public function __construct(private readonly string $tool = 'get_movie', private readonly int $expectedStatus = 200) {}
+    public function __construct(private readonly string $tool = 'get_movie', private readonly int $expectedStatus = 200, private readonly ?string $query = null) {}
 
     public function run(Context $context): Context
     {
@@ -22,7 +22,7 @@ final class McpFindCrawledMovie extends HttpStep
 
         $arguments = match ($this->tool) {
             'get_movie', 'lookup_movies' => ['code' => $crawl->movieCode],
-            'search' => ['q' => $crawl->movieTitle, 'entity' => 'movie'],
+            'search' => ['q' => $this->query ?? $crawl->movieTitle, 'entity' => 'movie'],
             default => throw new StepFailure("Unsupported MCP tool {$this->tool}.", $context),
         };
         $result = $this->exchange($context, 'POST', '/api/v1/mcp', ['X-Api-Key' => $this->credential($context, 'mcp')->plaintext], [

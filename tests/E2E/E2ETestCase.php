@@ -325,7 +325,7 @@ abstract class E2ETestCase extends TestCase
         config()->set('elasticsearch.embedder_url', self::$embedderUrl);
 
         self::$embedderProcess = proc_open(
-            [PHP_BINARY, '-S', '0.0.0.0:' . $embedderPort, dirname(__DIR__) . '/Support/embedder-router.php'],
+            [PHP_BINARY, '-S', '127.0.0.1:' . $embedderPort, dirname(__DIR__) . '/Support/embedder-router.php'],
             [0 => ['pipe', 'r'], 1 => ['file', self::$embedderLog, 'a'], 2 => ['file', self::$embedderLog, 'a']],
             $pipes,
         );
@@ -337,9 +337,12 @@ abstract class E2ETestCase extends TestCase
         }
 
         self::$appProcess = proc_open(
-            [PHP_BINARY, 'artisan', 'serve', '--host=0.0.0.0', '--port=' . $appPort],
+            [PHP_BINARY, 'artisan', 'serve', '--host=127.0.0.1', '--port=' . $appPort],
             [0 => ['pipe', 'r'], 1 => ['file', self::$appLog, 'a'], 2 => ['file', self::$appLog, 'a']],
             $pipes,
+            null,
+            // Outside the "testing" environment the MCP search takes the real Elasticsearch kNN path with the stub embedder.
+            array_merge(getenv(), ['APP_ENV' => 'e2e']),
         );
         if (! is_resource(self::$appProcess)) {
             throw new RuntimeException('Could not start the JAVmeta E2E HTTP application.');
