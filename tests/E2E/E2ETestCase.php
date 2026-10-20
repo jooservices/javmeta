@@ -234,6 +234,9 @@ abstract class E2ETestCase extends TestCase
         // Journeys search by this text, so fall back to the Japanese title and then the code when no English title exists.
         $title = (string) ($source->movie->title_en ?: $source->movie->title_jp ?: $source->movie->display_code);
 
+        // The crawl indexed the movie; make it searchable now instead of after the index refresh interval.
+        self::refreshMovieIndex();
+
         return new CrawlResult($seed->slug, $seed->url, (string) $source->movie->display_code, $title);
     }
 
@@ -277,11 +280,10 @@ abstract class E2ETestCase extends TestCase
     protected function searchIndex(string $mode, string $query): array
     {
         $indexer = app(ElasticsearchIndexer::class);
-        $host = rtrim((string) config('elasticsearch.host'), '/');
         $deadline = microtime(true) + 10;
 
         do {
-            Http::timeout(10)->post($host . '/' . config('elasticsearch.movies_index') . '/_refresh');
+            self::refreshMovieIndex();
             $uuids = match ($mode) {
                 'text' => $indexer->searchMovieUuids($query),
                 'semantic' => $indexer->semanticMovieUuids($query),
@@ -294,6 +296,12 @@ abstract class E2ETestCase extends TestCase
         } while (microtime(true) < $deadline);
 
         return [];
+    }
+
+    private static function refreshMovieIndex(): void
+    {
+        $host = rtrim((string) config('elasticsearch.host'), '/');
+        Http::timeout(10)->post($host . '/' . config('elasticsearch.movies_index') . '/_refresh');
     }
 
     private static function initializeProcesses(): void
