@@ -8,10 +8,10 @@ the application Compose project or deploy application services.
 ## Application errors in Sentry
 
 The application sends errors to the shared Sentry project when
-`JAVMETA_SENTRY_DSN` is configured. Keep that value in the private Workspaces
-root `.env` or the deployment secret store; do not copy it into this repository,
-logs, or Jira. If the DSN is empty, Sentry remains disabled and the application
-does not send events.
+`JAVMETA_SENTRY_DSN` or `SENTRY_LARAVEL_DSN` is configured. Keep the DSN in the
+private Workspaces root `.env` or the deployment secret store; do not copy it
+into this repository, logs, or Jira. If both DSNs are empty, Sentry remains
+disabled and the application does not send events.
 
 Errors are sampled at 100%. Trace sampling defaults to zero and can be enabled
 with `JAVMETA_SENTRY_TRACES_SAMPLE_RATE`; profiling is disabled. Personal data
@@ -21,8 +21,15 @@ retain only allowlisted operational fields.
 
 Set `JAVMETA_ROLE` to `api`, `worker`, `scheduler`, or `mcp` for each runtime and
 set `JAVMETA_NODE_NAME` to the unique node name. Sentry events include those
-values as tags. Production image builds set `SENTRY_RELEASE` from the Git commit
-SHA; `make build` does the same for a local image.
+values as tags. Set `SENTRY_ENVIRONMENT` to override the Laravel environment.
+Production image builds and `make build` bake the Git short SHA into
+`SENTRY_RELEASE`.
+
+Unhandled exceptions are captured by Laravel's Sentry integration. Classified
+crawl failures are also captured with `source`, `crawl_kind`, and `error_code`
+tags and grouped by error code and source. When a failed crawl exception is
+reported by both the crawl failure hook and Laravel's exception handler, the
+duplicate Sentry event is discarded.
 
 To send a manual test event from a runtime with the shared DSN configured, run:
 
@@ -30,7 +37,8 @@ To send a manual test event from a runtime with the shared DSN configured, run:
 php artisan javmeta:sentry-test
 ```
 
-The command prints the Sentry event ID only. Verify that ID in the `javmeta`
+The command sends one event tagged with its process `role`, `node`, and
+`test_event`, then prints the Sentry event ID only. Verify that ID in the `javmeta`
 project and filter by `role` and `node`; never include a DSN or event payload in
 the verification notes.
 
@@ -274,6 +282,11 @@ Dashboard and scheduled alert definitions are versioned in
 the named resources and its Telegram webhook destination; `--dry-run` reads
 and validates the files without contacting OpenObserve. The command reads
 OpenObserve and Telegram credentials only from environment configuration.
+The `JAVMETA Operations` dashboard includes queue depth, crawl errors grouped
+by source and error code, source freshness, and pages fetched by source in the
+previous hour. Application logs and metric points carry the `APP_ENV` value as
+the `environment` label and `JAVMETA_ROLE` as `role`; staging runtimes should
+therefore report `environment=staging`.
 
 Run the offline plan in the CI/PHP image:
 
@@ -295,7 +308,9 @@ docker/ci/observability-import-shared
 The helper runs through `docker/dev/shared-run` in the shared PHP runtime and starts no
 container or Compose stack. The second run should update the same named resources
 without creating duplicates. Keep Telegram test credentials out of project `.env` files
-and source control.
+and source control. For the staging log, metric, and dashboard check against the
+approved shared staging organisation, follow
+[`telemetry.md`](telemetry.md#staging-manual-check).
 
 ### Failure injection: stale source alert
 

@@ -102,7 +102,7 @@ services:
 
   worker:
     <<: *php-service
-    command: ["sh", "-ec", "if [ \"$${QUEUE_CONNECTION:-database}\" = redis ]; then exec php artisan horizon; else exec crawlerx-fetch-ready worker-queues; fi"]
+    command: ["sh", "-ec", "if [ \"$${QUEUE_CONNECTION:-redis}\" = redis ]; then exec php artisan horizon; else exec crawlerx-fetch-ready worker-queues; fi"]
     environment:
       APP_ENV: production
       APP_DEBUG: "false"
@@ -112,7 +112,7 @@ services:
       - flaresolverr
     shm_size: 1gb
     healthcheck:
-      test: ["CMD-SHELL", "if [ \"$${QUEUE_CONNECTION:-database}\" = redis ]; then php artisan horizon:status; else kill -0 1; fi"]
+      test: ["CMD-SHELL", "if [ \"$${QUEUE_CONNECTION:-redis}\" = redis ]; then php artisan horizon:status; else kill -0 1; fi"]
       interval: 30s
       timeout: 10s
       retries: 3

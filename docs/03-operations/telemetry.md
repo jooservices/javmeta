@@ -9,6 +9,11 @@ stream are existing contracts; dashboards and alerts must use them as written.
 `PublishMetricsCommand` sends OTLP metrics to `/api/{org}/v1/metrics`. OpenObserve
 stores the named metric families as metrics streams; each stream below has the
 same name as the emitted metric. Metric attributes are stored as labels/fields.
+Every metric point and structured log record carries `environment` from
+`APP_ENV` and `role` from `JAVMETA_ROLE`; set `APP_ENV=staging` on staging
+runtimes to label their telemetry `environment=staging`. OpenObserve credentials
+are read only from `OPENOBSERVE_EMAIL` and `OPENOBSERVE_PASSWORD` in the runtime
+environment.
 
 | Metric stream | Labels | Emitted data |
 | --- | --- | --- |
@@ -55,10 +60,39 @@ counts stale queue claims returned to pending before a worker started them.
 
 | Signal | OpenObserve endpoint / stream | Source |
 | --- | --- | --- |
-| Structured application logs | JSON ingestion into `javmeta_logs` (`OPENOBSERVE_STREAM_LOGS`) | `OpenObserveLogHandler`, `ObservabilityEmitter`, and `EmitObservabilityLog`. |
+| Structured application logs | JSON ingestion into `javmeta_logs` (`OPENOBSERVE_STREAM_LOGS`); each record includes `environment` and `role` | `OpenObserveLogHandler`, `ObservabilityEmitter`, and `EmitObservabilityLog`. |
+| Application metrics | OTLP `/api/{org}/v1/metrics`; each point includes `environment` and `role` labels | `PublishMetricsCommand`, normally run by the scheduler. |
 | HTTP and crawl spans | OTLP `/api/{org}/v1/traces` | `TraceHttpRequest` and `TraceCrawlJob`. |
 | Watchdog notifications | Application alert events, not a separate metric stream | `WatchdogCommand` dispatches `WorkerHeartbeatStale` and `CrawlSourceUnhealthy`; listeners use `AlertDispatcher` for Telegram/activity-log fan-out. |
 
 `OPENOBSERVE_STREAM_METRICS` is retained in configuration for compatibility;
 the current metrics client sends OTLP metric names and does not route them into
 one shared `javmeta_metrics` stream.
+
+## Staging manual check
+
+Configure the API, worker, and scheduler runtimes with `APP_ENV=staging` and
+`JAVMETA_ROLE=api`, `JAVMETA_ROLE=worker`, and `JAVMETA_ROLE=scheduler`,
+respectively. Set `OPENOBSERVE_ENABLED=true` and `LOG_STACK=single,openobserve`
+in each runtime. Use the same environment-provided values for
+`OPENOBSERVE_URL`, `OPENOBSERVE_ORG`, `OPENOBSERVE_EMAIL`, and
+`OPENOBSERVE_PASSWORD` in all three. Keep credentials in the
+deployment secret store; do not copy them into commands, source files, or
+verification notes. The scheduler publishes metrics every minute.
+
+After the three runtimes have handled normal requests/jobs and the scheduler
+has published at least once, use OpenObserve in the configured organisation:
+
+1. In `javmeta_logs`, query for records with `environment = 'staging'` and
+   check that the `role` field includes `api` and `worker`.
+2. In the `javmeta_source_last_success_age_seconds` metric stream, check for
+   `environment = 'staging'`, `role = 'scheduler'`, and `source_slug` labels.
+3. Run `php artisan observability:import` twice in the staging runtime. Confirm
+   that the `JAVMETA Operations` dashboard still has queue depth, crawl errors
+   by source and code, source freshness, and pages fetched by source in the
+   previous hour, and that alert and dashboard counts do not grow on the second
+   run.
+
+The importer writes to `OPENOBSERVE_ORG`, so use the approved shared staging
+organisation for this manual check. The importer also updates its Telegram
+destination from environment-backed notification settings.

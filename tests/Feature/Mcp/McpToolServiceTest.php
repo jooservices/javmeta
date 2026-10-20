@@ -45,6 +45,17 @@ final class McpToolServiceTest extends TestCase
 
         $movies = collect(app(McpToolService::class)->definitions())->firstWhere('name', 'lookup_movies');
         $this->assertArrayHasKey('count_only', $movies['inputSchema']['properties']);
+
+        $guide = file_get_contents(base_path('docs/03-operations/mcp.md'));
+        $this->assertIsString($guide);
+        foreach ($definitions as $definition) {
+            preg_match('/^\| `' . preg_quote($definition['name'], '/') . '` \|.*\|$/m', $guide, $matches);
+            $this->assertCount(1, $matches, "Missing MCP guide row for {$definition['name']}.");
+            $toolRow = $matches[0] ?? '';
+            foreach (array_keys($definition['inputSchema']['properties']) as $input) {
+                $this->assertStringContainsString('`' . $input . '`', $toolRow, "Missing MCP guide input {$input} for {$definition['name']}.");
+            }
+        }
     }
 
     public function test_lookup_movies_returns_filter_sort_and_cursor_metadata(): void
