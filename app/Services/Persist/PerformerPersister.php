@@ -134,7 +134,12 @@ final class PerformerPersister implements PerformerDraftSink
             'site_slug' => $draft->sourceSlug,
             'external_id' => $draft->externalId,
         ]);
-        $this->preservePreviousSourceNames($source, $performer, $draft);
+        $this->identity->preserveRenamedSourceNames(
+            $source,
+            $performer,
+            [$draft->nameRomaji, $draft->nameKanji, $draft->nameKana],
+            $draft->sourceSlug,
+        );
         $source->fill([
             'performer_id' => $performer->canonical_performer_id ?? $performer->id,
             'source_performer_id' => $performer->id,
@@ -158,36 +163,6 @@ final class PerformerPersister implements PerformerDraftSink
         $canonicalPerformer = Performer::query()->with(['aliases', 'sources'])->find($canonicalId);
         if ($canonicalPerformer instanceof Performer) {
             $this->searchIndex->indexPerformer($canonicalPerformer);
-        }
-    }
-
-    private function preservePreviousSourceNames(
-        PerformerSource $source,
-        Performer $performer,
-        PerformerDraft $draft,
-    ): void {
-        $currentNames = array_filter([
-            $draft->nameRomaji,
-            $draft->nameKanji,
-            $draft->nameKana,
-        ], static fn(mixed $name): bool => is_string($name) && trim($name) !== '');
-        $sourcePerformerId = (int) ($source->source_performer_id ?? $performer->id);
-        $canonicalId = (int) ($performer->canonical_performer_id ?? $performer->id);
-
-        foreach ([$source->name_romaji, $source->name_kanji, $source->name_kana] as $previousName) {
-            if (! is_string($previousName) || trim($previousName) === '' || in_array($previousName, $currentNames, true)) {
-                continue;
-            }
-
-            PerformerAlias::query()->firstOrCreate(
-                [
-                    'performer_id' => $canonicalId,
-                    'alias' => trim($previousName),
-                    'source_slug' => $draft->sourceSlug,
-                    'source_performer_id' => $sourcePerformerId,
-                ],
-                ['kind' => 'renamed'],
-            );
         }
     }
 

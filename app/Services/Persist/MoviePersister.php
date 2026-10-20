@@ -410,6 +410,10 @@ final class MoviePersister implements MovieDraftSink
     private function upsertPerformers(int $movieId, MovieDraft $draft, CarbonImmutable $crawledAt): void
     {
         foreach ($draft->performers as $performerDraft) {
+            $previous = PerformerSource::query()->firstOrNew([
+                'site_slug' => $performerDraft->sourceSlug,
+                'external_id' => $performerDraft->externalId,
+            ]);
             $performer = Performer::query()->updateOrCreate(
                 ['source_slug' => $performerDraft->sourceSlug, 'external_id' => $performerDraft->externalId],
                 [
@@ -422,10 +426,13 @@ final class MoviePersister implements MovieDraftSink
                 ],
             );
 
-            $source = PerformerSource::query()->firstOrNew([
-                'site_slug' => $performerDraft->sourceSlug,
-                'external_id' => $performerDraft->externalId,
-            ]);
+            $this->identity->preserveRenamedSourceNames(
+                $previous,
+                $performer,
+                [$performerDraft->nameRomaji, $performerDraft->nameKanji, $performerDraft->nameKana],
+                $performerDraft->sourceSlug,
+            );
+            $source = $previous;
             $source->fill([
                 'performer_id' => $performer->canonical_performer_id ?? $performer->id,
                 'source_performer_id' => $performer->id,

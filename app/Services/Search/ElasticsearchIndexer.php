@@ -156,10 +156,12 @@ final class ElasticsearchIndexer
             return false;
         }
 
-        $host = rtrim((string) config('elasticsearch.host'), '/');
         try {
-            $response = $this->http()->delete(
-                "{$host}/" . (string) config('elasticsearch.performers_index') . "/_doc/{$performer->uuid}",
+            $response = $this->elasticsearch->delete(
+                'delete',
+                '/' . (string) config('elasticsearch.performers_index') . '/_doc/' . $performer->uuid,
+                10,
+                [404],
             );
 
             return $response->successful() || $response->status() === 404;

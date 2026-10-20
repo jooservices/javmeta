@@ -20,7 +20,9 @@ use App\Services\Persist\MoviePersister;
 use App\Services\Persist\PerformerPersister;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use JOOservices\CrawlerX\Dto\Entity\GalleryDto;
 use JOOservices\CrawlerX\Dto\Entity\PhotoDto;
 use Tests\TestCase;
@@ -164,12 +166,93 @@ final class PerformerIdentityIngestionTest extends TestCase
         app(PerformerIdentityService::class)->split((int) $merge->id);
 
         // The split-off record regains the movies it linked before and after the merge. The canonical record keeps
-        // its own link rows (they cannot be told apart from links it made itself), see docs/03-operations/performer-identity.md.
+        // links it re-made itself, see docs/03-operations/performer-identity.md.
         self::assertNull($sourceOnly->fresh()->canonical_performer_id);
         foreach (['SSIS002', 'SSIS003'] as $normalized) {
             $movie = Movie::query()->where('code_normalized', $normalized)->sole();
             self::assertContains((int) $sourceOnly->id, $movie->performers()->pluck('performers.id')->map(fn($id) => (int) $id)->all());
         }
+    }
+
+    public function test_split_keeps_a_canonical_movie_link_remade_after_the_merge(): void
+    {
+        $this->persistMovie('SSIS-001', 'javdb', [PerformerDraft::from('javdb', 'p1', 'Aoi Sakura', birthDate: '1990-01-01')]);
+        $shared = $this->persistMovie('SSIS-002', 'onejav', [PerformerDraft::from('onejav', 'x9', 'Aoi Sakura', birthDate: '1990-01-01')]);
+        $rootId = (int) Performer::query()->where('source_slug', 'javdb')->value('id');
+        self::assertDatabaseHas('movie_performers', ['movie_id' => $shared->id, 'performer_id' => $rootId]);
+
+        // The canonical performer's own source claims the same movie after the merge, colliding with the merge-created pivot.
+        app(MoviePersister::class)->persist(MovieDraft::from(
+            sourceSlug: 'javdb',
+            sourceUrl: 'https://javdb.test/SSIS-002',
+            code: 'SSIS-002',
+            performers: [PerformerDraft::from('javdb', 'p1', 'Aoi Sakura', birthDate: '1990-01-01')],
+            crawledAt: CarbonImmutable::parse('2026-09-19 09:00:00'),
+        ));
+
+        $merge = PerformerIdentityEvent::query()->where('event_type', 'merge')->firstOrFail();
+        app(PerformerIdentityService::class)->split((int) $merge->id);
+
+        self::assertDatabaseHas('movie_performers', ['movie_id' => $shared->id, 'performer_id' => $rootId]);
+    }
+
+    public function test_movie_ingestion_keeps_previous_source_names_as_aliases(): void
+    {
+        $this->persistMovie('SSIS-001', 'javdb', [PerformerDraft::from('javdb', 'p1', 'Aoi Sakura')]);
+        $this->persistMovie('SSIS-002', 'javdb', [PerformerDraft::from('javdb', 'p1', 'Mio Tanaka')]);
+
+        $performer = Performer::query()->where('source_slug', 'javdb')->sole();
+        self::assertSame('Mio Tanaka', PerformerSource::query()->where('site_slug', 'javdb')->sole()->name_romaji);
+        self::assertDatabaseHas('performer_aliases', [
+            'performer_id' => $performer->id,
+            'alias' => 'Aoi Sakura',
+            'kind' => 'renamed',
+        ]);
+    }
+
+    public function test_movie_and_gallery_ingestion_index_the_canonical_performer(): void
+    {
+        config()->set([
+            'elasticsearch.enabled' => true,
+            'elasticsearch.embedder_enabled' => false,
+            'elasticsearch.host' => 'http://elasticsearch.test',
+        ]);
+        Http::fake(static fn() => Http::response(['result' => 'created']));
+
+        $this->persistMovie('SSIS-001', 'javdb', [PerformerDraft::from('javdb', 'p1', 'Aoi Sakura')]);
+        $this->persistGallery('eporner', ['Mio Tanaka']);
+
+        $index = (string) config('elasticsearch.performers_index');
+        foreach (['javdb', 'eporner'] as $slug) {
+            $needle = '/' . $index . '/_doc/' . (string) Performer::query()->where('source_slug', $slug)->value('uuid');
+            Http::assertSent(static fn(Request $request): bool => str_contains($request->url(), $needle));
+        }
+    }
+
+    public function test_reconciliation_returns_the_actual_root_after_a_concurrent_merge(): void
+    {
+        $keeper = $this->persistOne('javdb', 'p1', 'Aoi Sakura', '1990-01-01');
+        $other = Performer::factory()->create(['source_slug' => 'x', 'external_id' => 'x1', 'name_romaji' => 'Someone Else']);
+        $incoming = $this->persistOne('onejav', 'x9', 'Zzz Unrelated', '1980-05-05');
+        $incomingId = (int) $incoming->id;
+        // Make the incoming source strongly match the keeper, then simulate another worker merging it away first.
+        $source = PerformerSource::query()->where('site_slug', 'onejav')->sole();
+        $source->update(['name_romaji' => 'Aoi Sakura', 'birth_date' => '1990-01-01']);
+
+        $fired = false;
+        DB::beforeExecuting(function (string $query) use (&$fired, $incomingId, $other): void {
+            if ($fired || DB::transactionLevel() === 0 || ! str_contains($query, 'from "performers" where "performers"."id" = ?')) {
+                return;
+            }
+            $fired = true;
+            DB::table('performers')->where('id', $incomingId)->update(['canonical_performer_id' => $other->id]);
+        });
+
+        $root = app(PerformerIdentityService::class)->reconcileSource($source);
+
+        self::assertTrue($fired);
+        self::assertSame($root, app(PerformerIdentityService::class)->canonicalId($incomingId));
+        self::assertSame($root, app(PerformerIdentityService::class)->canonicalId((int) $keeper->id));
     }
 
     public function test_performer_persister_uses_the_local_performer_id_as_the_fallback_archive_key(): void

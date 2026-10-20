@@ -86,9 +86,10 @@ php artisan performers:undo-split <split_event_id>
 ```
 
 Rows added after the merge (aliases, media, movie links) are handed to the
-split-off performer. A movie link made on the merged canonical record after the
-merge stays on it after a split, because it cannot be told apart from a link the
-canonical performer made itself; the split-off performer regains its own link.
+split-off performer. A canonical movie link copied at merge time is removed on
+split only while it is untouched; if a later crawl re-made that link on the
+canonical record (its source or crawl time changed), the canonical record keeps
+it. The split-off performer regains its own link either way.
 
 Both operations are recorded and update the canonical search documents.
 They verify that the recorded performer group and source links still match the

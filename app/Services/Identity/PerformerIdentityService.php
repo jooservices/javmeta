@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Identity;
 
 use App\Models\Performer;
+use App\Models\PerformerAlias;
 use App\Models\PerformerIdentityEvent;
 use App\Models\PerformerSource;
 use App\Services\Search\ElasticsearchIndexer;
@@ -92,17 +93,24 @@ final class PerformerIdentityService
     public function reconcileSource(PerformerSource $source): int
     {
         $source->refresh();
-        $currentId = (int) $source->performer_id;
         $this->refreshNameKeys($source);
-        $evaluation = $this->evaluateSource($source);
 
-        if ($evaluation['decision'] === 'merge') {
+        // A concurrent merge can make a planned merge a no-op; re-evaluate against the new roots a few times.
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            $currentId = $this->canonicalId((int) $source->performer_id);
+            $evaluation = $this->evaluateSource($source);
+            if ($evaluation['decision'] !== 'merge') {
+                break;
+            }
+
             $candidateId = (int) $evaluation['candidate_id'];
             $fromId = max($currentId, $candidateId);
             $toId = min($currentId, $candidateId);
-            $this->mergeRoots($fromId, $toId, $evaluation);
+            if ($this->mergeRoots($fromId, $toId, $evaluation)) {
+                return $toId;
+            }
 
-            return $toId;
+            $source->refresh();
         }
 
         if ($evaluation['decision'] === 'review') {
@@ -116,7 +124,7 @@ final class PerformerIdentityService
             }
         }
 
-        return $this->canonicalId($currentId);
+        return $this->canonicalId((int) $source->performer_id);
     }
 
     /** Reconciles a freshly persisted source record and moves its aliases and media to the canonical performer. */
@@ -124,8 +132,33 @@ final class PerformerIdentityService
     {
         $canonicalId = $this->reconcileSource($source);
         $this->syncSourceContributions($source->refresh());
+        $this->reindexPerformers([$canonicalId]);
 
         return $canonicalId;
+    }
+
+    /** @param list<string|null> $currentNames the names the incoming draft carries */
+    public function preserveRenamedSourceNames(PerformerSource $source, Performer $performer, array $currentNames, string $siteSlug): void
+    {
+        $currentNames = array_filter($currentNames, static fn(mixed $name): bool => is_string($name) && trim($name) !== '');
+        $sourcePerformerId = (int) ($source->source_performer_id ?? $performer->id);
+        $canonicalId = (int) ($performer->canonical_performer_id ?? $performer->id);
+
+        foreach ([$source->name_romaji, $source->name_kanji, $source->name_kana] as $previousName) {
+            if (! is_string($previousName) || trim($previousName) === '' || in_array($previousName, $currentNames, true)) {
+                continue;
+            }
+
+            PerformerAlias::query()->firstOrCreate(
+                [
+                    'performer_id' => $canonicalId,
+                    'alias' => trim($previousName),
+                    'source_slug' => $siteSlug,
+                    'source_performer_id' => $sourcePerformerId,
+                ],
+                ['kind' => 'renamed'],
+            );
+        }
     }
 
     public function syncSourceContributions(PerformerSource $source): void
@@ -448,10 +481,10 @@ final class PerformerIdentityService
     }
 
     /** @param array<string, mixed> $evaluation */
-    private function mergeRoots(int $fromId, int $toId, array $evaluation): void
+    private function mergeRoots(int $fromId, int $toId, array $evaluation): bool
     {
         if ($fromId === $toId) {
-            return;
+            return false;
         }
 
         $details = DB::transaction(function () use ($fromId, $toId, $evaluation): array {
@@ -499,6 +532,8 @@ final class PerformerIdentityService
         if ($details !== []) {
             $this->reindexPerformers([$fromId, $toId]);
         }
+
+        return $details !== [];
     }
 
     /** @param list<int> $performerIds @return list<array{id: int, performer_id: int}> */
@@ -561,8 +596,11 @@ final class PerformerIdentityService
             $stillLinked = DB::table('movie_performers')->where('movie_id', $link['movie_id'])
                 ->whereIn('performer_id', $remainingIds)->exists();
             if (! $stillLinked) {
+                // A link re-made after the merge carries a newer crawled_at or source: the canonical record owns it now.
                 DB::table('movie_performers')->where('movie_id', $link['movie_id'])
-                    ->where('performer_id', $canonicalId)->delete();
+                    ->where('performer_id', $canonicalId)
+                    ->where('source_slug', $link['source_slug'])
+                    ->where('crawled_at', $link['crawled_at'])->delete();
             }
         }
     }
