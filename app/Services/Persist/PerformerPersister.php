@@ -138,7 +138,7 @@ final class PerformerPersister implements PerformerDraftSink
         $source->fill([
             'performer_id' => $performer->canonical_performer_id ?? $performer->id,
             'source_performer_id' => $performer->id,
-            'mongo_id' => $mongoId ?? $source->mongo_id ?? ('local:' . $draft->externalId),
+            'mongo_id' => $mongoId ?? $source->mongo_id ?? ('local:' . $performer->id),
             'source_url' => $draft->profileUrl ?? $source->source_url,
             'name_romaji' => $draft->nameRomaji ?? $source->name_romaji,
             'name_kanji' => $draft->nameKanji ?? $source->name_kanji,

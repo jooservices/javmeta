@@ -18,6 +18,18 @@ The `performer_identity.merge_name_similarity` threshold remains `1.0` so names
 must match exactly after normalization. `performer_identity.review_name_similarity`
 controls which weaker name matches appear for review; it never permits a merge.
 
+## Matching during crawls
+
+Movie, gallery and performer-detail ingestion reconcile every source record
+they save, so strong matches merge and ambiguous exact-name matches enter the
+review report without waiting for the backfill. To keep the crawl path cheap,
+candidates are selected with indexed lookups only: canonical performers that
+share the same namespaced cross-link, or the same normalized name stored in
+`performer_name_keys`. Fuzzy `weak_name_match` candidates are found only by
+`performers:backfill-identities`, which also fills `performer_name_keys` for
+existing records. Run the backfill once after deploying so existing performers
+can be matched by the crawl path.
+
 ## Deployment
 
 After deploying the code, apply the forward migration, inspect the planned
@@ -72,6 +84,11 @@ split event ID to undo that split:
 php artisan performers:split <merge_event_id>
 php artisan performers:undo-split <split_event_id>
 ```
+
+Rows added after the merge (aliases, media, movie links) are handed to the
+split-off performer. A movie link made on the merged canonical record after the
+merge stays on it after a split, because it cannot be told apart from a link the
+canonical performer made itself; the split-off performer regains its own link.
 
 Both operations are recorded and update the canonical search documents.
 They verify that the recorded performer group and source links still match the

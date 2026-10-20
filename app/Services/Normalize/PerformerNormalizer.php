@@ -42,10 +42,10 @@ final class PerformerNormalizer
 
         $nameKana = is_string($meta['name_kana'] ?? null) ? trim($meta['name_kana']) : null;
         $crossLink = is_array($meta['cross_link'] ?? null) ? $meta['cross_link'] : [];
-        $crossLinkId = $this->stringValue($meta['cross_link_id'] ?? $meta['crosslink_id'] ?? $crossLink['id'] ?? null);
+        $crossLinkId = $this->firstStringValue([$meta['cross_link_id'] ?? null, $meta['crosslink_id'] ?? null, $crossLink['id'] ?? null]);
         $crossLinkSource = $crossLinkId === null
             ? null
-            : ($this->stringValue($meta['cross_link_source'] ?? $crossLink['source'] ?? null) ?? $sourceSlug);
+            : ($this->firstStringValue([$meta['cross_link_source'] ?? null, $crossLink['source'] ?? null]) ?? $sourceSlug);
 
         return new PerformerDraft(
             sourceSlug: $sourceSlug,
@@ -72,13 +72,26 @@ final class PerformerNormalizer
         );
     }
 
+    /** @param list<mixed> $values */
+    private function firstStringValue(array $values): ?string
+    {
+        foreach ($values as $value) {
+            $string = $this->stringValue($value);
+            if ($string !== null) {
+                return $string;
+            }
+        }
+
+        return null;
+    }
+
     private function stringValue(mixed $value): ?string
     {
-        if (! is_string($value)) {
+        if (! is_string($value) && ! is_int($value)) {
             return null;
         }
 
-        $value = trim($value);
+        $value = trim((string) $value);
 
         return $value === '' ? null : $value;
     }

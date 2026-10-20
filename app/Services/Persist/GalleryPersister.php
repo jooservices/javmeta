@@ -10,6 +10,8 @@ use App\Models\PerformerSource;
 use App\Models\Movie;
 use App\Models\MovieCode;
 use App\Models\MovieMedia;
+use App\Models\MoviePerformer;
+use App\Services\Identity\PerformerIdentityService;
 use App\Support\Code\NormalizedCode;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +26,8 @@ use JOOservices\CrawlerX\Dto\Entity\PhotoDto;
  */
 final class GalleryPersister
 {
+    public function __construct(private readonly PerformerIdentityService $identity) {}
+
     public function persist(string $sourceSlug, string $url, GalleryDto $gallery): void
     {
         $crawledAt = CarbonImmutable::now();
@@ -91,6 +95,8 @@ final class GalleryPersister
                 ]);
                 $source->save();
 
+                $canonicalId = $this->identity->reconcileAndSync($source);
+
                 foreach ($gallery->photos as $photo) {
                     $imageUrl = $this->photoUrl($photo);
                     if ($imageUrl === null) {
@@ -99,7 +105,7 @@ final class GalleryPersister
 
                     PerformerMedia::query()->updateOrCreate(
                         [
-                            'performer_id' => (int) ($performer->canonical_performer_id ?? $performer->id),
+                            'performer_id' => $canonicalId,
                             'source_performer_id' => (int) $performer->id,
                             'kind' => PerformerMedia::KIND_GALLERY,
                             'url' => $imageUrl,
@@ -113,12 +119,19 @@ final class GalleryPersister
                 }
 
                 if ($movie instanceof Movie) {
-                    $movie->performers()->syncWithoutDetaching([
-                        (int) ($performer->canonical_performer_id ?? $performer->id) => [
-                            'source_slug' => $sourceSlug,
-                            'crawled_at' => $crawledAt,
-                        ],
-                    ]);
+                    // Link the canonical record for the API and the source record so a later split can restore it.
+                    foreach (array_unique([$canonicalId, (int) $performer->id]) as $linkedId) {
+                        MoviePerformer::query()->upsert(
+                            [[
+                                'movie_id' => (int) $movie->id,
+                                'performer_id' => $linkedId,
+                                'source_slug' => $sourceSlug,
+                                'crawled_at' => $crawledAt,
+                            ]],
+                            ['movie_id', 'performer_id'],
+                            ['source_slug', 'crawled_at'],
+                        );
+                    }
                 }
             }
         });

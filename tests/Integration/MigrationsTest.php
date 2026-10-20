@@ -25,8 +25,8 @@ final class MigrationsTest extends BaseTestCase
             self::assertTrue(Schema::hasTable($table), "missing table {$table}");
         }
 
-        // The last five migrations: recrawl tracking (JAVM-82), canonical identity, queue start tracking (JAVM-81), performers.retired_date (JAVM-57), and failed reasons (JAVM-37).
-        self::assertSame(0, Artisan::call('migrate:rollback', ['--step' => 5, '--force' => true]), Artisan::output());
+        // The last six migrations: performer name keys (JAVM-84), recrawl tracking (JAVM-82), canonical identity, queue start tracking (JAVM-81), performers.retired_date (JAVM-57), and failed reasons (JAVM-37).
+        self::assertSame(0, Artisan::call('migrate:rollback', ['--step' => 6, '--force' => true]), Artisan::output());
         self::assertFalse(Schema::hasColumn('movies', 'recrawl_attempts'));
         self::assertFalse(Schema::hasColumn('movies', 'recrawl_status'));
         self::assertFalse(Schema::hasColumn('crawl_queue', 'is_recrawl'));
@@ -37,6 +37,7 @@ final class MigrationsTest extends BaseTestCase
         self::assertFalse(Schema::hasColumn('performer_sources', 'source_performer_id'));
         self::assertFalse(Schema::hasTable('performer_identity_events'));
         self::assertFalse(Schema::hasTable('performer_identity_reviews'));
+        self::assertFalse(Schema::hasTable('performer_name_keys'));
 
         DB::table('crawl_queue')->insert([
             'source_slug' => 'legacy-source',

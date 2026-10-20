@@ -32,6 +32,9 @@ final class PerformerIdentityService
         foreach ($sources as $source) {
             $sourcePerformerId = (int) ($source->source_performer_id ?? $source->performer_id);
             $currentPerformerId = (int) $source->performer_id;
+            if (! $dryRun && $source->exists) {
+                $this->refreshNameKeys($source);
+            }
             if ($sourcePerformerId !== $currentPerformerId) {
                 continue;
             }
@@ -39,7 +42,7 @@ final class PerformerIdentityService
                 continue;
             }
 
-            $evaluation = $this->evaluateSource($source);
+            $evaluation = $this->evaluateSource($source, true);
             if ($evaluation['decision'] === 'merge') {
                 $candidateId = (int) $evaluation['candidate_id'];
                 $fromId = max($currentPerformerId, $candidateId);
@@ -90,6 +93,7 @@ final class PerformerIdentityService
     {
         $source->refresh();
         $currentId = (int) $source->performer_id;
+        $this->refreshNameKeys($source);
         $evaluation = $this->evaluateSource($source);
 
         if ($evaluation['decision'] === 'merge') {
@@ -113,6 +117,15 @@ final class PerformerIdentityService
         }
 
         return $this->canonicalId($currentId);
+    }
+
+    /** Reconciles a freshly persisted source record and moves its aliases and media to the canonical performer. */
+    public function reconcileAndSync(PerformerSource $source): int
+    {
+        $canonicalId = $this->reconcileSource($source);
+        $this->syncSourceContributions($source->refresh());
+
+        return $canonicalId;
     }
 
     public function syncSourceContributions(PerformerSource $source): void
@@ -185,10 +198,12 @@ final class PerformerIdentityService
 
             $this->restoreRelationOwners('performer_aliases', $details['alias_owners']);
             $this->restoreRelationOwners('performer_media', $details['media_owners']);
+            // Rows added after the merge belong to the split-off root, which the API reads as canonical.
             DB::table('performer_aliases')->where('performer_id', $merge->to_performer_id)
-                ->whereIn('source_performer_id', $sourceIds)->update(['performer_id' => DB::raw('source_performer_id')]);
+                ->whereIn('source_performer_id', $sourceIds)->update(['performer_id' => $merge->from_performer_id]);
             DB::table('performer_media')->where('performer_id', $merge->to_performer_id)
-                ->whereIn('source_performer_id', $sourceIds)->update(['performer_id' => DB::raw('source_performer_id')]);
+                ->whereIn('source_performer_id', $sourceIds)->update(['performer_id' => $merge->from_performer_id]);
+            $this->copyMovieLinks($sourceIds, (int) $merge->from_performer_id);
             $this->removeCreatedMovieLinks($details['created_movie_links'], $sourceIds, (int) $merge->to_performer_id);
 
             $merge->reversed_at = now()->toDateTimeString();
@@ -241,6 +256,7 @@ final class PerformerIdentityService
                 ->update(['performer_id' => $merge->to_performer_id]);
             DB::table('performer_media')->whereIn('source_performer_id', $details['source_performer_ids'])
                 ->update(['performer_id' => $merge->to_performer_id]);
+            $this->copyMovieLinks($details['source_performer_ids'], (int) $merge->to_performer_id);
             foreach ($details['created_movie_links'] as $link) {
                 DB::table('movie_performers')->insertOrIgnore([
                     'movie_id' => $link['movie_id'],
@@ -270,24 +286,93 @@ final class PerformerIdentityService
         return $undo;
     }
 
-    /** @return array{decision: string, candidate_id: int|null, reason: string|null, similarity: float, review_candidates: list<array{id: int, reason: string, similarity: float}>} */
-    private function evaluateSource(PerformerSource $source): array
+    /**
+     * The crawl path only compares against roots sharing a cross-link or a normalized name; the full scan
+     * (which also finds weak name matches) is reserved for the offline backfill.
+     *
+     * @return array{decision: string, candidate_id: int|null, reason: string|null, similarity: float, review_candidates: list<array{id: int, reason: string, similarity: float}>}
+     */
+    private function evaluateSource(PerformerSource $source, bool $fullScan = false): array
     {
         $currentId = (int) $source->performer_id;
         $incoming = $this->sourceIdentity($source);
-        $candidates = [];
 
-        foreach (Performer::query()->whereNull('canonical_performer_id')->where('id', '<>', $currentId)->orderBy('id')->get() as $candidate) {
-            $candidates[] = $this->rootIdentity($candidate);
+        if ($fullScan) {
+            $roots = Performer::query()->whereNull('canonical_performer_id')->where('id', '<>', $currentId)
+                ->with(['aliases', 'sources.sourcePerformer.aliases'])->lazyById(200);
+        } else {
+            $candidateIds = $this->candidateRootIds($source, $incoming['names'], $currentId);
+            $roots = $candidateIds === [] ? [] : Performer::query()->whereNull('canonical_performer_id')
+                ->whereIn('id', $candidateIds)->orderBy('id')
+                ->with(['aliases', 'sources.sourcePerformer.aliases'])->get();
         }
 
+        $candidates = (function () use ($roots) {
+            foreach ($roots as $root) {
+                yield $this->rootIdentity($root);
+            }
+        })();
+
         return $this->matcher->evaluate($incoming, $candidates);
+    }
+
+    /**
+     * @param list<string> $names
+     * @return list<int>
+     */
+    private function candidateRootIds(PerformerSource $source, array $names, int $currentId): array
+    {
+        $ids = [];
+        if ($source->cross_link_id !== null && $source->cross_link_id !== '') {
+            $ids = PerformerSource::query()
+                ->where('cross_link_source', (string) ($source->cross_link_source ?: $source->site_slug))
+                ->where('cross_link_id', (string) $source->cross_link_id)
+                ->pluck('performer_id')->map(static fn(mixed $id): int => (int) $id)->all();
+        }
+
+        $keys = $this->normalizedNames($names);
+        if ($keys !== []) {
+            $nameIds = DB::table('performer_name_keys as k')
+                ->join('performers as p', 'p.id', '=', 'k.source_performer_id')
+                ->whereIn('k.normalized_name', $keys)
+                ->selectRaw('COALESCE(p.canonical_performer_id, p.id) as root_id')
+                ->distinct()->pluck('root_id');
+            foreach ($nameIds as $id) {
+                $ids[] = (int) $id;
+            }
+        }
+
+        return array_values(array_diff(array_unique($ids), [$currentId]));
+    }
+
+    /** Stores the normalized names of a source performer so the crawl path can find candidates by index. */
+    private function refreshNameKeys(PerformerSource $source): void
+    {
+        $sourcePerformerId = (int) ($source->source_performer_id ?? $source->performer_id);
+        $keys = $this->normalizedNames($this->sourceIdentity($source)['names']);
+        if ($keys === []) {
+            return;
+        }
+
+        DB::table('performer_name_keys')->insertOrIgnore(array_map(
+            static fn(string $key): array => ['source_performer_id' => $sourcePerformerId, 'normalized_name' => $key],
+            $keys,
+        ));
+    }
+
+    /**
+     * @param list<string> $names
+     * @return list<string>
+     */
+    private function normalizedNames(array $names): array
+    {
+        return array_values(array_unique(array_filter(array_map($this->matcher->normalizeName(...), $names))));
     }
 
     /** @return array{id: int, names: list<string>, birth_dates: list<string>, cross_links: list<array{source: string, id: string}>} */
     private function sourceIdentity(PerformerSource $source): array
     {
-        $performer = $source->sourcePerformer()->with('aliases')->first();
+        $performer = $source->sourcePerformer()->first();
         $names = array_filter([
             $source->name_romaji,
             $source->name_kanji,
@@ -296,9 +381,9 @@ final class PerformerIdentityService
             $performer?->name_kanji,
             $performer?->name_kana,
         ], static fn(mixed $name): bool => is_string($name) && trim($name) !== '');
-        if ($performer instanceof Performer) {
-            $names = array_merge($names, $performer->aliases->pluck('alias')->all());
-        }
+        $sourcePerformerId = (int) ($source->source_performer_id ?? $source->performer_id);
+        $names = array_merge($names, DB::table('performer_aliases')
+            ->where('source_performer_id', $sourcePerformerId)->pluck('alias')->all());
 
         $birthDate = $this->dateString($source->birth_date ?? $performer?->getAttribute('birth_date'));
 
@@ -321,7 +406,6 @@ final class PerformerIdentityService
             $root->name_kanji,
             $root->name_kana,
         ], static fn(mixed $name): bool => is_string($name) && trim($name) !== '');
-        $root->loadMissing('aliases');
         $names = array_merge($names, $root->aliases->pluck('alias')->all());
         $birthDates = [];
         $rootBirthDate = $this->dateString($root->getAttribute('birth_date'));
@@ -330,7 +414,7 @@ final class PerformerIdentityService
         }
         $crossLinks = [];
 
-        foreach (PerformerSource::query()->where('performer_id', $root->id)->with('sourcePerformer.aliases')->get() as $source) {
+        foreach ($root->sources as $source) {
             $names = array_merge($names, array_filter([
                 $source->name_romaji,
                 $source->name_kanji,
@@ -573,12 +657,13 @@ final class PerformerIdentityService
     /** @return list<PerformerSource> */
     private function ensureSourceLinks(bool $dryRun): array
     {
-        $linkedIds = PerformerSource::query()->whereNotNull('source_performer_id')->distinct()
-            ->pluck('source_performer_id')->map(fn(mixed $id): int => (int) $id)->all();
         $missing = [];
+        $unlinked = Performer::query()->whereNotExists(static function ($query): void {
+            $query->selectRaw('1')->from('performer_sources')
+                ->whereColumn('performer_sources.source_performer_id', 'performers.id');
+        })->orderBy('id');
 
-        foreach (Performer::query()->when($linkedIds !== [], fn($query) => $query->whereNotIn('id', $linkedIds))
-            ->orderBy('id')->get() as $performer) {
+        foreach ($unlinked->get() as $performer) {
             $attributes = [
                 'performer_id' => $performer->canonical_performer_id ?? $performer->id,
                 'source_performer_id' => $performer->id,

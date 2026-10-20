@@ -57,6 +57,20 @@ final class PerformerNormalizerTest extends TestCase
         self::assertSame('performer-42', $draft?->crossLinkId);
     }
 
+    public function test_numeric_cross_link_ids_are_cast_to_strings_and_keys_are_tried_in_order(): void
+    {
+        $dto = PerformerDto::fromParsed('42', 'Mina Hope', [
+            'cross_link_id' => ['not', 'scalar'],
+            'crosslink_id' => 42,
+            'cross_link' => ['source' => 7],
+        ], 'https://example.test/42');
+
+        $draft = (new PerformerNormalizer())->normalize($dto, 'source-a', 'https://example.test/42');
+
+        self::assertSame('42', $draft?->crossLinkId);
+        self::assertSame('7', $draft?->crossLinkSource);
+    }
+
     public function test_profile_fields_without_a_column_are_kept_in_attrs_extra(): void
     {
         $dto = PerformerDto::fromParsed('2', 'Y', [

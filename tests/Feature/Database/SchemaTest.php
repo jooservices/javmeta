@@ -37,6 +37,7 @@ final class SchemaTest extends TestCase
         'performer_sources' => ['id', 'performer_id', 'source_performer_id', 'site_slug', 'mongo_id', 'external_id', 'source_url', 'name_romaji', 'name_kanji', 'name_kana', 'birth_date', 'cross_link_source', 'cross_link_id', 'removed_at', 'crawled_at'],
         'performer_identity_events' => ['id', 'event_type', 'from_performer_id', 'to_performer_id', 'related_event_id', 'details', 'created_at', 'reversed_at'],
         'performer_identity_reviews' => ['id', 'source_performer_id', 'candidate_performer_id', 'reason', 'similarity', 'status', 'created_at', 'resolved_at'],
+        'performer_name_keys' => ['id', 'source_performer_id', 'normalized_name'],
         'movie_performers' => ['movie_id', 'performer_id', 'source_slug', 'crawled_at'],
         'movie_media' => ['id', 'movie_id', 'kind', 'url', 'meta', 'source_slug', 'crawled_at'],
         'performer_media' => ['id', 'performer_id', 'source_performer_id', 'kind', 'url', 'meta', 'source_slug', 'crawled_at'],
@@ -83,6 +84,7 @@ final class SchemaTest extends TestCase
         $this->assertUniqueColumns('performer_media', ['performer_id', 'kind', 'url', 'source_performer_id']);
         $this->assertUniqueColumns('performer_sources', ['site_slug', 'mongo_id']);
         $this->assertUniqueColumns('performer_identity_reviews', ['source_performer_id', 'candidate_performer_id', 'status']);
+        $this->assertUniqueColumns('performer_name_keys', ['source_performer_id', 'normalized_name']);
         $this->assertUniqueColumns('api_keys', ['key_hash']);
         $this->assertUniqueColumns('genres', ['label_normalized']);
     }
