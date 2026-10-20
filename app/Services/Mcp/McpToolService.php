@@ -598,6 +598,10 @@ final class McpToolService
             throw new InvalidFilterException("{$key} must be a string.");
         }
 
+        if (preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $value) === 1) {
+            throw new InvalidFilterException("{$key} must not contain control characters.");
+        }
+
         return trim($value) !== '' ? trim($value) : null;
     }
 }

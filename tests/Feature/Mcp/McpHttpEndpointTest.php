@@ -239,6 +239,8 @@ final class McpHttpEndpointTest extends TestCase
             'non-string filter' => ['lookup_movies', ['maker' => ['Studio']], 'invalid_filter', 'maker must be a string.'],
             'invalid page size' => ['lookup_movies', ['per_page' => []], 'invalid_filter', 'per_page must be an integer.'],
             'invalid date' => ['lookup_movies', ['released_from' => '2026-02-30'], 'invalid_filter', 'valid date in YYYY-MM-DD format.'],
+            'NUL byte in a date' => ['lookup_movies', ['released_from' => "2026-01-01\0"], 'invalid_filter', 'released_from must not contain control characters.'],
+            'NUL byte in a text filter' => ['lookup_movies', ['maker' => "Studio\0"], 'invalid_filter', 'maker must not contain control characters.'],
             'invalid censorship flag' => ['lookup_movies', ['censored' => 'unknown'], 'invalid_filter', 'censored must be censored, uncensored, 0 or 1.'],
             'invalid count flag' => ['lookup_movies', ['count_only' => 'sometimes'], 'invalid_filter', 'count_only must be a boolean.'],
             'non-string search query' => ['search', ['q' => 42], 'invalid_filter', 'q must be a string.'],
