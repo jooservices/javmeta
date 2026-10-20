@@ -11,10 +11,13 @@ use App\Services\Alerts\AlertDispatcher;
 use App\Services\Alerts\OperationalAlertChecks;
 use App\Services\Crawl\WorkerHeartbeat;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 
 final class WatchdogCommand extends Command
 {
+    private const STALE_SOURCES_CACHE_KEY = 'javmeta:watchdog:stale-sources';
+
     protected $signature = 'crawler:watchdog';
 
     protected $aliases = ['javmeta:watchdog'];
@@ -52,19 +55,21 @@ final class WatchdogCommand extends Command
             $this->warn("Source stale: {$slug}");
         }
 
-        $healthySlugs = Source::query()
-            ->where('enabled', true)
-            ->where('last_success_at', '>=', $cutoff)
-            ->pluck('slug');
+        // Resolve every source that was stale on the previous run but is not any more:
+        // recovered, disabled or deleted.
+        $current = $staleSources->map(static fn($slug): string => (string) $slug)->values()->all();
+        $previous = (array) Cache::get(self::STALE_SOURCES_CACHE_KEY, []);
 
-        foreach ($healthySlugs as $slug) {
+        foreach (array_diff($previous, $current) as $slug) {
             $alerts->resolve(
                 CrawlSourceUnhealthy::keyFor((string) $slug, 'source_stale'),
                 "Source recovered: {$slug}",
-                'The source succeeded again.',
+                'The source succeeded again or is no longer monitored.',
                 ['source_slug' => (string) $slug],
             );
         }
+
+        Cache::put(self::STALE_SOURCES_CACHE_KEY, $current, now()->addDays(7));
 
         if ($checks->checkCrawlProgress()) {
             $this->warn('Crawl made no progress.');

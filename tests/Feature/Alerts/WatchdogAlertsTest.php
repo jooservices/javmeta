@@ -131,4 +131,57 @@ final class WatchdogAlertsTest extends TestCase
 
         $this->assertSame([], $this->sent);
     }
+
+    public function test_stalled_and_stuck_alerts_name_the_sources(): void
+    {
+        Source::factory()->create(['slug' => 'javbus', 'last_success_at' => now()->subHours(2)]);
+        CrawlQueue::factory()->create(['source_slug' => 'javbus', 'status' => CrawlQueue::STATUS_PENDING]);
+        CrawlQueue::factory()->create([
+            'source_slug' => 'javdb',
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'claimed_at' => now()->subHours(2),
+        ]);
+        config(['javmeta_alerts.watchdog.source_stale_seconds' => 86400 * 7]);
+
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+
+        $this->assertSame(['Crawl made no progress', 'Crawl queue is stuck'], $this->subjects());
+        $this->assertStringContainsString('javbus', $this->sent[0][1]);
+        $this->assertSame('javbus', $this->sent[0][2]['source_slugs']);
+        $this->assertStringContainsString('javdb', $this->sent[1][1]);
+        $this->assertSame('javdb', $this->sent[1][2]['source_slugs']);
+    }
+
+    public function test_throttled_recurrence_does_not_create_orphan_recovery(): void
+    {
+        $dispatcher = $this->app->make(AlertDispatcher::class);
+
+        $this->assertTrue($dispatcher->send('k', 'a', 'b', [], 3600));
+        $this->assertTrue($dispatcher->resolve('k', 'ok', 'ok'));
+        $this->assertTrue($dispatcher->send('k', 'a', 'b', [], 3600) === false, 'still throttled after recovery');
+        $this->assertFalse($dispatcher->resolve('k', 'ok', 'ok'), 'suppressed alert is not active');
+        $this->assertCount(2, $this->sent);
+    }
+
+    public function test_disabled_source_recovers(): void
+    {
+        $source = Source::factory()->create(['slug' => 'javdb', 'last_success_at' => now()->subDays(2)]);
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+
+        $source->update(['enabled' => false]);
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+
+        $this->assertSame(['Source unhealthy: javdb', 'Source recovered: javdb'], $this->subjects());
+    }
+
+    public function test_deleted_source_recovers(): void
+    {
+        $source = Source::factory()->create(['slug' => 'javdb', 'last_success_at' => now()->subDays(2)]);
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+
+        $source->delete();
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+
+        $this->assertSame(['Source unhealthy: javdb', 'Source recovered: javdb'], $this->subjects());
+    }
 }

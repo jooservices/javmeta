@@ -40,11 +40,17 @@ final class OperationalAlertChecks
             ->exists();
 
         if ($hasDueWork && ! $progressed) {
+            $slugs = $this->slugList(CrawlQueue::query()
+                ->where('status', CrawlQueue::STATUS_PENDING)
+                ->where(function ($query): void {
+                    $query->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', now());
+                }));
+
             $this->alerts->send(
                 debounceKey: self::CRAWL_STALLED_KEY,
                 subject: 'Crawl made no progress',
-                body: "Crawl work is waiting but no source succeeded in the last {$window} seconds.",
-                context: ['stall_seconds' => $window],
+                body: "Crawl work is waiting but no source succeeded in the last {$window} seconds. Sources: {$slugs}.",
+                context: ['stall_seconds' => $window, 'source_slugs' => $slugs],
                 debounceSeconds: $this->throttle(),
             );
 
@@ -67,17 +73,19 @@ final class OperationalAlertChecks
     {
         $window = max(1, (int) config('javmeta_alerts.watchdog.queue_stuck_seconds', 1800));
 
-        $stuck = CrawlQueue::query()
+        $stuckQuery = CrawlQueue::query()
             ->where('status', CrawlQueue::STATUS_CLAIMED)
-            ->where('claimed_at', '<', now()->subSeconds($window))
-            ->count();
+            ->where('claimed_at', '<', now()->subSeconds($window));
+        $stuck = (clone $stuckQuery)->count();
 
         if ($stuck > 0) {
+            $slugs = $this->slugList($stuckQuery);
+
             $this->alerts->send(
                 debounceKey: self::QUEUE_STUCK_KEY,
                 subject: 'Crawl queue is stuck',
-                body: "{$stuck} claimed queue item(s) have not finished for over {$window} seconds.",
-                context: ['stuck_claimed' => $stuck, 'stuck_seconds' => $window],
+                body: "{$stuck} claimed queue item(s) have not finished for over {$window} seconds. Sources: {$slugs}.",
+                context: ['stuck_claimed' => $stuck, 'stuck_seconds' => $window, 'source_slugs' => $slugs],
                 debounceSeconds: $this->throttle(),
             );
 
@@ -91,6 +99,16 @@ final class OperationalAlertChecks
         );
 
         return false;
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<CrawlQueue>  $query
+     */
+    private function slugList(\Illuminate\Database\Eloquent\Builder $query): string
+    {
+        $slugs = $query->distinct()->orderBy('source_slug')->limit(20)->pluck('source_slug')->all();
+
+        return $slugs === [] ? 'unknown' : implode(', ', array_map('strval', $slugs));
     }
 
     private function throttle(): int

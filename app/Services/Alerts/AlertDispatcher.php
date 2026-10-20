@@ -23,15 +23,16 @@ final class AlertDispatcher
             return false;
         }
 
-        // Remember the cause as active so resolve() can send one recovery message.
-        Cache::put($this->activeKey($debounceKey), 1, now()->addDays(7));
-
         $ttl = $debounceSeconds ?? (int) config('javmeta_alerts.debounce_seconds', 900);
         $cacheKey = 'javmeta:alert:' . hash('sha256', $debounceKey);
 
         if ($ttl > 0 && ! Cache::add($cacheKey, 1, $ttl)) {
             return false;
         }
+
+        // Only an alert that was really sent makes the cause active, so a throttled
+        // recurrence can never lead to a recovery message without a prior alert.
+        Cache::put($this->activeKey($debounceKey), 1, now()->addDays(7));
 
         $this->notifier->notify($subject, $body, $context);
 
