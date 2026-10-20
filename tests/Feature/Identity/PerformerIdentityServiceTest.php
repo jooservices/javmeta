@@ -99,6 +99,26 @@ final class PerformerIdentityServiceTest extends TestCase
         self::assertLessThanOrEqual(10 * 9, $small);
     }
 
+    public function test_low_review_threshold_still_reports_pairs_sharing_no_trigram(): void
+    {
+        config(['performer_identity.review_name_similarity' => 0.5]);
+        foreach (['abcd' => 'one', 'xbcy' => 'two'] as $name => $id) {
+            Performer::factory()->create([
+                'source_slug' => 'source-a',
+                'external_id' => $id,
+                'name_romaji' => $name,
+                'name_kanji' => null,
+                'name_kana' => null,
+                'birth_date' => null,
+            ]);
+        }
+
+        $result = app(PerformerIdentityService::class)->backfill(true);
+
+        self::assertSame([], $result['merges']);
+        self::assertNotEmpty($result['reviews']);
+    }
+
     public function test_backfill_creates_missing_source_links_and_is_repeatable(): void
     {
         $performer = Performer::factory()->create([

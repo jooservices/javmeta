@@ -17,6 +17,10 @@ and search records.
 The `performer_identity.merge_name_similarity` threshold remains `1.0` so names
 must match exactly after normalization. `performer_identity.review_name_similarity`
 controls which weaker name matches appear for review; it never permits a merge.
+The backfill narrows candidates with a trigram block, which is only guaranteed to
+cover every reviewable pair at `0.82` or higher. Below `0.82` the backfill compares
+against every canonical performer so no configured review is omitted; this is
+slower on large catalogs.
 
 ## Matching during crawls
 

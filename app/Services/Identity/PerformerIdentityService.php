@@ -19,6 +19,9 @@ final class PerformerIdentityService
         private readonly ElasticsearchIndexer $indexer,
     ) {}
 
+    /** Lowest review similarity for which the trigram block is guaranteed to contain every reviewable pair. */
+    private const MIN_BLOCKED_REVIEW_SIMILARITY = 0.82;
+
     private int $candidateComparisons = 0;
 
     /** Number of source-to-root comparisons the last backfill handed to the matcher. */
@@ -901,6 +904,16 @@ final class PerformerIdentityService
      */
     private function boundedCandidates(array $snapshot, array $incoming, int $excludeRootId): array
     {
+        if ((float) config('performer_identity.review_name_similarity', 0.82) < self::MIN_BLOCKED_REVIEW_SIMILARITY) {
+            // Below this similarity names can be reviewable without sharing any trigram, so the block cannot
+            // be trusted: compare against every root instead of omitting configured reviews.
+            return array_values(array_filter(
+                $snapshot['roots'],
+                static fn(array $root, int|string $rootId): bool => (int) $rootId !== $excludeRootId,
+                ARRAY_FILTER_USE_BOTH,
+            ));
+        }
+
         $candidates = [];
         foreach ($this->blockingKeys($incoming) as $key) {
             foreach (array_keys($snapshot['index'][$key] ?? []) as $rootId) {
