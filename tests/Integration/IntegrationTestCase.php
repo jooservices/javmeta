@@ -6,9 +6,9 @@ namespace Tests\Integration;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
-use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
+use App\Services\Search\ElasticsearchHttpClient;
 use MongoDB\Client as MongoClient;
 use MongoDB\Collection;
 use Tests\Support\RunsCrawlerxFixtures;
@@ -53,7 +53,7 @@ abstract class IntegrationTestCase extends BaseTestCase
     protected function esDocument(string $index, string $id): ?array
     {
         // Elasticsearch 9 leaves dense_vector fields out of _source unless asked for them.
-        $response = $this->es()->get("/{$index}/_doc/{$id}", ['_source_exclude_vectors' => 'false']);
+        $response = $this->es()->get('integration_read', "/{$index}/_doc/{$id}", 10, ['_source_exclude_vectors' => 'false']);
 
         return $response->successful() && $response->json('found') === true ? (array) $response->json('_source') : null;
     }
@@ -61,9 +61,9 @@ abstract class IntegrationTestCase extends BaseTestCase
     protected function esCount(string $index): int
     {
         // GET avoids sending a JSON body, which _refresh rejects.
-        self::assertTrue($this->es()->get("/{$index}/_refresh")->successful(), "refresh of {$index} failed");
+        self::assertTrue($this->es()->get('integration_refresh', "/{$index}/_refresh", 10)->successful(), "refresh of {$index} failed");
 
-        return (int) $this->es()->get("/{$index}/_count")->json('count');
+        return (int) $this->es()->get('integration_count', "/{$index}/_count", 10)->json('count');
     }
 
     private function resetMongo(): void
@@ -78,7 +78,7 @@ abstract class IntegrationTestCase extends BaseTestCase
     private function resetElasticsearch(): void
     {
         foreach ([config('elasticsearch.movies_index'), config('elasticsearch.performers_index')] as $index) {
-            $this->es()->delete('/' . $index);
+            $this->es()->delete('integration_reset', '/' . $index, acceptedStatuses: [404]);
         }
 
         self::assertSame(0, Artisan::call('es:setup'), Artisan::output());
@@ -110,8 +110,8 @@ abstract class IntegrationTestCase extends BaseTestCase
             : sprintf('mongodb://%s:%d', config('mongodb.host'), config('mongodb.port')));
     }
 
-    private function es(): PendingRequest
+    protected function es(): ElasticsearchHttpClient
     {
-        return Http::baseUrl(rtrim((string) config('elasticsearch.host'), '/'))->acceptJson()->timeout(10);
+        return app(ElasticsearchHttpClient::class);
     }
 }

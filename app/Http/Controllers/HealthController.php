@@ -11,7 +11,7 @@ final class HealthController
 {
     public function __invoke(StatusHealthCheck $health): JsonResponse
     {
-        $payload = $health->check();
+        $payload = $health->status();
         $status = match ($payload['status']) {
             'down' => 503,
             'degraded' => 200,

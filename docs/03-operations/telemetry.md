@@ -43,6 +43,7 @@ same name as the emitted metric. Metric attributes are stored as labels/fields.
 | `javmeta_failed_jobs_1h` | — | Queue jobs that failed in the previous hour. |
 | `javmeta_dep_up` | `dependency` | Availability of PostgreSQL, Elasticsearch, OpenObserve, and MongoDB (`1` up, `0` down). |
 | `javmeta_mongo_archive_write_failures` | — | Cumulative count of failed Mongo archive writes since the cache counter was created. |
+| `javmeta_elasticsearch_request_failures` | — | Cumulative count of failed Elasticsearch requests since the cache counter was created. |
 
 The seven `javmeta_crawl_run_*_1h` streams are emitted from a fixed suffix list
 in `PublishMetricsCommand`; no other dynamic metric names are generated.
