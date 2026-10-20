@@ -396,57 +396,27 @@ final class PerformerIdentityService
     {
         $currentId = (int) $source->performer_id;
         $incoming = $this->sourceIdentity($source);
-        $candidateIds = $this->candidateRootIds($source, $incoming['names'], $currentId);
-        $roots = $candidateIds === [] ? [] : Performer::query()->whereNull('canonical_performer_id')
-            ->whereIn('id', $candidateIds)->orderBy('id')
-            ->with(['aliases', 'sources.sourcePerformer.aliases'])->get();
-
-        $candidates = (function () use ($roots) {
-            foreach ($roots as $root) {
-                yield $this->rootIdentity($root);
+        $candidates = function () use ($source, $incoming, $currentId) {
+            foreach ($this->candidateRootIdPages($source, $incoming['names'], $currentId, false) as $chunk) {
+                $roots = Performer::query()->whereNull('canonical_performer_id')->whereIn('id', $chunk)
+                    ->orderBy('id')->with(['aliases', 'sources.sourcePerformer.aliases'])->get();
+                foreach ($roots as $root) {
+                    yield $this->rootIdentity($root);
+                }
             }
-        });
+        };
 
         return $this->matcher->evaluate($incoming, $candidates);
     }
 
     /**
-     * @param list<string> $names
-     * @return list<int>
-     */
-    private function candidateRootIds(PerformerSource $source, array $names, int $currentId): array
-    {
-        $ids = [];
-        if ($source->cross_link_id !== null && $source->cross_link_id !== '') {
-            $ids = PerformerSource::query()
-                ->where('cross_link_source', (string) ($source->cross_link_source ?: $source->site_slug))
-                ->where('cross_link_id', (string) $source->cross_link_id)
-                ->pluck('performer_id')->map(static fn(mixed $id): int => (int) $id)->all();
-        }
-
-        $keys = $this->normalizedNames($names);
-        if ($keys !== []) {
-            $nameIds = DB::table('performer_name_keys as k')
-                ->join('performers as p', 'p.id', '=', 'k.source_performer_id')
-                ->whereIn('k.normalized_name', $keys)
-                ->selectRaw('COALESCE(p.canonical_performer_id, p.id) as root_id')
-                ->distinct()->pluck('root_id');
-            foreach ($nameIds as $id) {
-                $ids[] = (int) $id;
-            }
-        }
-
-        return array_values(array_diff(array_unique($ids), [$currentId]));
-    }
-
-    /**
-     * Pages of candidate root ids for the backfill: roots sharing a cross-link, a normalized name or a name
-     * trigram with the source. Keyset pages keep a common trigram from materializing a catalog-sized list.
+     * Pages of candidate root ids for the backfill: roots sharing a cross-link, a normalized name or (when
+     * $withGrams) a name trigram with the source. Keyset pages keep a common trigram from materializing a catalog-sized list.
      *
      * @param list<string> $names
      * @return \Generator<int, list<int>>
      */
-    private function candidateRootIdPages(PerformerSource $source, array $names, int $currentId): \Generator
+    private function candidateRootIdPages(PerformerSource $source, array $names, int $currentId, bool $withGrams = true): \Generator
     {
         $union = null;
         $add = static function ($query) use (&$union): void {
@@ -469,7 +439,7 @@ final class PerformerIdentityService
                 ->selectRaw('COALESCE(p.canonical_performer_id, p.id) as root_id'));
         }
 
-        foreach (array_chunk($this->nameGrams($names), 400) as $chunk) {
+        foreach ($withGrams ? array_chunk($this->nameGrams($names), 400) : [] as $chunk) {
             $add(DB::table('performer_name_grams as g')
                 ->join('performers as p', 'p.id', '=', 'g.source_performer_id')
                 ->whereIn('g.gram', $chunk)
