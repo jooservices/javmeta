@@ -25,8 +25,11 @@ final class MigrationsTest extends BaseTestCase
             self::assertTrue(Schema::hasTable($table), "missing table {$table}");
         }
 
-        // The last three migrations: queue start tracking (JAVM-81), performers.retired_date (JAVM-57), and failed reasons (JAVM-37).
-        self::assertSame(0, Artisan::call('migrate:rollback', ['--step' => 3, '--force' => true]), Artisan::output());
+        // The last four migrations: recrawl tracking (JAVM-82), queue start tracking (JAVM-81), performers.retired_date (JAVM-57), and failed reasons (JAVM-37).
+        self::assertSame(0, Artisan::call('migrate:rollback', ['--step' => 4, '--force' => true]), Artisan::output());
+        self::assertFalse(Schema::hasColumn('movies', 'recrawl_attempts'));
+        self::assertFalse(Schema::hasColumn('movies', 'recrawl_status'));
+        self::assertFalse(Schema::hasColumn('crawl_queue', 'is_recrawl'));
         self::assertFalse(Schema::hasColumn('crawl_queue', 'started_at'));
         self::assertFalse(Schema::hasColumn('performers', 'retired_date'));
         self::assertFalse(Schema::hasColumn('crawl_queue', 'error_code'));

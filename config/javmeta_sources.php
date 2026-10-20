@@ -39,10 +39,11 @@ return [
         ],
         'recrawl' => [
             // A movie whose completeness tier is below `min_tier` is crawled again once its last crawl is older
-            // than `incomplete_after_days`. Env: JAVMETA_RECRAWL_DAYS, JAVMETA_RECRAWL_MIN_TIER, JAVMETA_RECRAWL_BATCH.
+            // than `incomplete_after_days`. Env: JAVMETA_RECRAWL_DAYS, JAVMETA_RECRAWL_MIN_TIER, JAVMETA_RECRAWL_BATCH, JAVMETA_RECRAWL_MAX.
             'incomplete_after_days' => max(1, (int) env('JAVMETA_RECRAWL_DAYS', 7)),
             'min_tier' => (int) env('JAVMETA_RECRAWL_MIN_TIER', 3),
             'batch' => max(1, (int) env('JAVMETA_RECRAWL_BATCH', 200)),
+            'max_rounds' => max(1, (int) env('JAVMETA_RECRAWL_MAX', 3)),
         ],
         'normalize' => [
             // Per-source mapping of crawlerx metadata{} keys onto MovieDraft

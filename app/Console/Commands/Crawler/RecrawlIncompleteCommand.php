@@ -30,6 +30,7 @@ final class RecrawlIncompleteCommand extends Command
             ->select('movie_codes.*')
             ->join('movies', 'movies.id', '=', 'movie_codes.movie_id')
             ->where('movies.completeness_tier', '<', $minTier)
+            ->whereNull('movies.recrawl_status')
             ->where('movie_codes.crawled_at', '<', now()->subDays($days))
             ->whereNotNull('movie_codes.source_url')
             ->orderBy('movie_codes.crawled_at')
@@ -55,6 +56,7 @@ final class RecrawlIncompleteCommand extends Command
                         'last_error' => null,
                         'error_code' => null,
                         'last_failed_at' => null,
+                        'is_recrawl' => true,
                     ]);
 
                 $queued += $updated;
