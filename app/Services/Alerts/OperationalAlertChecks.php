@@ -1,0 +1,100 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Alerts;
+
+use App\Models\CrawlQueue;
+use App\Models\Source;
+
+/**
+ * Crawl-level alert rules run by crawler:watchdog: a crawl that made no progress
+ * and a queue with claims nobody finishes. Each rule alerts once per throttle
+ * window and sends one recovery message when the condition clears.
+ */
+final class OperationalAlertChecks
+{
+    public const CRAWL_STALLED_KEY = 'crawl:stalled';
+    public const QUEUE_STUCK_KEY = 'queue:stuck';
+
+    public function __construct(private readonly AlertDispatcher $alerts) {}
+
+    /**
+     * Stalled = work is due, yet no enabled source recorded a success within the window.
+     */
+    public function checkCrawlProgress(): bool
+    {
+        $window = max(1, (int) config('javmeta_alerts.watchdog.crawl_stall_seconds', 1800));
+        $cutoff = now()->subSeconds($window);
+
+        $hasDueWork = CrawlQueue::query()
+            ->where('status', CrawlQueue::STATUS_PENDING)
+            ->where(function ($query): void {
+                $query->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', now());
+            })
+            ->exists();
+
+        $progressed = Source::query()
+            ->where('enabled', true)
+            ->where('last_success_at', '>=', $cutoff)
+            ->exists();
+
+        if ($hasDueWork && ! $progressed) {
+            $this->alerts->send(
+                debounceKey: self::CRAWL_STALLED_KEY,
+                subject: 'Crawl made no progress',
+                body: "Crawl work is waiting but no source succeeded in the last {$window} seconds.",
+                context: ['stall_seconds' => $window],
+                debounceSeconds: $this->throttle(),
+            );
+
+            return true;
+        }
+
+        $this->alerts->resolve(
+            self::CRAWL_STALLED_KEY,
+            'Crawl progress recovered',
+            'The crawl is making progress again.',
+        );
+
+        return false;
+    }
+
+    /**
+     * Stuck = claimed rows older than the window (the reclaimer should have freed them).
+     */
+    public function checkQueue(): bool
+    {
+        $window = max(1, (int) config('javmeta_alerts.watchdog.queue_stuck_seconds', 1800));
+
+        $stuck = CrawlQueue::query()
+            ->where('status', CrawlQueue::STATUS_CLAIMED)
+            ->where('claimed_at', '<', now()->subSeconds($window))
+            ->count();
+
+        if ($stuck > 0) {
+            $this->alerts->send(
+                debounceKey: self::QUEUE_STUCK_KEY,
+                subject: 'Crawl queue is stuck',
+                body: "{$stuck} claimed queue item(s) have not finished for over {$window} seconds.",
+                context: ['stuck_claimed' => $stuck, 'stuck_seconds' => $window],
+                debounceSeconds: $this->throttle(),
+            );
+
+            return true;
+        }
+
+        $this->alerts->resolve(
+            self::QUEUE_STUCK_KEY,
+            'Crawl queue recovered',
+            'No claimed queue items are stuck any more.',
+        );
+
+        return false;
+    }
+
+    private function throttle(): int
+    {
+        return (int) config('javmeta_alerts.throttle_seconds', 3600);
+    }
+}

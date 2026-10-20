@@ -14,4 +14,14 @@ final class CrawlSourceUnhealthy
         public readonly string $reason,
         public readonly array $context = [],
     ) {}
+
+    public function alertKey(): string
+    {
+        return self::keyFor($this->sourceSlug, $this->reason);
+    }
+
+    public static function keyFor(string $sourceSlug, string $reason): string
+    {
+        return "source:{$sourceSlug}:{$reason}";
+    }
 }

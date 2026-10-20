@@ -1,0 +1,134 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Alerts;
+
+use App\Contracts\AlertNotifier;
+use App\Models\CrawlQueue;
+use App\Models\Source;
+use App\Services\Alerts\AlertDispatcher;
+use App\Services\Crawl\WorkerHeartbeat;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Tests\TestCase;
+
+final class WatchdogAlertsTest extends TestCase
+{
+    use RefreshDatabase;
+
+    /** @var list<array{string, string, array<string, mixed>}> */
+    private array $sent = [];
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Cache::flush();
+        $this->sent = [];
+        $fake = new class ($this->sent) implements AlertNotifier {
+            /** @param list<array{string, string, array<string, mixed>}> $sent */
+            public function __construct(private array &$sent) {}
+
+            public function notify(string $subject, string $body, array $context = []): void
+            {
+                $this->sent[] = [$subject, $body, $context];
+            }
+        };
+        $this->app->instance(AlertDispatcher::class, new AlertDispatcher($fake));
+        config(['javmeta_alerts.enabled' => true, 'javmeta_alerts.throttle_seconds' => 3600]);
+        (new WorkerHeartbeat())->beat();
+    }
+
+    /** @return list<string> */
+    private function subjects(): array
+    {
+        return array_map(static fn(array $row): string => $row[0], $this->sent);
+    }
+
+    public function test_dead_source_alerts_throttles_and_recovers(): void
+    {
+        $source = Source::factory()->create(['slug' => 'javdb', 'last_success_at' => now()->subDays(2)]);
+
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+        $this->assertSame(['Source unhealthy: javdb'], $this->subjects());
+
+        $this->travel(30)->minutes();
+        (new WorkerHeartbeat())->beat();
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+        $this->assertCount(1, $this->sent, 'throttled within the hour');
+
+        $this->travel(31)->minutes();
+        (new WorkerHeartbeat())->beat();
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+        $this->assertCount(2, $this->sent, 'repeats after the throttle window');
+
+        $source->update(['last_success_at' => now()]);
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+        $this->assertSame('Source recovered: javdb', $this->subjects()[2]);
+
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+        $this->assertCount(3, $this->sent, 'recovery is sent once');
+    }
+
+    public function test_stalled_crawl_alerts_and_recovers(): void
+    {
+        $source = Source::factory()->create(['slug' => 'javbus', 'last_success_at' => now()->subHours(2)]);
+        CrawlQueue::factory()->create(['source_slug' => 'javbus', 'status' => CrawlQueue::STATUS_PENDING]);
+        config(['javmeta_alerts.watchdog.source_stale_seconds' => 86400 * 7]);
+
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+        $this->assertSame(['Crawl made no progress'], $this->subjects());
+
+        $source->update(['last_success_at' => now()]);
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+        $this->assertSame(['Crawl made no progress', 'Crawl progress recovered'], $this->subjects());
+    }
+
+    public function test_idle_crawl_without_due_work_does_not_alert(): void
+    {
+        Source::factory()->create(['slug' => 'javbus', 'last_success_at' => now()->subHours(2)]);
+        config(['javmeta_alerts.watchdog.source_stale_seconds' => 86400 * 7]);
+
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+
+        $this->assertSame([], $this->sent);
+    }
+
+    public function test_stuck_queue_alerts_and_recovers(): void
+    {
+        $row = CrawlQueue::factory()->create([
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'claimed_at' => now()->subHours(2),
+        ]);
+
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+        $this->assertSame(['Crawl queue is stuck'], $this->subjects());
+        $this->assertSame(1, $this->sent[0][2]['stuck_claimed']);
+
+        $row->update(['status' => CrawlQueue::STATUS_DONE]);
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+        $this->assertSame(['Crawl queue is stuck', 'Crawl queue recovered'], $this->subjects());
+    }
+
+    public function test_stale_worker_heartbeat_recovers(): void
+    {
+        Cache::forget(WorkerHeartbeat::CACHE_KEY);
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+        $this->assertSame(['Worker heartbeat stale'], $this->subjects());
+
+        (new WorkerHeartbeat())->beat();
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+        $this->assertSame(['Worker heartbeat stale', 'Worker heartbeat recovered'], $this->subjects());
+    }
+
+    public function test_alerts_disabled_sends_nothing(): void
+    {
+        config(['javmeta_alerts.enabled' => false]);
+        CrawlQueue::factory()->create(['status' => CrawlQueue::STATUS_CLAIMED, 'claimed_at' => now()->subHours(2)]);
+
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+
+        $this->assertSame([], $this->sent);
+    }
+}

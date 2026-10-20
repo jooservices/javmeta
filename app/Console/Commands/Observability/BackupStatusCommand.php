@@ -27,12 +27,14 @@ final class BackupStatusCommand extends Command
         ]);
 
         $threshold = max(1, (int) config('backup.stale_after_seconds', 26 * 60 * 60));
+        $throttle = (int) config('javmeta_alerts.throttle_seconds', 3600);
         if ($age === null) {
             $alerts->send(
                 debounceKey: 'backup:missing',
                 subject: 'Backup manifest missing',
                 body: 'No successful database backup manifest is available.',
                 context: ['backup_age_seconds' => -1],
+                debounceSeconds: $throttle,
             );
             $this->error('No successful backup manifest is available.');
 
@@ -45,12 +47,15 @@ final class BackupStatusCommand extends Command
                 subject: 'Database backup is stale',
                 body: 'The last successful database backup is older than the configured freshness limit.',
                 context: ['backup_age_seconds' => $age, 'threshold_seconds' => $threshold],
+                debounceSeconds: $throttle,
             );
             $this->warn("Last successful backup is stale ({$age} seconds old).");
 
             return self::FAILURE;
         }
 
+        $alerts->resolve('backup:stale', 'Database backup recovered', 'The last successful database backup is fresh again.', ['backup_age_seconds' => $age]);
+        $alerts->resolve('backup:missing', 'Backup manifest recovered', 'A successful database backup manifest is available again.', ['backup_age_seconds' => $age]);
         $this->info("Last successful backup is current ({$age} seconds old).");
 
         return self::SUCCESS;
