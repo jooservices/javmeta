@@ -196,6 +196,35 @@ final class PerformerIdentityIngestionTest extends TestCase
         self::assertDatabaseHas('movie_performers', ['movie_id' => $shared->id, 'performer_id' => $rootId]);
     }
 
+    public function test_split_removes_a_canonical_movie_link_written_by_the_split_source_after_the_merge(): void
+    {
+        $this->persistMovie('SSIS-001', 'javdb', [PerformerDraft::from('javdb', 'p1', 'Aoi Sakura', birthDate: '1990-01-01')]);
+        $this->persistMovie('SSIS-002', 'onejav', [PerformerDraft::from('onejav', 'x9', 'Aoi Sakura', birthDate: '1990-01-01')]);
+        $rootId = (int) Performer::query()->where('source_slug', 'javdb')->value('id');
+        // The split source crawls the movie again after the merge, so the canonical row carries newer values.
+        app(MoviePersister::class)->persist(MovieDraft::from(
+            sourceSlug: 'onejav',
+            sourceUrl: 'https://onejav.test/SSIS-002',
+            code: 'SSIS-002',
+            performers: [PerformerDraft::from('onejav', 'x9', 'Aoi Sakura', birthDate: '1990-01-01')],
+            crawledAt: CarbonImmutable::parse('2026-09-19 10:00:00'),
+        ));
+
+        $merge = PerformerIdentityEvent::query()->where('event_type', 'merge')->firstOrFail();
+        app(PerformerIdentityService::class)->split((int) $merge->id);
+
+        $movie = Movie::query()->where('code_normalized', 'SSIS002')->sole();
+        self::assertDatabaseMissing('movie_performers', ['movie_id' => $movie->id, 'performer_id' => $rootId]);
+    }
+
+    public function test_a_blank_incoming_name_field_is_not_recorded_as_a_rename(): void
+    {
+        $this->persistMovie('SSIS-001', 'javdb', [PerformerDraft::from('javdb', 'p1', 'Aoi Sakura', nameKanji: '桜あおい')]);
+        $this->persistMovie('SSIS-002', 'javdb', [PerformerDraft::from('javdb', 'p1', 'Aoi Sakura')]);
+
+        self::assertDatabaseMissing('performer_aliases', ['alias' => '桜あおい', 'kind' => 'renamed']);
+    }
+
     public function test_movie_ingestion_keeps_previous_source_names_as_aliases(): void
     {
         $this->persistMovie('SSIS-001', 'javdb', [PerformerDraft::from('javdb', 'p1', 'Aoi Sakura')]);

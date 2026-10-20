@@ -137,15 +137,17 @@ final class PerformerIdentityService
         return $canonicalId;
     }
 
-    /** @param list<string|null> $currentNames the names the incoming draft carries */
+    /** @param list<string|null> $currentNames the incoming romaji, kanji and kana names, in that field order */
     public function preserveRenamedSourceNames(PerformerSource $source, Performer $performer, array $currentNames, string $siteSlug): void
     {
-        $currentNames = array_filter($currentNames, static fn(mixed $name): bool => is_string($name) && trim($name) !== '');
         $sourcePerformerId = (int) ($source->source_performer_id ?? $performer->id);
         $canonicalId = (int) ($performer->canonical_performer_id ?? $performer->id);
 
-        foreach ([$source->name_romaji, $source->name_kanji, $source->name_kana] as $previousName) {
-            if (! is_string($previousName) || trim($previousName) === '' || in_array($previousName, $currentNames, true)) {
+        foreach ([$source->name_romaji, $source->name_kanji, $source->name_kana] as $position => $previousName) {
+            $current = $currentNames[$position] ?? null;
+            // A field renamed in place is compared by position; an absent incoming value keeps the stored one.
+            if (! is_string($previousName) || trim($previousName) === '' || ! is_string($current)
+                || trim($current) === '' || trim($current) === trim($previousName)) {
                 continue;
             }
 
@@ -590,17 +592,37 @@ final class PerformerIdentityService
     /** @param list<array{movie_id: int, source_slug: string, crawled_at: string}> $links @param list<int> $splitIds */
     private function removeCreatedMovieLinks(array $links, array $splitIds, int $canonicalId): void
     {
+        $remainingIds = Performer::query()->where('canonical_performer_id', $canonicalId)
+            ->whereNotIn('id', $splitIds)->pluck('id')->all();
+        $ownSlug = Performer::query()->whereKey($canonicalId)->value('source_slug');
+        $mergeCopies = [];
         foreach ($links as $link) {
-            $remainingIds = Performer::query()->where('canonical_performer_id', $canonicalId)
-                ->whereNotIn('id', $splitIds)->pluck('id')->all();
-            $stillLinked = DB::table('movie_performers')->where('movie_id', $link['movie_id'])
+            $mergeCopies[$link['movie_id']] = $link;
+        }
+        $splitMovieIds = DB::table('movie_performers')->whereIn('performer_id', $splitIds)->pluck('movie_id')
+            ->map(static fn(mixed $id): int => (int) $id)->all();
+
+        foreach (array_unique(array_merge(array_keys($mergeCopies), $splitMovieIds)) as $movieId) {
+            $stillLinked = DB::table('movie_performers')->where('movie_id', $movieId)
                 ->whereIn('performer_id', $remainingIds)->exists();
-            if (! $stillLinked) {
-                // A link re-made after the merge carries a newer crawled_at or source: the canonical record owns it now.
-                DB::table('movie_performers')->where('movie_id', $link['movie_id'])
-                    ->where('performer_id', $canonicalId)
-                    ->where('source_slug', $link['source_slug'])
-                    ->where('crawled_at', $link['crawled_at'])->delete();
+            $canonicalLink = DB::table('movie_performers')->where('movie_id', $movieId)
+                ->where('performer_id', $canonicalId)->first();
+            if ($stillLinked || $canonicalLink === null) {
+                continue;
+            }
+
+            // The canonical row is the merge copy, or a later crawl of a split source wrote the same values to it.
+            $copy = $mergeCopies[$movieId] ?? null;
+            $isMergeCopy = $copy !== null && $canonicalLink->source_slug === $copy['source_slug']
+                && (string) $canonicalLink->crawled_at === $copy['crawled_at'];
+            $isSplitSourceWrite = $canonicalLink->source_slug !== $ownSlug
+                && DB::table('movie_performers')->where('movie_id', $movieId)
+                    ->whereIn('performer_id', $splitIds)
+                    ->where('source_slug', $canonicalLink->source_slug)
+                    ->where('crawled_at', $canonicalLink->crawled_at)->exists();
+            if ($isMergeCopy || $isSplitSourceWrite) {
+                DB::table('movie_performers')->where('movie_id', $movieId)
+                    ->where('performer_id', $canonicalId)->delete();
             }
         }
     }
