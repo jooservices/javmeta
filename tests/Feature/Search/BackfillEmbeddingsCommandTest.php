@@ -125,6 +125,41 @@ final class BackfillEmbeddingsCommandTest extends TestCase
             ->count());
     }
 
+    public function test_metrics_omit_entities_skipped_when_the_limit_is_exhausted(): void
+    {
+        Movie::factory()->create();
+        Performer::factory()->create();
+        $this->configureSearchServices();
+        $this->enableBackfillMetrics();
+
+        Http::fake(function (ClientRequest $request) {
+            if (str_ends_with($request->url(), '/healthz')) {
+                return Http::response(['status' => 'ok']);
+            }
+
+            if (str_ends_with($request->url(), '/v1/embeddings')) {
+                return Http::response(['data' => [['embedding' => array_fill(0, 384, 0.25)]]]);
+            }
+
+            if (str_ends_with($request->url(), '/_search')) {
+                return Http::response($this->vectorSearchResponse($request->data(), []));
+            }
+
+            return Http::response(['result' => 'created']);
+        });
+
+        $this->artisan('search:backfill-embeddings', ['--entity' => 'all', '--limit' => 1])
+            ->assertSuccessful()
+            ->expectsOutputToContain('Scanned: 1')
+            ->expectsOutputToContain('Missing: 1')
+            ->expectsOutputToContain('Fixed: 1');
+
+        $this->assertSame([
+            'javmeta_search_embedding_backfill_missing:movies' => 1.0,
+            'javmeta_search_embedding_backfill_fixed:movies' => 1.0,
+        ], $this->backfillMetricValues());
+    }
+
     public function test_dry_run_counts_missing_vectors_without_health_checks_or_writes(): void
     {
         Movie::factory()->create();
@@ -149,10 +184,12 @@ final class BackfillEmbeddingsCommandTest extends TestCase
         Http::assertNotSent(static fn(ClientRequest $request): bool => str_contains($request->url(), '/_doc/'));
     }
 
-    public function test_command_stops_before_indexing_when_the_embedder_is_down(): void
+    public function test_command_stops_before_indexing_when_the_embedder_is_down_and_omits_unprocessed_entity_metrics(): void
     {
         Movie::factory()->create();
+        Performer::factory()->create();
         $this->configureSearchServices();
+        $this->enableBackfillMetrics();
         Http::fake(function (ClientRequest $request) {
             if (str_ends_with($request->url(), '/healthz')) {
                 return Http::response([], 503);
@@ -165,7 +202,7 @@ final class BackfillEmbeddingsCommandTest extends TestCase
             return Http::response(['result' => 'created']);
         });
 
-        $this->artisan('search:backfill-embeddings', ['--entity' => 'movies'])
+        $this->artisan('search:backfill-embeddings', ['--entity' => 'all'])
             ->assertFailed()
             ->expectsOutputToContain('Embedder health check failed')
             ->expectsOutputToContain('Missing: 1')
@@ -174,6 +211,10 @@ final class BackfillEmbeddingsCommandTest extends TestCase
 
         Http::assertNotSent(static fn(ClientRequest $request): bool => str_ends_with($request->url(), '/v1/embeddings'));
         Http::assertNotSent(static fn(ClientRequest $request): bool => str_contains($request->url(), '/_doc/'));
+        $this->assertSame([
+            'javmeta_search_embedding_backfill_missing:movies' => 1.0,
+            'javmeta_search_embedding_backfill_fixed:movies' => 0.0,
+        ], $this->backfillMetricValues());
     }
 
     public function test_command_fails_when_elasticsearch_cannot_compare_the_batch(): void
@@ -206,6 +247,18 @@ final class BackfillEmbeddingsCommandTest extends TestCase
             'elasticsearch.verify_ssl' => false,
             'elasticsearch.embedder_url' => 'http://embedder.test',
             'openobserve.enabled' => false,
+        ]);
+    }
+
+    private function enableBackfillMetrics(): void
+    {
+        config()->set([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.email' => '',
+            'openobserve.password' => '',
+            'openobserve.timeout' => 1,
         ]);
     }
 

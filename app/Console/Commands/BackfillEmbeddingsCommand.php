@@ -52,8 +52,8 @@ final class BackfillEmbeddingsCommand extends Command
         $entities = $entity === 'all' ? ['movies', 'performers'] : [$entity];
         $counts = [
             'scanned' => 0,
-            'missing' => array_fill_keys($entities, 0),
-            'fixed' => array_fill_keys($entities, 0),
+            'missing' => [],
+            'fixed' => [],
             'complete' => 0,
             'still_missing' => 0,
         ];
@@ -74,6 +74,9 @@ final class BackfillEmbeddingsCommand extends Command
             if ($limit > 0 && $entityLimit === 0) {
                 break;
             }
+
+            $counts['missing'][$currentEntity] = 0;
+            $counts['fixed'][$currentEntity] = 0;
 
             $definition = $definitions[$currentEntity];
             $success = $this->backfillEntity(
