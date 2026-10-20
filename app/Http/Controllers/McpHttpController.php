@@ -33,7 +33,8 @@ final class McpHttpController
         }
 
         /** @var array<string, mixed> $message */
-        $response = $handler->handle($message);
+        $httpAuthorized = $request->attributes->get('api_key') !== null;
+        $response = $handler->handle($message, $httpAuthorized);
 
         if ($response === null) {
             return response()->json(null, Response::HTTP_ACCEPTED);

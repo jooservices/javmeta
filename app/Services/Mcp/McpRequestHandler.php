@@ -36,7 +36,7 @@ final class McpRequestHandler
      * @param  array<string, mixed>  $message
      * @return array<string, mixed>|null  Response payload, or null for notifications
      */
-    public function handle(array $message): ?array
+    public function handle(array $message, bool $httpAuthorized = false): ?array
     {
         $id = $message['id'] ?? null;
         $method = $message['method'] ?? null;
@@ -54,7 +54,10 @@ final class McpRequestHandler
                 ],
                 'notifications/initialized', 'initialized' => null,
                 'tools/list' => ['tools' => $this->tools->definitions()],
-                'tools/call' => $this->callTool(is_array($message['params'] ?? null) ? $message['params'] : []),
+                'tools/call' => $this->callTool(
+                    is_array($message['params'] ?? null) ? $message['params'] : [],
+                    $httpAuthorized,
+                ),
                 'ping' => (object) [],
                 default => throw new InvalidArgumentException("Method not found: {$method}"),
             };
@@ -91,9 +94,9 @@ final class McpRequestHandler
      * @param  array<string, mixed>  $params
      * @return array{content: list<array{type: string, text: string}>, isError?: bool}
      */
-    private function callTool(array $params): array
+    private function callTool(array $params, bool $httpAuthorized): array
     {
-        if (! $this->isAuthorized()) {
+        if (! $httpAuthorized && ! $this->isAuthorized()) {
             return [
                 'content' => [['type' => 'text', 'text' => json_encode(['error' => 'unauthorized'], JSON_UNESCAPED_UNICODE) ?: '{}']],
                 'isError' => true,
