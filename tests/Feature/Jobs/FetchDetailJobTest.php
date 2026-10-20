@@ -163,10 +163,7 @@ final class FetchDetailJobTest extends TestCase
     {
         $source = $this->source('javbtc');
         $row = $this->detailRow($source);
-        $row->forceFill([
-            'url' => 'https://javbtc.com/r18/no-code-detail',
-            'attempts' => 1,
-        ])->save();
+        $row->forceFill(['url' => 'https://javbtc.com/r18/no-code-detail'])->save();
         $sink = new FakeMovieDraftSink();
         $this->app->instance(MovieDraftSink::class, $sink);
         $client = $this->fakeClient(CrawlerxFetchResult::movie(new MovieDto(
