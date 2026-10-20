@@ -34,6 +34,12 @@ share the same namespaced cross-link, or the same normalized name stored in
 existing records. Run the backfill once after deploying so existing performers
 can be matched by the crawl path.
 
+The backfill streams source records in id order and looks up each one's
+candidates through `performer_name_keys` and `performer_name_grams` (name
+trigrams), so its memory use stays flat however large the catalog is. The
+dry run executes the same pass inside a transaction that is rolled back, so
+it lists exactly the merges and reviews a real run would produce.
+
 ## Deployment
 
 After deploying the code, apply the forward migration, inspect the planned

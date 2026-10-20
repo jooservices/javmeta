@@ -32,39 +32,48 @@ final class PerformerIdentityService
     }
 
     /**
-     * Works from one in-memory snapshot of the catalog, so the cost is a fixed number of chunked reads plus
-     * the matcher comparisons, not a set of queries for every source row.
+     * Streams the source records in id order and finds each one's candidates through the name indexes, so
+     * memory stays flat however large the catalog is. A dry run executes in a transaction that is rolled
+     * back, which makes its report exactly what a real run would do.
      *
      * @return array{merges: list<array<string, mixed>>, reviews: list<array<string, mixed>>}
      */
     public function backfill(bool $dryRun = false): array
     {
-        $this->candidateComparisons = 0;
-        $snapshot = $this->loadSnapshot($this->ensureSourceLinks($dryRun));
         if (! $dryRun) {
-            $this->storeNameKeys($snapshot);
+            return $this->runBackfill($dryRun);
         }
+
+        DB::beginTransaction();
+        try {
+            return $this->runBackfill($dryRun);
+        } finally {
+            DB::rollBack();
+        }
+    }
+
+    /** @return array{merges: list<array<string, mixed>>, reviews: list<array<string, mixed>>} */
+    private function runBackfill(bool $dryRun): array
+    {
+        $this->candidateComparisons = 0;
+        $this->ensureSourceLinks();
+        $this->storeNameKeys();
 
         $merges = [];
         $reviews = [];
         $plannedReviews = [];
         $plannedPairs = [];
 
-        foreach ($snapshot['sources'] as $source) {
-            if ($source['removed_at'] !== null) {
-                continue;
-            }
-            $sourcePerformerId = (int) ($source['source_performer_id'] ?? $source['performer_id']);
-            $currentPerformerId = (int) $source['performer_id'];
+        foreach (PerformerSource::query()->whereNull('removed_at')->lazyById(500) as $source) {
+            $sourcePerformerId = (int) ($source->source_performer_id ?? $source->performer_id);
+            $currentPerformerId = (int) $source->performer_id;
             if ($sourcePerformerId !== $currentPerformerId
-                || ($snapshot['root_of'][$currentPerformerId] ?? $currentPerformerId) !== $currentPerformerId) {
+                || ! Performer::query()->whereKey($currentPerformerId)->whereNull('canonical_performer_id')->exists()) {
                 continue;
             }
 
-            $incoming = $this->snapshotSourceIdentity($snapshot, $source);
-            $candidates = $this->boundedCandidates($snapshot, $incoming, $currentPerformerId);
-            $this->candidateComparisons += count($candidates);
-            $evaluation = $this->matcher->evaluate($incoming, $candidates);
+            $incoming = $this->sourceIdentity($source);
+            $evaluation = $this->matcher->evaluate($incoming, $this->backfillCandidates($source, $incoming, $currentPerformerId));
             if ($evaluation['decision'] === 'merge') {
                 $candidateId = (int) $evaluation['candidate_id'];
                 $fromId = max($currentPerformerId, $candidateId);
@@ -81,9 +90,7 @@ final class PerformerIdentityService
                     'reason' => $evaluation['reason'],
                 ];
 
-                if (! $dryRun && $this->mergeRoots($fromId, $toId, $evaluation)) {
-                    $this->foldRootIntoSnapshot($snapshot, $fromId, $toId);
-                }
+                $this->mergeRoots($fromId, $toId, $evaluation);
             } elseif ($evaluation['decision'] === 'review') {
                 foreach ($evaluation['review_candidates'] as $candidate) {
                     $reviewPair = min($sourcePerformerId, (int) $candidate['id']) . ':'
@@ -343,7 +350,7 @@ final class PerformerIdentityService
 
     /**
      * The crawl path only compares against roots sharing a cross-link or a normalized name; the backfill
-     * (which also finds weak name matches) compares against its in-memory snapshot of every root.
+     * (which also finds weak name matches) also selects roots through the indexed name trigrams.
      *
      * @return array{decision: string, candidate_id: int|null, reason: string|null, similarity: float, review_candidates: list<array{id: int, reason: string, similarity: float}>}
      */
@@ -369,7 +376,7 @@ final class PerformerIdentityService
      * @param list<string> $names
      * @return list<int>
      */
-    private function candidateRootIds(PerformerSource $source, array $names, int $currentId): array
+    private function candidateRootIds(PerformerSource $source, array $names, int $currentId, bool $withGrams = false): array
     {
         $ids = [];
         if ($source->cross_link_id !== null && $source->cross_link_id !== '') {
@@ -391,6 +398,18 @@ final class PerformerIdentityService
             }
         }
 
+        $grams = $withGrams ? $this->nameGrams($names) : [];
+        foreach (array_chunk($grams, 400) as $chunk) {
+            $gramIds = DB::table('performer_name_grams as g')
+                ->join('performers as p', 'p.id', '=', 'g.source_performer_id')
+                ->whereIn('g.gram', $chunk)
+                ->selectRaw('COALESCE(p.canonical_performer_id, p.id) as root_id')
+                ->distinct()->pluck('root_id');
+            foreach ($gramIds as $id) {
+                $ids[] = (int) $id;
+            }
+        }
+
         return array_values(array_diff(array_unique($ids), [$currentId]));
     }
 
@@ -398,14 +417,19 @@ final class PerformerIdentityService
     private function refreshNameKeys(PerformerSource $source): void
     {
         $sourcePerformerId = (int) ($source->source_performer_id ?? $source->performer_id);
-        $keys = $this->normalizedNames($this->sourceIdentity($source)['names']);
+        $names = $this->sourceIdentity($source)['names'];
+        $keys = $this->normalizedNames($names);
         if ($keys === []) {
             return;
         }
 
-        DB::table('performer_name_keys')->insertOrIgnore(array_map(
+        $this->insertKeyRows('performer_name_keys', array_map(
             static fn(string $key): array => ['source_performer_id' => $sourcePerformerId, 'normalized_name' => $key],
             $keys,
+        ));
+        $this->insertKeyRows('performer_name_grams', array_map(
+            static fn(string $gram): array => ['source_performer_id' => $sourcePerformerId, 'gram' => $gram],
+            $this->nameGrams($names),
         ));
     }
 
@@ -421,7 +445,7 @@ final class PerformerIdentityService
     /** @return array{id: int, names: list<string>, birth_dates: list<string>, cross_links: list<array{source: string, id: string}>} */
     private function sourceIdentity(PerformerSource $source): array
     {
-        $performer = $source->sourcePerformer()->first();
+        $performer = $source->sourcePerformer;
         $names = array_filter([
             $source->name_romaji,
             $source->name_kanji,
@@ -661,18 +685,13 @@ final class PerformerIdentityService
         Performer::query()->whereKey($review['candidate_performer_id'])->update(['needs_review' => true]);
     }
 
-    /**
-     * Creates the missing source links in batches; a dry run only returns what would be created.
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function ensureSourceLinks(bool $dryRun): array
+    /** Creates the missing source links in batches. */
+    private function ensureSourceLinks(): void
     {
-        $missing = [];
         Performer::query()->whereNotExists(static function ($query): void {
             $query->selectRaw('1')->from('performer_sources')
                 ->whereColumn('performer_sources.source_performer_id', 'performers.id');
-        })->chunkById(500, function ($performers) use ($dryRun, &$missing): void {
+        })->chunkById(500, function ($performers): void {
             $rows = [];
             foreach ($performers as $performer) {
                 $rows[] = [
@@ -691,253 +710,87 @@ final class PerformerIdentityService
                 ];
             }
 
-            if ($dryRun) {
-                array_push($missing, ...$rows);
-            } else {
-                DB::table('performer_sources')->insertOrIgnore($rows);
-            }
+            DB::table('performer_sources')->insertOrIgnore($rows);
         });
-
-        return $missing;
     }
 
     /**
-     * @param list<array<string, mixed>> $extraSources planned source rows that are not stored yet (dry run)
-     * @return array<string, mixed>
-     */
-    private function loadSnapshot(array $extraSources): array
-    {
-        $performers = [];
-        $canonicalOf = [];
-        $columns = ['id', 'canonical_performer_id', 'name_romaji', 'name_kanji', 'name_kana', 'birth_date'];
-        foreach (DB::table('performers')->select($columns)->lazyById(1000) as $row) {
-            $performers[(int) $row->id] = [
-                'names' => $this->presentStrings([$row->name_romaji, $row->name_kanji, $row->name_kana]),
-                'birth' => $this->dateString($row->birth_date),
-            ];
-            $canonicalOf[(int) $row->id] = $row->canonical_performer_id === null ? null : (int) $row->canonical_performer_id;
-        }
-
-        $ownerAliases = [];
-        $sourceAliases = [];
-        foreach (DB::table('performer_aliases')->select(['id', 'performer_id', 'source_performer_id', 'alias'])->lazyById(2000) as $row) {
-            $ownerAliases[(int) $row->performer_id][] = (string) $row->alias;
-            if ($row->source_performer_id !== null) {
-                $sourceAliases[(int) $row->source_performer_id][] = (string) $row->alias;
-            }
-        }
-
-        $sourceColumns = [
-            'id', 'performer_id', 'source_performer_id', 'site_slug', 'name_romaji', 'name_kanji', 'name_kana',
-            'birth_date', 'cross_link_source', 'cross_link_id', 'removed_at',
-        ];
-        $sources = [];
-        foreach (DB::table('performer_sources')->select($sourceColumns)->lazyById(1000) as $row) {
-            $sources[] = (array) $row;
-        }
-        foreach ($extraSources as $extra) {
-            $sources[] = $extra + ['id' => null, 'cross_link_source' => null, 'cross_link_id' => null];
-        }
-
-        $rootOf = [];
-        $members = [];
-        foreach ($canonicalOf as $id => $parent) {
-            $root = $id;
-            for ($hops = 0; $parent !== null && $hops < 50; $hops++) {
-                $root = $parent;
-                $parent = $canonicalOf[$parent] ?? null;
-            }
-            $rootOf[$id] = $root;
-            $members[$root][] = $id;
-        }
-
-        $roots = [];
-        foreach ($performers as $id => $performer) {
-            if ($canonicalOf[$id] !== null) {
-                continue;
-            }
-            $roots[$id] = [
-                'id' => $id,
-                'names' => array_merge($performer['names'], $ownerAliases[$id] ?? []),
-                'birth_dates' => $performer['birth'] === null ? [] : [$performer['birth']],
-                'cross_links' => [],
-            ];
-        }
-
-        $snapshot = [
-            'performers' => $performers,
-            'sources' => $sources,
-            'source_aliases' => $sourceAliases,
-            'roots' => $roots,
-            'root_of' => $rootOf,
-            'members' => $members,
-        ];
-
-        foreach ($sources as $source) {
-            $rootId = (int) $source['performer_id'];
-            if (! isset($snapshot['roots'][$rootId])) {
-                continue;
-            }
-            $identity = $this->snapshotSourceIdentity($snapshot, $source);
-            $root = &$snapshot['roots'][$rootId];
-            $root['names'] = array_merge($root['names'], $identity['names']);
-            $root['birth_dates'] = array_merge($root['birth_dates'], $identity['birth_dates']);
-            $root['cross_links'] = array_merge($root['cross_links'], $identity['cross_links']);
-            unset($root);
-        }
-        foreach ($snapshot['roots'] as $rootId => $identity) {
-            $snapshot['roots'][$rootId]['names'] = array_values(array_unique($identity['names']));
-            $snapshot['roots'][$rootId]['birth_dates'] = array_values(array_unique($identity['birth_dates']));
-        }
-        $snapshot['index'] = [];
-        foreach ($snapshot['roots'] as $rootId => $identity) {
-            $this->indexRoot($snapshot, $rootId, $identity);
-        }
-
-        return $snapshot;
-    }
-
-    /**
-     * Blocking keys of an identity: each normalized name, each namespaced cross-link and each name trigram, so
-     * a candidate must share at least one before it is compared. Names that share none cannot reach the
-     * configured review similarity, which keeps the comparisons per source bounded by the block sizes.
+     * Lazily yields the root identities that can be compared with a source: roots sharing a cross-link, a
+     * normalized name or a name trigram with it. Below the trigram guarantee every root is compared.
      *
-     * @param array{names: list<string>, cross_links: list<array{source: string, id: string}>} $identity
-     * @return list<string>
+     * @param array{names: list<string>} $incoming
+     * @return \Generator<int, array<string, mixed>>
      */
-    private function blockingKeys(array $identity): array
+    private function backfillCandidates(PerformerSource $source, array $incoming, int $currentId): \Generator
     {
-        $keys = [];
-        foreach ($identity['cross_links'] as $link) {
-            $keys['c:' . $link['source'] . ':' . $link['id']] = true;
-        }
-        foreach ($this->normalizedNames($identity['names']) as $name) {
-            $keys['n:' . $name] = true;
-            $padded = ' ' . $name . ' ';
-            $characters = preg_split('//u', $padded, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-            for ($i = 0, $last = count($characters) - 3; $i <= $last; $i++) {
-                $keys['g:' . $characters[$i] . $characters[$i + 1] . $characters[$i + 2]] = true;
-            }
-        }
-
-        return array_map('strval', array_keys($keys));
-    }
-
-    /** @param array<string, mixed> $snapshot @param array<string, mixed> $identity */
-    private function indexRoot(array &$snapshot, int $rootId, array $identity): void
-    {
-        foreach ($this->blockingKeys($identity) as $key) {
-            $snapshot['index'][$key][$rootId] = true;
-        }
-    }
-
-    /**
-     * @param array<string, mixed> $snapshot
-     * @param array<string, mixed> $incoming
-     * @return list<array<string, mixed>>
-     */
-    private function boundedCandidates(array $snapshot, array $incoming, int $excludeRootId): array
-    {
+        $roots = Performer::query()->whereNull('canonical_performer_id')->where('id', '<>', $currentId)
+            ->with(['aliases', 'sources.sourcePerformer.aliases']);
         if ((float) config('performer_identity.review_name_similarity', 0.82) < self::MIN_BLOCKED_REVIEW_SIMILARITY) {
             // Below this similarity names can be reviewable without sharing any trigram, so the block cannot
             // be trusted: compare against every root instead of omitting configured reviews.
-            return array_values(array_filter(
-                $snapshot['roots'],
-                static fn(array $root, int|string $rootId): bool => (int) $rootId !== $excludeRootId,
-                ARRAY_FILTER_USE_BOTH,
-            ));
-        }
-
-        $candidates = [];
-        foreach ($this->blockingKeys($incoming) as $key) {
-            foreach (array_keys($snapshot['index'][$key] ?? []) as $rootId) {
-                if ($rootId !== $excludeRootId && isset($snapshot['roots'][$rootId])) {
-                    $candidates[$rootId] = $snapshot['roots'][$rootId];
-                }
+            foreach ($roots->lazyById(200) as $root) {
+                $this->candidateComparisons++;
+                yield $this->rootIdentity($root);
             }
+
+            return;
         }
 
-        return array_values($candidates);
-    }
-
-    /**
-     * @param array<string, mixed> $snapshot
-     * @param array<string, mixed> $source
-     * @return array{id: int, names: list<string>, birth_dates: list<string>, cross_links: list<array{source: string, id: string}>}
-     */
-    private function snapshotSourceIdentity(array $snapshot, array $source): array
-    {
-        $sourcePerformerId = (int) ($source['source_performer_id'] ?? $source['performer_id']);
-        $performer = $source['source_performer_id'] === null ? null : ($snapshot['performers'][$sourcePerformerId] ?? null);
-        $names = array_merge(
-            $this->presentStrings([$source['name_romaji'], $source['name_kanji'], $source['name_kana']]),
-            $performer['names'] ?? [],
-            $snapshot['source_aliases'][$sourcePerformerId] ?? [],
-        );
-        $birthDate = $this->dateString($source['birth_date'] ?? null) ?? ($performer['birth'] ?? null);
-        $crossLinkId = $source['cross_link_id'] ?? null;
-
-        return [
-            'id' => $sourcePerformerId,
-            'names' => $names,
-            'birth_dates' => $birthDate === null ? [] : [$birthDate],
-            'cross_links' => ! is_string($crossLinkId) || $crossLinkId === '' ? [] : [[
-                'source' => (string) (($source['cross_link_source'] ?? null) ?: $source['site_slug']),
-                'id' => $crossLinkId,
-            ]],
-        ];
-    }
-
-    /** @param array<string, mixed> $snapshot */
-    private function foldRootIntoSnapshot(array &$snapshot, int $fromId, int $toId): void
-    {
-        if (isset($snapshot['roots'][$fromId], $snapshot['roots'][$toId])) {
-            $from = $snapshot['roots'][$fromId];
-            $to = &$snapshot['roots'][$toId];
-            $to['names'] = array_values(array_unique(array_merge($to['names'], $from['names'])));
-            $to['birth_dates'] = array_values(array_unique(array_merge($to['birth_dates'], $from['birth_dates'])));
-            $to['cross_links'] = array_merge($to['cross_links'], $from['cross_links']);
-            unset($to);
-            $this->indexRoot($snapshot, $toId, $from);
-        }
-        unset($snapshot['roots'][$fromId]);
-
-        foreach ($snapshot['members'][$fromId] ?? [$fromId] as $memberId) {
-            $snapshot['root_of'][$memberId] = $toId;
-            $snapshot['members'][$toId][] = $memberId;
-        }
-        unset($snapshot['members'][$fromId]);
-    }
-
-    /** Writes the normalized-name keys of every stored source performer in batches. @param array<string, mixed> $snapshot */
-    private function storeNameKeys(array $snapshot): void
-    {
-        $rows = [];
-        foreach ($snapshot['sources'] as $source) {
-            if ($source['id'] === null) {
-                continue;
+        $ids = $this->candidateRootIds($source, $incoming['names'], $currentId, true);
+        sort($ids);
+        foreach (array_chunk($ids, 200) as $chunk) {
+            foreach ((clone $roots)->whereIn('id', $chunk)->orderBy('id')->get() as $root) {
+                $this->candidateComparisons++;
+                yield $this->rootIdentity($root);
             }
-            $identity = $this->snapshotSourceIdentity($snapshot, $source);
-            foreach ($this->normalizedNames($identity['names']) as $key) {
-                $rows[$identity['id'] . ':' . $key] = ['source_performer_id' => $identity['id'], 'normalized_name' => $key];
-            }
-            if (count($rows) >= 500) {
-                DB::table('performer_name_keys')->insertOrIgnore(array_values($rows));
-                $rows = [];
-            }
-        }
-        if ($rows !== []) {
-            DB::table('performer_name_keys')->insertOrIgnore(array_values($rows));
         }
     }
 
     /**
-     * @param list<mixed> $values
+     * Name trigrams of the normalized names: a pair of names that can reach the review similarity shares one.
+     *
+     * @param list<string> $names
      * @return list<string>
      */
-    private function presentStrings(array $values): array
+    private function nameGrams(array $names): array
     {
-        return array_values(array_filter($values, static fn(mixed $value): bool => is_string($value) && trim($value) !== ''));
+        $grams = [];
+        foreach ($this->normalizedNames($names) as $name) {
+            $characters = preg_split('//u', ' ' . $name . ' ', -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            for ($i = 0, $last = count($characters) - 3; $i <= $last; $i++) {
+                $grams[$characters[$i] . $characters[$i + 1] . $characters[$i + 2]] = true;
+            }
+        }
+
+        return array_map('strval', array_keys($grams));
+    }
+
+    /** Writes the name keys and trigrams of every stored source performer, one chunk of sources at a time. */
+    private function storeNameKeys(): void
+    {
+        PerformerSource::query()->with('sourcePerformer')->chunkById(500, function ($sources): void {
+            $keys = [];
+            $grams = [];
+            foreach ($sources as $source) {
+                $identity = $this->sourceIdentity($source);
+                foreach ($this->normalizedNames($identity['names']) as $key) {
+                    $keys[] = ['source_performer_id' => $identity['id'], 'normalized_name' => $key];
+                }
+                foreach ($this->nameGrams($identity['names']) as $gram) {
+                    $grams[] = ['source_performer_id' => $identity['id'], 'gram' => $gram];
+                }
+            }
+            $this->insertKeyRows('performer_name_keys', $keys);
+            $this->insertKeyRows('performer_name_grams', $grams);
+        });
+    }
+
+    /** @param list<array<string, mixed>> $rows */
+    private function insertKeyRows(string $table, array $rows): void
+    {
+        foreach (array_chunk($rows, 400) as $chunk) {
+            DB::table($table)->insertOrIgnore($chunk);
+        }
     }
 
     /**

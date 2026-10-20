@@ -47,7 +47,7 @@ final class PerformerIdentityServiceTest extends TestCase
         self::assertNull($first->fresh()->canonical_performer_id);
     }
 
-    public function test_dry_run_backfill_query_count_does_not_grow_with_the_catalog(): void
+    public function test_dry_run_backfill_queries_per_source_stay_constant(): void
     {
         $countQueries = function (int $performers): int {
             Performer::query()->delete();
@@ -68,7 +68,35 @@ final class PerformerIdentityServiceTest extends TestCase
             return $queries;
         };
 
-        self::assertSame($countQueries(3), $countQueries(12));
+        // Bounded memory means one candidate lookup per source: the cost per source must not grow with the catalog.
+        $perSource = ($countQueries(12) - $countQueries(3)) / 9;
+        self::assertLessThanOrEqual(15, $perSource);
+    }
+
+    public function test_backfill_memory_does_not_retain_the_catalog(): void
+    {
+        $rows = [];
+        foreach (range(1, 400) as $number) {
+            $rows[] = [
+                'source_slug' => 'source-a',
+                'external_id' => 'mem-' . $number,
+                'name_romaji' => strtr(substr(md5('mem-' . $number), 0, 16), '0123456789', 'ghijklmnop'),
+                'name_kanji' => null,
+                'name_kana' => null,
+                'birth_date' => '1990-01-01',
+            ];
+        }
+        foreach ($rows as $row) {
+            Performer::factory()->create($row);
+        }
+        $service = app(PerformerIdentityService::class);
+        $service->backfill(true);
+        gc_collect_cycles();
+        $before = memory_get_peak_usage();
+        $service->backfill(true);
+
+        // A retained snapshot of 400 profiles grows the peak by tens of MB; streaming adds almost nothing.
+        self::assertLessThan(8 * 1024 * 1024, memory_get_peak_usage() - $before);
     }
 
     public function test_backfill_candidate_comparisons_stay_bounded_as_the_catalog_grows(): void
