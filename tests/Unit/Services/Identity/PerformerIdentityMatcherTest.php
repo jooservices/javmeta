@@ -46,12 +46,11 @@ final class PerformerIdentityMatcherTest extends TestCase
         self::assertSame('none', $result['decision']);
     }
 
-    public function test_candidate_state_stays_bounded_for_a_huge_candidate_stream(): void
+    public function test_every_ambiguous_candidate_is_reported_from_a_large_candidate_stream(): void
     {
-        config()->set('performer_identity.max_candidates_per_source', 20);
         $incoming = ['id' => 1, 'names' => ['yamada abcdefghij'], 'birth_dates' => [], 'cross_links' => []];
         $candidates = (static function (): \Generator {
-            for ($id = 2; $id <= 100_001; $id++) {
+            for ($id = 2; $id <= 20_001; $id++) {
                 yield ['id' => $id, 'names' => ['yamada abcdefghi' . ($id % 7 === 0 ? 'j' : 'k')], 'birth_dates' => [], 'cross_links' => []];
             }
         })();
@@ -61,14 +60,13 @@ final class PerformerIdentityMatcherTest extends TestCase
         $result = (new PerformerIdentityMatcher())->evaluate($incoming, $candidates);
 
         self::assertSame('review', $result['decision']);
-        self::assertCount(20, $result['review_candidates']);
+        self::assertCount(20_000, $result['review_candidates']);
         self::assertSame(1.0, $result['review_candidates'][0]['similarity']);
-        self::assertLessThan(4 * 1024 * 1024, memory_get_peak_usage() - $before);
+        self::assertLessThan(32 * 1024 * 1024, memory_get_peak_usage() - $before);
     }
 
-    public function test_strong_matches_are_reported_even_when_weaker_reviews_fill_the_list(): void
+    public function test_strong_matches_are_reported_before_weaker_reviews(): void
     {
-        config()->set('performer_identity.max_candidates_per_source', 2);
         $candidate = static fn(int $id, string $birth): array => [
             'id' => $id,
             'names' => ['Mina Hope'],
@@ -82,13 +80,12 @@ final class PerformerIdentityMatcherTest extends TestCase
         );
 
         self::assertSame('review', $result['decision']);
-        self::assertSame([3, 4], array_column($result['review_candidates'], 'id'));
-        self::assertSame(['multiple_strong_matches'], array_unique(array_column($result['review_candidates'], 'reason')));
+        self::assertSame([3, 4, 1, 2], array_column($result['review_candidates'], 'id'));
+        self::assertSame(['multiple_strong_matches', 'multiple_strong_matches', 'birth_date_missing_or_conflicting', 'birth_date_missing_or_conflicting'], array_column($result['review_candidates'], 'reason'));
     }
 
-    public function test_a_later_higher_similarity_strong_candidate_is_not_dropped_by_the_cap(): void
+    public function test_strong_candidates_are_ranked_by_similarity(): void
     {
-        config()->set('performer_identity.max_candidates_per_source', 2);
         $link = [['source' => 'x', 'id' => '9']];
         $incoming = ['id' => 10, 'names' => ['alpha beta'], 'birth_dates' => [], 'cross_links' => $link];
         $candidates = [
@@ -100,12 +97,11 @@ final class PerformerIdentityMatcherTest extends TestCase
         $result = (new PerformerIdentityMatcher())->evaluate($incoming, $candidates);
 
         self::assertSame('review', $result['decision']);
-        self::assertSame([3, 1], array_column($result['review_candidates'], 'id'));
+        self::assertSame([3, 1, 2], array_column($result['review_candidates'], 'id'));
     }
 
-    public function test_many_strong_matches_are_counted_but_only_the_limit_is_reported(): void
+    public function test_many_strong_matches_are_all_reported_for_review(): void
     {
-        config()->set('performer_identity.max_candidates_per_source', 3);
         $incoming = ['id' => 1, 'names' => ['a b'], 'birth_dates' => ['1990-01-01'], 'cross_links' => []];
         $candidates = array_map(
             static fn(int $id): array => ['id' => $id, 'names' => ['b a'], 'birth_dates' => ['1990-01-01'], 'cross_links' => []],
@@ -116,6 +112,6 @@ final class PerformerIdentityMatcherTest extends TestCase
 
         self::assertSame('review', $result['decision']);
         self::assertNull($result['candidate_id']);
-        self::assertCount(3, $result['review_candidates']);
+        self::assertCount(39, $result['review_candidates']);
     }
 }

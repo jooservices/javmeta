@@ -14,7 +14,6 @@ final class PerformerIdentityMatcher
      */
     public function evaluate(array $incoming, iterable $candidates): array
     {
-        $limit = max(1, (int) config('performer_identity.max_candidates_per_source', 50));
         $strong = [];
         $strongCount = 0;
         $review = [];
@@ -36,7 +35,6 @@ final class PerformerIdentityMatcher
                     'reason' => $sameCrossLink ? 'cross_link' : 'name_and_birth_date',
                     'similarity' => $similarity,
                 ];
-                $strong = $this->trim($strong, $limit);
 
                 continue;
             }
@@ -50,15 +48,13 @@ final class PerformerIdentityMatcher
 
             if ($reason !== null) {
                 $review[] = ['id' => $candidate['id'], 'reason' => $reason, 'similarity' => $similarity];
-                $review = $this->trim($review, $limit);
             }
         }
 
-        // The buffers are trimmed only every few entries, so their tail is unsorted: rank before any slice.
+        // Every ambiguous candidate is reported, most similar first, so no review row is ever dropped.
         $rank = static fn(array $a, array $b): int => [$b['similarity'], $a['id']] <=> [$a['similarity'], $b['id']];
         usort($strong, $rank);
         usort($review, $rank);
-        $strong = array_slice($strong, 0, $limit);
 
         if ($strongCount === 1) {
             return [
@@ -82,8 +78,6 @@ final class PerformerIdentityMatcher
             ), $review);
         }
 
-        $review = array_slice($review, 0, $limit);
-
         return [
             'decision' => $review === [] ? 'none' : 'review',
             'candidate_id' => null,
@@ -91,25 +85,6 @@ final class PerformerIdentityMatcher
             'similarity' => 0.0,
             'review_candidates' => $review,
         ];
-    }
-
-    /**
-     * Keeps the most similar entries once the list outgrows twice the limit, so the state stays bounded however
-     * many candidates a common name trigram yields. Ties keep the lower id.
-     *
-     * @template T of array{id: int, similarity: float}
-     * @param list<T> $matches
-     * @return list<T>
-     */
-    private function trim(array $matches, int $limit): array
-    {
-        if (count($matches) < $limit * 2) {
-            return $matches;
-        }
-
-        usort($matches, static fn(array $a, array $b): int => [$b['similarity'], $a['id']] <=> [$a['similarity'], $b['id']]);
-
-        return array_slice($matches, 0, $limit);
     }
 
     public function normalizeName(string $name): string
