@@ -70,6 +70,28 @@ else
 fi
 COMMAND
 chmod 0755 "${path_repo_bin}/curl"
+# Elasticsearch login from the environment reaches curl through its stdin config, not the command line.
+auth_bin="${TEST_TMP}/auth-bin"
+mkdir -p "$auth_bin"
+cat > "${auth_bin}/curl" <<'COMMAND'
+#!/usr/bin/env bash
+printf '%s\n' "$*" > "${TEST_TMP}/curl-args"
+cat > "${TEST_TMP}/curl-config"
+printf '{}\n'
+COMMAND
+chmod 0755 "${auth_bin}/curl"
+(
+  # shellcheck source=deploy/backup/common.sh
+  source "${REPO_ROOT}/deploy/backup/common.sh"
+  export PATH="${auth_bin}:${PATH}" ELASTICSEARCH_HOST='http://127.0.0.1:19200' ELASTICSEARCH_USERNAME='es-user' ELASTICSEARCH_PASSWORD='es-secret-value'
+  elasticsearch_request GET /_cluster/health >/dev/null
+  grep -q 'user = "es-user:es-secret-value"' "${TEST_TMP}/curl-config" || fail_test 'Elasticsearch username and password were not sent.'
+  grep -q 'es-secret-value' "${TEST_TMP}/curl-args" && fail_test 'The Elasticsearch password reached the curl command line.'
+  unset ELASTICSEARCH_USERNAME ELASTICSEARCH_PASSWORD
+  ELASTICSEARCH_API_KEY='api-key-value' elasticsearch_request GET /_cluster/health >/dev/null
+  grep -q 'Authorization: ApiKey api-key-value' "${TEST_TMP}/curl-config" || fail_test 'The Elasticsearch API key was not sent.'
+)
+
 BACKUP_ROOT="${TEST_TMP}/missing-path-repo-backups" PATH="${path_repo_bin}:${PATH}" \
   "$BACKUP_SCRIPT" --namespace=javmeta_it >"${TEST_TMP}/missing-path-repo.log" 2>&1 \
   && fail_test 'Full backup proceeded without Elasticsearch path.repo.'
