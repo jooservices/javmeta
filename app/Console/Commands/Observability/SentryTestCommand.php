@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Observability;
 
+use App\Observability\Sentry\SentryContext;
 use Illuminate\Console\Command;
 use Sentry\State\HubInterface;
+use Sentry\State\Scope;
 
 final class SentryTestCommand extends Command
 {
@@ -21,7 +23,13 @@ final class SentryTestCommand extends Command
             return self::FAILURE;
         }
 
-        $eventId = $hub->captureMessage('Javmeta Sentry integration test event');
+        $eventId = null;
+        $hub->withScope(function (Scope $scope) use ($hub, &$eventId): void {
+            SentryContext::applyToScope($scope);
+            $scope->setTag('test_event', 'true');
+            $eventId = $hub->captureMessage('Javmeta Sentry integration test event');
+        });
+
         if ($eventId === null) {
             $this->components->error('Sentry did not return an event ID.');
 

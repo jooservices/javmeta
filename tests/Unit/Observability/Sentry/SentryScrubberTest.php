@@ -36,7 +36,13 @@ final class SentryScrubberTest extends TestCase
             'url' => 'https://catalog.example.test/items?api_key=private&sort=recent#page',
             'method' => 'GET',
             'query_string' => 'api_key=private&sort=recent',
-            'headers' => ['Authorization' => 'Bearer private', 'X-Api-Key' => 'private'],
+            'headers' => [
+                'Authorization' => 'Bearer private',
+                'Cookie' => 'session=private-cookie',
+                'X-Api-Key' => 'private-api-key',
+                'X-Owner-Token' => 'private-owner-token',
+                'X-MCP-Key' => 'private-mcp-key',
+            ],
             'cookies' => ['session' => 'private'],
             'data' => ['password' => 'private'],
             'env' => ['HTTP_COOKIE' => 'session=private'],
@@ -85,7 +91,7 @@ final class SentryScrubberTest extends TestCase
 
     public function test_before_send_redacts_exception_credentials_and_removes_user_and_extra_data(): void
     {
-        $exception = new RuntimeException('Request failed: Bearer abc123 token=xyz https://user:pass@example.test/path?q=private');
+        $exception = new RuntimeException('Request failed: Bearer abc123 X-Api-Key: private-api-key X-Owner-Token: private-owner-token Cookie: private-cookie mcp_key=private-mcp https://user:pass@example.test/path?q=private');
         $event = Event::createEvent()
             ->setMessage('api_key=private')
             ->setUser(new \Sentry\UserDataBag(null, 'person@example.test'))
@@ -99,7 +105,11 @@ final class SentryScrubberTest extends TestCase
         self::assertSame([], $scrubbed->getExtra());
         self::assertArrayNotHasKey('api_key', $scrubbed->getTags());
         self::assertStringNotContainsString('abc123', $scrubbed->getExceptions()[0]->getValue());
+        self::assertStringNotContainsString('private-api-key', $scrubbed->getExceptions()[0]->getValue());
+        self::assertStringNotContainsString('private-owner-token', $scrubbed->getExceptions()[0]->getValue());
+        self::assertStringNotContainsString('private-cookie', $scrubbed->getExceptions()[0]->getValue());
         self::assertStringNotContainsString('xyz', $scrubbed->getExceptions()[0]->getValue());
+        self::assertStringNotContainsString('private-mcp', $scrubbed->getExceptions()[0]->getValue());
         self::assertStringNotContainsString('q=private', $scrubbed->getExceptions()[0]->getValue());
         self::assertSame('api_key=[Filtered]', $scrubbed->getMessage());
     }
