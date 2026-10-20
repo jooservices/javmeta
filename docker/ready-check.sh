@@ -62,7 +62,7 @@ attempt() {
   fi
 
   if [[ "${CRAWLERX_FLARESOLVERR_REQUIRED:-true}" == "true" ]]; then
-    check_tcp "flaresolverr" "${CRAWLERX_FLARESOLVERR_URL:-http://flaresolverr:8191/v1}"
+    check_tcp "flaresolverr" "${FLARESOLVERR_URL:-${CRAWLERX_FLARESOLVERR_URL:-http://flaresolverr:8191/v1}}"
   fi
 }
 

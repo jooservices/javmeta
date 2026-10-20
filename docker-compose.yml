@@ -30,7 +30,8 @@ x-app-environment: &app-environment
   CRAWLERX_NODE: node
   CRAWLERX_PLAYWRIGHT_SCRIPT: /var/www/html/vendor/jooservices/crawlerx/scripts/playwright-fetch.mjs
   CRAWLERX_PUPPETEER_SCRIPT: /var/www/html/vendor/jooservices/crawlerx/scripts/puppeteer-stealth-fetch.mjs
-  CRAWLERX_FLARESOLVERR_URL: ${CRAWLERX_FLARESOLVERR_URL:-http://flaresolverr:8191/v1}
+  FLARESOLVERR_URL: ${FLARESOLVERR_URL:-${CRAWLERX_FLARESOLVERR_URL:-http://flaresolverr:8191/v1}}
+  PLAYWRIGHT_URL: ${PLAYWRIGHT_URL:-}
   PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
   QUEUE_CONNECTION: ${QUEUE_CONNECTION:-database}
   JAVMETA_WORKERS_PER_QUEUE: ${JAVMETA_WORKERS_PER_QUEUE:-1}
