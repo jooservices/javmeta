@@ -63,78 +63,89 @@ final class GalleryPersister
                     continue;
                 }
 
-                $externalId = Str::slug($trimmed);
-                if ($externalId === '') {
-                    $externalId = 'name:' . mb_strtolower($trimmed);
-                }
-
-                $performer = Performer::query()->firstOrCreate(
-                    ['source_slug' => $sourceSlug, 'external_id' => $externalId],
-                    [
-                        'name_romaji' => $trimmed,
-                        'attrs' => [],
-                        'needs_review' => false,
-                        'first_seen_at' => $crawledAt,
-                        'updated_at' => $crawledAt,
-                        'crawled_at' => $crawledAt,
-                    ],
-                );
-
-                $source = PerformerSource::query()->firstOrNew([
-                    'site_slug' => $sourceSlug,
-                    'external_id' => $externalId,
-                ]);
-                $source->fill([
-                    'performer_id' => $performer->canonical_performer_id ?? $performer->id,
-                    'source_performer_id' => $performer->id,
-                    'mongo_id' => $source->mongo_id ?: ('local:' . $performer->id),
-                    'source_url' => $url,
-                    'name_romaji' => $trimmed,
-                    'removed_at' => null,
-                    'crawled_at' => $crawledAt,
-                ]);
-                $source->save();
-
-                $canonicalId = $this->identity->reconcileAndSync($source);
-
-                foreach ($gallery->photos as $photo) {
-                    $imageUrl = $this->photoUrl($photo);
-                    if ($imageUrl === null) {
-                        continue;
-                    }
-
-                    PerformerMedia::query()->updateOrCreate(
-                        [
-                            'performer_id' => $canonicalId,
-                            'source_performer_id' => (int) $performer->id,
-                            'kind' => PerformerMedia::KIND_GALLERY,
-                            'url' => $imageUrl,
-                        ],
-                        [
-                            'source_slug' => $sourceSlug,
-                            'meta' => $this->galleryPhotoMeta($gallery, $url, $photo),
-                            'crawled_at' => $crawledAt,
-                        ],
-                    );
-                }
-
-                if ($movie instanceof Movie) {
-                    // Link the canonical record for the API and the source record so a later split can restore it.
-                    foreach (array_unique([$canonicalId, (int) $performer->id]) as $linkedId) {
-                        MoviePerformer::query()->upsert(
-                            [[
-                                'movie_id' => (int) $movie->id,
-                                'performer_id' => $linkedId,
-                                'source_slug' => $sourceSlug,
-                                'crawled_at' => $crawledAt,
-                            ]],
-                            ['movie_id', 'performer_id'],
-                            ['source_slug', 'crawled_at'],
-                        );
-                    }
-                }
+                $this->persistPerformer($sourceSlug, $url, $gallery, $trimmed, $movie, $crawledAt);
             }
         });
+    }
+
+    private function persistPerformer(
+        string $sourceSlug,
+        string $url,
+        GalleryDto $gallery,
+        string $trimmed,
+        ?Movie $movie,
+        CarbonImmutable $crawledAt,
+    ): void {
+        $externalId = Str::slug($trimmed);
+        if ($externalId === '') {
+            $externalId = 'name:' . mb_strtolower($trimmed);
+        }
+
+        $performer = Performer::query()->firstOrCreate(
+            ['source_slug' => $sourceSlug, 'external_id' => $externalId],
+            [
+                'name_romaji' => $trimmed,
+                'attrs' => [],
+                'needs_review' => false,
+                'first_seen_at' => $crawledAt,
+                'updated_at' => $crawledAt,
+                'crawled_at' => $crawledAt,
+            ],
+        );
+
+        $source = PerformerSource::query()->firstOrNew([
+            'site_slug' => $sourceSlug,
+            'external_id' => $externalId,
+        ]);
+        $source->fill([
+            'performer_id' => $performer->canonical_performer_id ?? $performer->id,
+            'source_performer_id' => $performer->id,
+            'mongo_id' => $source->mongo_id ?: ('local:' . $performer->id),
+            'source_url' => $url,
+            'name_romaji' => $trimmed,
+            'removed_at' => null,
+            'crawled_at' => $crawledAt,
+        ]);
+        $source->save();
+
+        $canonicalId = $this->identity->reconcileAndSync($source);
+
+        foreach ($gallery->photos as $photo) {
+            $imageUrl = $this->photoUrl($photo);
+            if ($imageUrl === null) {
+                continue;
+            }
+
+            PerformerMedia::query()->updateOrCreate(
+                [
+                    'performer_id' => $canonicalId,
+                    'source_performer_id' => (int) $performer->id,
+                    'kind' => PerformerMedia::KIND_GALLERY,
+                    'url' => $imageUrl,
+                ],
+                [
+                    'source_slug' => $sourceSlug,
+                    'meta' => $this->galleryPhotoMeta($gallery, $url, $photo),
+                    'crawled_at' => $crawledAt,
+                ],
+            );
+        }
+
+        if ($movie instanceof Movie) {
+            // Link the canonical record for the API and the source record so a later split can restore it.
+            foreach (array_unique([$canonicalId, (int) $performer->id]) as $linkedId) {
+                MoviePerformer::query()->upsert(
+                    [[
+                        'movie_id' => (int) $movie->id,
+                        'performer_id' => $linkedId,
+                        'source_slug' => $sourceSlug,
+                        'crawled_at' => $crawledAt,
+                    ]],
+                    ['movie_id', 'performer_id'],
+                    ['source_slug', 'crawled_at'],
+                );
+            }
+        }
     }
 
     /**
