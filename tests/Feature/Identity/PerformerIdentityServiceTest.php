@@ -71,6 +71,34 @@ final class PerformerIdentityServiceTest extends TestCase
         self::assertSame($countQueries(3), $countQueries(12));
     }
 
+    public function test_backfill_candidate_comparisons_stay_bounded_as_the_catalog_grows(): void
+    {
+        $comparisons = function (int $performers): int {
+            Performer::query()->delete();
+            foreach (range(1, $performers) as $number) {
+                Performer::factory()->create([
+                    'source_slug' => 'source-a',
+                    'external_id' => 'cmp-' . $performers . '-' . $number,
+                    'name_romaji' => strtr(substr(md5('person-' . $number), 0, 12), '0123456789', 'ghijklmnop'),
+                    'name_kanji' => null,
+                    'name_kana' => null,
+                    'birth_date' => '1990-01-01',
+                ]);
+            }
+            $service = app(PerformerIdentityService::class);
+            $service->backfill(true);
+
+            return $service->candidateComparisons();
+        };
+
+        $small = $comparisons(10);
+        $large = $comparisons(60);
+
+        // A full root scan would be n * (n - 1): 90 and 3540 comparisons.
+        self::assertLessThan(60 * 59 / 4, $large);
+        self::assertLessThanOrEqual(10 * 9, $small);
+    }
+
     public function test_backfill_creates_missing_source_links_and_is_repeatable(): void
     {
         $performer = Performer::factory()->create([

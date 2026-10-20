@@ -19,6 +19,14 @@ final class PerformerIdentityService
         private readonly ElasticsearchIndexer $indexer,
     ) {}
 
+    private int $candidateComparisons = 0;
+
+    /** Number of source-to-root comparisons the last backfill handed to the matcher. */
+    public function candidateComparisons(): int
+    {
+        return $this->candidateComparisons;
+    }
+
     /**
      * Works from one in-memory snapshot of the catalog, so the cost is a fixed number of chunked reads plus
      * the matcher comparisons, not a set of queries for every source row.
@@ -27,6 +35,7 @@ final class PerformerIdentityService
      */
     public function backfill(bool $dryRun = false): array
     {
+        $this->candidateComparisons = 0;
         $snapshot = $this->loadSnapshot($this->ensureSourceLinks($dryRun));
         if (! $dryRun) {
             $this->storeNameKeys($snapshot);
@@ -48,14 +57,10 @@ final class PerformerIdentityService
                 continue;
             }
 
-            $candidates = (function () use ($snapshot, $currentPerformerId) {
-                foreach ($snapshot['roots'] as $rootId => $identity) {
-                    if ($rootId !== $currentPerformerId) {
-                        yield $identity;
-                    }
-                }
-            })();
-            $evaluation = $this->matcher->evaluate($this->snapshotSourceIdentity($snapshot, $source), $candidates);
+            $incoming = $this->snapshotSourceIdentity($snapshot, $source);
+            $candidates = $this->boundedCandidates($snapshot, $incoming, $currentPerformerId);
+            $this->candidateComparisons += count($candidates);
+            $evaluation = $this->matcher->evaluate($incoming, $candidates);
             if ($evaluation['decision'] === 'merge') {
                 $candidateId = (int) $evaluation['candidate_id'];
                 $fromId = max($currentPerformerId, $candidateId);
@@ -847,8 +852,65 @@ final class PerformerIdentityService
             $snapshot['roots'][$rootId]['names'] = array_values(array_unique($identity['names']));
             $snapshot['roots'][$rootId]['birth_dates'] = array_values(array_unique($identity['birth_dates']));
         }
+        $snapshot['index'] = [];
+        foreach ($snapshot['roots'] as $rootId => $identity) {
+            $this->indexRoot($snapshot, $rootId, $identity);
+        }
 
         return $snapshot;
+    }
+
+    /**
+     * Blocking keys of an identity: each normalized name, each namespaced cross-link and each name trigram, so
+     * a candidate must share at least one before it is compared. Names that share none cannot reach the
+     * configured review similarity, which keeps the comparisons per source bounded by the block sizes.
+     *
+     * @param array{names: list<string>, cross_links: list<array{source: string, id: string}>} $identity
+     * @return list<string>
+     */
+    private function blockingKeys(array $identity): array
+    {
+        $keys = [];
+        foreach ($identity['cross_links'] as $link) {
+            $keys['c:' . $link['source'] . ':' . $link['id']] = true;
+        }
+        foreach ($this->normalizedNames($identity['names']) as $name) {
+            $keys['n:' . $name] = true;
+            $padded = ' ' . $name . ' ';
+            $characters = preg_split('//u', $padded, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            for ($i = 0, $last = count($characters) - 3; $i <= $last; $i++) {
+                $keys['g:' . $characters[$i] . $characters[$i + 1] . $characters[$i + 2]] = true;
+            }
+        }
+
+        return array_map('strval', array_keys($keys));
+    }
+
+    /** @param array<string, mixed> $snapshot @param array<string, mixed> $identity */
+    private function indexRoot(array &$snapshot, int $rootId, array $identity): void
+    {
+        foreach ($this->blockingKeys($identity) as $key) {
+            $snapshot['index'][$key][$rootId] = true;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $snapshot
+     * @param array<string, mixed> $incoming
+     * @return list<array<string, mixed>>
+     */
+    private function boundedCandidates(array $snapshot, array $incoming, int $excludeRootId): array
+    {
+        $candidates = [];
+        foreach ($this->blockingKeys($incoming) as $key) {
+            foreach (array_keys($snapshot['index'][$key] ?? []) as $rootId) {
+                if ($rootId !== $excludeRootId && isset($snapshot['roots'][$rootId])) {
+                    $candidates[$rootId] = $snapshot['roots'][$rootId];
+                }
+            }
+        }
+
+        return array_values($candidates);
     }
 
     /**
@@ -889,6 +951,7 @@ final class PerformerIdentityService
             $to['birth_dates'] = array_values(array_unique(array_merge($to['birth_dates'], $from['birth_dates'])));
             $to['cross_links'] = array_merge($to['cross_links'], $from['cross_links']);
             unset($to);
+            $this->indexRoot($snapshot, $toId, $from);
         }
         unset($snapshot['roots'][$fromId]);
 
