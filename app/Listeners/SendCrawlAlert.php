@@ -14,10 +14,11 @@ final class SendCrawlAlert
     public function handle(CrawlSourceUnhealthy $event): void
     {
         $this->alerts->send(
-            debounceKey: "source:{$event->sourceSlug}:{$event->reason}",
+            debounceKey: $event->alertKey(),
             subject: "Source unhealthy: {$event->sourceSlug}",
             body: "Reason: {$event->reason}",
             context: array_merge(['source_slug' => $event->sourceSlug], $event->context),
+            debounceSeconds: $event->reason === 'source_stale' ? (int) config('javmeta_alerts.throttle_seconds', 3600) : null,
         );
     }
 }

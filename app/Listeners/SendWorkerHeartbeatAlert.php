@@ -18,6 +18,7 @@ final class SendWorkerHeartbeatAlert
             subject: 'Worker heartbeat stale',
             body: 'No crawl worker heartbeat within the configured window.',
             context: $event->context,
+            debounceSeconds: (int) config('javmeta_alerts.throttle_seconds', 3600),
         );
     }
 }

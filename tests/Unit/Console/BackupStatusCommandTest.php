@@ -70,6 +70,22 @@ final class BackupStatusCommandTest extends TestCase
         Http::assertSent(fn($request): bool => str_contains($request->body(), 'javmeta_backup_last_success_age_seconds'));
     }
 
+    public function test_it_throttles_the_stale_alert_and_sends_one_recovery_message(): void
+    {
+        $this->writeManifest(now()->subHours(30)->toIso8601String());
+        $notifier = Mockery::mock(AlertNotifier::class);
+        $notifier->shouldReceive('notify')->once()->with('Database backup is stale', Mockery::any(), Mockery::any());
+        $notifier->shouldReceive('notify')->once()->with('Database backup recovered', Mockery::any(), Mockery::any());
+        $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
+
+        $this->artisan('javmeta:backup-status')->assertFailed();
+        $this->artisan('javmeta:backup-status')->assertFailed();
+
+        $this->writeManifest(now()->subHour()->toIso8601String());
+        $this->artisan('javmeta:backup-status')->assertSuccessful();
+        $this->artisan('javmeta:backup-status')->assertSuccessful();
+    }
+
     public function test_it_publishes_the_missing_sentinel_when_the_manifest_has_no_created_at(): void
     {
         $path = Storage::disk('local')->path('backups/latest.json');
