@@ -10,6 +10,7 @@ use App\Models\Performer;
 use App\Services\Auth\ApiKeyService;
 use App\Services\Mcp\McpToolService;
 use App\Services\Search\ElasticsearchIndexer;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\Integration\IntegrationTestCase;
@@ -88,8 +89,10 @@ final class SearchBehaviorTest extends IntegrationTestCase
     {
         $movie = $this->indexMovieWithPerformer();
         $embedder = rtrim((string) config('elasticsearch.embedder_url'), '/');
+        Http::swap(new Factory());
         Http::fake([
-            $embedder . '/*' => Http::response(['error' => 'unavailable'], 503),
+            $embedder . '/healthz' => Http::response(['status' => 'ok']),
+            $embedder . '/v1/embeddings' => Http::response(['error' => 'unavailable'], 503),
         ]);
 
         $this->getJson('/api/v1/movies?' . http_build_query(['q' => 'NOVA-001']), [
@@ -106,6 +109,9 @@ final class SearchBehaviorTest extends IntegrationTestCase
         ])
             ->assertOk()
             ->assertJsonPath('data.0.code', $movie->display_code);
+
+        Http::assertSent(static fn(Request $request): bool
+            => $request->url() === $embedder . '/v1/embeddings');
     }
 
     public function test_disabling_search_returns_database_keyword_results_without_calling_elasticsearch(): void
