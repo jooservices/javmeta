@@ -111,8 +111,17 @@ final class ImportTest extends TestCase
         $dashboard = $this->requestBody('POST', '/api/javmeta_it/dashboards', 'JAVMETA Operations');
         self::assertSame('JAVMETA Operations', $dashboard['title']);
         $panels = collect($dashboard['tabs'][0]['panels'] ?? [])->keyBy('id');
-        self::assertTrue($panels->has('javmeta-errors-by-source-and-code'));
-        self::assertTrue($panels->has('javmeta-crawl-rate-by-source'));
+        foreach ([
+            'javmeta-crawl-queue',
+            'javmeta-errors-by-source-and-code',
+            'javmeta-source-freshness',
+            'javmeta-crawl-rate-by-source',
+        ] as $panelId) {
+            self::assertTrue($panels->has($panelId), "Expected operations dashboard panel {$panelId}.");
+        }
+
+        self::assertSame('javmeta_crawl_queue_depth', $panels->get('javmeta-crawl-queue')['queries'][0]['fields']['stream']);
+        self::assertSame('javmeta_source_last_success_age_seconds', $panels->get('javmeta-source-freshness')['queries'][0]['fields']['stream']);
 
         $errorQuery = $panels->get('javmeta-errors-by-source-and-code')['queries'][0];
         self::assertSame('javmeta_logs', $errorQuery['fields']['stream']);

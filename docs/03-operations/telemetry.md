@@ -70,10 +70,12 @@ one shared `javmeta_metrics` stream.
 
 ## Staging manual check
 
-Configure the API, worker, and scheduler runtimes with `APP_ENV=staging`,
-`OPENOBSERVE_ENABLED=true`, `LOG_STACK=single,openobserve`, and the same
-environment-provided `OPENOBSERVE_URL`, `OPENOBSERVE_ORG`,
-`OPENOBSERVE_EMAIL`, and `OPENOBSERVE_PASSWORD`. Keep credentials in the
+Configure the API, worker, and scheduler runtimes with `APP_ENV=staging` and
+`JAVMETA_ROLE=api`, `JAVMETA_ROLE=worker`, and `JAVMETA_ROLE=scheduler`,
+respectively. Set `OPENOBSERVE_ENABLED=true` and `LOG_STACK=single,openobserve`
+in each runtime. Use the same environment-provided values for
+`OPENOBSERVE_URL`, `OPENOBSERVE_ORG`, `OPENOBSERVE_EMAIL`, and
+`OPENOBSERVE_PASSWORD` in all three. Keep credentials in the
 deployment secret store; do not copy them into commands, source files, or
 verification notes. The scheduler publishes metrics every minute.
 
