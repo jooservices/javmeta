@@ -8,9 +8,10 @@ use Tests\TestCase;
 
 final class HorizonServiceProviderTest extends TestCase
 {
-    public function test_horizon_supervisors_cover_each_configured_crawl_queue_in_all_environments(): void
+    public function test_horizon_supervisors_cover_all_six_queues_in_all_environments(): void
     {
-        $names = array_values(config('javmeta_queues.names'));
+        $names = ['listing', 'detail', 'performer_listing', 'performer_detail', 'gallery', 'search'];
+        $this->assertSame($names, config('javmeta_queues.horizon_names'));
         $expectedSupervisorNames = array_map(static fn(string $name): string => 'crawler-' . $name, $names);
 
         foreach (['production', 'local', 'testing'] as $environment) {
@@ -31,5 +32,10 @@ final class HorizonServiceProviderTest extends TestCase
             config('queue.connections.redis.retry_after'),
             config('javmeta_queues.worker_timeout'),
         );
+    }
+
+    public function test_horizon_waits_for_running_jobs_when_terminating(): void
+    {
+        $this->assertFalse(config('horizon.fast_termination'));
     }
 }
