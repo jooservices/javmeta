@@ -1,7 +1,7 @@
 DOCKER_COMPOSE ?= docker compose
 PHP_SERVICE ?= api
 MODE ?= local
-SENTRY_RELEASE ?= $(shell git rev-parse --verify HEAD 2>/dev/null || echo unknown)
+SENTRY_RELEASE ?= $(shell git rev-parse --short --verify HEAD 2>/dev/null || echo unknown)
 
 # Profile flag groups (repeat --profile per value: comma form is not parsed).
 PROFILE_ALL = --profile app --profile data --profile openobserve --profile flare --profile control --profile embed
