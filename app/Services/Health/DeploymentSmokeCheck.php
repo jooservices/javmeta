@@ -35,7 +35,7 @@ final class DeploymentSmokeCheck
     ): array {
         $healthCheckFailed = false;
         try {
-            $healthStatus = $health->check();
+            $healthStatus = $health->status();
         } catch (Throwable) {
             $healthCheckFailed = true;
             $healthStatus = ['dependencies' => $dependencyMonitor->statuses()];
