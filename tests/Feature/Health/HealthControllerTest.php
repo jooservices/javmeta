@@ -8,10 +8,12 @@ use App\Models\Source;
 use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Crawl\WorkerHeartbeat;
 use App\Services\Dependencies\Dependency;
+use App\Services\Search\ElasticsearchHttpClient;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Tests\Support\DependencyMonitorTestHelper;
 use Tests\TestCase;
 
@@ -103,6 +105,24 @@ final class HealthControllerTest extends TestCase
             ->assertJsonPath('dependencies.mongo.state', 'healthy')
             ->assertJsonPath('dependencies.embedder.state', 'healthy')
             ->assertJsonPath('dependencies.observability.state', 'healthy');
+    }
+
+    public function test_health_exposes_a_failed_search_with_its_status_code_and_count(): void
+    {
+        config()->set('elasticsearch.host', 'http://elasticsearch.test');
+        DependencyMonitorTestHelper::bind();
+        Http::fake(['elasticsearch.test/*' => Http::response([], 403)]);
+
+        app(ElasticsearchHttpClient::class)->post('search', '/javmeta_test_movies/_search', ['query' => []]);
+
+        $this->getJson('/api/health')
+            ->assertOk()
+            ->assertJsonPath('status', 'degraded')
+            ->assertJsonPath('dependencies.elasticsearch.state', 'down')
+            ->assertJsonPath('dependencies.elasticsearch.available', false)
+            ->assertJsonPath('dependencies.elasticsearch.request_failures', 1)
+            ->assertJsonPath('dependencies.elasticsearch.last_failure.operation', 'search')
+            ->assertJsonPath('dependencies.elasticsearch.last_failure.status_code', 403);
     }
 
     public function test_health_skips_database_dependent_queries_when_postgres_is_down(): void

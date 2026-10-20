@@ -9,8 +9,6 @@ use App\Models\Movie;
 use App\Observability\ObservabilityEmitter;
 use App\Services\Embedding\EmbedderClient;
 use DateTimeInterface;
-use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Support\Facades\Http;
 use Throwable;
 
 /**
@@ -18,7 +16,10 @@ use Throwable;
  */
 final class ElasticsearchIndexer
 {
-    public function __construct(private readonly EmbedderClient $embedder) {}
+    public function __construct(
+        private readonly EmbedderClient $embedder,
+        private readonly ElasticsearchHttpClient $elasticsearch,
+    ) {}
 
     public function indexMovie(Movie $movie, bool $requireVector = false): bool
     {
@@ -123,10 +124,9 @@ final class ElasticsearchIndexer
     public function searchMovieUuids(string $query, int $size = 20): array
     {
         $index = (string) config('elasticsearch.movies_index');
-        $host = rtrim((string) config('elasticsearch.host'), '/');
 
         try {
-            $response = $this->http()->post("{$host}/{$index}/_search", [
+            $response = $this->elasticsearch->post('search', "/{$index}/_search", [
                 'size' => $size,
                 'query' => [
                     'multi_match' => [
@@ -204,10 +204,8 @@ final class ElasticsearchIndexer
             return [];
         }
 
-        $host = rtrim((string) config('elasticsearch.host'), '/');
-
         try {
-            $response = $this->http()->post("{$host}/{$index}/_search", [
+            $response = $this->elasticsearch->post('search', "/{$index}/_search", [
                 'size' => $size,
                 'knn' => [
                     'field' => $embeddingField,
@@ -238,11 +236,10 @@ final class ElasticsearchIndexer
     /** @param array<string, mixed> $body */
     private function put(string $index, string $id, array $body): bool
     {
-        $host = rtrim((string) config('elasticsearch.host'), '/');
         $started = hrtime(true);
 
         try {
-            $response = $this->http()->put("{$host}/{$index}/_doc/{$id}", $body);
+            $response = $this->elasticsearch->put('index', "/{$index}/_doc/{$id}", $body);
             app(ObservabilityEmitter::class)->emitDependency(
                 'elasticsearch',
                 'index',
@@ -261,17 +258,6 @@ final class ElasticsearchIndexer
 
             return false;
         }
-    }
-
-    private function http(): PendingRequest
-    {
-        $request = Http::timeout(5);
-
-        if (! (bool) config('elasticsearch.verify_ssl', false)) {
-            $request = $request->withoutVerifying();
-        }
-
-        return $request;
     }
 
     private function dateString(mixed $value): ?string

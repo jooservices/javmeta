@@ -8,7 +8,7 @@ use App\Models\CrawlQueue;
 use App\Models\Movie;
 use App\Models\MovieObservation;
 use App\Models\MovieSource;
-use Illuminate\Support\Facades\Http;
+use App\Services\Search\ElasticsearchHttpClient;
 use MongoDB\BSON\ObjectId;
 use PHPUnit\Framework\Attributes\DataProvider;
 
@@ -76,13 +76,13 @@ final class MoviePipelineTest extends IntegrationTestCase
     {
         $movie = Movie::factory()->create(['title_en' => fake()->sentence()]);
         $index = (string) config('elasticsearch.movies_index');
-        $host = rtrim((string) config('elasticsearch.host'), '/');
-        $response = Http::acceptJson()->timeout(10)->put("{$host}/{$index}/_doc/{$movie->uuid}", [
+        $elasticsearch = app(ElasticsearchHttpClient::class);
+        $response = $elasticsearch->put('integration_seed', "/{$index}/_doc/{$movie->uuid}", [
             'uuid' => $movie->uuid,
             'title_en' => $movie->title_en,
-        ]);
+        ], 10);
         self::assertTrue($response->successful(), 'Initial vector-less Elasticsearch document was not created');
-        self::assertTrue(Http::acceptJson()->timeout(10)->get("{$host}/{$index}/_refresh")->successful());
+        self::assertTrue($elasticsearch->get('integration_refresh', "/{$index}/_refresh", 10)->successful());
 
         $this->artisan('search:backfill-embeddings', ['--entity' => 'movies'])
             ->assertSuccessful()
@@ -92,6 +92,22 @@ final class MoviePipelineTest extends IntegrationTestCase
         $document = $this->esDocument($index, (string) $movie->uuid);
         self::assertNotNull($document, 'Backfilled Elasticsearch movie document missing');
         self::assertCount(self::EMBED_DIM, $document['embedding_movie'] ?? []);
+    }
+
+    public function test_setup_creates_both_vector_mappings_before_indexing_documents(): void
+    {
+        foreach ([
+            [config('elasticsearch.movies_index'), 'embedding_movie'],
+            [config('elasticsearch.performers_index'), 'embedding_performer'],
+        ] as [$index, $field]) {
+            $mapping = $this->es()->get('integration_mapping', "/{$index}/_mapping", 10);
+            self::assertTrue($mapping->successful(), "Mapping for {$index} is missing");
+            self::assertSame(384, $mapping->json("{$index}.mappings.properties.{$field}.dims"));
+            self::assertSame('cosine', $mapping->json("{$index}.mappings.properties.{$field}.similarity"));
+        }
+
+        self::assertSame(0, $this->esCount((string) config('elasticsearch.movies_index')));
+        self::assertSame(0, $this->esCount((string) config('elasticsearch.performers_index')));
     }
 
     private function crawl(string $slug, string $kind, string $url, string $bodyPath): CrawlQueue

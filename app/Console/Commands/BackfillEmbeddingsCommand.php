@@ -6,9 +6,9 @@ namespace App\Console\Commands;
 
 use App\Models\Movie;
 use App\Models\Performer;
+use App\Services\Search\ElasticsearchHttpClient;
 use App\Services\Search\ElasticsearchIndexer;
 use Illuminate\Console\Command;
-use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
@@ -19,7 +19,7 @@ final class BackfillEmbeddingsCommand extends Command
 
     protected $description = 'Backfill Elasticsearch documents that are missing embedding vectors.';
 
-    public function handle(ElasticsearchIndexer $indexer): int
+    public function handle(ElasticsearchIndexer $indexer, ElasticsearchHttpClient $elasticsearch): int
     {
         $entity = (string) $this->option('entity');
         $batchSize = (int) $this->option('batch');
@@ -68,6 +68,7 @@ final class BackfillEmbeddingsCommand extends Command
                 $definition['index'],
                 $definition['vector'],
                 $indexer,
+                $elasticsearch,
                 $batchSize,
                 $limit,
                 (bool) $this->option('dry-run'),
@@ -99,6 +100,7 @@ final class BackfillEmbeddingsCommand extends Command
         string $index,
         string $vectorField,
         ElasticsearchIndexer $indexer,
+        ElasticsearchHttpClient $elasticsearch,
         int $batchSize,
         int $limit,
         bool $dryRun,
@@ -113,7 +115,7 @@ final class BackfillEmbeddingsCommand extends Command
             }
 
             $pageSize = min($batchSize, $remaining);
-            $hits = $this->searchMissing($index, $vectorField, $pageSize, $searchAfter);
+            $hits = $this->searchMissing($elasticsearch, $index, $vectorField, $pageSize, $searchAfter);
             if ($hits === null) {
                 return false;
             }
@@ -228,8 +230,13 @@ final class BackfillEmbeddingsCommand extends Command
      * @param list<mixed>|null $searchAfter
      * @return list<array<string, mixed>>|null Null indicates a request or response error.
      */
-    private function searchMissing(string $index, string $vectorField, int $size, ?array $searchAfter): ?array
-    {
+    private function searchMissing(
+        ElasticsearchHttpClient $elasticsearch,
+        string $index,
+        string $vectorField,
+        int $size,
+        ?array $searchAfter,
+    ): ?array {
         $body = [
             'size' => $size,
             '_source' => ['uuid'],
@@ -247,10 +254,8 @@ final class BackfillEmbeddingsCommand extends Command
             $body['search_after'] = $searchAfter;
         }
 
-        $host = rtrim((string) config('elasticsearch.host'), '/');
-
         try {
-            $response = $this->http()->post("{$host}/{$index}/_search", $body);
+            $response = $elasticsearch->post('backfill', "/{$index}/_search", $body, 10);
             if (! $response->successful()) {
                 $this->error("Elasticsearch search failed for {$index}.");
 
@@ -289,16 +294,5 @@ final class BackfillEmbeddingsCommand extends Command
         } catch (Throwable) {
             return false;
         }
-    }
-
-    private function http(): PendingRequest
-    {
-        $request = Http::timeout(10)->acceptJson();
-
-        if (! (bool) config('elasticsearch.verify_ssl', false)) {
-            $request = $request->withoutVerifying();
-        }
-
-        return $request;
     }
 }
