@@ -125,6 +125,37 @@ final class McpHttpEndpointTest extends TestCase
         }
     }
 
+    public function test_optional_null_arguments_are_treated_as_absent_over_http(): void
+    {
+        $movieResponse = $this->callMcpTool('lookup_movies', [
+            'q' => 'MCP JAVM-89 test movie',
+            'maker' => null,
+            'runtime_min' => null,
+            'censored' => null,
+            'sort' => null,
+            'cursor' => null,
+            'per_page' => null,
+            'count_only' => null,
+        ])->assertOk()->assertJsonPath('result.isError', false);
+        $moviePayload = $this->toolPayload($movieResponse->json('result.content.0.text'));
+
+        self::assertSame(10, $moviePayload['pagination']['per_page']);
+        self::assertSame(1, $moviePayload['pagination']['total']);
+
+        $performerResponse = $this->callMcpTool('lookup_performers', [
+            'age_min' => null,
+            'location' => null,
+            'sort' => null,
+            'cursor' => null,
+            'per_page' => null,
+            'count_only' => null,
+        ])->assertOk()->assertJsonPath('result.isError', false);
+        $performerPayload = $this->toolPayload($performerResponse->json('result.content.0.text'));
+
+        self::assertSame(10, $performerPayload['pagination']['per_page']);
+        self::assertGreaterThanOrEqual(1, $performerPayload['pagination']['total']);
+    }
+
     #[DataProvider('invalidToolArguments')]
     public function test_invalid_tool_arguments_return_clear_tool_errors_without_http_errors(
         string $name,

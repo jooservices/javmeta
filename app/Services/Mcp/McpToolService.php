@@ -431,11 +431,10 @@ final class McpToolService
     /** @param array<string, mixed> $arguments */
     private function booleanArgument(array $arguments, string $key): bool
     {
-        if (! array_key_exists($key, $arguments)) {
+        $value = $arguments[$key] ?? null;
+        if ($value === null) {
             return false;
         }
-
-        $value = $arguments[$key];
 
         if (is_bool($value)) {
             return $value;
@@ -474,12 +473,12 @@ final class McpToolService
         }
 
         foreach (['runtime_min', 'runtime_max'] as $key) {
-            if (array_key_exists($key, $arguments)) {
+            if (($arguments[$key] ?? null) !== null) {
                 $filters[$key] = $this->integerArgument($arguments, $key);
             }
         }
 
-        if (array_key_exists('censored', $arguments)) {
+        if (($arguments['censored'] ?? null) !== null) {
             $filters['censored'] = $arguments['censored'];
         }
 
@@ -508,7 +507,7 @@ final class McpToolService
             'age_min', 'age_max', 'height_min', 'height_max', 'bust_min', 'bust_max',
             'waist_min', 'waist_max', 'hip_min', 'hip_max',
         ] as $key) {
-            if (array_key_exists($key, $arguments)) {
+            if (($arguments[$key] ?? null) !== null) {
                 $filters[$key] = $this->integerArgument($arguments, $key);
             }
         }
@@ -540,7 +539,7 @@ final class McpToolService
     /** @param array<string, mixed> $arguments */
     private function perPage(array $arguments): int
     {
-        $value = array_key_exists('per_page', $arguments) ? $arguments['per_page'] : 10;
+        $value = $arguments['per_page'] ?? 10;
         if (! is_int($value) && ! (is_string($value) && ctype_digit($value))) {
             throw new InvalidFilterException('per_page must be an integer.');
         }
@@ -590,7 +589,7 @@ final class McpToolService
     /** @param array<string, mixed> $arguments */
     private function stringArgument(array $arguments, string $key): ?string
     {
-        if (! array_key_exists($key, $arguments)) {
+        if (! array_key_exists($key, $arguments) || $arguments[$key] === null) {
             return null;
         }
 
