@@ -36,8 +36,11 @@ can be matched by the crawl path.
 
 The backfill streams source records in id order and looks up each one's
 candidates through `performer_name_keys` and `performer_name_grams` (name
-trigrams), so its memory use stays flat however large the catalog is. The
-dry run executes the same pass inside a transaction that is rolled back, so
+trigrams). Candidate ids are read in keyset pages of 200 and the merge and
+review report is printed row by row instead of collected, so memory does not
+grow with the catalog, a common trigram or the size of the report. A test
+backfills a catalog of colliding names and asserts a peak far below 512 MB.
+The dry run executes the same pass inside a transaction that is rolled back, so
 it lists exactly the merges and reviews a real run would produce.
 
 ## Deployment

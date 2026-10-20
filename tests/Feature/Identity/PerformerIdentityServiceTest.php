@@ -55,7 +55,9 @@ final class PerformerIdentityServiceTest extends TestCase
                 Performer::factory()->create([
                     'source_slug' => 'source-a',
                     'external_id' => 'bulk-' . $performers . '-' . $number,
-                    'name_romaji' => 'Bulk Person ' . $performers . ' ' . $number . ' Unique',
+                    'name_romaji' => strtr(substr(md5('bulk-' . $number), 0, 14), '0123456789', 'ghijklmnop'),
+                    'name_kanji' => null,
+                    'name_kana' => null,
                     'birth_date' => '1990-01-01',
                 ]);
             }
@@ -97,6 +99,33 @@ final class PerformerIdentityServiceTest extends TestCase
 
         // A retained snapshot of 400 profiles grows the peak by tens of MB; streaming adds almost nothing.
         self::assertLessThan(8 * 1024 * 1024, memory_get_peak_usage() - $before);
+    }
+
+    public function test_backfill_with_common_trigram_collisions_streams_candidates_and_report(): void
+    {
+        foreach (range(1, 300) as $number) {
+            Performer::factory()->create([
+                'source_slug' => 'source-a',
+                'external_id' => 'col-' . $number,
+                'name_romaji' => 'yamada ' . strtr(sprintf('%03d', $number), '0123456789', 'abcdefghij'),
+                'name_kanji' => null,
+                'name_kana' => null,
+                'birth_date' => null,
+            ]);
+        }
+        $service = app(PerformerIdentityService::class);
+        gc_collect_cycles();
+        $before = memory_get_peak_usage();
+        $rows = 0;
+        $counts = $service->streamBackfill(true, static function () use (&$rows): void {
+            $rows++;
+        });
+
+        self::assertSame($rows, $counts['merges'] + $counts['reviews']);
+        self::assertGreaterThan(0, $counts['reviews']);
+        self::assertGreaterThan(300, $service->candidateComparisons());
+        self::assertLessThan(512 * 1024 * 1024, memory_get_peak_usage());
+        self::assertLessThan(64 * 1024 * 1024, memory_get_peak_usage() - $before);
     }
 
     public function test_backfill_candidate_comparisons_stay_bounded_as_the_catalog_grows(): void

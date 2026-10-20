@@ -40,29 +40,51 @@ final class PerformerIdentityService
      */
     public function backfill(bool $dryRun = false): array
     {
+        $merges = [];
+        $reviews = [];
+        $this->streamBackfill($dryRun, static function (string $kind, array $row) use (&$merges, &$reviews): void {
+            if ($kind === 'merge') {
+                $merges[] = $row;
+            } else {
+                $reviews[] = $row;
+            }
+        });
+
+        return ['merges' => $merges, 'reviews' => $reviews];
+    }
+
+    /**
+     * Same pass as backfill() but hands every merge and review to $onRow(kind, row) instead of collecting
+     * them, so the report never has to fit in memory.
+     *
+     * @param callable(string, array<string, mixed>): void $onRow
+     * @return array{merges: int, reviews: int}
+     */
+    public function streamBackfill(bool $dryRun, callable $onRow): array
+    {
         if (! $dryRun) {
-            return $this->runBackfill($dryRun);
+            return $this->runBackfill($dryRun, $onRow);
         }
 
         DB::beginTransaction();
         try {
-            return $this->runBackfill($dryRun);
+            return $this->runBackfill($dryRun, $onRow);
         } finally {
             DB::rollBack();
         }
     }
 
-    /** @return array{merges: list<array<string, mixed>>, reviews: list<array<string, mixed>>} */
-    private function runBackfill(bool $dryRun): array
+    /**
+     * @param callable(string, array<string, mixed>): void $onRow
+     * @return array{merges: int, reviews: int}
+     */
+    private function runBackfill(bool $dryRun, callable $onRow): array
     {
         $this->candidateComparisons = 0;
         $this->ensureSourceLinks();
         $this->storeNameKeys();
 
-        $merges = [];
-        $reviews = [];
-        $plannedReviews = [];
-        $plannedPairs = [];
+        $counts = ['merges' => 0, 'reviews' => 0];
 
         foreach (PerformerSource::query()->whereNull('removed_at')->lazyById(500) as $source) {
             $sourcePerformerId = (int) ($source->source_performer_id ?? $source->performer_id);
@@ -78,43 +100,48 @@ final class PerformerIdentityService
                 $candidateId = (int) $evaluation['candidate_id'];
                 $fromId = max($currentPerformerId, $candidateId);
                 $toId = min($currentPerformerId, $candidateId);
-                $pair = $fromId . ':' . $toId;
-                if (isset($plannedPairs[$pair])) {
-                    continue;
-                }
-                $plannedPairs[$pair] = true;
-                $merges[] = [
+                $counts['merges']++;
+                $onRow('merge', [
                     'source_performer_id' => $sourcePerformerId,
                     'from_performer_id' => $fromId,
                     'to_performer_id' => $toId,
                     'reason' => $evaluation['reason'],
-                ];
+                ]);
 
+                // The merged-away root is no longer a candidate or a source root, so a pair cannot repeat.
                 $this->mergeRoots($fromId, $toId, $evaluation);
             } elseif ($evaluation['decision'] === 'review') {
                 foreach ($evaluation['review_candidates'] as $candidate) {
-                    $reviewPair = min($sourcePerformerId, (int) $candidate['id']) . ':'
-                        . max($sourcePerformerId, (int) $candidate['id']);
-                    if (isset($plannedReviews[$reviewPair])) {
+                    $candidateId = (int) $candidate['id'];
+                    // The review rows themselves deduplicate a pair seen from both sides: the dry run writes
+                    // them too, inside the transaction it rolls back.
+                    if ($this->reviewSeenFromOtherSide($sourcePerformerId, $candidateId)) {
                         continue;
                     }
-                    $plannedReviews[$reviewPair] = true;
                     $review = [
                         'source_performer_id' => $sourcePerformerId,
-                        'candidate_performer_id' => $candidate['id'],
+                        'candidate_performer_id' => $candidateId,
                         'reason' => $candidate['reason'],
                         'similarity' => $candidate['similarity'],
                     ];
-                    $reviews[] = $review;
-
-                    if (! $dryRun) {
-                        $this->recordReview($review);
-                    }
+                    $this->recordReview($review);
+                    $counts['reviews']++;
+                    $onRow('review', $review);
                 }
             }
         }
 
-        return ['merges' => $merges, 'reviews' => $reviews];
+        return $counts;
+    }
+
+    /** True when the pair is already recorded as (candidate, source) and not as (source, candidate). */
+    private function reviewSeenFromOtherSide(int $sourceId, int $candidateId): bool
+    {
+        $open = static fn(int $source, int $candidate): bool => DB::table('performer_identity_reviews')
+            ->where('source_performer_id', $source)->where('candidate_performer_id', $candidate)
+            ->where('status', 'open')->exists();
+
+        return $open($candidateId, $sourceId) && ! $open($sourceId, $candidateId);
     }
 
     public function reconcileSource(PerformerSource $source): int
@@ -376,7 +403,7 @@ final class PerformerIdentityService
      * @param list<string> $names
      * @return list<int>
      */
-    private function candidateRootIds(PerformerSource $source, array $names, int $currentId, bool $withGrams = false): array
+    private function candidateRootIds(PerformerSource $source, array $names, int $currentId): array
     {
         $ids = [];
         if ($source->cross_link_id !== null && $source->cross_link_id !== '') {
@@ -398,19 +425,62 @@ final class PerformerIdentityService
             }
         }
 
-        $grams = $withGrams ? $this->nameGrams($names) : [];
-        foreach (array_chunk($grams, 400) as $chunk) {
-            $gramIds = DB::table('performer_name_grams as g')
-                ->join('performers as p', 'p.id', '=', 'g.source_performer_id')
-                ->whereIn('g.gram', $chunk)
-                ->selectRaw('COALESCE(p.canonical_performer_id, p.id) as root_id')
-                ->distinct()->pluck('root_id');
-            foreach ($gramIds as $id) {
-                $ids[] = (int) $id;
-            }
+        return array_values(array_diff(array_unique($ids), [$currentId]));
+    }
+
+    /**
+     * Pages of candidate root ids for the backfill: roots sharing a cross-link, a normalized name or a name
+     * trigram with the source. Keyset pages keep a common trigram from materializing a catalog-sized list.
+     *
+     * @param list<string> $names
+     * @return \Generator<int, list<int>>
+     */
+    private function candidateRootIdPages(PerformerSource $source, array $names, int $currentId): \Generator
+    {
+        $union = null;
+        $add = static function ($query) use (&$union): void {
+            $union = $union === null ? $query : $union->union($query);
+        };
+
+        if ($source->cross_link_id !== null && $source->cross_link_id !== '') {
+            $add(DB::table('performer_sources as s')
+                ->join('performers as p', 'p.id', '=', 's.performer_id')
+                ->where('s.cross_link_source', (string) ($source->cross_link_source ?: $source->site_slug))
+                ->where('s.cross_link_id', (string) $source->cross_link_id)
+                ->selectRaw('COALESCE(p.canonical_performer_id, p.id) as root_id'));
         }
 
-        return array_values(array_diff(array_unique($ids), [$currentId]));
+        $keys = $this->normalizedNames($names);
+        if ($keys !== []) {
+            $add(DB::table('performer_name_keys as k')
+                ->join('performers as p', 'p.id', '=', 'k.source_performer_id')
+                ->whereIn('k.normalized_name', $keys)
+                ->selectRaw('COALESCE(p.canonical_performer_id, p.id) as root_id'));
+        }
+
+        foreach (array_chunk($this->nameGrams($names), 400) as $chunk) {
+            $add(DB::table('performer_name_grams as g')
+                ->join('performers as p', 'p.id', '=', 'g.source_performer_id')
+                ->whereIn('g.gram', $chunk)
+                ->selectRaw('COALESCE(p.canonical_performer_id, p.id) as root_id'));
+        }
+
+        if ($union === null) {
+            return;
+        }
+
+        $last = 0;
+        while (true) {
+            $page = DB::query()->fromSub($union, 'c')
+                ->where('c.root_id', '>', $last)->where('c.root_id', '<>', $currentId)
+                ->distinct()->orderBy('c.root_id')->limit(200)->pluck('c.root_id')
+                ->map(static fn(mixed $id): int => (int) $id)->all();
+            if ($page === []) {
+                return;
+            }
+            yield $page;
+            $last = $page[array_key_last($page)];
+        }
     }
 
     /** Stores the normalized names of a source performer so the crawl path can find candidates by index. */
@@ -736,9 +806,8 @@ final class PerformerIdentityService
             return;
         }
 
-        $ids = $this->candidateRootIds($source, $incoming['names'], $currentId, true);
-        sort($ids);
-        foreach (array_chunk($ids, 200) as $chunk) {
+        $ids = $this->candidateRootIdPages($source, $incoming['names'], $currentId);
+        foreach ($ids as $chunk) {
             foreach ((clone $roots)->whereIn('id', $chunk)->orderBy('id')->get() as $root) {
                 $this->candidateComparisons++;
                 yield $this->rootIdentity($root);
