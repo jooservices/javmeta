@@ -30,8 +30,37 @@ final class AlertDispatcher
             return false;
         }
 
+        // Only an alert that was really sent makes the cause active, so a throttled
+        // recurrence can never lead to a recovery message without a prior alert.
+        Cache::put($this->activeKey($debounceKey), 1, now()->addDays(7));
+
         $this->notifier->notify($subject, $body, $context);
 
         return true;
+    }
+
+    /**
+     * Send a recovery message once, when the cause behind $debounceKey was alerted before.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    public function resolve(string $debounceKey, string $subject, string $body, array $context = []): bool
+    {
+        if (! (bool) config('javmeta_alerts.enabled', true)) {
+            return false;
+        }
+
+        if (! Cache::pull($this->activeKey($debounceKey))) {
+            return false;
+        }
+
+        $this->notifier->notify($subject, $body, $context);
+
+        return true;
+    }
+
+    private function activeKey(string $debounceKey): string
+    {
+        return 'javmeta:alert-active:' . hash('sha256', $debounceKey);
     }
 }

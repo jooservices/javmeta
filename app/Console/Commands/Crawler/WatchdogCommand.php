@@ -7,19 +7,24 @@ namespace App\Console\Commands\Crawler;
 use App\Events\CrawlSourceUnhealthy;
 use App\Events\WorkerHeartbeatStale;
 use App\Models\Source;
+use App\Services\Alerts\AlertDispatcher;
+use App\Services\Alerts\OperationalAlertChecks;
 use App\Services\Crawl\WorkerHeartbeat;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 
 final class WatchdogCommand extends Command
 {
+    private const STALE_SOURCES_CACHE_KEY = 'javmeta:watchdog:stale-sources';
+
     protected $signature = 'crawler:watchdog';
 
     protected $aliases = ['javmeta:watchdog'];
 
     protected $description = 'Check worker heartbeat and long-stale sources; alert via Telegram + activity log.';
 
-    public function handle(WorkerHeartbeat $heartbeat): int
+    public function handle(WorkerHeartbeat $heartbeat, AlertDispatcher $alerts, OperationalAlertChecks $checks): int
     {
         if ($heartbeat->isStale()) {
             Event::dispatch(new WorkerHeartbeatStale([
@@ -28,6 +33,7 @@ final class WatchdogCommand extends Command
             ]));
             $this->warn('Worker heartbeat stale.');
         } else {
+            $alerts->resolve('watchdog:worker_stale', 'Worker heartbeat recovered', 'A crawl worker heartbeat is back within the configured window.');
             $this->info('Worker heartbeat ok.');
         }
 
@@ -47,6 +53,30 @@ final class WatchdogCommand extends Command
                 'stale_seconds' => $staleSeconds,
             ]));
             $this->warn("Source stale: {$slug}");
+        }
+
+        // Resolve every source that was stale on the previous run but is not any more:
+        // recovered, disabled or deleted.
+        $current = $staleSources->map(static fn($slug): string => (string) $slug)->values()->all();
+        $previous = (array) Cache::get(self::STALE_SOURCES_CACHE_KEY, []);
+
+        foreach (array_diff($previous, $current) as $slug) {
+            $alerts->resolve(
+                CrawlSourceUnhealthy::keyFor((string) $slug, 'source_stale'),
+                "Source recovered: {$slug}",
+                'The source succeeded again or is no longer monitored.',
+                ['source_slug' => (string) $slug],
+            );
+        }
+
+        Cache::put(self::STALE_SOURCES_CACHE_KEY, $current, now()->addDays(7));
+
+        if ($checks->checkCrawlProgress()) {
+            $this->warn('Crawl made no progress.');
+        }
+
+        if ($checks->checkQueue()) {
+            $this->warn('Crawl queue is stuck.');
         }
 
         return self::SUCCESS;
