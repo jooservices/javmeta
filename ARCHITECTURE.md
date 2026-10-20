@@ -266,13 +266,17 @@ performers (
 )
 performer_sources (
   id, performer_id FK -> performers,           -- canonical performer
-  source_slug text NOT NULL, external_id text NOT NULL, -- per-source identity and names kept
-  UNIQUE (source_slug, external_id)
+  source_performer_id FK -> performers,        -- the per-source performers row this link describes
+  site_slug text NOT NULL, mongo_id text NOT NULL, external_id text,
+  name_romaji, name_kanji, name_kana, birth_date, -- per-source names kept
+  cross_link_source, cross_link_id, removed_at,   -- cross-link signal; soft removal
+  UNIQUE (site_slug, mongo_id)                 -- the source key of one source record
 )
 -- Merge only on same normalised name + birth date, or same namespaced cross-link id.
 -- Ambiguous matches stay separate and appear in the review report; merges are recorded
 -- (performer_identity_events) and can be split/undone. See docs/03-operations/performer-identity.md.
-performer_aliases ( id, performer_id FK, alias text, kind text, UNIQUE(performer_id, alias) )
+performer_aliases ( id, performer_id FK, source_performer_id FK, alias text, kind text,
+                    UNIQUE(performer_id, alias, source_performer_id) ) -- aliases kept per source record
 movie_performers   ( movie_id, performer_id, source_slug, crawled_at,
                     PRIMARY KEY (movie_id, performer_id) )
 -- AC-5.1 linked_title_count = COUNT(*) FROM movie_performers WHERE performer_id=?

@@ -54,6 +54,12 @@ final class PerformerIdentityMatcher
             }
         }
 
+        // The buffers are trimmed only every few entries, so their tail is unsorted: rank before any slice.
+        $rank = static fn(array $a, array $b): int => [$b['similarity'], $a['id']] <=> [$a['similarity'], $b['id']];
+        usort($strong, $rank);
+        usort($review, $rank);
+        $strong = array_slice($strong, 0, $limit);
+
         if ($strongCount === 1) {
             return [
                 'decision' => 'merge',

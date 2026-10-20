@@ -25,6 +25,9 @@ final class PerformerIdentityService
 
     private int $candidateComparisons = 0;
 
+    /** @var array<int, list<string>> Aliases of the current backfill batch, keyed by source performer id. */
+    private array $preloadedAliases = [];
+
     /** Number of source-to-root comparisons the last backfill handed to the matcher. */
     public function candidateComparisons(): int
     {
@@ -86,7 +89,7 @@ final class PerformerIdentityService
 
         $counts = ['merges' => 0, 'reviews' => 0];
 
-        foreach (PerformerSource::query()->whereNull('removed_at')->lazyById(500) as $source) {
+        foreach ($this->activeSources() as $source) {
             $sourcePerformerId = (int) ($source->source_performer_id ?? $source->performer_id);
             $currentPerformerId = (int) $source->performer_id;
             if ($sourcePerformerId !== $currentPerformerId
@@ -525,8 +528,8 @@ final class PerformerIdentityService
             $performer?->name_kana,
         ], static fn(mixed $name): bool => is_string($name) && trim($name) !== '');
         $sourcePerformerId = (int) ($source->source_performer_id ?? $source->performer_id);
-        $names = array_merge($names, DB::table('performer_aliases')
-            ->where('source_performer_id', $sourcePerformerId)->pluck('alias')->all());
+        $names = array_merge($names, $this->preloadedAliases[$sourcePerformerId]
+            ?? DB::table('performer_aliases')->where('source_performer_id', $sourcePerformerId)->pluck('alias')->all());
 
         $birthDate = $this->dateString($source->birth_date ?? $performer?->getAttribute('birth_date'));
 
@@ -837,7 +840,7 @@ final class PerformerIdentityService
     /** Writes the name keys and trigrams of every stored source performer, one chunk of sources at a time. */
     private function storeNameKeys(): void
     {
-        PerformerSource::query()->with('sourcePerformer')->chunkById(500, function ($sources): void {
+        foreach ($this->sourceBatches(PerformerSource::query()) as $sources) {
             $keys = [];
             $grams = [];
             foreach ($sources as $source) {
@@ -851,7 +854,44 @@ final class PerformerIdentityService
             }
             $this->insertKeyRows('performer_name_keys', $keys);
             $this->insertKeyRows('performer_name_grams', $grams);
-        });
+        }
+        $this->preloadedAliases = [];
+    }
+
+    /** @return \Generator<int, PerformerSource> */
+    private function activeSources(): \Generator
+    {
+        foreach ($this->sourceBatches(PerformerSource::query()->whereNull('removed_at')) as $sources) {
+            yield from $sources;
+        }
+        $this->preloadedAliases = [];
+    }
+
+    /**
+     * Reads source rows in id-ordered batches with their source performer eager-loaded and the aliases of the
+     * whole batch preloaded in one query, so a pass costs a constant number of queries per batch.
+     *
+     * @param \Illuminate\Database\Eloquent\Builder<PerformerSource> $query
+     * @return \Generator<int, \Illuminate\Database\Eloquent\Collection<int, PerformerSource>>
+     */
+    private function sourceBatches($query): \Generator
+    {
+        $lastId = 0;
+        while (true) {
+            $sources = (clone $query)->where('id', '>', $lastId)->orderBy('id')->limit(500)
+                ->with('sourcePerformer')->get();
+            if ($sources->isEmpty()) {
+                return;
+            }
+            $ids = $sources->map(static fn(PerformerSource $source): int => (int) ($source->source_performer_id ?? $source->performer_id))
+                ->unique()->values()->all();
+            $this->preloadedAliases = array_fill_keys($ids, []);
+            foreach (DB::table('performer_aliases')->whereIn('source_performer_id', $ids)->get(['source_performer_id', 'alias']) as $row) {
+                $this->preloadedAliases[(int) $row->source_performer_id][] = $row->alias;
+            }
+            yield $sources;
+            $lastId = (int) $sources->last()->getKey();
+        }
     }
 
     /** @param list<array<string, mixed>> $rows */

@@ -86,6 +86,23 @@ final class PerformerIdentityMatcherTest extends TestCase
         self::assertSame(['multiple_strong_matches'], array_unique(array_column($result['review_candidates'], 'reason')));
     }
 
+    public function test_a_later_higher_similarity_strong_candidate_is_not_dropped_by_the_cap(): void
+    {
+        config()->set('performer_identity.max_candidates_per_source', 2);
+        $link = [['source' => 'x', 'id' => '9']];
+        $incoming = ['id' => 10, 'names' => ['alpha beta'], 'birth_dates' => [], 'cross_links' => $link];
+        $candidates = [
+            ['id' => 1, 'names' => ['gamma delta'], 'birth_dates' => [], 'cross_links' => $link],
+            ['id' => 2, 'names' => ['gamma delta'], 'birth_dates' => [], 'cross_links' => $link],
+            ['id' => 3, 'names' => ['beta alpha'], 'birth_dates' => [], 'cross_links' => $link],
+        ];
+
+        $result = (new PerformerIdentityMatcher())->evaluate($incoming, $candidates);
+
+        self::assertSame('review', $result['decision']);
+        self::assertSame([3, 1], array_column($result['review_candidates'], 'id'));
+    }
+
     public function test_many_strong_matches_are_counted_but_only_the_limit_is_reported(): void
     {
         config()->set('performer_identity.max_candidates_per_source', 3);
