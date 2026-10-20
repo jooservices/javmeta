@@ -49,6 +49,7 @@ final class ScheduleTest extends TestCase
             'crawler:watchdog' => '*/5 * * * *',
             'javmeta:backup-status' => '* * * * *',
             'obs:publish-metrics' => '* * * * *',
+            'search:backfill-embeddings' => '0 * * * *',
         ];
 
         $this->assertCount(count($expectedFrequencies) + 1, $events);
@@ -58,6 +59,7 @@ final class ScheduleTest extends TestCase
         $this->assertSame($expectedFrequencies, $actualFrequencies);
         $this->assertTrue($scheduled['crawler:feed-pool']->withoutOverlapping);
         $this->assertTrue($scheduled['crawler:recrawl-incomplete']->withoutOverlapping);
+        $this->assertTrue($scheduled['search:backfill-embeddings']->withoutOverlapping);
         foreach ($events as $event) {
             $this->assertFalse($event->onOneServer);
         }
