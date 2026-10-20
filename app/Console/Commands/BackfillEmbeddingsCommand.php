@@ -6,21 +6,27 @@ namespace App\Console\Commands;
 
 use App\Models\Movie;
 use App\Models\Performer;
+use App\Observability\OpenObserveClient;
+use App\Services\Search\BackfillEmbeddingMetrics;
 use App\Services\Search\ElasticsearchHttpClient;
 use App\Services\Search\ElasticsearchIndexer;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
 /** Rebuild missing movie and performer vectors from the source models. */
 final class BackfillEmbeddingsCommand extends Command
 {
-    protected $signature = 'search:backfill-embeddings {--entity=all : movies, performers, or all} {--batch=100 : Documents to read per Elasticsearch request} {--limit=0 : Maximum documents to inspect; 0 means unlimited} {--dry-run : Count eligible documents without indexing}';
+    protected $signature = 'search:backfill-embeddings {--entity=all : movies, performers, or all} {--batch=100 : Documents to read per batch} {--limit=0 : Maximum database documents to inspect; 0 means unlimited} {--dry-run : Count eligible documents without indexing}';
 
     protected $description = 'Backfill Elasticsearch documents that are missing embedding vectors.';
 
-    public function handle(ElasticsearchIndexer $indexer, ElasticsearchHttpClient $elasticsearch): int
-    {
+    public function handle(
+        ElasticsearchIndexer $indexer,
+        ElasticsearchHttpClient $elasticsearch,
+        OpenObserveClient $metrics,
+    ): int {
         $entity = (string) $this->option('entity');
         $batchSize = (int) $this->option('batch');
         $limit = (int) $this->option('limit');
@@ -43,7 +49,14 @@ final class BackfillEmbeddingsCommand extends Command
             return self::FAILURE;
         }
 
-        $counts = ['found' => 0, 'reindexed' => 0, 'still_missing' => 0, 'skipped' => 0];
+        $entities = $entity === 'all' ? ['movies', 'performers'] : [$entity];
+        $counts = [
+            'scanned' => 0,
+            'missing' => [],
+            'fixed' => [],
+            'complete' => 0,
+            'still_missing' => 0,
+        ];
         $definitions = [
             'movies' => [
                 'index' => (string) config('elasticsearch.movies_index'),
@@ -54,13 +67,16 @@ final class BackfillEmbeddingsCommand extends Command
                 'vector' => 'embedding_performer',
             ],
         ];
-        $entities = $entity === 'all' ? ['movies', 'performers'] : [$entity];
-        $success = true;
 
+        $success = true;
         foreach ($entities as $currentEntity) {
-            if ($limit > 0 && $counts['found'] >= $limit) {
+            $entityLimit = $limit > 0 ? max(0, $limit - $counts['scanned']) : 0;
+            if ($limit > 0 && $entityLimit === 0) {
                 break;
             }
+
+            $counts['missing'][$currentEntity] = 0;
+            $counts['fixed'][$currentEntity] = 0;
 
             $definition = $definitions[$currentEntity];
             $success = $this->backfillEntity(
@@ -70,7 +86,7 @@ final class BackfillEmbeddingsCommand extends Command
                 $indexer,
                 $elasticsearch,
                 $batchSize,
-                $limit,
+                $entityLimit,
                 (bool) $this->option('dry-run'),
                 $counts,
             );
@@ -80,10 +96,13 @@ final class BackfillEmbeddingsCommand extends Command
             }
         }
 
-        $this->line("Found: {$counts['found']}");
-        $this->line("Re-indexed: {$counts['reindexed']}");
+        $metrics->ingestMetrics(BackfillEmbeddingMetrics::points($counts['missing'], $counts['fixed']));
+
+        $this->line("Scanned: {$counts['scanned']}");
+        $this->line('Missing: ' . array_sum($counts['missing']));
+        $this->line('Fixed: ' . array_sum($counts['fixed']));
+        $this->line("Complete: {$counts['complete']}");
         $this->line("Still missing: {$counts['still_missing']}");
-        $this->line("Skipped: {$counts['skipped']}");
 
         if ((bool) $this->option('dry-run')) {
             $this->comment('Dry run complete; no documents were indexed.');
@@ -93,7 +112,7 @@ final class BackfillEmbeddingsCommand extends Command
     }
 
     /**
-     * @param array{found: int, reindexed: int, still_missing: int, skipped: int} $counts
+     * @param array{scanned: int, missing: array<string, int>, fixed: array<string, int>, complete: int, still_missing: int} $counts
      */
     private function backfillEntity(
         string $entity,
@@ -106,98 +125,170 @@ final class BackfillEmbeddingsCommand extends Command
         bool $dryRun,
         array &$counts,
     ): bool {
-        $searchAfter = null;
+        $lastId = null;
+        $entityScanned = 0;
 
         while (true) {
-            $remaining = $limit > 0 ? $limit - $counts['found'] : $batchSize;
+            $remaining = $limit > 0 ? $limit - $entityScanned : $batchSize;
             if ($remaining <= 0) {
                 return true;
             }
 
             $pageSize = min($batchSize, $remaining);
-            $hits = $this->searchMissing($elasticsearch, $index, $vectorField, $pageSize, $searchAfter);
-            if ($hits === null) {
-                return false;
-            }
-
-            if ($hits === []) {
+            $models = $this->loadBatchModels($entity, $pageSize, $lastId);
+            if ($models->isEmpty()) {
                 return true;
             }
 
-            $counts['found'] += count($hits);
+            $lastId = $models->last()->getKey();
+            $entityScanned += $models->count();
+            $counts['scanned'] += $models->count();
 
-            $modelsToIndex = $this->loadBatchModels($entity, $hits, $counts);
+            $completeUuids = $this->findCompleteVectorUuids(
+                $models,
+                $index,
+                $vectorField,
+                $elasticsearch,
+            );
+            if ($completeUuids === null) {
+                return false;
+            }
 
-            if ($dryRun) {
-                $counts['still_missing'] += count($modelsToIndex);
-            } else {
-                if ($modelsToIndex !== [] && ! $this->embedderIsHealthy()) {
-                    $counts['still_missing'] += count($modelsToIndex);
-                    $this->error("Embedder health check failed before the {$entity} batch; stopping before indexing.");
+            $missingModels = [];
+            foreach ($models as $model) {
+                if (isset($completeUuids[(string) $model->uuid])) {
+                    $counts['complete']++;
 
-                    return false;
+                    continue;
                 }
 
-                $this->reindexModels($entity, $modelsToIndex, $indexer, $counts);
+                $missingModels[] = $model;
             }
 
-            if (count($hits) < $pageSize) {
-                return true;
+            $counts['missing'][$entity] += count($missingModels);
+            if ($missingModels === []) {
+                continue;
             }
 
-            $sortValues = $hits[array_key_last($hits)]['sort'] ?? null;
-            if (! is_array($sortValues)) {
-                $this->error("Elasticsearch did not return sort values for the {$entity} page.");
-
-                return false;
-            }
-
-            $searchAfter = array_values($sortValues);
-        }
-    }
-
-    /**
-     * @param list<array<string, mixed>> $hits
-     * @param array{found: int, reindexed: int, still_missing: int, skipped: int} $counts
-     * @return list<Movie|Performer>
-     */
-    private function loadBatchModels(string $entity, array $hits, array &$counts): array
-    {
-        $uuids = [];
-        foreach ($hits as $hit) {
-            $uuid = $this->hitUuid($hit);
-            if ($uuid !== null) {
-                $uuids[] = $uuid;
-            }
-        }
-
-        if ($entity === 'movies') {
-            $models = Movie::query()->whereIn('uuid', $uuids)->get()->keyBy('uuid');
-        } else {
-            $models = Performer::query()->whereIn('uuid', $uuids)->get()->keyBy('uuid');
-        }
-
-        $modelsToIndex = [];
-        foreach ($hits as $hit) {
-            $uuid = $this->hitUuid($hit);
-            $model = $uuid === null ? null : $models->get($uuid);
-
-            if (($entity === 'movies' && ! ($model instanceof Movie))
-                || ($entity === 'performers' && ! ($model instanceof Performer))) {
-                $counts['skipped']++;
+            if ($dryRun) {
+                $counts['still_missing'] += count($missingModels);
 
                 continue;
             }
 
-            $modelsToIndex[] = $model;
+            if (! $this->embedderIsHealthy()) {
+                $counts['still_missing'] += count($missingModels);
+                $this->error("Embedder health check failed before the {$entity} batch; stopping before indexing.");
+
+                return false;
+            }
+
+            $this->reindexModels($entity, $missingModels, $indexer, $counts);
+        }
+    }
+
+    /**
+     * @return Collection<int, Movie>|Collection<int, Performer>
+     */
+    private function loadBatchModels(string $entity, int $batchSize, int|string|null $lastId): Collection
+    {
+        if ($entity === 'movies') {
+            $query = Movie::query()->with(['genres', 'performers']);
+
+            if ($lastId !== null) {
+                $query->where('id', '>', $lastId);
+            }
+
+            return $query->orderBy('id')->limit($batchSize)->get();
         }
 
-        return $modelsToIndex;
+        $query = Performer::query()->with('aliases');
+        if ($lastId !== null) {
+            $query->where('id', '>', $lastId);
+        }
+
+        return $query->orderBy('id')->limit($batchSize)->get();
+    }
+
+    /**
+     * @param Collection<int, Movie>|Collection<int, Performer> $models
+     * @return array<string, true>|null Null indicates a request or response error.
+     */
+    private function findCompleteVectorUuids(
+        Collection $models,
+        string $index,
+        string $vectorField,
+        ElasticsearchHttpClient $elasticsearch,
+    ): ?array {
+        $uuids = [];
+        foreach ($models as $model) {
+            $uuid = (string) $model->uuid;
+            if ($uuid === '') {
+                $this->error('A database document has no UUID; stopping the backfill.');
+
+                return null;
+            }
+
+            $uuids[] = $uuid;
+        }
+
+        try {
+            $response = $elasticsearch->post('backfill', "/{$index}/_search", [
+                'size' => count($uuids),
+                'track_total_hits' => false,
+                '_source' => false,
+                'query' => [
+                    'bool' => [
+                        'filter' => [
+                            ['ids' => ['values' => $uuids]],
+                            ['exists' => ['field' => $vectorField]],
+                        ],
+                    ],
+                ],
+            ], 10);
+
+            if ($response->status() === 404
+                && $response->json('error.type') === 'index_not_found_exception') {
+                return [];
+            }
+
+            if (! $response->successful()) {
+                $this->error("Elasticsearch vector lookup failed for {$index}.");
+
+                return null;
+            }
+
+            $hits = $response->json('hits.hits');
+            if (! is_array($hits)) {
+                $this->error("Elasticsearch returned an invalid vector lookup response for {$index}.");
+
+                return null;
+            }
+
+            $expectedUuids = array_fill_keys($uuids, true);
+            $completeUuids = [];
+            foreach ($hits as $hit) {
+                $uuid = is_array($hit) ? ($hit['_id'] ?? null) : null;
+                if (! is_string($uuid) || ! isset($expectedUuids[$uuid]) || isset($completeUuids[$uuid])) {
+                    $this->error("Elasticsearch returned an invalid vector lookup document for {$index}.");
+
+                    return null;
+                }
+
+                $completeUuids[$uuid] = true;
+            }
+
+            return $completeUuids;
+        } catch (Throwable) {
+            $this->error("Elasticsearch vector lookup failed for {$index}.");
+
+            return null;
+        }
     }
 
     /**
      * @param list<Movie|Performer> $models
-     * @param array{found: int, reindexed: int, still_missing: int, skipped: int} $counts
+     * @param array{scanned: int, missing: array<string, int>, fixed: array<string, int>, complete: int, still_missing: int} $counts
      */
     private function reindexModels(string $entity, array $models, ElasticsearchIndexer $indexer, array &$counts): void
     {
@@ -209,79 +300,10 @@ final class BackfillEmbeddingsCommand extends Command
             };
 
             if ($indexed) {
-                $counts['reindexed']++;
+                $counts['fixed'][$entity]++;
             } else {
                 $counts['still_missing']++;
             }
-        }
-    }
-
-    /**
-     * @param array<string, mixed> $hit
-     */
-    private function hitUuid(array $hit): ?string
-    {
-        $uuid = $hit['_source']['uuid'] ?? $hit['_id'] ?? null;
-
-        return is_string($uuid) && $uuid !== '' ? $uuid : null;
-    }
-
-    /**
-     * @param list<mixed>|null $searchAfter
-     * @return list<array<string, mixed>>|null Null indicates a request or response error.
-     */
-    private function searchMissing(
-        ElasticsearchHttpClient $elasticsearch,
-        string $index,
-        string $vectorField,
-        int $size,
-        ?array $searchAfter,
-    ): ?array {
-        $body = [
-            'size' => $size,
-            '_source' => ['uuid'],
-            'query' => [
-                'bool' => [
-                    'must_not' => [
-                        ['exists' => ['field' => $vectorField]],
-                    ],
-                ],
-            ],
-            'sort' => [['uuid' => ['order' => 'asc']]],
-        ];
-
-        if ($searchAfter !== null) {
-            $body['search_after'] = $searchAfter;
-        }
-
-        try {
-            $response = $elasticsearch->post('backfill', "/{$index}/_search", $body, 10);
-            if (! $response->successful()) {
-                $this->error("Elasticsearch search failed for {$index}.");
-
-                return null;
-            }
-
-            $hits = $response->json('hits.hits');
-            if (! is_array($hits)) {
-                $this->error("Elasticsearch returned an invalid search response for {$index}.");
-
-                return null;
-            }
-
-            foreach ($hits as $hit) {
-                if (! is_array($hit)) {
-                    $this->error("Elasticsearch returned an invalid hit for {$index}.");
-
-                    return null;
-                }
-            }
-
-            return array_values($hits);
-        } catch (Throwable) {
-            $this->error("Elasticsearch search failed for {$index}.");
-
-            return null;
         }
     }
 

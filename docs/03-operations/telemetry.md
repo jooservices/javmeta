@@ -1,7 +1,7 @@
 # JAVMETA telemetry catalogue
 
 This catalogue is derived from `OpenObserveClient`, `PublishMetricsCommand`,
-`WatchdogCommand`, and `AlertDispatcher`. Metric names and the `javmeta_logs`
+`BackfillEmbeddingsCommand`, `WatchdogCommand`, and `AlertDispatcher`. Metric names and the `javmeta_logs`
 stream are existing contracts; dashboards and alerts must use them as written.
 
 ## Metrics
@@ -49,6 +49,8 @@ environment.
 | `javmeta_dep_up` | `dependency` | Availability of PostgreSQL, Elasticsearch, OpenObserve, and MongoDB (`1` up, `0` down). |
 | `javmeta_mongo_archive_write_failures` | — | Cumulative count of failed Mongo archive writes since the cache counter was created. |
 | `javmeta_elasticsearch_request_failures` | — | Cumulative count of failed Elasticsearch requests since the cache counter was created. |
+| `javmeta_search_embedding_backfill_missing` | `entity` | Movie or performer documents found missing from Elasticsearch or without an embedding during the latest backfill run. |
+| `javmeta_search_embedding_backfill_fixed` | `entity` | Movie or performer documents successfully indexed with an embedding during the latest backfill run. |
 
 The seven `javmeta_crawl_run_*_1h` streams are emitted from a fixed suffix list
 in `PublishMetricsCommand`; no other dynamic metric names are generated.
