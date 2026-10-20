@@ -15,3 +15,15 @@ paths = [
   '''(.*?)(png|jpg|gif|svg)$''',
   '''^composer\.lock$''',
 ]
+
+[[rules]]
+id = "javmeta-known-default-password"
+description = "A sample default password that must not return to the repository"
+regex = '''(Complexpass#123|local-Observe-2026!)'''
+
+[[rules.allowlists]]
+description = "The boot check and its test list the sample values on purpose"
+paths = [
+  '''^config/insecure_defaults\.php$''',
+  '''^tests/Unit/Support/InsecureDefaultsTest\.php$''',
+]
