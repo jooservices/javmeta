@@ -10,16 +10,23 @@ use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Tests\E2E\Context;
 use Tests\E2E\Scenario;
+use Tests\E2E\Step;
 use Tests\E2E\Steps\Authenticate;
 use Tests\E2E\Steps\BulkLookupMovies;
+use Tests\E2E\Scenarios\J9KeyRevocationScenario;
 use Tests\E2E\Steps\CallMcp;
+use Tests\E2E\Steps\CheckSourceHealth;
 use Tests\E2E\Steps\CreateApiKey;
+use Tests\E2E\Steps\FindCrawledMovie;
 use Tests\E2E\Steps\GetPerformer;
 use Tests\E2E\Steps\ListApiKeys;
 use Tests\E2E\Steps\LookupMovie;
+use Tests\E2E\Steps\McpFindCrawledMovie;
+use Tests\E2E\Steps\QuerySearchIndex;
 use Tests\E2E\Steps\ResetTestState;
 use Tests\E2E\Steps\RevokeApiKey;
 use Tests\E2E\Steps\RunCrawlOnce;
+use Tests\E2E\Steps\RunCrawlOutage;
 use Tests\E2E\Steps\SearchMovies;
 use Tests\E2E\Steps\SeedCatalog;
 use Tests\E2E\Steps\SeedFixtureSource;
@@ -294,6 +301,228 @@ final class E2EStepTest extends TestCase
         } catch (StepFailure $failure) {
             self::assertStringContainsString('No consumer API key is available', $failure->getMessage());
         }
+    }
+
+    public function test_find_crawled_movie_checks_lookup_code_filter_and_text_search(): void
+    {
+        Http::fake(static function (Request $request) {
+            $path = (string) parse_url($request->url(), PHP_URL_PATH);
+            if ($path === '/api/v1/movies/SSIS-001') {
+                return Http::response(['data' => ['code' => 'SSIS-001']]);
+            }
+
+            return isset($request->data()['code']) || isset($request->data()['q'])
+                ? Http::response(['data' => [['code' => 'SSIS-001']]])
+                : Http::response([], 500);
+        });
+        $context = $this->contextWithConsumer()->withCrawl($this->crawlResult());
+
+        foreach ([FindCrawledMovie::LOOKUP, FindCrawledMovie::CODE, FindCrawledMovie::TEXT] as $mode) {
+            self::assertSame(200, (new FindCrawledMovie($mode))->run($context)->lastResponse['status']);
+        }
+    }
+
+    public function test_find_crawled_movie_fails_when_the_movie_is_missing_or_the_mode_is_unknown(): void
+    {
+        Http::fake(['https://api.test/api/v1/movies*' => Http::response(['data' => [['code' => 'OTHER-001']]])]);
+        $context = $this->contextWithConsumer()->withCrawl($this->crawlResult());
+
+        foreach ([[new FindCrawledMovie(FindCrawledMovie::TEXT), 'not found by text'], [new FindCrawledMovie('nonsense'), 'Unknown movie search mode']] as [$step, $message]) {
+            try {
+                $step->run($context);
+                self::fail('A missing movie or unknown mode should fail the step.');
+            } catch (StepFailure $failure) {
+                self::assertStringContainsString($message, $failure->getMessage());
+            }
+        }
+
+        try {
+            (new FindCrawledMovie())->run($this->contextWithConsumer());
+            self::fail('A journey without a crawl should fail the step.');
+        } catch (StepFailure $failure) {
+            self::assertStringContainsString('No fixture crawl', $failure->getMessage());
+        }
+    }
+
+    public function test_find_crawled_movie_expects_rejected_requests_to_carry_no_data(): void
+    {
+        Http::fake(['https://api.test/api/v1/movies/*' => Http::sequence()
+            ->push(['type' => 'unauthorized', 'data' => null], 401)
+            ->push(['data' => ['code' => 'SSIS-001']], 401)]);
+        $context = $this->contextWithConsumer()->withCrawl($this->crawlResult());
+
+        self::assertSame(401, (new FindCrawledMovie(FindCrawledMovie::LOOKUP, 401))->run($context)->lastResponse['status']);
+        $this->expectException(StepFailure::class);
+        (new FindCrawledMovie(FindCrawledMovie::LOOKUP, 401))->run($context);
+    }
+
+    public function test_mcp_find_crawled_movie_reads_tool_results_and_rejections(): void
+    {
+        $result = static fn(array $payload): array => ['result' => ['content' => [['type' => 'text', 'text' => json_encode($payload)]], 'isError' => false]];
+        Http::fake(['https://api.test/api/v1/mcp' => Http::sequence()
+            ->push($result(['code' => 'SSIS-001']))
+            ->push($result(['items' => [['code' => 'SSIS-001']]]))
+            ->push($result(['items' => [['code' => 'SSIS-001']]]))
+            ->push($result(['items' => []]))
+            ->push(['result' => ['isError' => true, 'content' => []]])
+            ->push(['type' => 'unauthorized', 'data' => null], 401)
+            ->push(['result' => ['content' => []]], 401)]);
+        $context = $this->contextWithMcp()->withCrawl($this->crawlResult());
+
+        foreach (['get_movie', 'lookup_movies', 'search'] as $tool) {
+            self::assertSame(200, (new McpFindCrawledMovie($tool))->run($context)->lastResponse['status']);
+        }
+        foreach (['search', 'get_movie'] as $tool) {
+            try {
+                (new McpFindCrawledMovie($tool))->run($context);
+                self::fail('An empty or failed MCP result should fail the step.');
+            } catch (StepFailure $failure) {
+                self::assertStringContainsString('MCP tool', $failure->getMessage());
+            }
+        }
+        self::assertSame(401, (new McpFindCrawledMovie('get_movie', 401))->run($context)->lastResponse['status']);
+        try {
+            (new McpFindCrawledMovie('get_movie', 401))->run($context);
+            self::fail('A rejected MCP call with a tool result should fail the step.');
+        } catch (StepFailure $failure) {
+            self::assertStringContainsString('rejected MCP call', $failure->getMessage());
+        }
+    }
+
+    public function test_mcp_find_crawled_movie_needs_a_crawl_and_a_known_tool(): void
+    {
+        foreach ([[$this->contextWithMcp(), 'get_movie', 'No fixture crawl'], [$this->contextWithMcp()->withCrawl($this->crawlResult()), 'get_counts', 'Unsupported MCP tool']] as [$context, $tool, $message]) {
+            try {
+                (new McpFindCrawledMovie($tool))->run($context);
+                self::fail('The step should reject this context.');
+            } catch (StepFailure $failure) {
+                self::assertStringContainsString($message, $failure->getMessage());
+            }
+        }
+    }
+
+    public function test_index_search_step_passes_the_mode_and_expects_the_crawled_code(): void
+    {
+        $calls = [];
+        $search = static function (string $mode, string $query) use (&$calls): array {
+            $calls[] = [$mode, $query];
+
+            return ($mode === QuerySearchIndex::SEMANTIC && $query === 'free text') || ($mode === QuerySearchIndex::TEXT && $query === 'Fixture title') ? ['SSIS-001'] : [];
+        };
+        $context = $this->context()->withCrawl($this->crawlResult());
+
+        (new QuerySearchIndex($search, QuerySearchIndex::TEXT))->run($context);
+        (new QuerySearchIndex($search, QuerySearchIndex::SEMANTIC, 'free text'))->run($context);
+        self::assertSame([['text', 'Fixture title'], ['semantic', 'free text']], $calls);
+
+        foreach ([[new QuerySearchIndex($search, QuerySearchIndex::SEMANTIC, 'other'), $context, 'did not return'], [new QuerySearchIndex($search, QuerySearchIndex::TEXT), $this->context(), 'No fixture crawl']] as [$step, $failing, $message]) {
+            try {
+                $step->run($failing);
+                self::fail('The step should fail.');
+            } catch (StepFailure $failure) {
+                self::assertStringContainsString($message, $failure->getMessage());
+            }
+        }
+    }
+
+    public function test_outage_step_hands_the_fixture_to_its_callback(): void
+    {
+        $fixture = new FixtureSeed('onejav', 'detail', 'https://onejav.test/item', '/tmp/fixture', 12);
+        $seen = null;
+        $step = new RunCrawlOutage(static function (FixtureSeed $seed) use (&$seen): void {
+            $seen = $seed;
+        });
+
+        $step->run($this->context()->withFixture($fixture));
+        self::assertSame($fixture, $seen);
+
+        $this->expectException(StepFailure::class);
+        $step->run($this->context());
+    }
+
+    public function test_source_health_distinguishes_a_failing_source_from_a_recovered_one(): void
+    {
+        $error = '2026-10-16T10:00:00+00:00';
+        $later = '2026-10-16T10:05:00+00:00';
+        $health = static fn(?string $success, ?string $failure): array => ['status' => 'ok', 'sources' => [
+            ['slug' => 'other', 'last_success_at' => $later, 'last_error_at' => null],
+            ['slug' => 'onejav', 'last_success_at' => $success, 'last_error_at' => $failure],
+        ]];
+        Http::fake(['https://api.test/api/health' => Http::sequence()
+            ->push($health(null, $error))
+            ->push($health($later, $error))
+            ->push($health($later, $error))
+            ->push($health($later, null))
+            ->push($health(null, $error))
+            ->push($health('2026-10-16T09:00:00+00:00', $error))
+            ->push($health(null, null))
+            ->push(['status' => 'ok', 'sources' => []])
+            ->push($health(null, $error))]);
+        $context = $this->context()->withFixture(new FixtureSeed('onejav', 'detail', 'https://onejav.test/item', '/tmp/fixture', 12));
+
+        (new CheckSourceHealth(CheckSourceHealth::DOWN))->run($context);
+        $this->expectStepFailure(new CheckSourceHealth(CheckSourceHealth::DOWN), $context, 'as down');
+        (new CheckSourceHealth(CheckSourceHealth::RECOVERED))->run($context);
+        (new CheckSourceHealth(CheckSourceHealth::RECOVERED))->run($context);
+        $this->expectStepFailure(new CheckSourceHealth(CheckSourceHealth::RECOVERED), $context, 'as recovered');
+        $this->expectStepFailure(new CheckSourceHealth(CheckSourceHealth::RECOVERED), $context, 'as recovered');
+        $this->expectStepFailure(new CheckSourceHealth(CheckSourceHealth::DOWN), $context, 'as down');
+        $this->expectStepFailure(new CheckSourceHealth(CheckSourceHealth::DOWN), $context, 'omitted the fixture source');
+        $this->expectStepFailure(new CheckSourceHealth('unknown'), $context, 'as unknown');
+        $this->expectStepFailure(new CheckSourceHealth(CheckSourceHealth::DOWN), $this->context(), 'No fixture source');
+    }
+
+    public function test_revoke_step_targets_the_key_of_the_requested_purpose(): void
+    {
+        Http::fake(['https://api.test/api/v1/admin/keys/8' => Http::response([], 204)]);
+
+        $context = (new RevokeApiKey('mcp'))->run($this->contextWithConsumer()->withCreatedKey(new ApiKeyCredential(8, 'jvm_mcp', 'mcp')));
+
+        self::assertSame('https://api.test/api/v1/admin/keys/8', $context->lastRequest['url']);
+    }
+
+    public function test_a_broken_endpoint_makes_the_revocation_journey_fail(): void
+    {
+        $revokedStillWorks = Http::sequence()
+            ->push(['data' => ['code' => 'SSIS-001']])
+            ->push(['data' => ['code' => 'SSIS-001']]);
+        Http::fake([
+            'https://api.test/api/v1/admin/keys/*' => Http::response([], 204),
+            'https://api.test/api/v1/admin/keys' => Http::response(['data' => ['id' => 41, 'plaintext' => 'jvm_generated-key']], 201),
+            'https://api.test/api/v1/auth/verify' => Http::response(['type' => 'unauthorized', 'data' => null], 401),
+            'https://api.test/api/v1/mcp' => Http::response(['result' => ['content' => [['type' => 'text', 'text' => '{"code":"SSIS-001"}']], 'isError' => false]]),
+            'https://api.test/api/v1/movies/*' => $revokedStillWorks,
+        ]);
+        $fixture = new FixtureSeed('onejav', 'detail', 'https://onejav.test/item', '/tmp/fixture', 12);
+        $scenario = new J9KeyRevocationScenario(
+            fn(): array => [$this->credential(), new ApiKeyCredential(8, 'jvm_mcp', 'mcp')],
+            static fn(): FixtureSeed => $fixture,
+            fn(FixtureSeed $seed): CrawlResult => $this->crawlResult(),
+        );
+
+        try {
+            $scenario->run($this->context());
+            self::fail('A revoked key that still reads the catalog must fail the journey.');
+        } catch (ScenarioFailure $exception) {
+            self::assertStringContainsString('J9 revoked keys', $exception->getMessage());
+            self::assertStringContainsString('failed at step FindCrawledMovie: Expected HTTP 401; received 200.', $exception->getMessage());
+            self::assertStringNotContainsString('jvm_generated-key', $exception->getMessage());
+        }
+    }
+
+    private function expectStepFailure(Step $step, Context $context, string $message): void
+    {
+        try {
+            $step->run($context);
+            self::fail('The step should have failed.');
+        } catch (StepFailure $failure) {
+            self::assertStringContainsString($message, $failure->getMessage());
+        }
+    }
+
+    private function crawlResult(): CrawlResult
+    {
+        return new CrawlResult('onejav', 'https://onejav.test/item', 'SSIS-001', 'Fixture title');
     }
 
     private function context(): Context

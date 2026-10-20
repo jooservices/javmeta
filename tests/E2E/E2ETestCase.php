@@ -17,11 +17,13 @@ use App\Models\PerformerAlias;
 use App\Models\PerformerMedia;
 use App\Services\Auth\ApiKeyService;
 use App\Services\Crawl\WorkerHeartbeat;
+use App\Services\Search\ElasticsearchIndexer;
 use App\Support\Code\NormalizedCode;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use App\Services\Search\ElasticsearchHttpClient;
+use JOOservices\Client\Testing\TestResponse;
 use MongoDB\Client as MongoClient;
 use RuntimeException;
 use Tests\E2E\Support\ApiKeyCredential;
@@ -60,6 +62,7 @@ abstract class E2ETestCase extends TestCase
         config()->set('javmeta_auth.owner_admin_token', self::$ownerToken);
         config()->set('javmeta_auth.mcp_api_key', self::$mcpToken);
         config()->set('queue.default', 'sync');
+        config()->set('elasticsearch.embedder_url', self::$embedderUrl);
         $this->fakeCrawlerxHttp();
     }
 
@@ -228,7 +231,69 @@ abstract class E2ETestCase extends TestCase
             throw new RuntimeException('Fixture crawl did not persist a movie source.');
         }
 
-        return new CrawlResult($seed->slug, $seed->url, (string) $source->movie->display_code, (string) $source->movie->title_en);
+        // Journeys search by this text, so fall back to the Japanese title and then the code when no English title exists.
+        $title = (string) ($source->movie->title_en ?: $source->movie->title_jp ?: $source->movie->display_code);
+
+        return new CrawlResult($seed->slug, $seed->url, (string) $source->movie->display_code, $title);
+    }
+
+    /** The source answers 503 so the detail crawl fails and the queue row is retried later, not completed. */
+    protected function runCrawlOutage(FixtureSeed $seed): void
+    {
+        $this->respondWith($seed->url, TestResponse::make(503, ['Retry-After' => '30'], 'Service unavailable'));
+        $row = CrawlQueue::query()->findOrFail($seed->queueId);
+        $this->dispatchFor($row);
+        $row->refresh();
+        if ($row->status === CrawlQueue::STATUS_DONE) {
+            throw new RuntimeException('The crawl finished although its source was down.');
+        }
+        if (MovieSource::query()->where('site_slug', $seed->slug)->where('source_url', $seed->url)->exists()) {
+            throw new RuntimeException('A movie was persisted although its source was down.');
+        }
+    }
+
+    /** The source answers again and the scheduler hands the failed row back to a worker. */
+    protected function recoverSource(FixtureSeed $seed): CrawlResult
+    {
+        $this->stopFakingCrawlerxHttp();
+        $this->fakeCrawlerxHttp();
+        $this->respondWithFixture($seed->url, $seed->bodyPath);
+        CrawlQueue::query()->whereKey($seed->queueId)->update([
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'claimed_at' => now(),
+            'started_at' => null,
+            'locked_by' => null,
+            'next_attempt_at' => null,
+        ]);
+
+        return $this->runCrawlOnce($seed);
+    }
+
+    /**
+     * Queries the movie index directly: keyword relevance, or kNN over the vectors that the stub embedder produced.
+     *
+     * @return list<string> display codes
+     */
+    protected function searchIndex(string $mode, string $query): array
+    {
+        $indexer = app(ElasticsearchIndexer::class);
+        $host = rtrim((string) config('elasticsearch.host'), '/');
+        $deadline = microtime(true) + 10;
+
+        do {
+            Http::timeout(10)->post($host . '/' . config('elasticsearch.movies_index') . '/_refresh');
+            $uuids = match ($mode) {
+                'text' => $indexer->searchMovieUuids($query),
+                'semantic' => $indexer->semanticMovieUuids($query),
+                default => throw new RuntimeException('Unknown index search mode ' . $mode . '.'),
+            };
+            if ($uuids !== []) {
+                return Movie::query()->whereIn('uuid', $uuids)->pluck('display_code')->map(static fn(mixed $code): string => (string) $code)->values()->all();
+            }
+            usleep(200_000);
+        } while (microtime(true) < $deadline);
+
+        return [];
     }
 
     private static function initializeProcesses(): void
