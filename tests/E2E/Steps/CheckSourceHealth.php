@@ -40,7 +40,7 @@ final class CheckSourceHealth extends HttpStep
         $lastError = $this->timestamp($row['last_error_at'] ?? null);
 
         $healthy = match ($this->state) {
-            self::DOWN => $lastError !== null && $lastSuccess === null,
+            self::DOWN => $lastError !== null && ($lastSuccess === null || $lastError > $lastSuccess),
             self::RECOVERED => $lastSuccess !== null && ($lastError === null || $lastSuccess >= $lastError),
             default => false,
         };

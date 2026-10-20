@@ -243,15 +243,30 @@ abstract class E2ETestCase extends TestCase
         $this->stopFakingCrawlerxHttp();
         $this->fakeCrawlerxHttp();
         $this->respondWith($seed->url, TestResponse::make(503, ['Retry-After' => '30'], 'Service unavailable'));
+        $before = $this->movieSourceSnapshot($seed);
+        // Source activity has second precision: make sure the failure is strictly newer than an earlier success.
+        usleep(1_000_000 - (int) (microtime(true) * 1_000_000 % 1_000_000) + 50_000);
         $row = CrawlQueue::query()->findOrFail($seed->queueId);
+        $row->forceFill(['status' => CrawlQueue::STATUS_CLAIMED, 'claimed_at' => now(), 'started_at' => null, 'locked_by' => null, 'next_attempt_at' => null])->save();
         $this->dispatchFor($row);
         $row->refresh();
         if ($row->status === CrawlQueue::STATUS_DONE) {
             throw new RuntimeException('The crawl finished although its source was down.');
         }
-        if (MovieSource::query()->where('site_slug', $seed->slug)->where('source_url', $seed->url)->exists()) {
-            throw new RuntimeException('A movie was persisted although its source was down.');
+        if ($this->movieSourceSnapshot($seed) !== $before) {
+            throw new RuntimeException('Movie data changed although its source was down.');
         }
+    }
+
+    /** The movie source kept from an earlier successful crawl, as comparable data; empty when none was stored. */
+    private function movieSourceSnapshot(FixtureSeed $seed): array
+    {
+        return MovieSource::query()
+            ->where('site_slug', $seed->slug)
+            ->where('source_url', $seed->url)
+            ->get()
+            ->map(static fn(MovieSource $source): array => $source->getAttributes())
+            ->all();
     }
 
     /** The source answers again and the scheduler hands the failed row back to a worker. */

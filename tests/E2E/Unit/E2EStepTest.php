@@ -431,7 +431,9 @@ final class E2EStepTest extends TestCase
             ->push($health('2026-10-16T09:00:00+00:00', $error))
             ->push($health(null, null))
             ->push(['status' => 'ok', 'sources' => []])
-            ->push($health(null, $error))]);
+            ->push($health(null, $error))
+            ->push($health($error, $later))
+            ->push($health($later, $error))]);
         $context = $this->context()->withFixture(new FixtureSeed('onejav', 'detail', 'https://onejav.test/item', '/tmp/fixture', 12));
 
         (new CheckSourceHealth(CheckSourceHealth::DOWN))->run($context);
@@ -443,6 +445,8 @@ final class E2EStepTest extends TestCase
         $this->expectStepFailure(new CheckSourceHealth(CheckSourceHealth::DOWN), $context, 'as down');
         $this->expectStepFailure(new CheckSourceHealth(CheckSourceHealth::DOWN), $context, 'omitted the fixture source');
         $this->expectStepFailure(new CheckSourceHealth('unknown'), $context, 'as unknown');
+        (new CheckSourceHealth(CheckSourceHealth::DOWN))->run($context);
+        $this->expectStepFailure(new CheckSourceHealth(CheckSourceHealth::DOWN), $context, 'as down');
         $this->expectStepFailure(new CheckSourceHealth(CheckSourceHealth::DOWN), $this->context(), 'No fixture source');
     }
 
