@@ -12,7 +12,7 @@ sources (24 on) -> crawl_queue (buffer) -> Redis queues + Horizon -> CrawlerX ->
                                                          REST API and MCP read Postgres and Elasticsearch
 ```
 
-## Sources
+## Site capability matrix
 
 25 sources are configured in `config/javmeta_sources.php`; 24 are crawled. Switch a source off with `JAVMETA_DISABLED_SOURCES`
 (comma separated slugs, default `avfan`) and keep `CRAWLERX_DISABLED_SITES` the same. A switched-off source keeps its queued rows
