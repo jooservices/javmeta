@@ -20,9 +20,23 @@ RUN apt-get update \
     && mkdir -p /tmp/composer-cache \
     && chmod 1777 /tmp/composer-cache
 
-RUN { for attempt in 1 2 3; do pecl install redis-6.3.0 && break; [ "$attempt" -lt 3 ] || exit 1; sleep 5; done; } \
+RUN { for attempt in 1 2 3; do \
+        curl --fail --location --show-error --retry 2 --retry-all-errors \
+            "https://github.com/phpredis/phpredis/archive/df4fab2de7fc327c54c94a13af2b9542e4fbd720.tar.gz" \
+            --output /tmp/phpredis-6.3.0.tar.gz \
+            && break; \
+        [ "$attempt" -lt 3 ] || exit 1; sleep 5; \
+    done; } \
+    && mkdir -p /tmp/phpredis \
+    && tar -xzf /tmp/phpredis-6.3.0.tar.gz --strip-components=1 -C /tmp/phpredis \
+    && cd /tmp/phpredis \
+    && phpize \
+    && ./configure \
+    && make -j"$(nproc)" \
+    && make install \
     && docker-php-ext-enable redis \
-    && rm -rf /tmp/pear
+    && php -r 'exit(phpversion("redis") === "6.3.0" ? 0 : 1);' \
+    && rm -rf /tmp/phpredis /tmp/phpredis-6.3.0.tar.gz
 
 COPY --from=composer:2.10.3 /usr/bin/composer /usr/bin/composer
 
