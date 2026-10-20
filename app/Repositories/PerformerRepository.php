@@ -38,6 +38,7 @@ final class PerformerRepository extends EloquentRepository implements Repository
      */
     public function filter(iterable $filters): static
     {
+        $this->getQuery()->whereNull('canonical_performer_id');
         $this->applyFilters($this->getQuery(), is_array($filters) ? $filters : iterator_to_array($filters));
 
         return $this;
@@ -50,7 +51,7 @@ final class PerformerRepository extends EloquentRepository implements Repository
      */
     public function countFiltered(array $filters): int
     {
-        $query = $this->newQuery();
+        $query = $this->newQuery()->whereNull('canonical_performer_id');
         $this->applyFilters($query, $filters);
 
         return $query->count();
@@ -64,7 +65,9 @@ final class PerformerRepository extends EloquentRepository implements Repository
     public function search(array $filters, string $sort, ?array $cursor, int $perPage): array
     {
         $query = $this->newQuery()
+            ->whereNull('canonical_performer_id')
             ->with('aliases')
+            ->with('sources')
             ->withCount('movies');
         $this->applyFilters($query, $filters);
 
@@ -116,6 +119,13 @@ final class PerformerRepository extends EloquentRepository implements Repository
                     ->orWhere('bio_text', $like, $pattern)
                     ->orWhereHas('aliases', static function (Builder $aliases) use ($like, $pattern): void {
                         $aliases->where('alias', $like, $pattern);
+                    })
+                    ->orWhereHas('sources', static function (Builder $sources) use ($like, $pattern): void {
+                        $sources->where(static function (Builder $sourceNames) use ($like, $pattern): void {
+                            $sourceNames->where('name_romaji', $like, $pattern)
+                                ->orWhere('name_kanji', $like, $pattern)
+                                ->orWhere('name_kana', $like, $pattern);
+                        });
                     });
             });
         }
@@ -234,17 +244,28 @@ final class PerformerRepository extends EloquentRepository implements Repository
      */
     public function withDisplayRelations(): static
     {
-        $this->getQuery()->with('aliases')->withCount('movies');
+        $this->getQuery()->whereNull('canonical_performer_id')->with(['aliases', 'sources'])->withCount('movies');
 
         return $this;
     }
 
     public function findForDisplay(string|int $id): ?Performer
     {
-        $query = $this->newQuery()->with(['aliases', 'media'])->withCount('movies');
+        $query = $this->newQuery()->whereNull('canonical_performer_id')
+            ->with(['aliases', 'media', 'sources'])->withCount('movies');
         $performer = ctype_digit((string) $id)
             ? $query->find((int) $id)
             : $query->where('uuid', (string) $id)->first();
+
+        if (! $performer instanceof Performer) {
+            $canonicalId = ctype_digit((string) $id)
+                ? Performer::query()->whereKey((int) $id)->value('canonical_performer_id')
+                : Performer::query()->where('uuid', (string) $id)->value('canonical_performer_id');
+            if (is_numeric($canonicalId)) {
+                $performer = $this->newQuery()->whereNull('canonical_performer_id')
+                    ->with(['aliases', 'media', 'sources'])->withCount('movies')->find((int) $canonicalId);
+            }
+        }
 
         return $performer instanceof Performer ? $performer : null;
     }
@@ -255,13 +276,38 @@ final class PerformerRepository extends EloquentRepository implements Repository
      */
     public function findByUuidsForDisplay(array $uuids): Collection
     {
+        $uuidToCanonicalId = Performer::query()->whereIn('uuid', $uuids)->get(['id', 'uuid', 'canonical_performer_id'])
+            ->mapWithKeys(static fn(Performer $performer): array => [
+                (string) $performer->uuid => (int) ($performer->canonical_performer_id ?? $performer->id),
+            ]);
+        $canonicalIds = $uuidToCanonicalId->unique()->values()->all();
+        if ($canonicalIds === []) {
+            return new Collection();
+        }
+
         /** @var Collection<int, Performer> $performers */
         $performers = $this->newQuery()
-            ->whereIn('uuid', $uuids)
-            ->with('aliases')
+            ->whereNull('canonical_performer_id')
+            ->whereIn('id', $canonicalIds)
+            ->with(['aliases', 'sources'])
             ->withCount('movies')
             ->get();
+        $performersById = $performers->keyBy(static fn(Performer $performer): int => (int) $performer->id);
+        $resolved = [];
+        $seen = [];
+        foreach ($uuids as $uuid) {
+            $canonicalId = $uuidToCanonicalId->get($uuid);
+            if (! is_int($canonicalId) || isset($seen[$canonicalId])) {
+                continue;
+            }
+            $performer = $performersById->get($canonicalId);
+            if (! $performer instanceof Performer) {
+                continue;
+            }
+            $seen[$canonicalId] = true;
+            $resolved[] = $performer;
+        }
 
-        return $performers;
+        return new Collection($resolved);
     }
 }

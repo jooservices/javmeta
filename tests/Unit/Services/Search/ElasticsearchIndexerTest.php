@@ -6,6 +6,7 @@ namespace Tests\Unit\Services\Search;
 
 use App\Models\Movie;
 use App\Models\Performer;
+use App\Models\PerformerSource;
 use App\Services\Search\ElasticsearchIndexer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
@@ -171,6 +172,36 @@ final class ElasticsearchIndexerTest extends TestCase
             }
 
             return ! array_key_exists('embedding_performer', $request->data());
+        });
+    }
+
+    public function test_performer_index_contains_canonical_source_records(): void
+    {
+        config()->set('elasticsearch.embedder_enabled', false);
+        $performer = Performer::factory()->create(['name_romaji' => 'Aoi Sakura']);
+        PerformerSource::query()->create([
+            'performer_id' => $performer->id,
+            'source_performer_id' => $performer->id,
+            'site_slug' => 'source-a',
+            'mongo_id' => 'local:' . $performer->id,
+            'external_id' => 'person-a',
+            'source_url' => 'https://source-a.test/person-a',
+            'name_romaji' => 'Sakura Aoi',
+            'birth_date' => '1990-01-01',
+            'crawled_at' => now(),
+        ]);
+        Http::fake(['*' => Http::response(['result' => 'created'])]);
+
+        $this->assertTrue(app(ElasticsearchIndexer::class)->indexPerformer($performer));
+
+        Http::assertSent(static function (ClientRequest $request) use ($performer): bool {
+            if (! str_ends_with($request->url(), '/javmeta_performers/_doc/' . $performer->uuid)) {
+                return false;
+            }
+
+            return count($request->data()['sources'] ?? []) === 1
+                && $request->data()['sources'][0]['source_slug'] === 'source-a'
+                && in_array('Sakura Aoi', $request->data()['performer_names'], true);
         });
     }
 

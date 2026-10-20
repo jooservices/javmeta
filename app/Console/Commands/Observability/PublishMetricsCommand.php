@@ -317,7 +317,7 @@ final class PublishMetricsCommand extends Command
     {
         return [
             ['name' => 'javmeta_movies_total', 'value' => Movie::query()->count()],
-            ['name' => 'javmeta_performers_total', 'value' => Performer::query()->count()],
+            ['name' => 'javmeta_performers_total', 'value' => Performer::query()->whereNull('canonical_performer_id')->count()],
             [
                 'name' => 'javmeta_observations_1d',
                 'value' => DB::table('movie_observations')->where('crawled_at', '>=', now()->subDay())->count(),

@@ -57,6 +57,8 @@ Status: Beta — v0.1.0-beta
 **Lookup by code:** Postgres only  
 **Persistence:** Postgres + Elasticsearch host bind mounts under `./data/*`; MongoDB uses a Docker named volume (`mongo-db-data`) because its WiredTiger engine is incompatible with Docker Desktop macOS bind mounts. `docker compose down` keeps all data (do **not** use `docker compose down -v`).
 
+Canonical performer matching, backfill, review, split, and undo procedures are documented in [performer identity operations](docs/03-operations/performer-identity.md).
+
 ## Observability (OpenObserve)
 
 Compose service `openobserve` (UI [http://localhost:5080](http://localhost:5080)). App dual-writes sanitized ops/API telemetry **synchronously** (fail-open; no `default` queue dependency). Toggle with `OPENOBSERVE_ENABLED`. Domain catalog content is never ingested.

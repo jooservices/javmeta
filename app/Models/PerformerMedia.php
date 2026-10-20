@@ -21,7 +21,7 @@ class PerformerMedia extends Model
     public $timestamps = false;
 
     /** @var list<string> */
-    protected $fillable = ['performer_id', 'kind', 'url', 'meta', 'source_slug', 'crawled_at'];
+    protected $fillable = ['performer_id', 'kind', 'url', 'meta', 'source_slug', 'source_performer_id', 'crawled_at'];
 
     /** @return BelongsTo<Performer, $this> */
     public function performer(): BelongsTo

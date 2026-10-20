@@ -412,7 +412,7 @@ final class McpToolService
 
         return [
             'movies' => (int) Movie::query()->count(),
-            'performers' => (int) Performer::query()->count(),
+            'performers' => (int) Performer::query()->whereNull('canonical_performer_id')->count(),
         ];
     }
 

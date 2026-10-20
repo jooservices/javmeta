@@ -96,7 +96,7 @@ final class EsSetupCommand extends Command
             $this->line("  movie #{$movie->id} indexed");
         }
 
-        foreach (Performer::cursor() as $performer) {
+        foreach (Performer::query()->whereNull('canonical_performer_id')->cursor() as $performer) {
             $indexer->indexPerformer($performer);
             $this->line("  performer #{$performer->id} indexed");
         }

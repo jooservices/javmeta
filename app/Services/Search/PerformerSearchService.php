@@ -34,15 +34,8 @@ final class PerformerSearchService
         );
 
         if ($uuids !== []) {
-            $pageUuids = array_slice($uuids, 0, $perPage);
-            $byUuid = $this->performers
-                ->findByUuidsForDisplay($pageUuids)
-                ->keyBy(static fn(Performer $performer): string => (string) $performer->uuid);
-
-            $ordered = collect($pageUuids)
-                ->map(static fn(string $uuid): ?Performer => $byUuid->get($uuid))
-                ->filter(static fn($performer): bool => $performer instanceof Performer)
-                ->values();
+            $resolved = $this->performers->findByUuidsForDisplay($uuids);
+            $ordered = $resolved->take($perPage)->values();
 
             if ($ordered->isNotEmpty()) {
                 /** @var Performer $last */
@@ -50,8 +43,8 @@ final class PerformerSearchService
 
                 return [
                     'items' => $ordered,
-                    'total' => count($uuids),
-                    'has_more' => count($uuids) > $perPage,
+                    'total' => $resolved->count(),
+                    'has_more' => $resolved->count() > $perPage,
                     'last_id' => (int) $last->id,
                     'last_sort' => null,
                     'sort' => 'relevance',

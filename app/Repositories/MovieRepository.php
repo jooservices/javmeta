@@ -76,7 +76,7 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
         // the deterministic fallback so a bare /movies call still sorts well.
         $effectiveSort = $sort === 'relevance' && $q === null ? 'release_date' : $sort;
 
-        $query = $this->newQuery()->with(['codes', 'performers', 'genres', 'media']);
+        $query = $this->newQuery()->with(['codes', 'performers.aliases', 'performers.sources', 'genres', 'media']);
         $this->applyFilters($query, $filters, $q);
         $total = $query->count();
 
@@ -162,6 +162,13 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
                         ->orWhere('name_kana', $like, $pattern)
                         ->orWhereHas('aliases', static function (Builder $aliases) use ($like, $pattern): void {
                             $aliases->where('alias', $like, $pattern);
+                        })
+                        ->orWhereHas('sources', static function (Builder $sources) use ($like, $pattern): void {
+                            $sources->where(static function (Builder $sourceNames) use ($like, $pattern): void {
+                                $sourceNames->where('name_romaji', $like, $pattern)
+                                    ->orWhere('name_kanji', $like, $pattern)
+                                    ->orWhere('name_kana', $like, $pattern);
+                            });
                         });
                 });
             });
@@ -224,6 +231,13 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
                         ->orWhere('name_kana', $like, $pattern)
                         ->orWhereHas('aliases', static function (Builder $aliases) use ($like, $pattern): void {
                             $aliases->where('alias', $like, $pattern);
+                        })
+                        ->orWhereHas('sources', static function (Builder $sources) use ($like, $pattern): void {
+                            $sources->where(static function (Builder $sourceNames) use ($like, $pattern): void {
+                                $sourceNames->where('name_romaji', $like, $pattern)
+                                    ->orWhere('name_kanji', $like, $pattern)
+                                    ->orWhere('name_kana', $like, $pattern);
+                            });
                         });
                 });
             });

@@ -26,7 +26,7 @@ final class PerformerResourceTest extends TestCase
         $payload = (new PerformerSummaryResource($performer))->toArray(Request::create('/api/v1/performers'));
 
         self::assertSame([
-            'uuid', 'id', 'name_romaji', 'name_kanji', 'name_kana', 'aliases', 'image_url', 'profile_url',
+            'uuid', 'id', 'name_romaji', 'name_kanji', 'name_kana', 'aliases', 'sources', 'image_url', 'profile_url',
         ], array_keys($payload));
         self::assertSame(['Aoi A.'], $payload['aliases']);
         self::assertArrayNotHasKey('bust', $payload);

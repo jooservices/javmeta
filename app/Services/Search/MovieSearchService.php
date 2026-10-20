@@ -35,7 +35,7 @@ final class MovieSearchService
                 $pageUuids = array_slice($uuids, 0, $perPage);
                 $byUuid = Movie::query()
                     ->whereIn('uuid', $pageUuids)
-                    ->with(['genres', 'performers.aliases', 'media', 'codes'])
+                    ->with(['genres', 'performers.aliases', 'performers.sources', 'media', 'codes'])
                     ->get()
                     ->keyBy('uuid');
 
@@ -92,7 +92,7 @@ final class MovieSearchService
             $pageUuids = array_slice($uuids, 0, $perPage);
             $byUuid = Movie::query()
                 ->whereIn('uuid', $pageUuids)
-                ->with(['genres', 'performers.aliases', 'media', 'codes'])
+                    ->with(['genres', 'performers.aliases', 'performers.sources', 'media', 'codes'])
                 ->get()
                 ->keyBy('uuid');
 

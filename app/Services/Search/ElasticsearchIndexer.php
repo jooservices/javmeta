@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Search;
 
 use App\Models\Performer;
+use App\Models\PerformerSource;
 use App\Models\Movie;
 use App\Observability\ObservabilityEmitter;
 use App\Services\Embedding\EmbedderClient;
@@ -27,7 +28,7 @@ final class ElasticsearchIndexer
             return false;
         }
 
-        $movie->loadMissing(['genres', 'performers']);
+        $movie->loadMissing(['genres', 'performers.sources']);
 
         $document = [
             'movie_id' => $movie->id,
@@ -41,11 +42,20 @@ final class ElasticsearchIndexer
             'label' => $movie->label,
             'series' => $movie->series,
             'genres' => $movie->genres->pluck('label_normalized')->filter()->values()->all(),
-            'performer_names' => $movie->performers
-                ->map(static fn(Performer $p): string => (string) ($p->name_romaji ?? $p->name_kanji ?? ''))
-                ->filter()
-                ->values()
-                ->all(),
+            'performer_names' => $movie->performers->flatMap(static function (Performer $performer): array {
+                $sourceNames = $performer->sources->flatMap(static fn($source): array => [
+                    $source->name_romaji,
+                    $source->name_kanji,
+                    $source->name_kana,
+                ])->all();
+
+                return array_values(array_filter([
+                    $performer->name_romaji,
+                    $performer->name_kanji,
+                    $performer->name_kana,
+                    ...$sourceNames,
+                ], static fn(mixed $name): bool => is_string($name) && $name !== ''));
+            })->unique()->values()->all(),
             'release_date' => $this->dateString($movie->getAttribute('release_date')),
             'runtime_minutes' => $movie->runtime_minutes,
             'censored' => $movie->censored,
@@ -78,9 +88,24 @@ final class ElasticsearchIndexer
             return false;
         }
 
-        $performer->loadMissing('aliases');
+        $performer->loadMissing(['aliases', 'sources']);
 
         $aliases = $performer->aliases->pluck('alias')->filter()->values()->all();
+        $sources = $performer->sources->map(fn(PerformerSource $source): array => [
+            'source_slug' => (string) $source->site_slug,
+            'external_id' => $source->external_id,
+            'source_url' => $source->source_url,
+            'name_romaji' => $source->name_romaji,
+            'name_kanji' => $source->name_kanji,
+            'name_kana' => $source->name_kana,
+            'birth_date' => $this->dateString($source->getAttribute('birth_date')),
+            'active' => $source->removed_at === null,
+        ])->values()->all();
+        $sourceNames = array_values(array_unique(array_filter(array_merge(
+            array_column($sources, 'name_romaji'),
+            array_column($sources, 'name_kanji'),
+            array_column($sources, 'name_kana'),
+        ), static fn(mixed $name): bool => is_string($name) && $name !== '')));
         $document = [
             'performer_id' => $performer->id,
             'uuid' => $performer->uuid,
@@ -88,6 +113,12 @@ final class ElasticsearchIndexer
             'name_kanji' => $performer->name_kanji,
             'name_kana' => $performer->name_kana,
             'aliases' => $aliases,
+            'sources' => $sources,
+            'performer_names' => array_values(array_unique(array_filter(array_merge([
+                $performer->name_romaji,
+                $performer->name_kanji,
+                $performer->name_kana,
+            ], $sourceNames, $aliases), static fn(mixed $name): bool => is_string($name) && $name !== ''))),
             'birth_date' => $this->dateString($performer->getAttribute('birth_date')),
             'bio_text' => $performer->bio_text,
             'cup' => $performer->cup,
@@ -100,6 +131,7 @@ final class ElasticsearchIndexer
             (string) $performer->name_romaji,
             (string) $performer->name_kanji,
             (string) $performer->name_kana,
+            implode(' ', $sourceNames),
             implode(', ', $aliases),
             (string) $performer->bio_text,
             $this->dateString($performer->getAttribute('birth_date')),
@@ -116,6 +148,26 @@ final class ElasticsearchIndexer
         }
 
         return $this->put((string) config('elasticsearch.performers_index'), (string) $performer->uuid, $document);
+    }
+
+    public function forgetPerformer(Performer $performer): bool
+    {
+        if (! (bool) config('elasticsearch.enabled', true)) {
+            return false;
+        }
+
+        try {
+            $response = $this->elasticsearch->delete(
+                'delete',
+                '/' . (string) config('elasticsearch.performers_index') . '/_doc/' . $performer->uuid,
+                10,
+                [404],
+            );
+
+            return $response->successful() || $response->status() === 404;
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**

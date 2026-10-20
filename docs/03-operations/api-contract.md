@@ -58,6 +58,7 @@ empty array); keys are never omitted. Changes are additive: existing keys keep t
 | `uuid`, `id` | string, integer | Identifiers |
 | `name_romaji`, `name_kanji`, `name_kana` | string or null | Names |
 | `aliases` | array of string | Alternative names |
+| `sources` | array of objects | Source records linked to this canonical performer; each object includes source slug, external ID, names, profile URL, birth date, and active state |
 | `birth_date` | date or null | `YYYY-MM-DD` |
 | `height_cm` | integer or null | Height |
 | `bust`, `waist`, `hip` | integer or null | Measurements in cm |

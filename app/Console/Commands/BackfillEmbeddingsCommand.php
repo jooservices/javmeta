@@ -202,7 +202,7 @@ final class BackfillEmbeddingsCommand extends Command
             return $query->orderBy('id')->limit($batchSize)->get();
         }
 
-        $query = Performer::query()->with('aliases');
+        $query = Performer::query()->whereNull('canonical_performer_id')->with('aliases');
         if ($lastId !== null) {
             $query->where('id', '>', $lastId);
         }

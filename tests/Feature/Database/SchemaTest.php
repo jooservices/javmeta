@@ -32,11 +32,15 @@ final class SchemaTest extends TestCase
         'movie_observations' => ['id', 'movie_id', 'field', 'value', 'value_hash', 'source_slug', 'source_url', 'crawled_at', 'is_primary'],
         'genres' => ['id', 'label_normalized', 'label_raw'],
         'movie_genres' => ['movie_id', 'genre_id', 'source_slug', 'crawled_at'],
-        'performers' => ['id', 'source_slug', 'external_id', 'name_romaji', 'name_kanji', 'name_kana', 'profile_url', 'image_url', 'crawled_at'],
-        'performer_aliases' => ['id', 'performer_id', 'alias', 'kind'],
+        'performers' => ['id', 'canonical_performer_id', 'source_slug', 'external_id', 'name_romaji', 'name_kanji', 'name_kana', 'profile_url', 'image_url', 'crawled_at'],
+        'performer_aliases' => ['id', 'performer_id', 'source_performer_id', 'source_slug', 'alias', 'kind'],
+        'performer_sources' => ['id', 'performer_id', 'source_performer_id', 'site_slug', 'mongo_id', 'external_id', 'source_url', 'name_romaji', 'name_kanji', 'name_kana', 'birth_date', 'cross_link_source', 'cross_link_id', 'removed_at', 'crawled_at'],
+        'performer_identity_events' => ['id', 'event_type', 'from_performer_id', 'to_performer_id', 'related_event_id', 'details', 'created_at', 'reversed_at'],
+        'performer_identity_reviews' => ['id', 'source_performer_id', 'candidate_performer_id', 'reason', 'similarity', 'status', 'created_at', 'resolved_at'],
+        'performer_name_keys' => ['id', 'source_performer_id', 'normalized_name'],
         'movie_performers' => ['movie_id', 'performer_id', 'source_slug', 'crawled_at'],
         'movie_media' => ['id', 'movie_id', 'kind', 'url', 'meta', 'source_slug', 'crawled_at'],
-        'performer_media' => ['id', 'performer_id', 'kind', 'url', 'meta', 'source_slug', 'crawled_at'],
+        'performer_media' => ['id', 'performer_id', 'source_performer_id', 'kind', 'url', 'meta', 'source_slug', 'crawled_at'],
         'sources' => ['slug', 'name', 'base_url', 'enabled', 'priority', 'needs_proxy', 'gap_seconds_default', 'gap_seconds_min', 'gap_seconds_max', 'gap_seconds_current', 'consecutive_failures', 'circuit_state', 'circuit_opened_at', 'last_success_at', 'last_error_at', 'last_error', 'soft404_markers'],
         'crawl_queue' => ['id', 'source_slug', 'url', 'kind', 'status', 'attempts', 'max_attempts', 'next_attempt_at', 'claimed_at', 'started_at', 'locked_by', 'last_error', 'error_code', 'last_failed_at', 'is_recrawl'],
         'crawl_runs' => ['id', 'source_slug', 'started_at', 'finished_at', 'status', 'pages_fetched', 'movies_new', 'movies_updated', 'failures', 'proxy_requests', 'proxy_bytes', 'browser_fetches'],
@@ -76,7 +80,11 @@ final class SchemaTest extends TestCase
     {
         $this->assertUniqueColumns('movie_codes', ['code_normalized', 'source_slug']);
         $this->assertUniqueColumns('performers', ['source_slug', 'external_id']);
-        $this->assertUniqueColumns('performer_media', ['performer_id', 'kind', 'url']);
+        $this->assertUniqueColumns('performer_aliases', ['performer_id', 'alias', 'source_performer_id']);
+        $this->assertUniqueColumns('performer_media', ['performer_id', 'kind', 'url', 'source_performer_id']);
+        $this->assertUniqueColumns('performer_sources', ['site_slug', 'mongo_id']);
+        $this->assertUniqueColumns('performer_identity_reviews', ['source_performer_id', 'candidate_performer_id', 'status']);
+        $this->assertUniqueColumns('performer_name_keys', ['source_performer_id', 'normalized_name']);
         $this->assertUniqueColumns('api_keys', ['key_hash']);
         $this->assertUniqueColumns('genres', ['label_normalized']);
     }

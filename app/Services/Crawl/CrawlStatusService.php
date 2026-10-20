@@ -32,7 +32,7 @@ final class CrawlStatusService
             'checked_at' => $now->toIso8601String(),
             'counts' => [
                 'movies' => (int) Movie::query()->count(),
-                'performers' => (int) Performer::query()->count(),
+                'performers' => (int) Performer::query()->whereNull('canonical_performer_id')->count(),
             ],
             'ingest' => [
                 'movies_1h' => $this->newSince(Movie::class, 'first_seen_at', 3600),

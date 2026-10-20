@@ -28,7 +28,7 @@ final class FieldCatalogContractTest extends TestCase
     ];
 
     private const PERFORMER_FIELDS = [
-        'uuid', 'id', 'name_romaji', 'name_kanji', 'name_kana', 'aliases', 'birth_date', 'height_cm', 'bust', 'waist',
+        'uuid', 'id', 'name_romaji', 'name_kanji', 'name_kana', 'aliases', 'sources', 'birth_date', 'height_cm', 'bust', 'waist',
         'hip', 'cup', 'blood_type', 'bio_text', 'debut_date', 'retired_date', 'location', 'attrs', 'linked_title_count',
         'profile_url', 'image_url', 'photos',
     ];

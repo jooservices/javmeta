@@ -10,6 +10,7 @@ use App\Models\CrawlRun;
 use App\Models\Genre;
 use App\Models\Performer;
 use App\Models\PerformerAlias;
+use App\Models\PerformerSource;
 use App\Models\ReviewFlag;
 use App\Models\Source;
 use App\Models\Movie;
@@ -20,6 +21,7 @@ use App\Models\MovieMedia;
 use App\Models\MovieObservation;
 use App\Models\MoviePerformer;
 use App\Services\Crawl\SourceActivityRecorder;
+use App\Services\Identity\PerformerIdentityService;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawl\MovieDraftSink;
 use App\Services\Merge\ConflictPolicy;
@@ -72,6 +74,7 @@ final class MoviePersister implements MovieDraftSink
         private readonly SourceThrottle $throttle,
         private readonly SourceActivityRecorder $activity,
         private readonly \App\Services\Archive\MongoSiteArchive $archive,
+        private readonly PerformerIdentityService $identity,
     ) {}
 
     public function accept(MovieDraft $draft, bool $isRecrawl = false): void
@@ -417,6 +420,10 @@ final class MoviePersister implements MovieDraftSink
     private function upsertPerformers(int $movieId, MovieDraft $draft, CarbonImmutable $crawledAt): void
     {
         foreach ($draft->performers as $performerDraft) {
+            $previous = PerformerSource::query()->firstOrNew([
+                'site_slug' => $performerDraft->sourceSlug,
+                'external_id' => $performerDraft->externalId,
+            ]);
             $performer = Performer::query()->updateOrCreate(
                 ['source_slug' => $performerDraft->sourceSlug, 'external_id' => $performerDraft->externalId],
                 [
@@ -429,6 +436,31 @@ final class MoviePersister implements MovieDraftSink
                 ],
             );
 
+            $this->identity->preserveRenamedSourceNames(
+                $previous,
+                $performer,
+                [$performerDraft->nameRomaji, $performerDraft->nameKanji, $performerDraft->nameKana],
+                $performerDraft->sourceSlug,
+            );
+            $source = $previous;
+            $source->fill([
+                'performer_id' => $performer->canonical_performer_id ?? $performer->id,
+                'source_performer_id' => $performer->id,
+                'mongo_id' => $source->mongo_id ?: ('local:' . $performer->id),
+                'source_url' => $performerDraft->profileUrl ?? $source->source_url,
+                'name_romaji' => $performerDraft->nameRomaji ?? $source->name_romaji,
+                'name_kanji' => $performerDraft->nameKanji ?? $source->name_kanji,
+                'name_kana' => $performerDraft->nameKana ?? $source->name_kana,
+                'birth_date' => $performerDraft->birthDate ?? $source->birth_date,
+                'cross_link_source' => $performerDraft->crossLinkId === null
+                    ? $source->cross_link_source
+                    : ($performerDraft->crossLinkSource ?? $performerDraft->sourceSlug),
+                'cross_link_id' => $performerDraft->crossLinkId ?? $source->cross_link_id,
+                'removed_at' => null,
+                'crawled_at' => $crawledAt,
+            ]);
+            $source->save();
+
             foreach ($performerDraft->aliases as $alias) {
                 $trimmed = trim($alias);
                 if ($trimmed === '') {
@@ -436,23 +468,33 @@ final class MoviePersister implements MovieDraftSink
                 }
 
                 PerformerAlias::query()->firstOrCreate(
-                    ['performer_id' => (int) $performer->id, 'alias' => $trimmed],
+                    [
+                        'performer_id' => (int) ($performer->canonical_performer_id ?? $performer->id),
+                        'alias' => $trimmed,
+                        'source_slug' => $performerDraft->sourceSlug,
+                        'source_performer_id' => (int) $performer->id,
+                    ],
                     ['kind' => 'source'],
                 );
             }
 
-            MoviePerformer::query()->upsert(
-                [
+            $canonicalId = $this->identity->reconcileAndSync($source);
+
+            // Link the canonical record for the API and the source record so a later split can restore it.
+            foreach (array_unique([$canonicalId, (int) $performer->id]) as $linkedId) {
+                MoviePerformer::query()->upsert(
                     [
-                        'movie_id' => $movieId,
-                        'performer_id' => (int) $performer->id,
-                        'source_slug' => $draft->sourceSlug,
-                        'crawled_at' => $crawledAt,
+                        [
+                            'movie_id' => $movieId,
+                            'performer_id' => $linkedId,
+                            'source_slug' => $draft->sourceSlug,
+                            'crawled_at' => $crawledAt,
+                        ],
                     ],
-                ],
-                ['movie_id', 'performer_id'],
-                ['source_slug', 'crawled_at'],
-            );
+                    ['movie_id', 'performer_id'],
+                    ['source_slug', 'crawled_at'],
+                );
+            }
         }
     }
 

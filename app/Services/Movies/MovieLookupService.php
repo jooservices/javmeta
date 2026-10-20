@@ -102,6 +102,6 @@ final class MovieLookupService
     /** @return Builder<Movie> */
     private function queryWithDisplayRelations(): Builder
     {
-        return Movie::query()->with(['codes', 'performers', 'genres', 'media', 'credits']);
+        return Movie::query()->with(['codes', 'performers.aliases', 'performers.sources', 'genres', 'media', 'credits']);
     }
 }
