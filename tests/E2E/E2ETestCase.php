@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use App\Services\Search\ElasticsearchHttpClient;
+use JOOservices\Client\Testing\TestResponse;
 use MongoDB\Client as MongoClient;
 use RuntimeException;
 use Tests\E2E\Support\ApiKeyCredential;
@@ -60,6 +61,7 @@ abstract class E2ETestCase extends TestCase
         config()->set('javmeta_auth.owner_admin_token', self::$ownerToken);
         config()->set('javmeta_auth.mcp_api_key', self::$mcpToken);
         config()->set('queue.default', 'sync');
+        config()->set('elasticsearch.embedder_url', self::$embedderUrl);
         $this->fakeCrawlerxHttp();
     }
 
@@ -228,7 +230,45 @@ abstract class E2ETestCase extends TestCase
             throw new RuntimeException('Fixture crawl did not persist a movie source.');
         }
 
-        return new CrawlResult($seed->slug, $seed->url, (string) $source->movie->display_code, (string) $source->movie->title_en);
+        // Journeys search by this text, so fall back to the Japanese title and then the code when no English title exists.
+        $title = (string) ($source->movie->title_en ?: $source->movie->title_jp ?: $source->movie->display_code);
+
+        return new CrawlResult($seed->slug, $seed->url, (string) $source->movie->display_code, $title);
+    }
+
+    /** The source answers 503 so the detail crawl fails and the queue row is retried later, not completed. */
+    protected function runCrawlOutage(FixtureSeed $seed): void
+    {
+        // Drop the fixture route first: the earliest route registered for a URL wins over a later 503.
+        $this->stopFakingCrawlerxHttp();
+        $this->fakeCrawlerxHttp();
+        $this->respondWith($seed->url, TestResponse::make(503, ['Retry-After' => '30'], 'Service unavailable'));
+        $row = CrawlQueue::query()->findOrFail($seed->queueId);
+        $this->dispatchFor($row);
+        $row->refresh();
+        if ($row->status === CrawlQueue::STATUS_DONE) {
+            throw new RuntimeException('The crawl finished although its source was down.');
+        }
+        if (MovieSource::query()->where('site_slug', $seed->slug)->where('source_url', $seed->url)->exists()) {
+            throw new RuntimeException('A movie was persisted although its source was down.');
+        }
+    }
+
+    /** The source answers again and the scheduler hands the failed row back to a worker. */
+    protected function recoverSource(FixtureSeed $seed): CrawlResult
+    {
+        $this->stopFakingCrawlerxHttp();
+        $this->fakeCrawlerxHttp();
+        $this->respondWithFixture($seed->url, $seed->bodyPath);
+        CrawlQueue::query()->whereKey($seed->queueId)->update([
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'claimed_at' => now(),
+            'started_at' => null,
+            'locked_by' => null,
+            'next_attempt_at' => null,
+        ]);
+
+        return $this->runCrawlOnce($seed);
     }
 
     private static function initializeProcesses(): void
@@ -260,7 +300,7 @@ abstract class E2ETestCase extends TestCase
         config()->set('elasticsearch.embedder_url', self::$embedderUrl);
 
         self::$embedderProcess = proc_open(
-            [PHP_BINARY, '-S', '0.0.0.0:' . $embedderPort, dirname(__DIR__) . '/Support/embedder-router.php'],
+            [PHP_BINARY, '-S', '127.0.0.1:' . $embedderPort, dirname(__DIR__) . '/Support/embedder-router.php'],
             [0 => ['pipe', 'r'], 1 => ['file', self::$embedderLog, 'a'], 2 => ['file', self::$embedderLog, 'a']],
             $pipes,
         );
@@ -272,7 +312,7 @@ abstract class E2ETestCase extends TestCase
         }
 
         self::$appProcess = proc_open(
-            [PHP_BINARY, 'artisan', 'serve', '--host=0.0.0.0', '--port=' . $appPort],
+            [PHP_BINARY, 'artisan', 'serve', '--host=127.0.0.1', '--port=' . $appPort],
             [0 => ['pipe', 'r'], 1 => ['file', self::$appLog, 'a'], 2 => ['file', self::$appLog, 'a']],
             $pipes,
         );
