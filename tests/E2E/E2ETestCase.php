@@ -300,9 +300,8 @@ abstract class E2ETestCase extends TestCase
 
     private static function refreshMovieIndex(): void
     {
-        $host = rtrim((string) config('elasticsearch.host'), '/');
-        // A bodyless GET: _refresh rejects the empty JSON body a POST through Http would send.
-        $response = Http::timeout(10)->get($host . '/' . config('elasticsearch.movies_index') . '/_refresh');
+        // A bodyless GET through the authenticated client: _refresh rejects an empty JSON body.
+        $response = app(ElasticsearchHttpClient::class)->get('e2e_refresh', '/' . config('elasticsearch.movies_index') . '/_refresh', 10);
         self::assertTrue($response->successful(), 'refresh of the movie index failed');
     }
 
