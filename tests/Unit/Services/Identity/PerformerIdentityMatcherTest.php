@@ -46,23 +46,54 @@ final class PerformerIdentityMatcherTest extends TestCase
         self::assertSame('none', $result['decision']);
     }
 
-    public function test_every_ambiguous_candidate_is_reported_from_a_large_candidate_stream(): void
+    public function test_review_memory_does_not_grow_with_the_candidate_count(): void
     {
         $incoming = ['id' => 1, 'names' => ['yamada abcdefghij'], 'birth_dates' => [], 'cross_links' => []];
-        $candidates = (static function (): \Generator {
-            for ($id = 2; $id <= 20_001; $id++) {
-                yield ['id' => $id, 'names' => ['yamada abcdefghi' . ($id % 7 === 0 ? 'j' : 'k')], 'birth_dates' => [], 'cross_links' => []];
-            }
-        })();
+        $run = static function (int $total) use ($incoming): array {
+            $factory = static function () use ($total): \Generator {
+                for ($id = 2; $id <= $total + 1; $id++) {
+                    yield ['id' => $id, 'names' => ['yamada abcdefghi' . ($id % 7 === 0 ? 'j' : 'k')], 'birth_dates' => [], 'cross_links' => []];
+                }
+            };
 
-        gc_collect_cycles();
-        $before = memory_get_peak_usage();
+            gc_collect_cycles();
+            memory_reset_peak_usage();
+            $base = memory_get_usage();
+            $result = (new PerformerIdentityMatcher())->evaluate($incoming, $factory);
+            $count = 0;
+            foreach ($result['review_candidates'] as $review) {
+                $count += $review['id'] > 0 ? 1 : 0;
+            }
+
+            return [$result['decision'], $count, memory_get_peak_usage() - $base];
+        };
+
+        [$decision, $small, $smallPeak] = $run(2_000);
+        [, $large, $largePeak] = $run(20_000);
+
+        self::assertSame('review', $decision);
+        self::assertSame(2_000, $small);
+        self::assertSame(20_000, $large);
+        // Ten times the candidates must not need meaningfully more memory.
+        self::assertLessThan($smallPeak + 1024 * 1024, $largePeak);
+    }
+
+    public function test_a_single_strong_match_still_reports_the_ambiguous_candidates(): void
+    {
+        $incoming = ['id' => 9, 'names' => ['Mina Hope'], 'birth_dates' => ['1990-01-01'], 'cross_links' => []];
+        $candidates = [
+            ['id' => 1, 'names' => ['Mina Hope'], 'birth_dates' => ['1991-02-02'], 'cross_links' => []],
+            ['id' => 2, 'names' => ['Mina Hope'], 'birth_dates' => ['1990-01-01'], 'cross_links' => []],
+            ['id' => 3, 'names' => ['Mina Hop'], 'birth_dates' => [], 'cross_links' => []],
+        ];
+
         $result = (new PerformerIdentityMatcher())->evaluate($incoming, $candidates);
 
-        self::assertSame('review', $result['decision']);
-        self::assertCount(20_000, $result['review_candidates']);
-        self::assertSame(1.0, $result['review_candidates'][0]['similarity']);
-        self::assertLessThan(32 * 1024 * 1024, memory_get_peak_usage() - $before);
+        self::assertSame('merge', $result['decision']);
+        self::assertSame(2, $result['candidate_id']);
+        $reviews = iterator_to_array($result['review_candidates'], false);
+        self::assertSame([1, 3], array_column($reviews, 'id'));
+        self::assertSame(['birth_date_missing_or_conflicting', 'weak_name_match'], array_column($reviews, 'reason'));
     }
 
     public function test_strong_matches_are_reported_before_weaker_reviews(): void
@@ -80,11 +111,12 @@ final class PerformerIdentityMatcherTest extends TestCase
         );
 
         self::assertSame('review', $result['decision']);
-        self::assertSame([3, 4, 1, 2], array_column($result['review_candidates'], 'id'));
-        self::assertSame(['multiple_strong_matches', 'multiple_strong_matches', 'birth_date_missing_or_conflicting', 'birth_date_missing_or_conflicting'], array_column($result['review_candidates'], 'reason'));
+        $reviews = iterator_to_array($result['review_candidates'], false);
+        self::assertSame([3, 4, 1, 2], array_column($reviews, 'id'));
+        self::assertSame(['multiple_strong_matches', 'multiple_strong_matches', 'birth_date_missing_or_conflicting', 'birth_date_missing_or_conflicting'], array_column($reviews, 'reason'));
     }
 
-    public function test_strong_candidates_are_ranked_by_similarity(): void
+    public function test_strong_candidates_are_reported_in_candidate_order(): void
     {
         $link = [['source' => 'x', 'id' => '9']];
         $incoming = ['id' => 10, 'names' => ['alpha beta'], 'birth_dates' => [], 'cross_links' => $link];
@@ -97,7 +129,7 @@ final class PerformerIdentityMatcherTest extends TestCase
         $result = (new PerformerIdentityMatcher())->evaluate($incoming, $candidates);
 
         self::assertSame('review', $result['decision']);
-        self::assertSame([3, 1, 2], array_column($result['review_candidates'], 'id'));
+        self::assertSame([1, 2, 3], array_column(iterator_to_array($result['review_candidates'], false), 'id'));
     }
 
     public function test_many_strong_matches_are_all_reported_for_review(): void
@@ -112,6 +144,6 @@ final class PerformerIdentityMatcherTest extends TestCase
 
         self::assertSame('review', $result['decision']);
         self::assertNull($result['candidate_id']);
-        self::assertCount(39, $result['review_candidates']);
+        self::assertCount(39, iterator_to_array($result['review_candidates'], false));
     }
 }

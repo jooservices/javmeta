@@ -37,12 +37,16 @@ can be matched by the crawl path.
 The backfill streams source records in id order and looks up each one's
 candidates through `performer_name_keys` and `performer_name_grams` (name
 trigrams). Candidate ids are read in keyset pages of 200 and the merge and
-review report is printed row by row instead of collected. The matcher reports every
-ambiguous candidate of a source record, strong matches first and then the most
-similar reviews, so no review row is dropped. Only the ids and scores of the
-candidates of one source record are held at a time, never the catalog. Tests
-feed the matcher twenty thousand candidates and assert all are reported within
-a bounded memory growth.
+review report is printed row by row instead of collected. The matcher streams
+the candidates of one source record: one pass counts strong and reviewable
+matches, and the review list is a lazy generator that re-reads the candidates,
+so matcher state is constant however many candidates a source has. Every
+ambiguous candidate is reported, strong matches first and then weaker reviews,
+each in candidate order; a single strong match merges and still records the
+other ambiguous candidates for review. The price is up to three passes over the
+candidate pages of a source record. `performers:identity-report` pages the
+open reviews by id and prints one line per review instead of loading them all.
+A unit test asserts that ten times the candidates need no more memory.
 The dry run executes the same pass inside a transaction that is rolled back, so
 it lists exactly the merges and reviews a real run would produce.
 

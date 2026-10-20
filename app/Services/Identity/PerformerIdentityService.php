@@ -98,7 +98,30 @@ final class PerformerIdentityService
             }
 
             $incoming = $this->sourceIdentity($source);
-            $evaluation = $this->matcher->evaluate($incoming, $this->backfillCandidates($source, $incoming, $currentPerformerId));
+            $evaluation = $this->matcher->evaluate(
+                $incoming,
+                fn(): \Generator => $this->backfillCandidates($source, $incoming, $currentPerformerId),
+            );
+            // Reviews are streamed and recorded before any merge changes the roots they point at; a single
+            // strong match still reports its other ambiguous candidates.
+            foreach ($evaluation['review_candidates'] as $candidate) {
+                $candidateId = (int) $candidate['id'];
+                // The review rows themselves deduplicate a pair seen from both sides: the dry run writes
+                // them too, inside the transaction it rolls back.
+                if ($this->reviewSeenFromOtherSide($sourcePerformerId, $candidateId)) {
+                    continue;
+                }
+                $review = [
+                    'source_performer_id' => $sourcePerformerId,
+                    'candidate_performer_id' => $candidateId,
+                    'reason' => $candidate['reason'],
+                    'similarity' => $candidate['similarity'],
+                ];
+                $this->recordReview($review);
+                $counts['reviews']++;
+                $onRow('review', $review);
+            }
+
             if ($evaluation['decision'] === 'merge') {
                 $candidateId = (int) $evaluation['candidate_id'];
                 $fromId = max($currentPerformerId, $candidateId);
@@ -113,24 +136,6 @@ final class PerformerIdentityService
 
                 // The merged-away root is no longer a candidate or a source root, so a pair cannot repeat.
                 $this->mergeRoots($fromId, $toId, $evaluation);
-            } elseif ($evaluation['decision'] === 'review') {
-                foreach ($evaluation['review_candidates'] as $candidate) {
-                    $candidateId = (int) $candidate['id'];
-                    // The review rows themselves deduplicate a pair seen from both sides: the dry run writes
-                    // them too, inside the transaction it rolls back.
-                    if ($this->reviewSeenFromOtherSide($sourcePerformerId, $candidateId)) {
-                        continue;
-                    }
-                    $review = [
-                        'source_performer_id' => $sourcePerformerId,
-                        'candidate_performer_id' => $candidateId,
-                        'reason' => $candidate['reason'],
-                        'similarity' => $candidate['similarity'],
-                    ];
-                    $this->recordReview($review);
-                    $counts['reviews']++;
-                    $onRow('review', $review);
-                }
             }
         }
 
@@ -156,6 +161,7 @@ final class PerformerIdentityService
         for ($attempt = 0; $attempt < 3; $attempt++) {
             $currentId = $this->canonicalId((int) $source->performer_id);
             $evaluation = $this->evaluateSource($source);
+            $this->recordReviews($source, $evaluation);
             if ($evaluation['decision'] !== 'merge') {
                 break;
             }
@@ -168,17 +174,6 @@ final class PerformerIdentityService
             }
 
             $source->refresh();
-        }
-
-        if ($evaluation['decision'] === 'review') {
-            foreach ($evaluation['review_candidates'] as $candidate) {
-                $this->recordReview([
-                    'source_performer_id' => (int) $source->source_performer_id,
-                    'candidate_performer_id' => $candidate['id'],
-                    'reason' => $candidate['reason'],
-                    'similarity' => $candidate['similarity'],
-                ]);
-            }
         }
 
         return $this->canonicalId((int) $source->performer_id);
@@ -378,11 +373,24 @@ final class PerformerIdentityService
         return $undo;
     }
 
+    /** @param array{review_candidates: iterable<array{id: int, reason: string, similarity: float}>} $evaluation */
+    private function recordReviews(PerformerSource $source, array $evaluation): void
+    {
+        foreach ($evaluation['review_candidates'] as $candidate) {
+            $this->recordReview([
+                'source_performer_id' => (int) $source->source_performer_id,
+                'candidate_performer_id' => $candidate['id'],
+                'reason' => $candidate['reason'],
+                'similarity' => $candidate['similarity'],
+            ]);
+        }
+    }
+
     /**
      * The crawl path only compares against roots sharing a cross-link or a normalized name; the backfill
      * (which also finds weak name matches) also selects roots through the indexed name trigrams.
      *
-     * @return array{decision: string, candidate_id: int|null, reason: string|null, similarity: float, review_candidates: list<array{id: int, reason: string, similarity: float}>}
+     * @return array{decision: string, candidate_id: int|null, reason: string|null, similarity: float, review_candidates: iterable<array{id: int, reason: string, similarity: float}>}
      */
     private function evaluateSource(PerformerSource $source): array
     {
@@ -397,7 +405,7 @@ final class PerformerIdentityService
             foreach ($roots as $root) {
                 yield $this->rootIdentity($root);
             }
-        })();
+        });
 
         return $this->matcher->evaluate($incoming, $candidates);
     }
