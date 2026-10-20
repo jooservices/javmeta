@@ -11,12 +11,15 @@ use Tests\TestCase;
 
 final class RedisProbeTest extends TestCase
 {
-    public function test_it_does_not_ping_redis_when_selected_drivers_are_database_backed(): void
+    public function test_it_pings_horizons_redis_connection_when_other_drivers_are_database_backed(): void
     {
         config()->set('cache.default', 'database');
         config()->set('queue.default', 'database');
         config()->set('session.driver', 'database');
-        Redis::shouldReceive('connection')->never();
+        config()->set('horizon.use', 'default');
+        $connection = Mockery::mock();
+        $connection->shouldReceive('ping')->once()->andReturn('PONG');
+        Redis::shouldReceive('connection')->once()->with('default')->andReturn($connection);
 
         self::assertTrue((new RedisProbe())->probe());
     }
@@ -28,8 +31,11 @@ final class RedisProbeTest extends TestCase
         config()->set('queue.default', 'database');
         config()->set('session.driver', 'database');
         $connection = Mockery::mock();
+        $horizonConnection = Mockery::mock();
         $connection->shouldReceive('ping')->once()->andReturn('PONG');
+        $horizonConnection->shouldReceive('ping')->once()->andReturn('PONG');
         Redis::shouldReceive('connection')->once()->with('cache')->andReturn($connection);
+        Redis::shouldReceive('connection')->once()->with('default')->andReturn($horizonConnection);
 
         self::assertTrue((new RedisProbe())->probe());
     }
@@ -45,8 +51,11 @@ final class RedisProbeTest extends TestCase
         config()->set('queue.default', 'database');
         config()->set('session.driver', 'database');
         $connection = Mockery::mock();
+        $horizonConnection = Mockery::mock();
         $connection->shouldReceive('ping')->once()->andReturn('PONG');
+        $horizonConnection->shouldReceive('ping')->once()->andReturn('PONG');
         Redis::shouldReceive('connection')->once()->with('cache')->andReturn($connection);
+        Redis::shouldReceive('connection')->once()->with('default')->andReturn($horizonConnection);
 
         self::assertTrue((new RedisProbe())->probe());
     }
