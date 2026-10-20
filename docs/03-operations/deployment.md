@@ -398,3 +398,18 @@ cache until verification is complete. An approved rollback switches the
 existing checkout back to that known revision, rebuilds the required local
 runtime, and starts the previous Compose service set. Do not automatically
 reset the checkout, and do not delete old volumes during rollback.
+
+## Staging on WSL
+
+The staging environment is the main clone of JavMeta on the WSL workstation, branch `develop`, with the shared Docker
+services and the shared PHP 8.5 runtime. `deploy/staging.sh [--dry-run]` updates it; it has no trigger of its own and never
+runs on merge (a one-time trigger starts it when development is finished).
+
+Order of the steps: check the branch (develop), a clean tree, the private `.env` and
+`scripts/docker/shared check-project javmeta --mode live`; take a quick `pg_dump` of the `javmeta` database
+(`.tmp/javmeta-deploy/backups`, newest seven kept); `git pull --ff-only`; `composer install --no-dev`; `php artisan migrate --force`
+(forward only, never fresh or reset); `php artisan es:setup`; `php artisan optimize`; install and restart the systemd user units
+(`deploy/systemd`), the scheduler stopped first and started last; `php artisan javmeta:smoke`.
+
+If a step fails after the pull, the script returns the code to the previous commit; when the migration was the failing step it
+also restores the quick backup. The log of every run is `.tmp/javmeta-deploy/staging-<time>.log` and holds no secrets.
