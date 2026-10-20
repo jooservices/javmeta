@@ -14,7 +14,7 @@ final class RedisConfigurationTest extends TestCase
         self::assertSame('phpredis', config('database.redis.client'));
     }
 
-    public function test_default_queue_cache_and_session_drivers_remain_database_backed(): void
+    public function test_default_queue_uses_redis_while_cache_and_session_remain_database_backed(): void
     {
         $variableNames = ['QUEUE_CONNECTION', 'CACHE_STORE', 'SESSION_DRIVER'];
         $originalValues = [];
@@ -33,7 +33,9 @@ final class RedisConfigurationTest extends TestCase
         }
 
         try {
-            self::assertSame('database', (require config_path('queue.php'))['default']);
+            $queueConfig = require config_path('queue.php');
+            self::assertSame('redis', $queueConfig['default']);
+            self::assertSame('database', $queueConfig['connections']['database']['driver']);
             self::assertSame('database', (require config_path('cache.php'))['default']);
             self::assertSame('database', (require config_path('session.php'))['driver']);
         } finally {
