@@ -10,6 +10,7 @@ use App\Notifications\ActivityLogAlertNotifier;
 use App\Notifications\CompositeAlertNotifier;
 use App\Notifications\TelegramAlertNotifier;
 use App\Observability\ObservabilityEmitter;
+use App\Support\BrowserServiceEnvironment;
 use App\Observability\OpenObserveClient;
 use App\Observability\TelemetrySanitizer;
 use App\Services\Alerts\AlertDispatcher;
@@ -34,6 +35,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        BrowserServiceEnvironment::applyAliases();
+
         $this->app->singleton(SourceNormalizerRegistry::class, function (Application $app): SourceNormalizerRegistry {
             return new SourceNormalizerRegistry([
                 $app->make(JableSourceNormalizer::class),

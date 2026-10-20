@@ -186,7 +186,7 @@ Workers run crawlerx with `browser_likely` (HTTP → impersonate → Playwright/
 | FlareSolverr | compose service `flaresolverr:8191` |
 | Playwright + stealth scripts | `/var/www/crawlerx/scripts/*` (volume) |
 | Chromium cache | docker volume `playwright-browsers` |
-| Env | `CRAWLERX_FLARESOLVERR_URL`, `CRAWLERX_PLAYWRIGHT_SCRIPT` |
+| Env | `FLARESOLVERR_URL`, `PLAYWRIGHT_URL` (old `CRAWLERX_FLARESOLVERR_URL` is deprecated), `CRAWLERX_PLAYWRIGHT_SCRIPT` |
 
 ## Make targets
 
