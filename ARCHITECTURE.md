@@ -1,5 +1,20 @@
 # ARCHITECTURE DECISION RECORD — "JAV Metadata API" (codename `javmeta`) POC
 
+> **Current state (October 2026).** The decision log below is the historical record of the September 2026 architecture gate. The
+> running system has moved on; [README.md](README.md) and [docs/03-operations](docs/03-operations) describe it as it is now. What changed:
+>
+> | Area | Now |
+> |---|---|
+> | Platform | Laravel 13 on PHP 8.5; PostgreSQL system of record; MongoDB raw archive |
+> | Sources | 25 configured, 24 crawled (`JAVMETA_DISABLED_SOURCES`, default `avfan`); fetching is entirely CrawlerX (HTTP, impersonation, Playwright, FlareSolverr) |
+> | Queue | `crawl_queue` table as the buffer and source of truth, filled into Redis queues by `crawler:feed-pool` (depth limit per queue), run by Horizon; blocked-site back-off 60/120/180 s |
+> | Search | Elasticsearch 9 with login; text search plus vector search (multilingual E5, 384 dimensions) through the embedder service; indexing runs on its own queue and can be switched off |
+> | Identity | one movie per normalised code; one performer per real person (strong signals only, reversible merges) |
+> | Interfaces | REST API with API keys, admin endpoints with an owner token (keys, reports), MCP over HTTP and stdio |
+> | Operations | Sentry, OpenObserve dashboards and alerts, Telegram alerts, encrypted backups with a restore rehearsal, `javmeta:smoke` after every deployment |
+> | Environments | shared Docker stack for development and AI Flow, staging on WSL (`deploy/staging.sh`, systemd units), image-based production runbook |
+
+
 Status: **Approved** (architecture gate closed, 2026-09-17). Source of truth;
 decision log ở mục 10. Root overview:
 [`docs/01-projects/jvmeta/ARCHITECTURE.md`](../../docs/01-projects/jvmeta/ARCHITECTURE.md).

@@ -1,5 +1,13 @@
 # IMPLEMENTATION — javmeta POC
 
+> **Current state (October 2026).** This file is the original implementation plan. For how to run, configure and operate JavMeta today
+> use [README.md](README.md) (sources, crawl flow, data stores, API, MCP, reports, observability, environments) and
+> [docs/03-operations](docs/03-operations) (queue, backup, monitoring, deployment, API contract, MCP, CI, end-to-end journeys).
+> Commands that did not exist when this plan was written: `crawler:seed`, `crawler:feed-pool`, `crawler:source-health`,
+> `crawler:recrawl-incomplete`, `crawler:recrawl-stopped`, `es:setup`, `search:backfill-embeddings`, `javmeta:report`,
+> `javmeta:verify-sample`, `javmeta:smoke`, `javmeta:sentry-test`, `observability:import`.
+
+
 Status: **Approved** (planning gate closed, 2026-09-17). Working file — ticket
 state is updated by the root only. Source of truth. Requirements:
 `BUSINESS.md` (same folder). Architecture: `ARCHITECTURE.md` (same folder).

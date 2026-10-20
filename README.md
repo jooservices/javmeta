@@ -2,123 +2,107 @@
 
 [![CI](https://github.com/jooservices/javmeta/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/jooservices/javmeta/actions/workflows/ci.yml)
 
-Laravel app: crawl JAV metadata (crawlerx) → Mongo archive → Postgres SoR → Elasticsearch search → API + MCP.
+JavMeta crawls Japanese video metadata with [CrawlerX](https://github.com/jooservices/crawlerx), normalises it into one record per
+movie and per performer, stores it, makes it searchable (by text and by meaning) and serves it through a REST API and MCP.
 
-Status: Beta — v0.1.0-beta
+```
+sources (24 on) -> crawl_queue (buffer) -> Redis queues + Horizon -> CrawlerX -> normalise -> Postgres (system of record)
+                                                                                      |-> MongoDB (raw archive)
+                                                                                      '-> Elasticsearch (text + vector search)
+                                                         REST API and MCP read Postgres and Elasticsearch
+```
 
-## Definition of Done
+## Sources
 
-- **Crawl all sites:** `make crawl ACTION=tick` → `make crawl ACTION=dispatch` (worker in compose). 25 sources in `config/javmeta_sources.php` — **movies, performers, and galleries** by capability.
-- **Query API:** `GET /api/v1/movies/{code}` · `GET /api/v1/movies?q=…` · `GET /api/v1/performers` (aliases `/movies`). API key via admin.
-- **MCP for AI:** stdio and HTTP expose `lookup_movies`, `get_movie`, `search`, `lookup_performers`, `get_counts`, `crawl_status`, `system_status`, and `get_performer`. See the [MCP guide](docs/03-operations/mcp.md) for inputs and examples.
-- **Docker + durable DB:** Postgres / Mongo / ES bind-mounted under `./data/*` (survive container drop; avoid `down -v`).
+25 sources are configured in `config/javmeta_sources.php`; 24 are crawled. Switch a source off with `JAVMETA_DISABLED_SOURCES`
+(comma separated slugs, default `avfan`) and keep `CRAWLERX_DISABLED_SITES` the same. A switched-off source keeps its queued rows
+and resumes when it is switched on again. Four sources need the browser services (Jable, MissAV, JavLibrary, JavBus).
 
-## Site capability matrix
-
-| Slug | Movie | Performer | Gallery | Tick seeds |
-|---|---|---|---|---|
-| `141jav` | listing+detail | cast from movie | — | movie |
-| `onepondo` | listing+detail | cast from movie | — | movie |
-| `aisex` | — | listing+detail | — | performer |
-| `avfan` | listing+detail | cast from movie | — | movie |
-| `avfan_profiles` | — | listing+detail | — | performer |
-| `avjoho` | — | listing+detail | — | performer |
-| `caribbeancom` | listing+detail | cast from movie | — | movie |
-| `duga` | listing+detail | cast from movie | — | movie |
-| `eporner` | — | thin rows from gallery names | Yes | `gallery_urls` |
-| `fc2` | listing+detail | cast from movie | — | movie |
-| `ffjav` | listing+detail | cast from movie | — | movie |
-| `heyzo` | listing+detail | cast from movie | — | movie |
-| `jable` | listing+detail | listing+detail | — | movie + performer |
-| `javdatabase` | — | listing+detail | — | performer only |
-| `javbtc` | listing+detail | cast from movie | — | movie |
-| `javbus` | listing+detail | listing+detail | — | movie + performer |
-| `javdb` | listing+detail | cast from movie | — | movie |
-| `javlibrary` | listing+detail | listing+detail | — | movie + performer |
-| `javphotos` | — | — | listing+detail | gallery listing |
-| `minnanoav` | listing+detail* | listing+detail | — | performer only |
-| `missav` | listing+detail | cast from movie | — | movie |
-| `onejav` | listing+detail | cast from movie | — | movie |
-| `tokyohot` | listing+detail | cast from movie | — | movie |
-| `warashi` | — | listing+detail | listing+detail | performer + gallery |
-| `xcity` | listing+detail | listing+detail | — | movie + performer |
-
-\* Minnano AV has movie capability in crawlerx; POC seeds performer index only.
-
-## Architecture (DoD)
-
-| Store | Role | Data path |
+| Source | Name | What is crawled |
 |---|---|---|
-| Postgres | System of record (`movies` = movies, performers, pivots) | Lookup / detail |
-| MongoDB | Per-site archive (flexible; not end-user) | volume `javmeta_mongo-db-data` |
-| Elasticsearch | Search index → returns `uuid` → hydrate PG | `./data/elasticsearch` |
+| `141jav` | 141Jav | movies |
+| `aisex` | Aisex | performers |
+| `avfan` | Avfan | movies (**switched off by default**) |
+| `avfan_profiles` | Avfan Profiles | performers |
+| `avjoho` | Avjoho | performers |
+| `caribbeancom` | Caribbeancom | movies |
+| `duga` | DUGA | movies |
+| `eporner` | EPORNER | galleries |
+| `fc2` | FC2 Content Market | movies |
+| `ffjav` | FFJav | movies |
+| `heyzo` | HEYZO | movies |
+| `jable` | Jable | movies, performers |
+| `javbtc` | JavBTC | movies |
+| `javbus` | JavBus | movies, performers |
+| `javdatabase` | JAV Database | performers |
+| `javdb` | JavDB | movies |
+| `javlibrary` | JAVLibrary | movies, performers |
+| `javphotos` | JavPhotos | galleries |
+| `minnanoav` | Minnano AV | performers |
+| `missav` | MissAV | movies |
+| `onejav` | OneJav | movies |
+| `onepondo` | 1Pondo | movies |
+| `tokyohot` | Tokyo-Hot | movies |
+| `warashi` | Warashi | performers, galleries |
+| `xcity` | XCITY | movies, performers |
 
-**Search:** `ES → uuid → Postgres → respond`  
-**Lookup by code:** Postgres only  
-**Persistence:** Postgres + Elasticsearch host bind mounts under `./data/*`; MongoDB uses a Docker named volume (`mongo-db-data`) because its WiredTiger engine is incompatible with Docker Desktop macOS bind mounts. `docker compose down` keeps all data (do **not** use `docker compose down -v`).
+Check which sources work right now: `php artisan crawler:source-health [--source=slug] [--json]` fetches one public page per kind
+of page and reports `WORKING`, `DEGRADED` or `BLOCKED` with the reason (also written to `artifacts/reports/source-health.md`).
 
-## Observability (OpenObserve)
+## How a crawl works
 
-Compose service `openobserve` (UI [http://localhost:5080](http://localhost:5080)). App dual-writes sanitized ops/API telemetry **synchronously** (fail-open; no `default` queue dependency). Toggle with `OPENOBSERVE_ENABLED`. Domain catalog content is never ingested.
+1. `crawler:seed` puts the start pages of every enabled source into **`crawl_queue`**, the buffer and source of truth (one row per
+   source and URL, so nothing is queued twice).
+2. `crawler:feed-pool` (every minute) claims rows and pushes them to the Redis queues `listing`, `detail`, `performer_listing`,
+   `performer_detail` and `gallery`; each queue holds at most `JAVMETA_QUEUE_DEPTH_LIMIT` (100) jobs, so a large backlog stays in the
+   database. **Horizon** supervises the workers (plus a `search` queue for indexing).
+3. A job calls CrawlerX, normalises the answer, saves it to Postgres, archives the raw data in MongoDB and queues the search indexing.
+4. Listings follow their next pages; when the last page is reached the listing starts again after `JAVMETA_LOOP_PAUSE_SECONDS`
+   (300), and the first page is read again every `JAVMETA_FRESH_INTERVAL_MINUTES` (60) so new releases appear quickly.
+5. A **blocked** site waits and retries (`JAVMETA_BLOCK_DELAYS`, default 60,120,180 seconds; while it waits the whole site pauses),
+   then the row fails. Other failures retry up to 3 times (`max_attempts`) with growing delays; a claim that sits longer than
+   900 seconds is returned to the queue without using an attempt if the job never started.
+6. A movie with missing data is crawled again after `JAVMETA_RECRAWL_DAYS` (7), at most `JAVMETA_RECRAWL_MAX` (3) rounds
+   without new data (`crawler:recrawl-incomplete`, `crawler:recrawl-stopped`).
 
-**REQ-9 ops:** `GET /api/health` (no key) → status + per-source circuit/`last_success_at` + queue counts. Alerts: Telegram via `jooservices/laravel-notifications` (`NOTIFICATION_TELEGRAM_BOT_TOKEN` / `NOTIFICATION_TELEGRAM_CHAT_ID`, with `TELEGRAM_*` legacy fallback) + `laravel-logging` (`alert.sent`). Scheduler runs `javmeta:watchdog` every 5 minutes. Consumer movie/performer **404** also alerts so ops can crawl ASAP.
+Useful commands: `crawler:run-source`, `crawler:failures --since=24h`, `crawler:reclaim`, `crawler:watchdog`, `crawler:sync-sources`.
+Details: [docs/03-operations/queue.md](docs/03-operations/queue.md).
 
-```bash
-# after make up — login with ZO_ROOT_USER_EMAIL / ZO_ROOT_USER_PASSWORD from .env
-open http://localhost:5080
-php artisan javmeta:obs-publish-metrics   # or wait for scheduler (every minute)
-php artisan javmeta:watchdog
-curl -s http://localhost:8080/api/health
-```
+## Where the data lives
 
-## Quickstart (all Docker)
-
-```bash
-cp -n .env.example .env
-# set APP_KEY if empty: docker compose run --rm api php artisan key:generate
-
-make build
-make install
-make up                 # full local stack, including embedder
-make migrate
-make crawl ACTION=tick       # enqueue all sites
-make crawl ACTION=dispatch   # claim buffer → named Laravel queues
-# N worker containers (JAVMETA_WORKER_INSTANCES) × 5 queues × JAVMETA_WORKERS_PER_QUEUE processes
-```
-
-**Compose profiles** — every service is grouped so a stack can mix bundled-Docker and external services:
-
-| Profile | Services | Usage |
+| Store | Role | Configuration |
 |---|---|---|
-| `app` | `api`, `worker` | App containers (crawling; needed everywhere) |
-| `data` | `postgres`, `mongo`, `elasticsearch` | Data layer (can be external) |
-| `openobserve` | `openobserve` | Observability (can be external) |
-| `flare` | `flaresolverr` | Cloudflare bypass for crawling (can be external) |
-| `control` | `scheduler`, `mcp` | Control-plane: run on **ONE** instance only (scheduler duplicates jobs/alerts) |
-| `embed` | `embedder` | Semantic-search embedding service |
-| `mcp` | `mcp` | On-demand MCP server (stdio) |
+| PostgreSQL | System of record: movies, performers, observations per source, identities, API keys | `DB_*` |
+| MongoDB | Raw archive per source (`movie_sources` links to it) | `MONGO_URI`, `MONGO_DATABASE` (`MONGODB_URI` and `MONGODB_DATABASE` are accepted too) |
+| Elasticsearch 9 | Text and vector search; documents carry the `uuid` of the Postgres row | `ELASTICSEARCH_HOST`, `ELASTICSEARCH_USERNAME` + `ELASTICSEARCH_PASSWORD` or `ELASTICSEARCH_API_KEY`, `ELASTICSEARCH_MOVIES_INDEX`, `ELASTICSEARCH_PERFORMERS_INDEX` |
+| Redis | Queues (Horizon) and caches | `REDIS_*`, `QUEUE_CONNECTION=redis` |
 
-- Local (develop default): `make up` = `docker compose --profile app,data,openobserve,flare,control,embed up -d`.
-- Production crawler instance: `make up MODE=crawler` = `worker + flaresolverr` (no API; data/observability external).
-- Production control instance (one only): `make up MODE=control` = `api + scheduler + mcp + embedder` (no worker; crawl/data dependencies external).
-- Production single node: `make up MODE=node` = control + crawler on one host (data/observability external).
-- Boot gate: each app container runs `ready-check` first; if any **required** endpoint (DB, Mongo, ES, OpenObserve when enabled, FlareSolverr) is unreachable after retries it exits → container down. `OPENOBSERVE_ENABLED=false` skips the OpenObserve check.
+**One record per thing.** A movie is one record whatever the number of sources (matched on the normalised code); each source's values
+are kept as observations and the best value wins by source priority. A performer is one record per real person: sources merge only on
+strong signals (same normalised name and birth date, or the same cross-link id), never on a name alone; merges can be split and undone.
 
-The planned image-based production procedure is documented in the [production deployment runbook](docs/03-operations/deployment.md).
+**Search.** Create the indexes once with `php artisan es:setup` (`--reindex` re-indexes everything). Movies and performers are also
+embedded (multilingual E5, 384 dimensions) by the embedder service (`EMBEDDER_URL`) and found by meaning with kNN search. Missing vectors
+are filled by `php artisan search:backfill-embeddings`. `JAVMETA_SEARCH_ENABLED=false` skips indexing and `JAVMETA_EMBEDDER_ENABLED=false`
+skips the embedder; crawling and the API keep working.
 
-API (create key first via admin token):
+## API and MCP
 
-```bash
-curl -s -H "X-Api-Key: jvm_..." "http://localhost:8080/api/v1/movies/STARS-456"
-curl -s -H "X-Api-Key: jvm_..." "http://localhost:8080/api/v1/movies?q=STARS"
-```
+REST API (key in the `X-Api-Key` header; create keys with the owner token):
 
-MCP (stdio for AI clients) — set `JAVMETA_MCP_API_KEY` to an **active** `jvm_…` key first:
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/v1/movies/{code}` | One movie by code (`ssis001`, `SSIS-1`, ` ssis-001 ` all resolve) |
+| `GET /api/v1/movies?q=...` | Search and filters, cursor pagination |
+| `POST /api/v1/movies:bulk` | Many codes in one call |
+| `GET /api/v1/performers`, `GET /api/v1/performers/{id}` | Performers |
+| `GET /api/v1/meta/genres` | Genre list |
+| `GET /api/v1/auth/verify` | Key check |
+| `GET /api/health`, `GET /api/health/live` | Health (no key) |
+| `GET/POST/DELETE /api/v1/admin/keys` | Key management (owner token, `X-Owner-Token`) |
+| `GET /api/v1/admin/report/{quality,cost,sources}` | Reports (owner token) |
 
-```bash
-docker compose --profile mcp run --rm mcp
-# tools: lookup_movies, get_movie, search, lookup_performers, get_counts, crawl_status, system_status, get_performer
-```
+Contract and error codes: [docs/03-operations/api-contract.md](docs/03-operations/api-contract.md).
 
 Movie and performer detail responses (`get_movie`, `get_performer`, and the
 corresponding detail API endpoints) expose the same photo contract:
@@ -158,35 +142,53 @@ corresponding detail API endpoints) expose the same photo contract:
 `source` is the stable source slug. Only URL references are stored; image
 binary content is not downloaded into JAVMeta.
 
-**MCP over HTTP (streamable HTTP)** — reachable from any AI over the network:
+**MCP** (JSON-RPC 2.0) is served at `POST /api/v1/mcp` with any active API key, and over stdio for local clients. Tools:
+`lookup_movies`, `get_movie`, `search`, `lookup_performers`, `get_performer`, `get_counts`, `crawl_status`, `system_status`.
+Every tool input and an example call are in [docs/03-operations/mcp.md](docs/03-operations/mcp.md).
 
-```bash
-curl -s -H "X-Api-Key: $JAVMETA_MCP_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
-  http://localhost:8080/api/v1/mcp
-```
+## Reports and checks
 
-- Endpoint: `POST /api/v1/mcp` (JSON-RPC 2.0); `GET` returns an SSE stream. Any active API key (`X-Api-Key` header) works.
-- AI clients connect to `https://<host>/api/v1/mcp` via the CF tunnel (port 8080) — no local process needed.
-- See [docs/03-operations/mcp.md](docs/03-operations/mcp.md) for every tool input and an example call for each tool.
+- `php artisan javmeta:report quality|cost|sources` (and the three admin endpoints): fill rate of the 11 core fields, completeness,
+  conflicts between sources, crawl cost with a projection to 100k and 400k titles, and source freshness.
+- `php artisan javmeta:verify-sample <file>`: compare a list of codes with the stored data.
+- `php artisan javmeta:smoke`: checks the database, Redis, MongoDB, Elasticsearch, the embedder, Horizon, the scheduler, the queue depth,
+  an API lookup and MCP in one run (exit code 0 or 1, `--json`).
 
-**Semantic search** (optional embedder, profile `embed`): movies/performers are embedded with a multilingual E5 model and stored as `dense_vector` in Elasticsearch (kNN). MCP tool `search` answers natural-language queries; keyword search still works when the embedder is off.
+## Observability
 
-- Local `make up` starts the embedder (`EMBEDDER_URL=http://embedder:8000`); production crawler nodes point `EMBEDDER_URL=http://<parent>:8000`.
-- Create/update ES vector mappings: `make setup SERVICE=elasticsearch`.
-- Recreate mappings and re-index all movies and performers: `make setup SERVICE=elasticsearch REINDEX=1`.
+- **Sentry**: errors of the API, workers, scheduler and MCP, with tags (role, node, source, crawl kind, error code); release is the
+  git short SHA baked into the image. Set `JAVMETA_SENTRY_DSN`; empty means off. Test: `php artisan javmeta:sentry-test`.
+- **OpenObserve**: logs and metrics with per-source dashboards and alert rules (`observability:import`); `OPENOBSERVE_*` settings.
+- **Telegram** alerts for dead sources, a stalled crawl and an old backup (`NOTIFICATION_TELEGRAM_*`).
+- **Health**: `GET /api/health` shows dependencies, queue counts and each source's last success.
+See [docs/03-operations/monitoring.md](docs/03-operations/monitoring.md) and [telemetry.md](docs/03-operations/telemetry.md).
 
-## Fetch / CF bypass
+## Backups
 
-Workers run crawlerx with `browser_likely` (HTTP → impersonate → Playwright/stealth → FlareSolverr).
+Encrypted Postgres, MongoDB and Elasticsearch backups with retention, a restore and a rehearsal live in `deploy/backup`; see
+[docs/03-operations/backup.md](docs/03-operations/backup.md).
+
+## Environments
+
+- **Workspaces shared stack (development, AI Flow):** services come from the shared Docker (Postgres, MongoDB, Redis, Elasticsearch,
+  OpenObserve, Sentry, the embedder) and the shared PHP 8.5 runtime; the browser services (FlareSolverr, Playwright) run on the Dev VM
+  (`FLARESOLVERR_URL`, `PLAYWRIGHT_URL`; the old `CRAWLERX_FLARESOLVERR_URL` is deprecated). Every ticket gets its own databases
+  (`javmeta_wt<id>`).
+- **Staging (WSL):** the main clone on `develop`, served at `http://javmeta.localhost:8085`, kept running by the systemd units in
+  `deploy/systemd` and updated by `deploy/staging.sh` (see [deployment.md](docs/03-operations/deployment.md)).
+- **Production:** image-based runbook in [docs/03-operations/deployment.md](docs/03-operations/deployment.md).
+- **Own Docker (for outside developers):** `cp -n .env.example .env`, set `APP_KEY`, then `make build install up migrate`; passwords in
+  `.env` must be set (no sample passwords are accepted in staging or production).
+
+## Fetch and Cloudflare bypass
+
+Workers run CrawlerX, which tries plain HTTP, curl impersonation, then a browser (Playwright) and FlareSolverr.
 
 | Piece | Where |
 |---|---|
-| FlareSolverr | compose service `flaresolverr:8191` |
-| Playwright + stealth scripts | `/var/www/crawlerx/scripts/*` (volume) |
-| Chromium cache | docker volume `playwright-browsers` |
-| Env | `FLARESOLVERR_URL`, `PLAYWRIGHT_URL` (old `CRAWLERX_FLARESOLVERR_URL` is deprecated), `CRAWLERX_PLAYWRIGHT_SCRIPT` |
+| FlareSolverr | `FLARESOLVERR_URL` (`/v1`) |
+| Browser fetch service | `PLAYWRIGHT_URL` |
+| Playwright and stealth scripts | `CRAWLERX_PLAYWRIGHT_SCRIPT`, `CRAWLERX_PUPPETEER_SCRIPT` |
 
 ## Make targets
 
@@ -210,10 +212,11 @@ Workers run crawlerx with `browser_likely` (HTTP → impersonate → Playwright/
 
 ## CI
 
-GitHub Actions (GitHub-hosted runners) run on every push and pull request to
-`develop`. No deploy, no image push. Details and local reproduction:
-[`docs/03-operations/ci.md`](docs/03-operations/ci.md).
+GitHub Actions on every pull request to `develop`: lint and tests (coverage at least 90 percent, three-run stability check),
+integration (Postgres, MongoDB, Elasticsearch, OpenObserve), end-to-end journeys, secrets scan, workflow audit, commit and PR title
+checks. Details: [docs/03-operations/ci.md](docs/03-operations/ci.md).
 
 ## Project docs
 
 - `BUSINESS.md` / `ARCHITECTURE.md` / `IMPLEMENTATION.md` / `DESIGN-DISCUSSION.md`
+- `docs/03-operations/`: api-contract, mcp, queue, backup, monitoring, telemetry, deployment, e2e, ci, runtime-dependencies

@@ -1,5 +1,13 @@
 # BUSINESS PLAN — "JAV Metadata API" (codename `javmeta`)
 
+> **Current state (October 2026).** The approved business plan below is unchanged; this note records where the POC stands.
+> The tools to judge the POC now exist: `php artisan javmeta:report quality|cost|sources` (fill rate of the 11 core fields, conflicts
+> between sources, crawl cost per source with a projection to 100k and 400k titles, source freshness), `javmeta:verify-sample <file>`
+> (compare a list of codes with the stored data) and `crawler:source-health` (which of the 24 active sources work). Search is
+> available by text and by meaning, and the data is served through the REST API and MCP. Billing, takedown handling and the
+> commercial roadmap remain deferred as decided; see [README.md](README.md) for the system as it runs.
+
+
 Status: **Approved** (requirements gate closed, 2026-09-17). Source of truth;
 decision log ở mục 9. Root overview:
 [`docs/01-projects/jvmeta/BUSINESS.md`](../../docs/01-projects/jvmeta/BUSINESS.md).
