@@ -4,10 +4,15 @@ declare(strict_types=1);
 
 namespace Tests;
 
+use App\Jobs\IndexMovieJob;
+use App\Jobs\IndexPerformerJob;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Support\Facades\Queue;
 
 abstract class TestCase extends BaseTestCase
 {
+    protected bool $fakeSearchIndexJobs = true;
+
     protected function setUp(): void
     {
         // Docker Compose injects APP_ENV / DB_* into the real process environment.
@@ -29,7 +34,11 @@ abstract class TestCase extends BaseTestCase
 
         parent::setUp();
 
-        // Compose also exports QUEUE_CONNECTION=database; sync keeps jobs inline.
+        // Sync keeps crawl jobs inline; search index jobs are faked unless a test opts out.
         config()->set('queue.default', 'sync');
+
+        if ($this->fakeSearchIndexJobs) {
+            Queue::fake([IndexMovieJob::class, IndexPerformerJob::class]);
+        }
     }
 }
