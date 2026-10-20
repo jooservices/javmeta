@@ -107,6 +107,31 @@ final class ImportTest extends TestCase
         self::assertSame('javmeta_telegram', $destination['name']);
         self::assertSame('https://api.telegram.org/botunit-test-token/sendMessage', $destination['url']);
         self::assertSame('javmeta_telegram', $destination['template']);
+
+        $dashboard = $this->requestBody('POST', '/api/javmeta_it/dashboards', 'JAVMETA Operations');
+        self::assertSame('JAVMETA Operations', $dashboard['title']);
+        $panels = collect($dashboard['tabs'][0]['panels'] ?? [])->keyBy('id');
+        foreach ([
+            'javmeta-crawl-queue',
+            'javmeta-errors-by-source-and-code',
+            'javmeta-source-freshness',
+            'javmeta-crawl-rate-by-source',
+        ] as $panelId) {
+            self::assertTrue($panels->has($panelId), "Expected operations dashboard panel {$panelId}.");
+        }
+
+        self::assertSame('javmeta_crawl_queue_depth', $panels->get('javmeta-crawl-queue')['queries'][0]['fields']['stream']);
+        self::assertSame('javmeta_source_last_success_age_seconds', $panels->get('javmeta-source-freshness')['queries'][0]['fields']['stream']);
+
+        $errorQuery = $panels->get('javmeta-errors-by-source-and-code')['queries'][0];
+        self::assertSame('javmeta_logs', $errorQuery['fields']['stream']);
+        self::assertSame('logs', $errorQuery['fields']['stream_type']);
+        self::assertStringContainsString('source_slug', $errorQuery['query']);
+        self::assertStringContainsString('error_code', $errorQuery['query']);
+
+        $rateQuery = $panels->get('javmeta-crawl-rate-by-source')['queries'][0];
+        self::assertSame('javmeta_crawl_run_pages_fetched_1h', $rateQuery['fields']['stream']);
+        self::assertStringContainsString('source_slug', $rateQuery['query']);
     }
 
     public function test_alerts_for_streams_that_do_not_exist_yet_are_reported_pending_and_strict_fails(): void
@@ -201,15 +226,18 @@ final class ImportTest extends TestCase
     }
 
     /** @return array<string, mixed> */
-    private function requestBody(string $method, string $path): array
+    private function requestBody(string $method, string $path, ?string $title = null): array
     {
         foreach (ClientBuilder::recorded() as $record) {
             if ($record->request->getMethod() === $method && $record->request->getUri()->getPath() === $path) {
-                return json_decode((string) $record->request->getBody(), true, 512, JSON_THROW_ON_ERROR);
+                $body = json_decode((string) $record->request->getBody(), true, 512, JSON_THROW_ON_ERROR);
+                if ($title === null || ($body['title'] ?? null) === $title) {
+                    return $body;
+                }
             }
         }
 
-        self::fail("No recorded request matched {$method} {$path}.");
+        self::fail("No recorded request matched {$method} {$path} with title " . ($title ?? '(any)') . '.');
     }
 
     private function configureImporter(): void
