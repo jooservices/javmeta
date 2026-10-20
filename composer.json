@@ -102,7 +102,8 @@
             "bash tests/Shell/run-captainhook.test.sh",
             "bash tests/Shell/backup.test.sh",
             "bash tests/Shell/sentry-release.test.sh",
-            "if command -v shellcheck >/dev/null 2>&1; then shellcheck -x deploy/backup/*.sh tests/Shell/backup.test.sh; elif [ \"${CI:-}\" = true ]; then echo 'shellcheck is required in CI' >&2; exit 1; else echo 'shellcheck not installed here; it runs in GitHub CI'; fi"
+            "bash tests/Shell/staging.test.sh",
+            "if command -v shellcheck >/dev/null 2>&1; then shellcheck -x deploy/backup/*.sh tests/Shell/backup.test.sh deploy/staging.sh tests/Shell/staging.test.sh; elif [ \"${CI:-}\" = true ]; then echo 'shellcheck is required in CI' >&2; exit 1; else echo 'shellcheck not installed here; it runs in GitHub CI'; fi"
         ],
         "test:e2e": [
             "@php -r \"is_dir('.tmp') || mkdir('.tmp', 0700);\"",
