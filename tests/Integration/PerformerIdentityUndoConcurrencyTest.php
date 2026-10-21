@@ -64,18 +64,69 @@ final class PerformerIdentityUndoConcurrencyTest extends IntegrationTestCase
             }
         }
 
-        $outputs = '';
-        foreach ($processes as [$process, $pipes]) {
-            $outputs .= (string) stream_get_contents($pipes[1]) . (string) stream_get_contents($pipes[2]);
+        $outputs = [];
+        $exitCodes = [];
+        foreach ($processes as $name => [$process, $pipes]) {
+            $outputs[$name] = (string) stream_get_contents($pipes[1]) . (string) stream_get_contents($pipes[2]);
             fclose($pipes[1]);
             fclose($pipes[2]);
-            proc_close($process);
+            $exitCodes[$name] = $this->exitCode($process);
         }
 
-        self::assertStringNotContainsStringIgnoringCase('deadlock', $outputs);
-        $canonical = $identity->canonicalId((int) $second->id);
-        self::assertContains($canonical, [(int) $first->id, (int) $second->id]);
-        self::assertSame($canonical, $identity->canonicalId($canonical));
+        self::assertStringNotContainsStringIgnoringCase('deadlock', implode("\n", $outputs));
+        self::assertSame(0, $exitCodes['merge'], 'The backfill must finish: ' . $outputs['merge']);
+        self::assertContains($exitCodes['undo'], [0, 1], 'Undo must succeed or be refused cleanly: ' . $outputs['undo']);
+        if ($exitCodes['undo'] === 1) {
+            // The merge won the race, so the split can no longer be undone and the guard says so.
+            self::assertMatchesRegularExpression('/Restore later identity changes|Split later merge events first/', $outputs['undo']);
+        }
+
+        $pairIds = [(int) $first->id, (int) $second->id];
+        $roots = Performer::query()->whereIn('id', $pairIds)->whereNull('canonical_performer_id')->pluck('id')->map(fn(mixed $id): int => (int) $id)->all();
+        self::assertCount(1, $roots, 'Both performers must end up merged into exactly one canonical record.');
+        $root = $roots[0];
+        $child = $root === $pairIds[0] ? $pairIds[1] : $pairIds[0];
+        self::assertSame($root, (int) Performer::query()->findOrFail($child)->canonical_performer_id);
+        self::assertSame($root, $identity->canonicalId($child));
+        self::assertSame(
+            [$root, $root],
+            PerformerSource::query()->whereIn('source_performer_id', $pairIds)->orderBy('id')->pluck('performer_id')->map(fn(mixed $id): int => (int) $id)->all(),
+        );
+
+        self::assertSame(
+            1,
+            PerformerIdentityEvent::query()->where('event_type', 'merge')->whereNull('reversed_at')->count(),
+            'Exactly one merge event must be active.',
+        );
+        self::assertSame(1, PerformerIdentityEvent::query()->where('event_type', 'split')->count());
+        $undoEvents = PerformerIdentityEvent::query()->where('event_type', 'undo')->get();
+        if ($exitCodes['undo'] === 0) {
+            self::assertCount(1, $undoEvents);
+            self::assertSame((int) $split->id, (int) $undoEvents->first()->related_event_id);
+            self::assertNotNull($split->fresh()->reversed_at);
+        } else {
+            self::assertCount(0, $undoEvents);
+            self::assertNull($split->fresh()->reversed_at);
+        }
+    }
+
+    /** @param resource $process */
+    private function exitCode($process): int
+    {
+        $deadline = microtime(true) + 30;
+        do {
+            $status = proc_get_status($process);
+            if (! $status['running']) {
+                proc_close($process);
+
+                return (int) $status['exitcode'];
+            }
+            usleep(50_000);
+        } while (microtime(true) < $deadline);
+
+        proc_terminate($process);
+        proc_close($process);
+        self::fail('A command did not finish after the locks were released.');
     }
 
     private function waitForLockWaiters(int $expected): void
