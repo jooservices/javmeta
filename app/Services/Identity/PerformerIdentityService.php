@@ -9,6 +9,7 @@ use App\Models\PerformerAlias;
 use App\Models\PerformerIdentityEvent;
 use App\Models\PerformerSource;
 use App\Services\Search\ElasticsearchIndexer;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -590,8 +591,10 @@ final class PerformerIdentityService
         }
 
         $details = DB::transaction(function () use ($fromId, $toId, $evaluation): array {
-            $from = Performer::query()->lockForUpdate()->findOrFail($fromId);
-            $to = Performer::query()->lockForUpdate()->findOrFail($toId);
+            // Lock in ascending id order, the same order undoSplit() uses, so the two cannot deadlock.
+            $locked = Performer::query()->whereIn('id', [$fromId, $toId])->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            $from = $locked->get($fromId) ?? throw (new ModelNotFoundException())->setModel(Performer::class, [$fromId]);
+            $to = $locked->get($toId) ?? throw (new ModelNotFoundException())->setModel(Performer::class, [$toId]);
             if ($from->canonical_performer_id !== null || $to->canonical_performer_id !== null) {
                 return [];
             }
