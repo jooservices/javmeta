@@ -720,24 +720,51 @@ final class PerformerIdentityService
     private function copyMovieLinks(array $sourceIds, int $targetId): array
     {
         $created = [];
-        foreach (DB::table('movie_performers')->whereIn('performer_id', $sourceIds)->get() as $link) {
-            $exists = DB::table('movie_performers')->where('movie_id', $link->movie_id)
-                ->where('performer_id', $targetId)->exists();
-            if ($exists) {
-                continue;
+        $lastMovie = 0;
+        $lastPerformer = 0;
+        while (true) {
+            // Keyset pages over the composite primary key keep memory and query count bounded per 500 links.
+            $page = DB::table('movie_performers')->whereIn('performer_id', $sourceIds)
+                ->where(static function ($query) use ($lastMovie, $lastPerformer): void {
+                    $query->where('movie_id', '>', $lastMovie)
+                        ->orWhere(static fn($same) => $same->where('movie_id', $lastMovie)->where('performer_id', '>', $lastPerformer));
+                })
+                ->orderBy('movie_id')->orderBy('performer_id')->limit(500)->get();
+            if ($page->isEmpty()) {
+                break;
             }
 
-            DB::table('movie_performers')->insert([
-                'movie_id' => $link->movie_id,
-                'performer_id' => $targetId,
-                'source_slug' => $link->source_slug,
-                'crawled_at' => $link->crawled_at,
-            ]);
-            $created[] = [
-                'movie_id' => (int) $link->movie_id,
-                'source_slug' => (string) $link->source_slug,
-                'crawled_at' => (string) $link->crawled_at,
-            ];
+            $last = $page->last();
+            $lastMovie = (int) $last->movie_id;
+            $lastPerformer = (int) $last->performer_id;
+
+            $existing = array_flip(DB::table('movie_performers')->where('performer_id', $targetId)
+                ->whereIn('movie_id', $page->pluck('movie_id')->unique()->all())->pluck('movie_id')
+                ->map(static fn(mixed $id): int => (int) $id)->all());
+            $rows = [];
+            foreach ($page as $link) {
+                $movieId = (int) $link->movie_id;
+                if (isset($existing[$movieId])) {
+                    continue;
+                }
+
+                $existing[$movieId] = true;
+                $rows[] = [
+                    'movie_id' => $movieId,
+                    'performer_id' => $targetId,
+                    'source_slug' => (string) $link->source_slug,
+                    'crawled_at' => (string) $link->crawled_at,
+                ];
+                $created[] = [
+                    'movie_id' => $movieId,
+                    'source_slug' => (string) $link->source_slug,
+                    'crawled_at' => (string) $link->crawled_at,
+                ];
+            }
+
+            if ($rows !== []) {
+                DB::table('movie_performers')->insert($rows);
+            }
         }
 
         return $created;

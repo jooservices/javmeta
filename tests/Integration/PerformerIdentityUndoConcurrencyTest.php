@@ -166,6 +166,86 @@ final class PerformerIdentityUndoConcurrencyTest extends IntegrationTestCase
         self::assertNull(Performer::query()->findOrFail($second->id)->canonical_performer_id);
     }
 
+    public function test_split_and_a_concurrent_merge_end_in_a_consistent_state(): void
+    {
+        self::assertSame('pgsql', DB::connection()->getDriverName());
+
+        $first = $this->sourcePerformer('source-a', 'person-a', 'Aoi Sakura');
+        $second = $this->sourcePerformer('source-b', 'person-b', 'Sakura Aoi');
+        $identity = app(PerformerIdentityService::class);
+        $identity->backfill();
+        $merge = PerformerIdentityEvent::query()->where('event_type', 'merge')->firstOrFail();
+        $third = $this->sourcePerformer('source-c', 'person-c', 'Aoi  Sakura');
+        $ids = [(int) $first->id, (int) $second->id, (int) $third->id];
+
+        $other = DB::connectUsing('identity_concurrent_split_merge', (array) config('database.connections.pgsql'));
+        $other->beginTransaction();
+        $processes = [];
+
+        try {
+            $other->table('performers')->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get(['id']);
+            $commands = [
+                'split' => ['performers:split', (string) $merge->id],
+                'merge' => ['performers:backfill-identities'],
+            ];
+            foreach ($commands as $name => $arguments) {
+                $pipes = [];
+                $process = proc_open(
+                    [PHP_BINARY, 'artisan', ...$arguments],
+                    [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                    $pipes,
+                    base_path(),
+                    [...getenv(), 'JAVMETA_SEARCH_ENABLED' => 'false'],
+                );
+                self::assertIsResource($process);
+                $processes[$name] = [$process, $pipes];
+            }
+
+            $this->waitForLockWaiters(2);
+            $other->commit();
+        } finally {
+            if ($other->transactionLevel() > 0) {
+                $other->rollBack();
+            }
+        }
+
+        $outputs = [];
+        $exitCodes = [];
+        foreach ($processes as $name => [$process, $pipes]) {
+            $outputs[$name] = (string) stream_get_contents($pipes[1]) . (string) stream_get_contents($pipes[2]);
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+            $exitCodes[$name] = $this->exitCode($process);
+        }
+
+        self::assertStringNotContainsStringIgnoringCase('deadlock', implode("\n", $outputs));
+        self::assertSame(0, $exitCodes['merge'], 'The backfill must finish: ' . $outputs['merge']);
+        self::assertContains($exitCodes['split'], [0, 1], 'Split must succeed or be refused cleanly: ' . $outputs['split']);
+
+        $splits = PerformerIdentityEvent::query()->where('event_type', 'split')->count();
+        self::assertSame($exitCodes['split'] === 0 ? 1 : 0, $splits, 'A split event is recorded only when the split succeeded.');
+        if ($exitCodes['split'] === 0) {
+            self::assertNotNull($merge->fresh()->reversed_at);
+        }
+
+        // Whatever the order, every child points at a root, and each source row follows its performer's root.
+        foreach (Performer::query()->whereIn('id', $ids)->get() as $performer) {
+            $canonical = $performer->canonical_performer_id === null ? (int) $performer->id : (int) $performer->canonical_performer_id;
+            self::assertNull(Performer::query()->findOrFail($canonical)->canonical_performer_id, 'Canonical ids must point at a root.');
+            self::assertSame($canonical, $identity->canonicalId((int) $performer->id));
+            self::assertSame(
+                $canonical,
+                (int) PerformerSource::query()->where('source_performer_id', $performer->id)->firstOrFail()->performer_id,
+            );
+        }
+
+        self::assertGreaterThanOrEqual(
+            1,
+            PerformerIdentityEvent::query()->where('event_type', 'merge')->whereNull('reversed_at')->count(),
+            'The late performer must be merged into a group.',
+        );
+    }
+
     /** @param resource $process */
     private function exitCode($process): int
     {

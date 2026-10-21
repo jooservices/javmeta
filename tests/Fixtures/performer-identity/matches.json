@@ -14,7 +14,7 @@
     {
         "case": "romaji_and_kanji_shared_variant",
         "incoming": {"id": 2, "names": ["Sakura Aoi", "桜あおい"], "birth_dates": ["1990-01-01"], "cross_links": []},
-        "candidates": [{"id": 1, "names": ["さくら あおい", "Sakura Aoi"], "birth_dates": ["1990-01-01"], "cross_links": []}],
+        "candidates": [{"id": 1, "names": ["桜あおい", "Ao Sakurai"], "birth_dates": ["1990-01-01"], "cross_links": []}],
         "expected": "merge"
     },
     {
