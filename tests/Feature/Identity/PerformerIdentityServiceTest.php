@@ -250,6 +250,26 @@ final class PerformerIdentityServiceTest extends TestCase
         self::assertDatabaseHas('movie_performers', ['movie_id' => $movie->id, 'performer_id' => $first->id]);
     }
 
+    public function test_undo_moves_source_links_added_after_the_merge_snapshot(): void
+    {
+        [$first, $second] = $this->samePersonAcrossSources();
+        $identity = app(PerformerIdentityService::class);
+        $identity->backfill();
+        $merge = PerformerIdentityEvent::query()->where('event_type', 'merge')->firstOrFail();
+        $split = $identity->split((int) $merge->id);
+
+        $late = $this->sourceFor('source-b', 'person-b')->replicate();
+        $late->external_id = 'person-b-late';
+        $late->mongo_id = 'source-b:person-b-late';
+        $late->performer_id = $second->id;
+        $late->save();
+
+        $identity->undoSplit((int) $split->id);
+
+        self::assertSame((int) $first->id, (int) $late->fresh()->performer_id);
+        self::assertCount(3, $first->fresh()->sources);
+    }
+
     public function test_merge_preserves_same_alias_from_distinct_source_records(): void
     {
         $first = $this->sourcePerformer('source-a', 'person-a', 'Aoi Sakura', '1990-01-01');

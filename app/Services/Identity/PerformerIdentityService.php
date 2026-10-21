@@ -313,24 +313,35 @@ final class PerformerIdentityService
 
     public function undoSplit(int $splitEventId): PerformerIdentityEvent
     {
-        $split = PerformerIdentityEvent::query()
-            ->whereKey($splitEventId)
-            ->where('event_type', 'split')
-            ->whereNull('reversed_at')
-            ->first();
-        if (! $split instanceof PerformerIdentityEvent) {
-            throw new RuntimeException('An active split event was not found.');
-        }
+        $undo = DB::transaction(function () use ($splitEventId): PerformerIdentityEvent {
+            $split = PerformerIdentityEvent::query()->lockForUpdate()
+                ->whereKey($splitEventId)
+                ->where('event_type', 'split')
+                ->whereNull('reversed_at')
+                ->first();
+            if (! $split instanceof PerformerIdentityEvent) {
+                throw new RuntimeException('An active split event was not found.');
+            }
 
-        $merge = PerformerIdentityEvent::query()->find((int) $split->related_event_id);
-        if (! $merge instanceof PerformerIdentityEvent) {
-            throw new RuntimeException('The split event has no merge event to restore.');
-        }
-        $details = $this->mergeGuard->mergeDetails($merge);
-        $this->mergeGuard->assertSplitCanBeUndone($merge, $details);
+            $merge = PerformerIdentityEvent::query()->lockForUpdate()->find((int) $split->related_event_id);
+            if (! $merge instanceof PerformerIdentityEvent) {
+                throw new RuntimeException('The split event has no merge event to restore.');
+            }
+            $details = $this->mergeGuard->mergeDetails($merge);
+            // Lock the whole group in id order so a concurrent merge or ingest waits and is revalidated below.
+            Performer::query()->whereIn('id', array_unique([
+                ...$details['source_performer_ids'],
+                (int) $merge->from_performer_id,
+                (int) $merge->to_performer_id,
+            ]))->orderBy('id')->lockForUpdate()->get(['id']);
+            $this->mergeGuard->assertSplitCanBeUndone($merge, $details);
 
-        $undo = DB::transaction(function () use ($split, $merge, $details): PerformerIdentityEvent {
-            DB::table('performer_sources')->whereIn('id', $details['source_link_ids'])
+            // Links added to the group after the merge snapshot must follow the group, so select them live.
+            DB::table('performer_sources')
+                ->where(static function ($query) use ($details): void {
+                    $query->whereIn('id', $details['source_link_ids'])
+                        ->orWhereIn('source_performer_id', $details['source_performer_ids']);
+                })
                 ->update(['performer_id' => $merge->to_performer_id]);
 
             Performer::query()->whereIn('id', $details['source_performer_ids'])
@@ -368,7 +379,7 @@ final class PerformerIdentityService
             ]);
         });
 
-        $this->reindexPerformers([(int) $merge->from_performer_id, (int) $merge->to_performer_id]);
+        $this->reindexPerformers([(int) $undo->from_performer_id, (int) $undo->to_performer_id]);
 
         return $undo;
     }
