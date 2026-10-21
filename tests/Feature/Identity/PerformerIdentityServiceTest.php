@@ -250,6 +250,64 @@ final class PerformerIdentityServiceTest extends TestCase
         self::assertDatabaseHas('movie_performers', ['movie_id' => $movie->id, 'performer_id' => $first->id]);
     }
 
+    public function test_split_and_undo_page_many_movie_links_with_bounded_queries(): void
+    {
+        [$first, $second] = $this->samePersonAcrossSources();
+        $movieIds = Movie::factory()->count(1100)->create()->pluck('id')->all();
+        $crawledAt = now()->toDateTimeString();
+        foreach (array_chunk($movieIds, 500) as $chunk) {
+            DB::table('movie_performers')->insert(array_map(
+                static fn(int $id): array => ['movie_id' => $id, 'performer_id' => $second->id, 'source_slug' => 'source-b', 'crawled_at' => $crawledAt],
+                $chunk,
+            ));
+        }
+        $identity = app(PerformerIdentityService::class);
+        $identity->backfill();
+        $merge = PerformerIdentityEvent::query()->where('event_type', 'merge')->firstOrFail();
+
+        self::assertArrayNotHasKey('created_movie_links', $merge->details);
+        self::assertSame(1100, DB::table('performer_identity_event_movie_links')->where('event_id', $merge->id)->count());
+        self::assertSame(1100, DB::table('movie_performers')->where('performer_id', $first->id)->count());
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $split = $identity->split((int) $merge->id);
+        $splitQueries = count(DB::getQueryLog());
+        self::assertSame(0, DB::table('movie_performers')->where('performer_id', $first->id)->count());
+        self::assertSame(1100, DB::table('movie_performers')->where('performer_id', $second->id)->count());
+
+        DB::flushQueryLog();
+        $identity->undoSplit((int) $split->id);
+        $undoQueries = count(DB::getQueryLog());
+        DB::disableQueryLog();
+        self::assertSame(1100, DB::table('movie_performers')->where('performer_id', $first->id)->count());
+
+        // Three pages of 500 at most; per-movie queries would exceed this by orders of magnitude.
+        self::assertLessThan(120, $splitQueries);
+        self::assertLessThan(60, $undoQueries);
+    }
+
+    public function test_split_and_undo_still_read_a_legacy_inline_movie_link_snapshot(): void
+    {
+        [$first, $second] = $this->samePersonAcrossSources();
+        $movie = Movie::factory()->create();
+        $movie->performers()->attach((int) $second->id, ['source_slug' => 'source-b', 'crawled_at' => now()]);
+        $identity = app(PerformerIdentityService::class);
+        $identity->backfill();
+        $merge = PerformerIdentityEvent::query()->where('event_type', 'merge')->firstOrFail();
+        $row = DB::table('performer_identity_event_movie_links')->where('event_id', $merge->id)->first();
+        DB::table('performer_identity_event_movie_links')->where('event_id', $merge->id)->delete();
+        $merge->details = [...$merge->details, 'created_movie_links' => [
+            ['movie_id' => (int) $row->movie_id, 'source_slug' => (string) $row->source_slug, 'crawled_at' => (string) $row->crawled_at],
+        ]];
+        $merge->save();
+
+        $split = $identity->split((int) $merge->id);
+        self::assertDatabaseMissing('movie_performers', ['movie_id' => $movie->id, 'performer_id' => $first->id]);
+        $identity->undoSplit((int) $split->id);
+        self::assertDatabaseHas('movie_performers', ['movie_id' => $movie->id, 'performer_id' => $first->id]);
+    }
+
     public function test_split_moves_source_links_added_after_the_merge_and_before_the_split(): void
     {
         [$first, $second] = $this->samePersonAcrossSources();

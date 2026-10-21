@@ -101,7 +101,8 @@ final class PerformerMergeGuard
         $sourceLinkIds = $this->integerList($details['source_link_ids'] ?? null);
         $aliasOwners = $this->relationOwnerList($details['alias_owners'] ?? null);
         $mediaOwners = $this->relationOwnerList($details['media_owners'] ?? null);
-        $movieLinks = $this->movieLinkList($details['created_movie_links'] ?? null);
+        // Newer events keep the copied links in performer_identity_event_movie_links; only legacy events inline them.
+        $movieLinks = $this->movieLinkList($details['created_movie_links'] ?? []);
         if ($sourceIds === null || $sourceLinkIds === null || $aliasOwners === null || $mediaOwners === null || $movieLinks === null) {
             throw new RuntimeException('The merge event details are incomplete.');
         }

@@ -96,6 +96,12 @@ When a source record returns, its next crawl marks it active again.
 
 ## Split and undo
 
+The movie links a merge copies are recorded per merge event in
+`performer_identity_event_movie_links` (not in the event JSON). Merge, split and
+undo read and write them in pages of 500 with batched statements, so their cost
+does not grow per movie. Merge events created before this table existed keep the
+inline `created_movie_links` list and are still read.
+
 Every merge creates an event with the moved source links and performer
 associations. Use the merge event ID to split the identities, and the resulting
 split event ID to undo that split:

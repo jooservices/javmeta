@@ -293,8 +293,8 @@ final class PerformerIdentityService
                 ->whereIn('source_performer_id', $sourceIds)->update(['performer_id' => $merge->from_performer_id]);
             DB::table('performer_media')->where('performer_id', $merge->to_performer_id)
                 ->whereIn('source_performer_id', $sourceIds)->update(['performer_id' => $merge->from_performer_id]);
-            $this->copyMovieLinks($sourceIds, (int) $merge->from_performer_id);
-            $this->removeCreatedMovieLinks($details['created_movie_links'], $sourceIds, (int) $merge->to_performer_id);
+            $this->copyMovieLinks($sourceIds, (int) $merge->from_performer_id, null);
+            $this->removeCreatedMovieLinks($merge, $details['created_movie_links'], $sourceIds, (int) $merge->to_performer_id);
 
             $merge->reversed_at = now()->toDateTimeString();
             $merge->save();
@@ -357,15 +357,8 @@ final class PerformerIdentityService
                 ->update(['performer_id' => $merge->to_performer_id]);
             DB::table('performer_media')->whereIn('source_performer_id', $details['source_performer_ids'])
                 ->update(['performer_id' => $merge->to_performer_id]);
-            $this->copyMovieLinks($details['source_performer_ids'], (int) $merge->to_performer_id);
-            foreach ($details['created_movie_links'] as $link) {
-                DB::table('movie_performers')->insertOrIgnore([
-                    'movie_id' => $link['movie_id'],
-                    'performer_id' => $merge->to_performer_id,
-                    'source_slug' => $link['source_slug'],
-                    'crawled_at' => $link['crawled_at'],
-                ]);
-            }
+            $this->copyMovieLinks($details['source_performer_ids'], (int) $merge->to_performer_id, null);
+            $this->restoreCreatedMovieLinks($merge, $details['created_movie_links'], (int) $merge->to_performer_id);
 
             $split->reversed_at = now()->toDateTimeString();
             $split->save();
@@ -672,7 +665,6 @@ final class PerformerIdentityService
             $sourceLinkIds = PerformerSource::query()->where('performer_id', $fromId)->pluck('id')->map(fn(mixed $id): int => (int) $id)->all();
             $aliasOwners = $this->relationOwners('performer_aliases', $sourceIds);
             $mediaOwners = $this->relationOwners('performer_media', $sourceIds);
-            $createdMovieLinks = $this->copyMovieLinks($sourceIds, $toId);
 
             DB::table('performer_sources')->whereIn('id', $sourceLinkIds)->update(['performer_id' => $toId]);
             Performer::query()->whereIn('id', $sourceIds)->where('id', '<>', $toId)
@@ -685,18 +677,18 @@ final class PerformerIdentityService
                 'source_link_ids' => $sourceLinkIds,
                 'alias_owners' => $aliasOwners,
                 'media_owners' => $mediaOwners,
-                'created_movie_links' => $createdMovieLinks,
                 'reason' => $evaluation['reason'] ?? 'backfill',
                 'similarity' => $evaluation['similarity'] ?? 1.0,
             ];
 
-            PerformerIdentityEvent::query()->create([
+            $mergeEvent = PerformerIdentityEvent::query()->create([
                 'event_type' => 'merge',
                 'from_performer_id' => $fromId,
                 'to_performer_id' => $toId,
                 'details' => $eventDetails,
                 'created_at' => now(),
             ]);
+            $this->copyMovieLinks($sourceIds, $toId, (int) $mergeEvent->id);
 
             return $eventDetails;
         });
@@ -716,10 +708,14 @@ final class PerformerIdentityService
             ->all();
     }
 
-    /** @param list<int> $sourceIds @return list<array{movie_id: int, source_slug: string, crawled_at: string}> */
-    private function copyMovieLinks(array $sourceIds, int $targetId): array
+    /**
+     * Copies the movie links of the source performers to the target in pages. With an event id, the created
+     * links are recorded in performer_identity_event_movie_links so split and undo can page through them.
+     *
+     * @param list<int> $sourceIds
+     */
+    private function copyMovieLinks(array $sourceIds, int $targetId, ?int $eventId): void
     {
-        $created = [];
         $lastMovie = 0;
         $lastPerformer = 0;
         while (true) {
@@ -742,6 +738,7 @@ final class PerformerIdentityService
                 ->whereIn('movie_id', $page->pluck('movie_id')->unique()->all())->pluck('movie_id')
                 ->map(static fn(mixed $id): int => (int) $id)->all());
             $rows = [];
+            $recorded = [];
             foreach ($page as $link) {
                 $movieId = (int) $link->movie_id;
                 if (isset($existing[$movieId])) {
@@ -755,7 +752,8 @@ final class PerformerIdentityService
                     'source_slug' => (string) $link->source_slug,
                     'crawled_at' => (string) $link->crawled_at,
                 ];
-                $created[] = [
+                $recorded[] = [
+                    'event_id' => $eventId,
                     'movie_id' => $movieId,
                     'source_slug' => (string) $link->source_slug,
                     'crawled_at' => (string) $link->crawled_at,
@@ -764,10 +762,53 @@ final class PerformerIdentityService
 
             if ($rows !== []) {
                 DB::table('movie_performers')->insert($rows);
+                if ($eventId !== null) {
+                    DB::table('performer_identity_event_movie_links')->insert($recorded);
+                }
             }
         }
+    }
 
-        return $created;
+    /**
+     * Pages the links a merge created: the legacy inline list first, then the rows recorded for the event.
+     *
+     * @param list<array{movie_id: int, source_slug: string, crawled_at: string}> $legacyLinks
+     * @return \Generator<int, list<array{movie_id: int, source_slug: string, crawled_at: string}>>
+     */
+    private function createdMovieLinkPages(PerformerIdentityEvent $merge, array $legacyLinks): \Generator
+    {
+        foreach (array_chunk($legacyLinks, 500) as $chunk) {
+            yield $chunk;
+        }
+
+        $lastId = 0;
+        while (true) {
+            $rows = DB::table('performer_identity_event_movie_links')->where('event_id', $merge->id)
+                ->where('id', '>', $lastId)->orderBy('id')->limit(500)->get();
+            if ($rows->isEmpty()) {
+                return;
+            }
+
+            $lastId = (int) $rows->last()->id;
+            yield $rows->map(static fn(object $row): array => [
+                'movie_id' => (int) $row->movie_id,
+                'source_slug' => (string) $row->source_slug,
+                'crawled_at' => (string) $row->crawled_at,
+            ])->all();
+        }
+    }
+
+    /** @param list<array{movie_id: int, source_slug: string, crawled_at: string}> $legacyLinks */
+    private function restoreCreatedMovieLinks(PerformerIdentityEvent $merge, array $legacyLinks, int $canonicalId): void
+    {
+        foreach ($this->createdMovieLinkPages($merge, $legacyLinks) as $page) {
+            DB::table('movie_performers')->insertOrIgnore(array_map(static fn(array $link): array => [
+                'movie_id' => $link['movie_id'],
+                'performer_id' => $canonicalId,
+                'source_slug' => $link['source_slug'],
+                'crawled_at' => $link['crawled_at'],
+            ], $page));
+        }
     }
 
     /** @param list<array{id: int, performer_id: int}> $owners */
@@ -786,25 +827,61 @@ final class PerformerIdentityService
         }
     }
 
-    /** @param list<array{movie_id: int, source_slug: string, crawled_at: string}> $links @param list<int> $splitIds */
-    private function removeCreatedMovieLinks(array $links, array $splitIds, int $canonicalId): void
+    /**
+     * Removes the canonical movie links that exist only because of the merge, in pages of 500 movies.
+     *
+     * @param list<array{movie_id: int, source_slug: string, crawled_at: string}> $legacyLinks
+     * @param list<int> $splitIds
+     */
+    private function removeCreatedMovieLinks(PerformerIdentityEvent $merge, array $legacyLinks, array $splitIds, int $canonicalId): void
     {
-        $remainingIds = Performer::query()->where('canonical_performer_id', $canonicalId)
-            ->whereNotIn('id', $splitIds)->pluck('id')->all();
         $ownSlug = Performer::query()->whereKey($canonicalId)->value('source_slug');
-        $mergeCopies = [];
-        foreach ($links as $link) {
-            $mergeCopies[$link['movie_id']] = $link;
-        }
-        $splitMovieIds = DB::table('movie_performers')->whereIn('performer_id', $splitIds)->pluck('movie_id')
-            ->map(static fn(mixed $id): int => (int) $id)->all();
 
-        foreach (array_unique(array_merge(array_keys($mergeCopies), $splitMovieIds)) as $movieId) {
-            $stillLinked = DB::table('movie_performers')->where('movie_id', $movieId)
-                ->whereIn('performer_id', $remainingIds)->exists();
-            $canonicalLink = DB::table('movie_performers')->where('movie_id', $movieId)
-                ->where('performer_id', $canonicalId)->first();
-            if ($stillLinked || $canonicalLink === null) {
+        foreach ($this->createdMovieLinkPages($merge, $legacyLinks) as $page) {
+            $copies = [];
+            foreach ($page as $link) {
+                $copies[$link['movie_id']] = $link;
+            }
+            $this->removeMovieLinkChunk($copies, array_keys($copies), $splitIds, $canonicalId, $ownSlug);
+        }
+
+        // Later crawls of a split source may have written the canonical row too, so walk the split movies as well.
+        $lastMovie = 0;
+        while (true) {
+            $movieIds = DB::table('movie_performers')->whereIn('performer_id', $splitIds)->where('movie_id', '>', $lastMovie)
+                ->distinct()->orderBy('movie_id')->limit(500)->pluck('movie_id')
+                ->map(static fn(mixed $id): int => (int) $id)->all();
+            if ($movieIds === []) {
+                return;
+            }
+
+            $lastMovie = $movieIds[array_key_last($movieIds)];
+            $this->removeMovieLinkChunk([], $movieIds, $splitIds, $canonicalId, $ownSlug);
+        }
+    }
+
+    /**
+     * @param array<int, array{movie_id: int, source_slug: string, crawled_at: string}> $mergeCopies
+     * @param list<int> $movieIds
+     * @param list<int> $splitIds
+     */
+    private function removeMovieLinkChunk(array $mergeCopies, array $movieIds, array $splitIds, int $canonicalId, mixed $ownSlug): void
+    {
+        $remaining = DB::table('performers')->select('id')->where('canonical_performer_id', $canonicalId)->whereNotIn('id', $splitIds);
+        $stillLinked = array_flip(DB::table('movie_performers')->whereIn('movie_id', $movieIds)
+            ->whereIn('performer_id', $remaining)->pluck('movie_id')
+            ->map(static fn(mixed $id): int => (int) $id)->all());
+        $canonicalLinks = DB::table('movie_performers')->where('performer_id', $canonicalId)
+            ->whereIn('movie_id', $movieIds)->get()->keyBy('movie_id');
+        $splitWrites = [];
+        foreach (DB::table('movie_performers')->whereIn('performer_id', $splitIds)->whereIn('movie_id', $movieIds)
+            ->get(['movie_id', 'source_slug', 'crawled_at']) as $row) {
+            $splitWrites[$row->movie_id . '|' . $row->source_slug . '|' . $row->crawled_at] = true;
+        }
+
+        $delete = [];
+        foreach ($canonicalLinks as $movieId => $canonicalLink) {
+            if (isset($stillLinked[$movieId])) {
                 continue;
             }
 
@@ -813,14 +890,14 @@ final class PerformerIdentityService
             $isMergeCopy = $copy !== null && $canonicalLink->source_slug === $copy['source_slug']
                 && (string) $canonicalLink->crawled_at === $copy['crawled_at'];
             $isSplitSourceWrite = $canonicalLink->source_slug !== $ownSlug
-                && DB::table('movie_performers')->where('movie_id', $movieId)
-                    ->whereIn('performer_id', $splitIds)
-                    ->where('source_slug', $canonicalLink->source_slug)
-                    ->where('crawled_at', $canonicalLink->crawled_at)->exists();
+                && isset($splitWrites[$movieId . '|' . $canonicalLink->source_slug . '|' . $canonicalLink->crawled_at]);
             if ($isMergeCopy || $isSplitSourceWrite) {
-                DB::table('movie_performers')->where('movie_id', $movieId)
-                    ->where('performer_id', $canonicalId)->delete();
+                $delete[] = (int) $movieId;
             }
+        }
+
+        if ($delete !== []) {
+            DB::table('movie_performers')->where('performer_id', $canonicalId)->whereIn('movie_id', $delete)->delete();
         }
     }
 
