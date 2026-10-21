@@ -110,6 +110,62 @@ final class PerformerIdentityUndoConcurrencyTest extends IntegrationTestCase
         }
     }
 
+    public function test_two_concurrent_splits_of_one_merge_apply_exactly_once(): void
+    {
+        self::assertSame('pgsql', DB::connection()->getDriverName());
+
+        $first = $this->sourcePerformer('source-a', 'person-a', 'Aoi Sakura');
+        $second = $this->sourcePerformer('source-b', 'person-b', 'Sakura Aoi');
+        $identity = app(PerformerIdentityService::class);
+        $identity->backfill();
+        $merge = PerformerIdentityEvent::query()->where('event_type', 'merge')->firstOrFail();
+
+        $other = DB::connectUsing('identity_concurrent_split', (array) config('database.connections.pgsql'));
+        $other->beginTransaction();
+        $processes = [];
+
+        try {
+            $other->table('performer_identity_events')->where('id', $merge->id)->lockForUpdate()->get(['id']);
+            foreach (['one', 'two'] as $name) {
+                $pipes = [];
+                $process = proc_open(
+                    [PHP_BINARY, 'artisan', 'performers:split', (string) $merge->id],
+                    [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                    $pipes,
+                    base_path(),
+                    [...getenv(), 'JAVMETA_SEARCH_ENABLED' => 'false'],
+                );
+                self::assertIsResource($process);
+                $processes[$name] = [$process, $pipes];
+            }
+
+            $this->waitForLockWaiters(2);
+            $other->commit();
+        } finally {
+            if ($other->transactionLevel() > 0) {
+                $other->rollBack();
+            }
+        }
+
+        $exitCodes = [];
+        $outputs = [];
+        foreach ($processes as $name => [$process, $pipes]) {
+            $outputs[$name] = (string) stream_get_contents($pipes[1]) . (string) stream_get_contents($pipes[2]);
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+            $exitCodes[$name] = $this->exitCode($process);
+        }
+
+        self::assertStringNotContainsStringIgnoringCase('deadlock', implode("\n", $outputs));
+        sort($exitCodes);
+        self::assertSame(0, $exitCodes[0], 'One split must succeed: ' . implode("\n", $outputs));
+        self::assertNotSame(0, $exitCodes[1], 'The other split must be refused: ' . implode("\n", $outputs));
+        self::assertSame(1, PerformerIdentityEvent::query()->where('event_type', 'split')->count());
+        self::assertNotNull($merge->fresh()->reversed_at);
+        self::assertNull(Performer::query()->findOrFail($first->id)->canonical_performer_id);
+        self::assertNull(Performer::query()->findOrFail($second->id)->canonical_performer_id);
+    }
+
     /** @param resource $process */
     private function exitCode($process): int
     {

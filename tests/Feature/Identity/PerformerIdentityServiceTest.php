@@ -250,6 +250,53 @@ final class PerformerIdentityServiceTest extends TestCase
         self::assertDatabaseHas('movie_performers', ['movie_id' => $movie->id, 'performer_id' => $first->id]);
     }
 
+    public function test_split_moves_source_links_added_after_the_merge_and_before_the_split(): void
+    {
+        [$first, $second] = $this->samePersonAcrossSources();
+        $identity = app(PerformerIdentityService::class);
+        $identity->backfill();
+        $merge = PerformerIdentityEvent::query()->where('event_type', 'merge')->firstOrFail();
+
+        $late = $this->sourceFor('source-b', 'person-b')->replicate();
+        $late->external_id = 'person-b-late';
+        $late->mongo_id = 'source-b:person-b-late';
+        $late->performer_id = $first->id;
+        $late->save();
+
+        $identity->split((int) $merge->id);
+
+        self::assertSame((int) $second->id, (int) $late->fresh()->performer_id);
+        self::assertCount(2, $second->fresh()->sources);
+        self::assertCount(1, $first->fresh()->sources);
+    }
+
+    public function test_split_of_an_already_split_merge_is_refused(): void
+    {
+        $this->samePersonAcrossSources();
+        $identity = app(PerformerIdentityService::class);
+        $identity->backfill();
+        $merge = PerformerIdentityEvent::query()->where('event_type', 'merge')->firstOrFail();
+        $identity->split((int) $merge->id);
+
+        $this->expectExceptionMessage('An active merge event was not found.');
+        $identity->split((int) $merge->id);
+    }
+
+    public function test_backfill_records_many_reviews_in_bounded_statements(): void
+    {
+        for ($i = 0; $i < 12; $i++) {
+            $this->sourcePerformer('source-a', 'same-' . $i, 'Same Name', '198' . ($i % 10) . '-01-0' . (1 + intdiv($i, 10)));
+        }
+        $identity = app(PerformerIdentityService::class);
+        $first = $identity->backfill();
+        $reviews = DB::table('performer_identity_reviews')->count();
+
+        self::assertSame(count($first['reviews']), $reviews);
+        $second = $identity->backfill();
+        self::assertSame($reviews, DB::table('performer_identity_reviews')->count());
+        self::assertSame($first['merges'], $second['merges']);
+    }
+
     public function test_undo_moves_source_links_added_after_the_merge_snapshot(): void
     {
         [$first, $second] = $this->samePersonAcrossSources();

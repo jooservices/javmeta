@@ -24,6 +24,9 @@ final class PerformerIdentityService
     /** Lowest review similarity for which the trigram block is guaranteed to contain every reviewable pair. */
     private const MIN_BLOCKED_REVIEW_SIMILARITY = 0.82;
 
+    /** Review candidates written per statement batch. */
+    private const REVIEW_PAGE_SIZE = 500;
+
     private int $candidateComparisons = 0;
 
     /** @var array<int, list<string>> Aliases of the current backfill batch, keyed by source performer id. */
@@ -105,23 +108,17 @@ final class PerformerIdentityService
             );
             // Reviews are streamed and recorded before any merge changes the roots they point at; a single
             // strong match still reports its other ambiguous candidates.
-            foreach ($evaluation['review_candidates'] as $candidate) {
-                $candidateId = (int) $candidate['id'];
-                // The review rows themselves deduplicate a pair seen from both sides: the dry run writes
-                // them too, inside the transaction it rolls back.
-                if ($this->reviewSeenFromOtherSide($sourcePerformerId, $candidateId)) {
-                    continue;
-                }
-                $review = [
-                    'source_performer_id' => $sourcePerformerId,
-                    'candidate_performer_id' => $candidateId,
-                    'reason' => $candidate['reason'],
-                    'similarity' => $candidate['similarity'],
-                ];
-                $this->recordReview($review);
-                $counts['reviews']++;
-                $onRow('review', $review);
-            }
+            // The review rows deduplicate a pair seen from both sides; the dry run writes them too, inside the
+            // transaction it rolls back.
+            $this->recordReviewBatches(
+                $sourcePerformerId,
+                $evaluation['review_candidates'],
+                true,
+                function (array $review) use (&$counts, $onRow): void {
+                    $counts['reviews']++;
+                    $onRow('review', $review);
+                },
+            );
 
             if ($evaluation['decision'] === 'merge') {
                 $candidateId = (int) $evaluation['candidate_id'];
@@ -141,16 +138,6 @@ final class PerformerIdentityService
         }
 
         return $counts;
-    }
-
-    /** True when the pair is already recorded as (candidate, source) and not as (source, candidate). */
-    private function reviewSeenFromOtherSide(int $sourceId, int $candidateId): bool
-    {
-        $open = static fn(int $source, int $candidate): bool => DB::table('performer_identity_reviews')
-            ->where('source_performer_id', $source)->where('candidate_performer_id', $candidate)
-            ->where('status', 'open')->exists();
-
-        return $open($candidateId, $sourceId) && ! $open($sourceId, $candidateId);
     }
 
     public function reconcileSource(PerformerSource $source): int
@@ -265,19 +252,34 @@ final class PerformerIdentityService
 
     public function split(int $mergeEventId): PerformerIdentityEvent
     {
-        $merge = PerformerIdentityEvent::query()
-            ->whereKey($mergeEventId)
-            ->where('event_type', 'merge')
-            ->whereNull('reversed_at')
-            ->first();
-        if (! $merge instanceof PerformerIdentityEvent) {
-            throw new RuntimeException('An active merge event was not found.');
-        }
+        $split = DB::transaction(function () use ($mergeEventId): PerformerIdentityEvent {
+            $merge = PerformerIdentityEvent::query()->lockForUpdate()
+                ->whereKey($mergeEventId)
+                ->where('event_type', 'merge')
+                ->whereNull('reversed_at')
+                ->first();
+            if (! $merge instanceof PerformerIdentityEvent) {
+                throw new RuntimeException('An active merge event was not found.');
+            }
 
-        $details = $this->mergeGuard->mergeDetails($merge);
-        $this->mergeGuard->assertMergeCanBeSplit($merge, $details);
-        $split = DB::transaction(function () use ($merge, $details): PerformerIdentityEvent {
-            DB::table('performer_sources')->whereIn('id', $details['source_link_ids'])
+            $details = $this->mergeGuard->mergeDetails($merge);
+            // Lock the group in id order (as mergeRoots and undoSplit do) so a concurrent merge or ingest waits
+            // and the group is revalidated against the committed state.
+            Performer::query()->whereIn('id', array_unique([
+                ...$details['source_performer_ids'],
+                (int) $merge->from_performer_id,
+                (int) $merge->to_performer_id,
+            ]))->orderBy('id')->lockForUpdate()->get(['id']);
+            $this->mergeGuard->assertMergeCanBeSplit($merge, $details);
+
+            // Links added to the group after the merge snapshot follow the split-off source performers, so
+            // select them live instead of using only the recorded ids.
+            DB::table('performer_sources')
+                ->where('performer_id', $merge->to_performer_id)
+                ->where(static function ($query) use ($details): void {
+                    $query->whereIn('id', $details['source_link_ids'])
+                        ->orWhereIn('source_performer_id', $details['source_performer_ids']);
+                })
                 ->update(['performer_id' => $merge->from_performer_id]);
 
             $sourceIds = $details['source_performer_ids'];
@@ -307,7 +309,7 @@ final class PerformerIdentityService
             ]);
         });
 
-        $this->reindexPerformers([(int) $merge->from_performer_id, (int) $merge->to_performer_id]);
+        $this->reindexPerformers([(int) $split->to_performer_id, (int) $split->from_performer_id]);
 
         return $split;
     }
@@ -388,13 +390,78 @@ final class PerformerIdentityService
     /** @param array{review_candidates: iterable<array{id: int, reason: string, similarity: float}>} $evaluation */
     private function recordReviews(PerformerSource $source, array $evaluation): void
     {
-        foreach ($evaluation['review_candidates'] as $candidate) {
-            $this->recordReview([
-                'source_performer_id' => (int) $source->source_performer_id,
-                'candidate_performer_id' => $candidate['id'],
+        $this->recordReviewBatches((int) $source->source_performer_id, $evaluation['review_candidates'], false, null);
+    }
+
+    /**
+     * Records review candidates for one source in pages, so the statements depend on the page size and not on
+     * the candidate count: one lookup per direction, one upsert and one flag update per page.
+     *
+     * @param iterable<array{id: int, reason: string, similarity: float}> $candidates
+     * @param callable(array<string, mixed>): void|null $onRecorded called for each review that was written
+     */
+    private function recordReviewBatches(int $sourceId, iterable $candidates, bool $skipSeenFromOtherSide, ?callable $onRecorded): void
+    {
+        $page = [];
+        foreach ($candidates as $candidate) {
+            $page[(int) $candidate['id']] = $candidate;
+            if (count($page) >= self::REVIEW_PAGE_SIZE) {
+                $this->writeReviewPage($sourceId, $page, $skipSeenFromOtherSide, $onRecorded);
+                $page = [];
+            }
+        }
+        if ($page !== []) {
+            $this->writeReviewPage($sourceId, $page, $skipSeenFromOtherSide, $onRecorded);
+        }
+    }
+
+    /**
+     * @param array<int, array{id: int, reason: string, similarity: float}> $page keyed by candidate id
+     * @param callable(array<string, mixed>): void|null $onRecorded
+     */
+    private function writeReviewPage(int $sourceId, array $page, bool $skipSeenFromOtherSide, ?callable $onRecorded): void
+    {
+        $candidateIds = array_keys($page);
+        if ($skipSeenFromOtherSide) {
+            // A pair already open as (candidate, source) and not as (source, candidate) was reported from the other side.
+            $forward = DB::table('performer_identity_reviews')->where('source_performer_id', $sourceId)
+                ->whereIn('candidate_performer_id', $candidateIds)->where('status', 'open')
+                ->pluck('candidate_performer_id')->map(static fn(mixed $id): int => (int) $id)->all();
+            $reverse = DB::table('performer_identity_reviews')->where('candidate_performer_id', $sourceId)
+                ->whereIn('source_performer_id', $candidateIds)->where('status', 'open')
+                ->pluck('source_performer_id')->map(static fn(mixed $id): int => (int) $id)->all();
+            $candidateIds = array_values(array_diff($candidateIds, array_diff($reverse, $forward)));
+            if ($candidateIds === []) {
+                return;
+            }
+        }
+
+        $now = now();
+        $rows = [];
+        $reviews = [];
+        foreach ($candidateIds as $candidateId) {
+            $candidate = $page[$candidateId];
+            $review = [
+                'source_performer_id' => $sourceId,
+                'candidate_performer_id' => $candidateId,
                 'reason' => $candidate['reason'],
                 'similarity' => $candidate['similarity'],
-            ]);
+            ];
+            $reviews[] = $review;
+            $rows[] = [...$review, 'status' => 'open', 'created_at' => $now, 'resolved_at' => null];
+        }
+
+        DB::table('performer_identity_reviews')->upsert(
+            $rows,
+            ['source_performer_id', 'candidate_performer_id', 'status'],
+            ['reason', 'similarity', 'resolved_at'],
+        );
+        Performer::query()->whereIn('id', [$sourceId, ...$candidateIds])->update(['needs_review' => true]);
+
+        if ($onRecorded !== null) {
+            foreach ($reviews as $review) {
+                $onRecorded($review);
+            }
         }
     }
 
@@ -728,26 +795,6 @@ final class PerformerIdentityService
                     ->where('performer_id', $canonicalId)->delete();
             }
         }
-    }
-
-    /** @param array<string, mixed> $review */
-    private function recordReview(array $review): void
-    {
-        DB::table('performer_identity_reviews')->updateOrInsert(
-            [
-                'source_performer_id' => $review['source_performer_id'],
-                'candidate_performer_id' => $review['candidate_performer_id'],
-                'status' => 'open',
-            ],
-            static fn(bool $exists): array => [
-                'reason' => $review['reason'],
-                'similarity' => $review['similarity'],
-                'resolved_at' => null,
-                ...($exists ? [] : ['created_at' => now()]),
-            ],
-        );
-        Performer::query()->whereKey($review['source_performer_id'])->update(['needs_review' => true]);
-        Performer::query()->whereKey($review['candidate_performer_id'])->update(['needs_review' => true]);
     }
 
     /** Creates the missing source links in batches. */
