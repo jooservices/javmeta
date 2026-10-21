@@ -21,15 +21,15 @@ final class MigrationsTest extends BaseTestCase
         self::assertSame('pgsql', DB::connection()->getDriverName());
 
         self::assertSame(0, Artisan::call('migrate:fresh', ['--force' => true]), Artisan::output());
-        foreach (['movies', 'movie_sources', 'movie_observations', 'performers', 'performer_sources', 'performer_identity_events', 'performer_identity_reviews', 'crawl_queue', 'sources'] as $table) {
+        foreach (['movies', 'movie_sources', 'movie_observations', 'performers', 'performer_sources', 'performer_identity_events', 'performer_identity_reviews', 'performer_identity_event_movie_links', 'crawl_queue', 'sources'] as $table) {
             self::assertTrue(Schema::hasTable($table), "missing table {$table}");
         }
 
         self::assertTrue(Schema::hasTable('performer_name_keys'));
         self::assertTrue(Schema::hasTable('performer_name_grams'));
 
-        // The last seven migrations: performer name grams and keys (JAVM-84), recrawl tracking (JAVM-82), canonical identity, queue start tracking (JAVM-81), performers.retired_date (JAVM-57), and failed reasons (JAVM-37).
-        self::assertSame(0, Artisan::call('migrate:rollback', ['--step' => 7, '--force' => true]), Artisan::output());
+        // The last eight migrations: identity event movie links, performer name grams and keys (JAVM-84), recrawl tracking (JAVM-82), canonical identity, queue start tracking (JAVM-81), performers.retired_date (JAVM-57), and failed reasons (JAVM-37).
+        self::assertSame(0, Artisan::call('migrate:rollback', ['--step' => 8, '--force' => true]), Artisan::output());
         self::assertFalse(Schema::hasColumn('movies', 'recrawl_attempts'));
         self::assertFalse(Schema::hasColumn('movies', 'recrawl_status'));
         self::assertFalse(Schema::hasColumn('crawl_queue', 'is_recrawl'));
@@ -40,6 +40,7 @@ final class MigrationsTest extends BaseTestCase
         self::assertFalse(Schema::hasColumn('performer_sources', 'source_performer_id'));
         self::assertFalse(Schema::hasTable('performer_identity_events'));
         self::assertFalse(Schema::hasTable('performer_identity_reviews'));
+        self::assertFalse(Schema::hasTable('performer_identity_event_movie_links'));
         self::assertFalse(Schema::hasTable('performer_name_keys'));
         self::assertFalse(Schema::hasTable('performer_name_grams'));
 
