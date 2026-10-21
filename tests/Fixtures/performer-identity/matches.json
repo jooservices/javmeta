@@ -34,5 +34,11 @@
         "incoming": {"id": 2, "names": ["Aoi Mika"], "birth_dates": ["1990-01-01"], "cross_links": []},
         "candidates": [{"id": 1, "names": ["Aoi Miko"], "birth_dates": ["1990-01-01"], "cross_links": []}],
         "expected": "review"
+    },
+    {
+        "case": "different_normalized_names_same_birth_date",
+        "incoming": {"id": 2, "names": ["Aoi Sakura"], "birth_dates": ["1990-01-01"], "cross_links": []},
+        "candidates": [{"id": 1, "names": ["Aoi Sakura Sakura"], "birth_dates": ["1990-01-01"], "cross_links": []}],
+        "expected": "review"
     }
 ]

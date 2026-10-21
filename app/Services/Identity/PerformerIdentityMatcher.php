@@ -162,7 +162,8 @@ final class PerformerIdentityMatcher
             }
         }
 
-        return $maximum;
+        // Only identical normalized names score 1.0; token overlap alone must stay reviewable.
+        return min($maximum, 0.99);
     }
 
     private function editSimilarity(string $left, string $right): float
