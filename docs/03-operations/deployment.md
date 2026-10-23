@@ -408,8 +408,12 @@ runs on merge (a one-time trigger starts it when development is finished).
 Order of the steps: check the branch (develop), a clean tree, the private `.env` and
 `scripts/docker/shared check-project javmeta --mode live`; take a quick `pg_dump` of the `javmeta` database
 (`.tmp/javmeta-deploy/backups`, newest seven kept); `git pull --ff-only`; `composer install --no-dev`; `php artisan migrate --force`
-(forward only, never fresh or reset); `php artisan es:setup`; `php artisan optimize`; install and restart the systemd user units
-(`deploy/systemd`), the scheduler stopped first and started last; `php artisan javmeta:smoke`.
+(forward only, never fresh or reset); `php artisan es:setup`; clear Laravel optimization caches with `optimize:clear --except=cache` (preserve Redis queues); install and restart
+the systemd user units (`deploy/systemd`), with scheduler and Horizon stopped before code and schema changes;
+then run `php artisan javmeta:smoke`. Set `APP_URL=http://javmeta.localhost:8085` and
+`JAVMETA_SMOKE_BASE_URL=http://workspaces-wp-web-85` on WSL. The smoke check sends the public Host header
+to the internal Docker URL. Do not cache Laravel bootstrap paths here: the shared CLI and web containers
+mount the checkout at different absolute paths.
 
 If a step fails after the pull, the script returns the code to the previous commit; when the migration was the failing step it
 also restores the quick backup. The log of every run is `.tmp/javmeta-deploy/staging-<time>.log` and holds no secrets.

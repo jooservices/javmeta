@@ -48,6 +48,7 @@ artisan() { (cd "${APP_DIR}" && run "${RUNTIME}" php@8.5 php artisan "$@"); }
 previous_commit=''
 backup_file=''
 pulled=0
+active_units_before=()
 migrate_started=0
 
 rollback() {
@@ -71,8 +72,11 @@ rollback() {
   if (( pulled == 1 )); then
     (cd "${APP_DIR}" && "${RUNTIME}" php@8.5 composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader) \
       || log 'WARNING: dependencies of the previous commit could not be reinstalled.'
-    systemctl --user start "${UNITS[@]}" 2>/dev/null || true
   fi
+  for unit in "${active_units_before[@]}"; do
+    systemctl --user start "$unit" 2>/dev/null \
+      || log "WARNING: could not restart ${unit} during rollback."
+  done
   exit "${status}"
 }
 
@@ -106,6 +110,13 @@ main() {
   fi
 
   trap rollback ERR
+  # Quiesce only the JavMeta services that were active before deployment.
+  for unit in "${UNITS[@]}"; do
+    if systemctl --user is-active --quiet "$unit"; then
+      active_units_before+=("$unit")
+      run systemctl --user stop "$unit"
+    fi
+  done
   run git -C "${APP_DIR}" fetch --prune origin
   run git -C "${APP_DIR}" pull --ff-only origin develop
   pulled=1
@@ -118,8 +129,10 @@ main() {
   migrate_started=0
 
   artisan es:setup
-  artisan optimize:clear
-  artisan optimize
+  # Shared CLI and web runtimes mount the same code at different absolute paths;
+  # cached Laravel paths generated in the CLI break web requests.
+  # Skip cache:clear: with CACHE_STORE=redis it calls FLUSHDB and drops queued jobs.
+  artisan optimize:clear --except=cache
 
   install_units
   log 'Restarting the JavMeta units: scheduler stopped first, started last.'

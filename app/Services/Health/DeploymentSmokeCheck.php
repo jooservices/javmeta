@@ -210,9 +210,10 @@ final class DeploymentSmokeCheck
         $mcpInitialize = $this->check('mcp_initialize', 'fail', 'MCP initialize failed.');
         $cleanup = $this->check('temporary_api_key', 'pass', 'The temporary API key was revoked.');
         try {
-            $baseUrl = rtrim((string) config('app.url', ''), '/');
-            $apiLookup = $this->apiLookup($baseUrl, $temporaryKey->plaintext);
-            $mcpInitialize = $this->mcpInitialize($baseUrl, $temporaryKey->plaintext);
+            $baseUrl = rtrim((string) config('app.smoke_url', config('app.url', '')), '/');
+            $host = (string) parse_url((string) config('app.url', ''), PHP_URL_HOST);
+            $apiLookup = $this->apiLookup($baseUrl, $host, $temporaryKey->plaintext);
+            $mcpInitialize = $this->mcpInitialize($baseUrl, $host, $temporaryKey->plaintext);
         } catch (Throwable) {
             $apiLookup = $this->check('api_lookup', 'fail', 'The authenticated performer lookup failed.');
             $mcpInitialize = $this->check('mcp_initialize', 'fail', 'MCP initialize failed.');
@@ -228,11 +229,12 @@ final class DeploymentSmokeCheck
     }
 
     /** @return array{name: string, status: string, message: string} */
-    private function apiLookup(string $baseUrl, string $key): array
+    private function apiLookup(string $baseUrl, string $host, string $key): array
     {
         try {
             $response = Http::connectTimeout(2)
                 ->timeout(4)
+                ->withHeader('Host', $host)
                 ->withHeader('X-API-Key', $key)
                 ->get($baseUrl . '/api/v1/performers?per_page=1');
             $payload = $response->json();
@@ -252,11 +254,12 @@ final class DeploymentSmokeCheck
     }
 
     /** @return array{name: string, status: string, message: string} */
-    private function mcpInitialize(string $baseUrl, string $key): array
+    private function mcpInitialize(string $baseUrl, string $host, string $key): array
     {
         try {
             $response = Http::connectTimeout(2)
                 ->timeout(4)
+                ->withHeader('Host', $host)
                 ->withHeader('X-API-Key', $key)
                 ->post($baseUrl . '/api/v1/mcp', [
                     'jsonrpc' => '2.0',
