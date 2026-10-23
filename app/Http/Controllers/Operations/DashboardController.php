@@ -36,11 +36,13 @@ final class DashboardController
             ->selectRaw('COUNT(*) AS total, COALESCE(SUM(pages_fetched), 0) AS pages, COALESCE(SUM(movies_new), 0) AS movies_new, COALESCE(SUM(movies_updated), 0) AS movies_updated, COALESCE(SUM(failures), 0) AS failures')
             ->first();
         $sources = DB::table('sources')->where('enabled', true)->orderBy('priority')
-            ->get(['slug', 'name', 'last_success_at', 'last_error_at', 'last_error', 'circuit_state', 'consecutive_failures'])
+            ->get(['slug', 'name', 'last_success_at', 'last_error_at', 'last_error'])
             ->map(static function ($source) use ($queueBySource): array {
                 $lastSuccess = $source->last_success_at === null ? null : Carbon::parse($source->last_success_at);
                 $age = $lastSuccess === null ? null : (int) $lastSuccess->diffInSeconds(now());
-                $status = $age === null || $age > 1800 || $source->circuit_state !== 'closed' ? 'attention' : 'healthy';
+                // Attention = never succeeded, nothing succeeded for 30 minutes, or the latest error is newer than the latest success.
+                $failingNow = $source->last_error_at !== null && ($lastSuccess === null || Carbon::parse($source->last_error_at)->greaterThan($lastSuccess));
+                $status = $age === null || $age > 1800 || $failingNow ? 'attention' : 'healthy';
 
                 return [
                     'slug' => (string) $source->slug,
@@ -50,8 +52,6 @@ final class DashboardController
                     'last_success_age_seconds' => $age,
                     'last_error_at' => $source->last_error_at,
                     'last_error' => mb_strimwidth((string) ($source->last_error ?? ''), 0, 220, '…'),
-                    'circuit_state' => (string) $source->circuit_state,
-                    'consecutive_failures' => (int) $source->consecutive_failures,
                     'queue' => $queueBySource[(string) $source->slug] ?? [],
                 ];
             });

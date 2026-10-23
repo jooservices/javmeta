@@ -80,7 +80,7 @@
   </section>
   <div class="grid">
     <div>
-      <section class="panel"><h2>Sources</h2><p class="hint">Successful crawl age, circuit state and backlog for enabled sources</p><div id="sources" class="source-grid"><div class="empty">Loading sources…</div></div></section>
+      <section class="panel"><h2>Sources</h2><p class="hint">Successful crawl age and backlog for enabled sources</p><div id="sources" class="source-grid"><div class="empty">Loading sources…</div></div></section>
       <section class="panel"><h2>Recent issues</h2><p class="hint">Latest failed crawl items</p><div id="issues" class="rows"><div class="empty">Loading issues…</div></div></section>
     </div>
     <div>
@@ -112,7 +112,7 @@
       ['done','pending','failed'].forEach(key => { $(key).textContent = number(data.queue[key]); });
       $('claimed').textContent = `${number(data.queue.claimed)} in progress`;
       $('failed-jobs').textContent = `${number(data.totals.failed_jobs)} failed jobs`;
-      $('sources').innerHTML = data.sources.map(source => `<article class="source"><div class="source-head"><strong>${esc(source.name || source.slug)}</strong><span class="pill ${source.status === 'healthy' ? '' : 'attention'}">${esc(source.status)}</span></div><p>Last success: ${esc(age(source.last_success_age_seconds))}<br>Circuit: ${esc(source.circuit_state)} · ${number(source.consecutive_failures)} consecutive failures</p><div class="counts">${number(source.queue.done)} done · ${number(source.queue.pending)} pending · ${number(source.queue.claimed)} active · ${number(source.queue.failed)} failed</div>${source.last_error ? `<p title="${esc(source.last_error)}">Latest error: ${esc(source.last_error)}</p>` : ''}</article>`).join('') || '<div class="empty">No source is enabled.</div>';
+      $('sources').innerHTML = data.sources.map(source => `<article class="source"><div class="source-head"><strong>${esc(source.name || source.slug)}</strong><span class="pill ${source.status === 'healthy' ? '' : 'attention'}">${esc(source.status)}</span></div><p>Last success: ${esc(age(source.last_success_age_seconds))}</p><div class="counts">${number(source.queue.done)} done · ${number(source.queue.pending)} pending · ${number(source.queue.claimed)} active · ${number(source.queue.failed)} failed</div>${source.last_error ? `<p title="${esc(source.last_error)}">Latest error: ${esc(source.last_error)}</p>` : ''}</article>`).join('') || '<div class="empty">No source is enabled.</div>';
       const metric = (label, value) => `<div class="metric"><span>${label}</span><b>${number(value)}</b></div>`;
       $('performance').innerHTML = metric('Runs', data.hour.runs) + metric('Pages fetched', data.hour.pages) + metric('New videos', data.hour.movies_new) + metric('Updated videos', data.hour.movies_updated) + metric('Fetch failures', data.hour.failures) + metric('Failed jobs', data.totals.failed_jobs);
       $('issues').innerHTML = data.issues.map(item => `<div class="row"><b>${esc(item.source)}</b><span>${esc(item.code)}</span><span>${esc(item.kind)} · ${number(item.attempts)} attempts${item.detail ? ' · ' + esc(item.detail) : ''}</span></div>`).join('') || '<div class="empty">No failed crawl items.</div>';
