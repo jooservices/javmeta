@@ -169,6 +169,7 @@ final class MoviePersister implements MovieDraftSink
 
         app(ObservabilityEmitter::class)->emitPersist('movie', [
             'source_slug' => $draft->sourceSlug,
+            'movie_code' => $movie->display_code,
             'is_new' => $isNewMovie,
             'sharp_drop' => $sharpDrop,
             'drop' => $drop,

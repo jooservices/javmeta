@@ -94,6 +94,15 @@ class CrawlerxClient
             $durationMs,
             $result->errorCode,
             $result->attempts,
+            [
+                'url' => $url,
+                'error_message' => $result->errorMessage,
+                'retryable' => $result->retryable,
+                'retry_after_seconds' => $result->retryAfterSeconds,
+                'crawlerx_version' => class_exists(\Composer\InstalledVersions::class) && \Composer\InstalledVersions::isInstalled('jooservices/crawlerx')
+                    ? \Composer\InstalledVersions::getPrettyVersion('jooservices/crawlerx')
+                    : null,
+            ],
         );
 
         return $result;

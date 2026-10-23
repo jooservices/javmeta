@@ -23,7 +23,7 @@ final class ObservabilityEmitter
             'event' => 'crawl_event',
             'source_slug' => $sourceSlug,
             'kind' => $kind,
-            'detail' => $this->sanitizer->sanitizeCrawlDetail($detail),
+            'detail' => $this->sanitizer->sanitizeCrawlDetail($this->cleanPageUrl($detail)),
         ]);
     }
 
@@ -52,9 +52,19 @@ final class ObservabilityEmitter
 
     /**
      * @param  list<array<string, mixed>>  $attempts  crawlerx fetch attempts (method, elapsed_ms, status, challenge, ok)
+     * @param  array{url?: ?string, error_message?: ?string, retryable?: bool, retry_after_seconds?: ?int, queue_row_id?: ?int, crawlerx_version?: ?string}  $context
      */
-    public function emitFetch(string $sourceSlug, string $crawlType, bool $ok, int $durationMs, ?string $errorCode = null, array $attempts = []): void
+    public function emitFetch(string $sourceSlug, string $crawlType, bool $ok, int $durationMs, ?string $errorCode = null, array $attempts = [], array $context = []): void
     {
+        $last = $attempts === [] ? [] : $attempts[array_key_last($attempts)];
+        $winning = null;
+        foreach ($attempts as $attempt) {
+            if ((bool) ($attempt['ok'] ?? false)) {
+                $winning = $attempt;
+            }
+        }
+        $used = $winning ?? $last;
+
         $this->emit([
             'event' => 'crawl_fetch',
             'source_slug' => $sourceSlug,
@@ -62,6 +72,14 @@ final class ObservabilityEmitter
             'ok' => $ok,
             'duration_ms' => $durationMs,
             'error_code' => $errorCode,
+            'page_url' => $this->sanitizer->sanitizeUrl($context['url'] ?? null),
+            'error_message' => $this->sanitizer->sanitizeText($context['error_message'] ?? null),
+            'retryable' => (bool) ($context['retryable'] ?? false),
+            'retry_after_seconds' => $context['retry_after_seconds'] ?? null,
+            'http_status' => is_int($used['status'] ?? null) ? $used['status'] : null,
+            'method' => is_string($used['method'] ?? null) ? $used['method'] : null,
+            'queue_row_id' => $context['queue_row_id'] ?? null,
+            'crawlerx_version' => $context['crawlerx_version'] ?? null,
             'attempt_count' => count($attempts),
             'attempts' => array_map(static fn(array $attempt): array => [
                 'method' => is_string($attempt['method'] ?? null) ? $attempt['method'] : null,
@@ -105,5 +123,21 @@ final class ObservabilityEmitter
             '_timestamp' => (int) (microtime(true) * 1_000_000),
             ...$this->sanitizer->sanitizeContext($record),
         ]]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $detail
+     * @return array<string, mixed>
+     */
+    private function cleanPageUrl(array $detail): array
+    {
+        if (array_key_exists('page_url', $detail)) {
+            $detail['page_url'] = is_string($detail['page_url']) ? $this->sanitizer->sanitizeUrl($detail['page_url']) : null;
+        }
+        if (isset($detail['error_message']) && is_string($detail['error_message'])) {
+            $detail['error_message'] = $this->sanitizer->sanitizeText($detail['error_message']);
+        }
+
+        return $detail;
     }
 }
