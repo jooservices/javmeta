@@ -9,7 +9,8 @@
 # A failure after the pull returns the code to the previous commit and, when the migration failed, restores the backup.
 # The script has no trigger of its own: it never runs on merge. It starts no Docker container.
 set -Eeuo pipefail
-umask 077
+# Normal permissions: the web server must read what the pull and composer write. Only the backups are private (see below).
+umask 022
 
 SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="${JAVMETA_APP_DIR:-$(CDPATH='' cd -- "${SCRIPT_DIR}/.." && pwd)}"
@@ -82,6 +83,7 @@ rollback() {
 
 main() {
   mkdir -p "${STATE_DIR}/backups"
+  chmod 700 "${STATE_DIR}" "${STATE_DIR}/backups"
   log_file="${STATE_DIR}/staging-$(date -u '+%Y%m%dT%H%M%SZ').log"
   exec > >(tee -a "${log_file}") 2>&1
   log "JavMeta staging deployment starts (dry run: ${dry_run}); log: ${log_file}"
@@ -105,6 +107,7 @@ main() {
     "${ENV_RUN}" exec -T postgres sh -ec \
       'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -Fc -h 127.0.0.1 -U "$POSTGRES_USER" "$1"' sh "${POSTGRES_DATABASE}" > "${backup_file}"
     [[ -s "${backup_file}" ]] || die 'The quick backup is empty.'
+    chmod 600 "${backup_file}"
     # shellcheck disable=SC2012
     ls -1t "${STATE_DIR}/backups/"*.dump 2>/dev/null | tail -n +$((BACKUP_KEEP + 1)) | xargs -r rm -f --
   fi
@@ -141,7 +144,12 @@ main() {
   run systemctl --user start javmeta-scheduler.service
 
   log 'Smoke checks.'
-  artisan javmeta:smoke
+  if ! artisan javmeta:smoke; then
+    # The web server and the workers need a few seconds after a restart: look once more before rolling back.
+    log 'Smoke checks failed once; waiting 15 seconds and trying again.'
+    run sleep 15
+    artisan javmeta:smoke
+  fi
 
   trap - ERR
   log 'Deployment finished.'
