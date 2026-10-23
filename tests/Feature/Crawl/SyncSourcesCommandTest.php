@@ -12,24 +12,40 @@ final class SyncSourcesCommandTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_a_source_listed_as_disabled_is_stored_disabled(): void
+    public function test_a_new_source_starts_on_unless_it_requires_a_login(): void
     {
-        config()->set('javmeta_sources.disabled', ['off-site']);
         config()->set('javmeta_sources.sources', [
-            'off-site' => ['name' => 'Off', 'base_url' => 'https://off.test', 'enabled' => true, 'priority' => 1],
-            'on-site' => ['name' => 'On', 'base_url' => 'https://on.test', 'enabled' => true, 'priority' => 2],
+            'login-site' => ['name' => 'Login', 'base_url' => 'https://login.test', 'requires_login' => true, 'priority' => 1],
+            'on-site' => ['name' => 'On', 'base_url' => 'https://on.test', 'priority' => 2],
         ]);
 
         $this->artisan('crawler:sync-sources')->assertSuccessful();
 
-        $this->assertFalse((bool) Source::query()->find('off-site')?->enabled);
+        $this->assertFalse((bool) Source::query()->find('login-site')?->enabled);
         $this->assertTrue((bool) Source::query()->find('on-site')?->enabled);
     }
 
-    public function test_avfan_is_disabled_by_default(): void
+    public function test_sync_never_changes_the_switch_of_an_existing_source(): void
     {
-        $this->assertContains('avfan', config('javmeta_sources.disabled'));
-        $this->assertNotContains('avfan_profiles', config('javmeta_sources.disabled'));
+        config()->set('javmeta_sources.sources', [
+            'switched-off' => ['name' => 'Off', 'base_url' => 'https://off.test', 'enabled' => true, 'priority' => 1],
+            'switched-on' => ['name' => 'On', 'base_url' => 'https://on.test', 'requires_login' => true, 'priority' => 2],
+        ]);
+        Source::factory()->create(['slug' => 'switched-off', 'enabled' => false]);
+        Source::factory()->create(['slug' => 'switched-on', 'enabled' => true]);
+
+        $this->artisan('crawler:sync-sources')->assertSuccessful();
+        $this->artisan('crawler:sync-sources')->assertSuccessful();
+
+        $this->assertFalse((bool) Source::query()->find('switched-off')?->enabled);
+        $this->assertTrue((bool) Source::query()->find('switched-on')?->enabled);
+    }
+
+    public function test_avfan_needs_a_login_and_avfan_profiles_does_not(): void
+    {
+        $this->assertTrue((bool) config('javmeta_sources.sources.avfan.requires_login'));
+        $this->assertFalse((bool) config('javmeta_sources.sources.avfan_profiles.requires_login', false));
+        $this->assertNull(config('javmeta_sources.disabled'));
     }
 
     public function test_sync_sources_creates_configured_sources_and_preserves_runtime_state(): void

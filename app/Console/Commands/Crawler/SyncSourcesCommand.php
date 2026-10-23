@@ -28,24 +28,33 @@ final class SyncSourcesCommand extends Command
 
             $defaultGap = (float) Arr::get($source, 'gap_seconds_default', config('javmeta_sources.defaults.fallback_gap_seconds.default', 30));
             $existing = Source::query()->find($slug);
-            Source::query()->updateOrCreate(
-                ['slug' => $slug],
-                [
-                    'name' => (string) Arr::get($source, 'name'),
-                    'base_url' => (string) Arr::get($source, 'base_url'),
-                    'enabled' => ! in_array($slug, (array) config('javmeta_sources.disabled', []), true)
-                        && (bool) Arr::get($source, 'enabled', config('javmeta_sources.defaults.enabled', true)),
-                    'priority' => (int) Arr::get($source, 'priority'),
-                    'needs_proxy' => (bool) Arr::get($source, 'needs_proxy', config('javmeta_sources.defaults.needs_proxy', false)),
-                    'gap_seconds_default' => $defaultGap,
-                    'gap_seconds_min' => (float) Arr::get($source, 'gap_seconds_min', config('javmeta_sources.defaults.fallback_gap_seconds.min', 30)),
-                    'gap_seconds_max' => (float) Arr::get($source, 'gap_seconds_max', config('javmeta_sources.defaults.fallback_gap_seconds.max', 120)),
-                    'gap_seconds_current' => $existing instanceof Source ? $existing->gap_seconds_current : $defaultGap,
-                    'last_success_at' => $existing instanceof Source ? $existing->last_success_at : null,
-                    'last_error_at' => $existing instanceof Source ? $existing->last_error_at : null,
-                    'last_error' => $existing instanceof Source ? $existing->last_error : null,
-                ],
-            );
+            $attributes = [
+                'name' => (string) Arr::get($source, 'name'),
+                'base_url' => (string) Arr::get($source, 'base_url'),
+                'priority' => (int) Arr::get($source, 'priority'),
+                'needs_proxy' => (bool) Arr::get($source, 'needs_proxy', config('javmeta_sources.defaults.needs_proxy', false)),
+                'gap_seconds_default' => $defaultGap,
+                'gap_seconds_min' => (float) Arr::get($source, 'gap_seconds_min', config('javmeta_sources.defaults.fallback_gap_seconds.min', 30)),
+                'gap_seconds_max' => (float) Arr::get($source, 'gap_seconds_max', config('javmeta_sources.defaults.fallback_gap_seconds.max', 120)),
+            ];
+
+            if ($existing instanceof Source) {
+                // The database is the only on/off switch: an existing row is never given an `enabled` value here.
+                $existing->forceFill($attributes)->save();
+
+                continue;
+            }
+
+            Source::query()->create($attributes + [
+                'slug' => $slug,
+                // A new source starts on unless it needs a login first.
+                'enabled' => ! (bool) Arr::get($source, 'requires_login', false)
+                    && (bool) Arr::get($source, 'enabled', config('javmeta_sources.defaults.enabled', true)),
+                'gap_seconds_current' => $defaultGap,
+                'last_success_at' => null,
+                'last_error_at' => null,
+                'last_error' => null,
+            ]);
         }
 
         return self::SUCCESS;

@@ -23,7 +23,6 @@ final class SourceHealthCommand extends Command
             sleep($seconds);
         });
         $only = trim((string) $this->option('source'));
-        $disabled = (array) config('javmeta_sources.disabled', []);
         $enabledInDatabase = Source::query()->where('enabled', true)->pluck('slug')->all();
 
         $rows = [];
@@ -32,7 +31,7 @@ final class SourceHealthCommand extends Command
             if ($only !== '' && $only !== $slug) {
                 continue;
             }
-            $enabled = ! in_array($slug, $disabled, true) && in_array($slug, $enabledInDatabase, true);
+            $enabled = in_array($slug, $enabledInDatabase, true);
             array_push($rows, ...$checker->check($slug, is_array($config) ? $config : [], $enabled, $delay));
         }
 

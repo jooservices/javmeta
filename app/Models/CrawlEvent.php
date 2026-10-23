@@ -17,6 +17,7 @@ class CrawlEvent extends Model
     public const KIND_PARSE_DRIFT = 'parse_drift';
     public const KIND_AUTH = 'auth';
     public const KIND_QUEUE_RECLAIMED_WITHOUT_START = 'queue_reclaimed_without_start';
+    public const KIND_SOURCE_TOGGLED = 'source_toggled';
 
     protected $table = 'crawl_events';
     public $timestamps = false;

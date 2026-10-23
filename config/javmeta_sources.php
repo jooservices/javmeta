@@ -3,9 +3,9 @@
 declare(strict_types=1);
 
 return [
-    // Sources JavMeta does not crawl (comma separated slugs, JAVMETA_DISABLED_SOURCES). avfan (the movie site) is off.
-    // Keep CRAWLERX_DISABLED_SITES in step so CrawlerX refuses the same sites.
-    'disabled' => array_values(array_filter(array_map('trim', explode(',', (string) env('JAVMETA_DISABLED_SOURCES', 'avfan'))))),
+    // Whether a source is crawled is stored in the database (sources.enabled) and changed with
+    // `php artisan crawler:source-toggle {slug} {on|off}` (later from the UI). This file only describes sources.
+    // `requires_login => true` makes a NEW source row start switched off (it needs a login cookie first).
     'defaults' => [
         'enabled' => true,
         'needs_proxy' => false,
@@ -167,6 +167,7 @@ return [
         'avfan' => [
             'name' => 'Avfan',
             'base_url' => 'https://avfan.com',
+            'requires_login' => true,
             'priority' => 100,
             'gap_seconds_default' => 5,
             'gap_seconds_min' => 2,
