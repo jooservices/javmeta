@@ -96,6 +96,30 @@ final class PerformerIdentityIngestionTest extends TestCase
         self::assertSame(['weak_name_match'], array_column($result['reviews'], 'reason'));
     }
 
+    public function test_crawl_reconciliation_pages_candidates_instead_of_loading_them_all(): void
+    {
+        $drafts = [];
+        for ($i = 0; $i < 210; $i++) {
+            $drafts[] = PerformerDraft::from('javdb', 'p' . $i, 'Aoi Sakura');
+        }
+        $this->persistMovie('SSIS-001', 'javdb', $drafts);
+
+        $rootQueries = 0;
+        $maxBound = 0;
+        DB::listen(static function ($query) use (&$rootQueries, &$maxBound): void {
+            if (str_contains($query->sql, 'from "performers" where "canonical_performer_id" is null and "id" in')) {
+                $rootQueries++;
+                $maxBound = max($maxBound, count($query->bindings));
+            }
+        });
+
+        $this->persistMovie('SSIS-002', 'onejav', [PerformerDraft::from('onejav', 'x9', 'Aoi Sakura', birthDate: '1990-01-01')]);
+
+        self::assertGreaterThanOrEqual(2, $rootQueries);
+        self::assertLessThanOrEqual(200, $maxBound);
+        self::assertSame(210, DB::table('performer_identity_reviews')->where('source_performer_id', Performer::query()->latest('id')->value('id'))->count());
+    }
+
     public function test_gallery_ingestion_reconciles_performers_and_records_reviews(): void
     {
         $existing = Performer::factory()->create([

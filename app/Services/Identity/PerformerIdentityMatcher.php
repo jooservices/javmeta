@@ -8,75 +8,116 @@ namespace App\Services\Identity;
 final class PerformerIdentityMatcher
 {
     /**
+     * Streams the candidates without buffering them: one pass counts the strong matches and the reviewable
+     * ones, and `review_candidates` is a lazy generator that re-reads the candidates, so state stays constant
+     * however many candidates one source has. Strong matches come first, then weaker reviews, each in
+     * candidate order. A single strong match merges and still reports the other candidates for review.
+     *
      * @param array{id: int, names: list<string>, birth_dates: list<string>, cross_links: list<array{source: string, id: string}>} $incoming
-     * @param iterable<array{id: int, names: list<string>, birth_dates: list<string>, cross_links: list<array{source: string, id: string}>}> $candidates
-     * @return array{decision: string, candidate_id: int|null, reason: string|null, similarity: float, review_candidates: list<array{id: int, reason: string, similarity: float}>}
+     * @param array<array-key, array{id: int, names: list<string>, birth_dates: list<string>, cross_links: list<array{source: string, id: string}>}>|\Closure(): iterable<array{id: int, names: list<string>, birth_dates: list<string>, cross_links: list<array{source: string, id: string}>}> $candidates
+     *        An array, or a factory returning a fresh iterable each call (the matcher reads it up to three times).
+     * @return array{decision: string, candidate_id: int|null, reason: string|null, similarity: float, review_candidates: iterable<array{id: int, reason: string, similarity: float}>}
      */
-    public function evaluate(array $incoming, iterable $candidates): array
+    public function evaluate(array $incoming, array|\Closure $candidates): array
     {
-        $strong = [];
-        $review = [];
+        $read = static fn(): iterable => $candidates instanceof \Closure ? $candidates() : $candidates;
 
-        foreach ($candidates as $candidate) {
-            $similarity = $this->nameSimilarity($incoming['names'], $candidate['names']);
-            $sameCrossLink = $this->sharesCrossLink($incoming['cross_links'], $candidate['cross_links']);
-            $incomingBirthDates = array_values(array_unique($incoming['birth_dates']));
-            $candidateBirthDates = array_values(array_unique($candidate['birth_dates']));
-            $sameBirthDate = count($incomingBirthDates) === 1
-                && count($candidateBirthDates) === 1
-                && $incomingBirthDates[0] === $candidateBirthDates[0];
-
-            if ($sameCrossLink || ($similarity >= (float) config('performer_identity.merge_name_similarity', 1.0)
-                && $similarity === 1.0 && $sameBirthDate)) {
-                $strong[] = [
-                    'id' => $candidate['id'],
-                    'reason' => $sameCrossLink ? 'cross_link' : 'name_and_birth_date',
-                    'similarity' => $similarity,
-                ];
-
+        $strongCount = 0;
+        $reviewCount = 0;
+        $first = null;
+        foreach ($read() as $candidate) {
+            $match = $this->classify($incoming, $candidate);
+            if ($match === null) {
                 continue;
             }
-
-            $reason = null;
-            if ($similarity === 1.0) {
-                $reason = $sameBirthDate ? 'multiple_exact_name_matches' : 'birth_date_missing_or_conflicting';
-            } elseif ($similarity >= (float) config('performer_identity.review_name_similarity', 0.82)) {
-                $reason = 'weak_name_match';
-            }
-
-            if ($reason !== null) {
-                $review[] = ['id' => $candidate['id'], 'reason' => $reason, 'similarity' => $similarity];
+            if ($match['strong']) {
+                $strongCount++;
+                $first ??= ['id' => $candidate['id'], 'reason' => $match['reason'], 'similarity' => $match['similarity']];
+            } else {
+                $reviewCount++;
             }
         }
 
-        if (count($strong) === 1) {
+        $merge = $strongCount === 1 && $first !== null;
+        $reviews = $this->reviews($incoming, $read, $strongCount > 1);
+        if ($merge) {
             return [
                 'decision' => 'merge',
-                'candidate_id' => $strong[0]['id'],
-                'reason' => $strong[0]['reason'],
-                'similarity' => $strong[0]['similarity'],
-                'review_candidates' => [],
+                'candidate_id' => $first['id'],
+                'reason' => $first['reason'],
+                'similarity' => $first['similarity'],
+                'review_candidates' => $reviewCount > 0 ? $reviews : [],
             ];
         }
 
-        if (count($strong) > 1) {
-            $review = array_merge($review, array_map(
-                static fn(array $match): array => [
-                    'id' => $match['id'],
-                    'reason' => 'multiple_strong_matches',
-                    'similarity' => $match['similarity'],
-                ],
-                $strong,
-            ));
-        }
-
         return [
-            'decision' => $review === [] ? 'none' : 'review',
+            'decision' => $strongCount + $reviewCount === 0 ? 'none' : 'review',
             'candidate_id' => null,
             'reason' => null,
             'similarity' => 0.0,
-            'review_candidates' => $review,
+            'review_candidates' => $strongCount + $reviewCount > 0 ? $reviews : [],
         ];
+    }
+
+    /**
+     * @param array{id: int, names: list<string>, birth_dates: list<string>, cross_links: list<array{source: string, id: string}>} $incoming
+     * @return array{strong: bool, reason: string, similarity: float}|null
+     */
+    private function classify(array $incoming, array $candidate): ?array
+    {
+        $similarity = $this->nameSimilarity($incoming['names'], $candidate['names']);
+        $sameCrossLink = $this->sharesCrossLink($incoming['cross_links'], $candidate['cross_links']);
+        $incomingBirthDates = array_values(array_unique($incoming['birth_dates']));
+        $candidateBirthDates = array_values(array_unique($candidate['birth_dates']));
+        $sameBirthDate = count($incomingBirthDates) === 1
+            && count($candidateBirthDates) === 1
+            && $incomingBirthDates[0] === $candidateBirthDates[0];
+
+        if ($sameCrossLink || ($similarity >= (float) config('performer_identity.merge_name_similarity', 1.0)
+            && $similarity === 1.0 && $sameBirthDate)) {
+            return [
+                'strong' => true,
+                'reason' => $sameCrossLink ? 'cross_link' : 'name_and_birth_date',
+                'similarity' => $similarity,
+            ];
+        }
+
+        if ($similarity === 1.0) {
+            return [
+                'strong' => false,
+                'reason' => $sameBirthDate ? 'multiple_exact_name_matches' : 'birth_date_missing_or_conflicting',
+                'similarity' => $similarity,
+            ];
+        }
+
+        if ($similarity >= (float) config('performer_identity.review_name_similarity', 0.82)) {
+            return ['strong' => false, 'reason' => 'weak_name_match', 'similarity' => $similarity];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array{id: int, names: list<string>, birth_dates: list<string>, cross_links: list<array{source: string, id: string}>} $incoming
+     * @return \Generator<int, array{id: int, reason: string, similarity: float}>
+     */
+    private function reviews(array $incoming, \Closure $read, bool $includeStrong): \Generator
+    {
+        if ($includeStrong) {
+            foreach ($read() as $candidate) {
+                $match = $this->classify($incoming, $candidate);
+                if ($match !== null && $match['strong']) {
+                    yield ['id' => $candidate['id'], 'reason' => 'multiple_strong_matches', 'similarity' => $match['similarity']];
+                }
+            }
+        }
+
+        foreach ($read() as $candidate) {
+            $match = $this->classify($incoming, $candidate);
+            if ($match !== null && ! $match['strong']) {
+                yield ['id' => $candidate['id'], 'reason' => $match['reason'], 'similarity' => $match['similarity']];
+            }
+        }
     }
 
     public function normalizeName(string $name): string
@@ -121,7 +162,8 @@ final class PerformerIdentityMatcher
             }
         }
 
-        return $maximum;
+        // Only identical normalized names score 1.0; token overlap alone must stay reviewable.
+        return min($maximum, 0.99);
     }
 
     private function editSimilarity(string $left, string $right): float
