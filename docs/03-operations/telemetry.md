@@ -131,3 +131,12 @@ Everything needed to debug a crawl goes to OpenObserve, stream `javmeta_logs`:
 
 Never sent: cookies, tokens, passwords, API keys, authorization headers, HTML bodies, query strings and fragments of
 page addresses. Free text is masked by `TelemetrySanitizer::sanitizeText` and cut to a safe length.
+
+
+## Dashboard: JAVMETA Crawl debug
+
+`deploy/observability/dashboards/crawl-debug.json` (imported by `php artisan obs:import`) shows, from the `javmeta_logs`
+stream: fetches per minute by source; per source the fetch count, success rate and p95 duration; failed fetches by error
+code; the last 20 failed fetches with source, error code, HTTP status, method, page and message; the last 20 errors with
+exception class, message, file and line; crawl events by kind; new versus updated movies per minute; and the adaptive
+request gap per source (metric `javmeta_source_gap_seconds`).
