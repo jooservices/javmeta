@@ -213,17 +213,13 @@ final class MoviePersister implements MovieDraftSink
         );
 
         if (is_string($mongoId) && $mongoId !== '') {
-            \App\Models\MovieSource::query()->updateOrCreate(
-                [
-                    'site_slug' => $draft->sourceSlug,
-                    'mongo_id' => $mongoId,
-                ],
-                [
-                    'movie_id' => $movie->id,
-                    'source_url' => $draft->sourceUrl,
-                    'source_code' => $draft->code,
-                    'crawled_at' => $draft->crawledAt ?? CarbonImmutable::now(),
-                ],
+            \App\Models\MovieSource::recordArchive(
+                $movie->id,
+                $draft->sourceSlug,
+                $mongoId,
+                $draft->sourceUrl,
+                $draft->code,
+                $draft->crawledAt ?? CarbonImmutable::now(),
             );
         }
     }
