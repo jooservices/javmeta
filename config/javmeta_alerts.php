@@ -19,6 +19,11 @@ return [
         'api_base' => env('TELEGRAM_API_BASE', 'https://api.telegram.org'),
         'timeout' => (int) env('TELEGRAM_TIMEOUT', 5),
     ],
+    // Hourly Telegram report: totals now and the change since the previous report (javmeta:hourly-report).
+    'hourly_report' => [
+        'timezone' => (string) env('JAVMETA_REPORT_TIMEZONE', 'Asia/Ho_Chi_Minh'),
+        'state_path' => (string) env('JAVMETA_REPORT_STATE_PATH', ''),
+    ],
     'debounce_seconds' => (int) env('JAVMETA_ALERT_DEBOUNCE_SECONDS', 900),
     // At most one alert per cause per this many seconds (watchdog, backup, stalled crawl, stuck queue).
     'throttle_seconds' => (int) env('JAVMETA_ALERT_THROTTLE_SECONDS', 3600),

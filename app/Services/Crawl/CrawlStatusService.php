@@ -20,6 +20,17 @@ final class CrawlStatusService
     public function __construct(private readonly WorkerHeartbeat $heartbeat) {}
 
     /**
+     * @return array{movies: int, performers: int}
+     */
+    public function counts(): array
+    {
+        return [
+            'movies' => (int) Movie::query()->count(),
+            'performers' => (int) Performer::query()->whereNull('canonical_performer_id')->count(),
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function status(): array
@@ -30,10 +41,7 @@ final class CrawlStatusService
 
         return [
             'checked_at' => $now->toIso8601String(),
-            'counts' => [
-                'movies' => (int) Movie::query()->count(),
-                'performers' => (int) Performer::query()->whereNull('canonical_performer_id')->count(),
-            ],
+            'counts' => $this->counts(),
             'ingest' => [
                 'movies_1h' => $this->newSince(Movie::class, 'first_seen_at', 3600),
                 'movies_24h' => $this->newSince(Movie::class, 'first_seen_at', 86400),

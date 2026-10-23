@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Contracts\AlertNotifier;
+use App\Contracts\ReportChannel;
 use App\Logging\ArrayLogStore;
 use App\Notifications\ActivityLogAlertNotifier;
 use App\Notifications\CompositeAlertNotifier;
@@ -72,5 +73,6 @@ class AppServiceProvider extends ServiceProvider
             ]);
         });
         $this->app->singleton(AlertDispatcher::class);
+        $this->app->bind(ReportChannel::class, TelegramAlertNotifier::class);
     }
 }
