@@ -30,24 +30,15 @@ return new class extends Migration {
             $table->index(['cross_link_source', 'cross_link_id'], 'performer_sources_cross_link_idx');
         });
 
-        DB::table('performer_sources')->orderBy('id')->chunkById(100, function ($sources): void {
-            foreach ($sources as $source) {
-                $performer = DB::table('performers')->where('id', $source->performer_id)->first([
-                    'id', 'name_romaji', 'name_kanji', 'name_kana', 'birth_date',
-                ]);
-                if ($performer === null) {
-                    continue;
-                }
-
-                DB::table('performer_sources')->where('id', $source->id)->update([
-                    'source_performer_id' => $performer->id,
-                    'name_romaji' => $performer->name_romaji,
-                    'name_kanji' => $performer->name_kanji,
-                    'name_kana' => $performer->name_kana,
-                    'birth_date' => $performer->birth_date,
-                ]);
-            }
-        });
+        // One set-based statement per table keeps the migration bounded at catalog scale.
+        $columns = ['name_romaji', 'name_kanji', 'name_kana', 'birth_date'];
+        $sourceUpdate = ['source_performer_id' => DB::raw('performer_id')];
+        foreach ($columns as $column) {
+            $sourceUpdate[$column] = DB::raw("(SELECT p.{$column} FROM performers p WHERE p.id = performer_sources.performer_id)");
+        }
+        DB::table('performer_sources')->whereExists(static function ($query): void {
+            $query->selectRaw('1')->from('performers')->whereColumn('performers.id', 'performer_sources.performer_id');
+        })->update($sourceUpdate);
 
         Schema::table('performer_aliases', function (Blueprint $table): void {
             $table->text('source_slug')->nullable();
@@ -60,15 +51,10 @@ return new class extends Migration {
             $table->index('source_performer_id', 'performer_aliases_source_performer_idx');
         });
 
-        DB::table('performer_aliases')->orderBy('id')->chunkById(100, function ($aliases): void {
-            foreach ($aliases as $alias) {
-                $sourceSlug = DB::table('performers')->where('id', $alias->performer_id)->value('source_slug');
-                DB::table('performer_aliases')->where('id', $alias->id)->update([
-                    'source_slug' => $sourceSlug,
-                    'source_performer_id' => $alias->performer_id,
-                ]);
-            }
-        });
+        DB::table('performer_aliases')->update([
+            'source_slug' => DB::raw('(SELECT p.source_slug FROM performers p WHERE p.id = performer_aliases.performer_id)'),
+            'source_performer_id' => DB::raw('performer_id'),
+        ]);
 
         Schema::table('performer_media', function (Blueprint $table): void {
             $table->dropUnique(['performer_id', 'kind', 'url']);

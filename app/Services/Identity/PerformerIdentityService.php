@@ -9,85 +9,140 @@ use App\Models\PerformerAlias;
 use App\Models\PerformerIdentityEvent;
 use App\Models\PerformerSource;
 use App\Services\Search\ElasticsearchIndexer;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
+/**
+ * The identity rules (match, merge, split, undo, backfill) stay in one service until they are split in a follow-up.
+ *
+ * @SuppressWarnings("PHPMD.ExcessiveClassLength")
+ */
 final class PerformerIdentityService
 {
     public function __construct(
         private readonly PerformerIdentityMatcher $matcher,
         private readonly ElasticsearchIndexer $indexer,
+        private readonly PerformerMergeGuard $mergeGuard,
     ) {}
 
-    /** @return array{merges: list<array<string, mixed>>, reviews: list<array<string, mixed>>} */
+    /** Lowest review similarity for which the trigram block is guaranteed to contain every reviewable pair. */
+    private const MIN_BLOCKED_REVIEW_SIMILARITY = 0.82;
+
+    /** Review candidates written per statement batch. */
+    private const REVIEW_PAGE_SIZE = 500;
+
+    private int $candidateComparisons = 0;
+
+    /** @var array<int, list<string>> Aliases of the current backfill batch, keyed by source performer id. */
+    private array $preloadedAliases = [];
+
+    /** Number of source-to-root comparisons the last backfill handed to the matcher. */
+    public function candidateComparisons(): int
+    {
+        return $this->candidateComparisons;
+    }
+
+    /**
+     * Streams the source records in id order and finds each one's candidates through the name indexes, so
+     * memory stays flat however large the catalog is. A dry run executes in a transaction that is rolled
+     * back, which makes its report exactly what a real run would do.
+     *
+     * @return array{merges: list<array<string, mixed>>, reviews: list<array<string, mixed>>}
+     */
     public function backfill(bool $dryRun = false): array
     {
-        $missingSources = $this->ensureSourceLinks($dryRun);
         $merges = [];
         $reviews = [];
-        $plannedReviews = [];
-        $sources = PerformerSource::query()->whereNull('removed_at')->orderBy('id')->get()
-            ->concat($missingSources);
-        $plannedPairs = [];
+        $this->streamBackfill($dryRun, static function (string $kind, array $row) use (&$merges, &$reviews): void {
+            if ($kind === 'merge') {
+                $merges[] = $row;
+            } else {
+                $reviews[] = $row;
+            }
+        });
 
-        foreach ($sources as $source) {
+        return ['merges' => $merges, 'reviews' => $reviews];
+    }
+
+    /**
+     * Same pass as backfill() but hands every merge and review to $onRow(kind, row) instead of collecting
+     * them, so the report never has to fit in memory.
+     *
+     * @param callable(string, array<string, mixed>): void $onRow
+     * @return array{merges: int, reviews: int}
+     */
+    public function streamBackfill(bool $dryRun, callable $onRow): array
+    {
+        if (! $dryRun) {
+            return $this->runBackfill($dryRun, $onRow);
+        }
+
+        DB::beginTransaction();
+        try {
+            return $this->runBackfill($dryRun, $onRow);
+        } finally {
+            DB::rollBack();
+        }
+    }
+
+    /**
+     * @param callable(string, array<string, mixed>): void $onRow
+     * @return array{merges: int, reviews: int}
+     */
+    private function runBackfill(bool $dryRun, callable $onRow): array
+    {
+        $this->candidateComparisons = 0;
+        $this->ensureSourceLinks();
+        $this->storeNameKeys();
+
+        $counts = ['merges' => 0, 'reviews' => 0];
+
+        foreach ($this->activeSources() as $source) {
             $sourcePerformerId = (int) ($source->source_performer_id ?? $source->performer_id);
             $currentPerformerId = (int) $source->performer_id;
-            if (! $dryRun && $source->exists) {
-                $this->refreshNameKeys($source);
-            }
-            if ($sourcePerformerId !== $currentPerformerId) {
-                continue;
-            }
-            if (Performer::query()->whereKey($currentPerformerId)->value('canonical_performer_id') !== null) {
+            if ($sourcePerformerId !== $currentPerformerId
+                || ! Performer::query()->whereKey($currentPerformerId)->whereNull('canonical_performer_id')->exists()) {
                 continue;
             }
 
-            $evaluation = $this->evaluateSource($source, true);
+            $incoming = $this->sourceIdentity($source);
+            $evaluation = $this->matcher->evaluate(
+                $incoming,
+                fn(): \Generator => $this->backfillCandidates($source, $incoming, $currentPerformerId),
+            );
+            // Reviews are streamed and recorded before any merge changes the roots they point at; a single
+            // strong match still reports its other ambiguous candidates.
+            // The review rows deduplicate a pair seen from both sides; the dry run writes them too, inside the
+            // transaction it rolls back.
+            $this->recordReviewBatches(
+                $sourcePerformerId,
+                $evaluation['review_candidates'],
+                true,
+                function (array $review) use (&$counts, $onRow): void {
+                    $counts['reviews']++;
+                    $onRow('review', $review);
+                },
+            );
+
             if ($evaluation['decision'] === 'merge') {
                 $candidateId = (int) $evaluation['candidate_id'];
                 $fromId = max($currentPerformerId, $candidateId);
                 $toId = min($currentPerformerId, $candidateId);
-                $pair = $fromId . ':' . $toId;
-                if (isset($plannedPairs[$pair])) {
-                    continue;
-                }
-                $plannedPairs[$pair] = true;
-                $merge = [
+                $counts['merges']++;
+                $onRow('merge', [
                     'source_performer_id' => $sourcePerformerId,
                     'from_performer_id' => $fromId,
                     'to_performer_id' => $toId,
                     'reason' => $evaluation['reason'],
-                ];
-                $merges[] = $merge;
+                ]);
 
-                if (! $dryRun) {
-                    $this->mergeRoots($fromId, $toId, $evaluation);
-                }
-            } elseif ($evaluation['decision'] === 'review') {
-                foreach ($evaluation['review_candidates'] as $candidate) {
-                    $reviewPair = min($sourcePerformerId, (int) $candidate['id']) . ':'
-                        . max($sourcePerformerId, (int) $candidate['id']);
-                    if (isset($plannedReviews[$reviewPair])) {
-                        continue;
-                    }
-                    $plannedReviews[$reviewPair] = true;
-                    $review = [
-                        'source_performer_id' => $sourcePerformerId,
-                        'candidate_performer_id' => $candidate['id'],
-                        'reason' => $candidate['reason'],
-                        'similarity' => $candidate['similarity'],
-                    ];
-                    $reviews[] = $review;
-
-                    if (! $dryRun) {
-                        $this->recordReview($review);
-                    }
-                }
+                // The merged-away root is no longer a candidate or a source root, so a pair cannot repeat.
+                $this->mergeRoots($fromId, $toId, $evaluation);
             }
         }
 
-        return ['merges' => $merges, 'reviews' => $reviews];
+        return $counts;
     }
 
     public function reconcileSource(PerformerSource $source): int
@@ -99,6 +154,7 @@ final class PerformerIdentityService
         for ($attempt = 0; $attempt < 3; $attempt++) {
             $currentId = $this->canonicalId((int) $source->performer_id);
             $evaluation = $this->evaluateSource($source);
+            $this->recordReviews($source, $evaluation);
             if ($evaluation['decision'] !== 'merge') {
                 break;
             }
@@ -111,17 +167,6 @@ final class PerformerIdentityService
             }
 
             $source->refresh();
-        }
-
-        if ($evaluation['decision'] === 'review') {
-            foreach ($evaluation['review_candidates'] as $candidate) {
-                $this->recordReview([
-                    'source_performer_id' => (int) $source->source_performer_id,
-                    'candidate_performer_id' => $candidate['id'],
-                    'reason' => $candidate['reason'],
-                    'similarity' => $candidate['similarity'],
-                ]);
-            }
         }
 
         return $this->canonicalId((int) $source->performer_id);
@@ -212,19 +257,34 @@ final class PerformerIdentityService
 
     public function split(int $mergeEventId): PerformerIdentityEvent
     {
-        $merge = PerformerIdentityEvent::query()
-            ->whereKey($mergeEventId)
-            ->where('event_type', 'merge')
-            ->whereNull('reversed_at')
-            ->first();
-        if (! $merge instanceof PerformerIdentityEvent) {
-            throw new RuntimeException('An active merge event was not found.');
-        }
+        $split = DB::transaction(function () use ($mergeEventId): PerformerIdentityEvent {
+            $merge = PerformerIdentityEvent::query()->lockForUpdate()
+                ->whereKey($mergeEventId)
+                ->where('event_type', 'merge')
+                ->whereNull('reversed_at')
+                ->first();
+            if (! $merge instanceof PerformerIdentityEvent) {
+                throw new RuntimeException('An active merge event was not found.');
+            }
 
-        $details = $this->mergeDetails($merge);
-        $this->assertMergeCanBeSplit($merge, $details);
-        $split = DB::transaction(function () use ($merge, $details): PerformerIdentityEvent {
-            DB::table('performer_sources')->whereIn('id', $details['source_link_ids'])
+            $details = $this->mergeGuard->mergeDetails($merge);
+            // Lock the group in id order (as mergeRoots and undoSplit do) so a concurrent merge or ingest waits
+            // and the group is revalidated against the committed state.
+            Performer::query()->whereIn('id', array_unique([
+                ...$details['source_performer_ids'],
+                (int) $merge->from_performer_id,
+                (int) $merge->to_performer_id,
+            ]))->orderBy('id')->lockForUpdate()->get(['id']);
+            $this->mergeGuard->assertMergeCanBeSplit($merge, $details);
+
+            // Links added to the group after the merge snapshot follow the split-off source performers, so
+            // select them live instead of using only the recorded ids.
+            DB::table('performer_sources')
+                ->where('performer_id', $merge->to_performer_id)
+                ->where(static function ($query) use ($details): void {
+                    $query->whereIn('id', $details['source_link_ids'])
+                        ->orWhereIn('source_performer_id', $details['source_performer_ids']);
+                })
                 ->update(['performer_id' => $merge->from_performer_id]);
 
             $sourceIds = $details['source_performer_ids'];
@@ -238,8 +298,8 @@ final class PerformerIdentityService
                 ->whereIn('source_performer_id', $sourceIds)->update(['performer_id' => $merge->from_performer_id]);
             DB::table('performer_media')->where('performer_id', $merge->to_performer_id)
                 ->whereIn('source_performer_id', $sourceIds)->update(['performer_id' => $merge->from_performer_id]);
-            $this->copyMovieLinks($sourceIds, (int) $merge->from_performer_id);
-            $this->removeCreatedMovieLinks($details['created_movie_links'], $sourceIds, (int) $merge->to_performer_id);
+            $this->copyMovieLinks($sourceIds, (int) $merge->from_performer_id, null);
+            $this->removeCreatedMovieLinks($merge, $details['created_movie_links'], $sourceIds, (int) $merge->to_performer_id);
 
             $merge->reversed_at = now()->toDateTimeString();
             $merge->save();
@@ -254,31 +314,42 @@ final class PerformerIdentityService
             ]);
         });
 
-        $this->reindexPerformers([(int) $merge->from_performer_id, (int) $merge->to_performer_id]);
+        $this->reindexPerformers([(int) $split->to_performer_id, (int) $split->from_performer_id]);
 
         return $split;
     }
 
     public function undoSplit(int $splitEventId): PerformerIdentityEvent
     {
-        $split = PerformerIdentityEvent::query()
-            ->whereKey($splitEventId)
-            ->where('event_type', 'split')
-            ->whereNull('reversed_at')
-            ->first();
-        if (! $split instanceof PerformerIdentityEvent) {
-            throw new RuntimeException('An active split event was not found.');
-        }
+        $undo = DB::transaction(function () use ($splitEventId): PerformerIdentityEvent {
+            $split = PerformerIdentityEvent::query()->lockForUpdate()
+                ->whereKey($splitEventId)
+                ->where('event_type', 'split')
+                ->whereNull('reversed_at')
+                ->first();
+            if (! $split instanceof PerformerIdentityEvent) {
+                throw new RuntimeException('An active split event was not found.');
+            }
 
-        $merge = PerformerIdentityEvent::query()->find((int) $split->related_event_id);
-        if (! $merge instanceof PerformerIdentityEvent) {
-            throw new RuntimeException('The split event has no merge event to restore.');
-        }
-        $details = $this->mergeDetails($merge);
-        $this->assertSplitCanBeUndone($merge, $details);
+            $merge = PerformerIdentityEvent::query()->lockForUpdate()->find((int) $split->related_event_id);
+            if (! $merge instanceof PerformerIdentityEvent) {
+                throw new RuntimeException('The split event has no merge event to restore.');
+            }
+            $details = $this->mergeGuard->mergeDetails($merge);
+            // Lock the whole group in id order so a concurrent merge or ingest waits and is revalidated below.
+            Performer::query()->whereIn('id', array_unique([
+                ...$details['source_performer_ids'],
+                (int) $merge->from_performer_id,
+                (int) $merge->to_performer_id,
+            ]))->orderBy('id')->lockForUpdate()->get(['id']);
+            $this->mergeGuard->assertSplitCanBeUndone($merge, $details);
 
-        $undo = DB::transaction(function () use ($split, $merge, $details): PerformerIdentityEvent {
-            DB::table('performer_sources')->whereIn('id', $details['source_link_ids'])
+            // Links added to the group after the merge snapshot must follow the group, so select them live.
+            DB::table('performer_sources')
+                ->where(static function ($query) use ($details): void {
+                    $query->whereIn('id', $details['source_link_ids'])
+                        ->orWhereIn('source_performer_id', $details['source_performer_ids']);
+                })
                 ->update(['performer_id' => $merge->to_performer_id]);
 
             Performer::query()->whereIn('id', $details['source_performer_ids'])
@@ -291,15 +362,8 @@ final class PerformerIdentityService
                 ->update(['performer_id' => $merge->to_performer_id]);
             DB::table('performer_media')->whereIn('source_performer_id', $details['source_performer_ids'])
                 ->update(['performer_id' => $merge->to_performer_id]);
-            $this->copyMovieLinks($details['source_performer_ids'], (int) $merge->to_performer_id);
-            foreach ($details['created_movie_links'] as $link) {
-                DB::table('movie_performers')->insertOrIgnore([
-                    'movie_id' => $link['movie_id'],
-                    'performer_id' => $merge->to_performer_id,
-                    'source_slug' => $link['source_slug'],
-                    'crawled_at' => $link['crawled_at'],
-                ]);
-            }
+            $this->copyMovieLinks($details['source_performer_ids'], (int) $merge->to_performer_id, null);
+            $this->restoreCreatedMovieLinks($merge, $details['created_movie_links'], (int) $merge->to_performer_id);
 
             $split->reversed_at = now()->toDateTimeString();
             $split->save();
@@ -316,82 +380,184 @@ final class PerformerIdentityService
             ]);
         });
 
-        $this->reindexPerformers([(int) $merge->from_performer_id, (int) $merge->to_performer_id]);
+        $this->reindexPerformers([(int) $undo->from_performer_id, (int) $undo->to_performer_id]);
 
         return $undo;
     }
 
+    /** @param array{review_candidates: iterable<array{id: int, reason: string, similarity: float}>} $evaluation */
+    private function recordReviews(PerformerSource $source, array $evaluation): void
+    {
+        $this->recordReviewBatches((int) $source->source_performer_id, $evaluation['review_candidates'], false, null);
+    }
+
     /**
-     * The crawl path only compares against roots sharing a cross-link or a normalized name; the full scan
-     * (which also finds weak name matches) is reserved for the offline backfill.
+     * Records review candidates for one source in pages, so the statements depend on the page size and not on
+     * the candidate count: one lookup per direction, one upsert and one flag update per page.
      *
-     * @return array{decision: string, candidate_id: int|null, reason: string|null, similarity: float, review_candidates: list<array{id: int, reason: string, similarity: float}>}
+     * @param iterable<array{id: int, reason: string, similarity: float}> $candidates
+     * @param callable(array<string, mixed>): void|null $onRecorded called for each review that was written
      */
-    private function evaluateSource(PerformerSource $source, bool $fullScan = false): array
+    private function recordReviewBatches(int $sourceId, iterable $candidates, bool $skipSeenFromOtherSide, ?callable $onRecorded): void
+    {
+        $page = [];
+        foreach ($candidates as $candidate) {
+            $page[(int) $candidate['id']] = $candidate;
+            if (count($page) >= self::REVIEW_PAGE_SIZE) {
+                $this->writeReviewPage($sourceId, $page, $skipSeenFromOtherSide, $onRecorded);
+                $page = [];
+            }
+        }
+        if ($page !== []) {
+            $this->writeReviewPage($sourceId, $page, $skipSeenFromOtherSide, $onRecorded);
+        }
+    }
+
+    /**
+     * @param array<int, array{id: int, reason: string, similarity: float}> $page keyed by candidate id
+     * @param callable(array<string, mixed>): void|null $onRecorded
+     */
+    private function writeReviewPage(int $sourceId, array $page, bool $skipSeenFromOtherSide, ?callable $onRecorded): void
+    {
+        $candidateIds = array_keys($page);
+        if ($skipSeenFromOtherSide) {
+            // A pair already open as (candidate, source) and not as (source, candidate) was reported from the other side.
+            $forward = DB::table('performer_identity_reviews')->where('source_performer_id', $sourceId)
+                ->whereIn('candidate_performer_id', $candidateIds)->where('status', 'open')
+                ->pluck('candidate_performer_id')->map(static fn(mixed $id): int => (int) $id)->all();
+            $reverse = DB::table('performer_identity_reviews')->where('candidate_performer_id', $sourceId)
+                ->whereIn('source_performer_id', $candidateIds)->where('status', 'open')
+                ->pluck('source_performer_id')->map(static fn(mixed $id): int => (int) $id)->all();
+            $candidateIds = array_values(array_diff($candidateIds, array_diff($reverse, $forward)));
+            if ($candidateIds === []) {
+                return;
+            }
+        }
+
+        $now = now();
+        $rows = [];
+        $reviews = [];
+        foreach ($candidateIds as $candidateId) {
+            $candidate = $page[$candidateId];
+            $review = [
+                'source_performer_id' => $sourceId,
+                'candidate_performer_id' => $candidateId,
+                'reason' => $candidate['reason'],
+                'similarity' => $candidate['similarity'],
+            ];
+            $reviews[] = $review;
+            $rows[] = [...$review, 'status' => 'open', 'created_at' => $now, 'resolved_at' => null];
+        }
+
+        DB::table('performer_identity_reviews')->upsert(
+            $rows,
+            ['source_performer_id', 'candidate_performer_id', 'status'],
+            ['reason', 'similarity', 'resolved_at'],
+        );
+        Performer::query()->whereIn('id', [$sourceId, ...$candidateIds])->update(['needs_review' => true]);
+
+        if ($onRecorded !== null) {
+            foreach ($reviews as $review) {
+                $onRecorded($review);
+            }
+        }
+    }
+
+    /**
+     * The crawl path only compares against roots sharing a cross-link or a normalized name; the backfill
+     * (which also finds weak name matches) also selects roots through the indexed name trigrams.
+     *
+     * @return array{decision: string, candidate_id: int|null, reason: string|null, similarity: float, review_candidates: iterable<array{id: int, reason: string, similarity: float}>}
+     */
+    private function evaluateSource(PerformerSource $source): array
     {
         $currentId = (int) $source->performer_id;
         $incoming = $this->sourceIdentity($source);
-
-        if ($fullScan) {
-            $roots = Performer::query()->whereNull('canonical_performer_id')->where('id', '<>', $currentId)
-                ->with(['aliases', 'sources.sourcePerformer.aliases'])->lazyById(200);
-        } else {
-            $candidateIds = $this->candidateRootIds($source, $incoming['names'], $currentId);
-            $roots = $candidateIds === [] ? [] : Performer::query()->whereNull('canonical_performer_id')
-                ->whereIn('id', $candidateIds)->orderBy('id')
-                ->with(['aliases', 'sources.sourcePerformer.aliases'])->get();
-        }
-
-        $candidates = (function () use ($roots) {
-            foreach ($roots as $root) {
-                yield $this->rootIdentity($root);
+        $candidates = function () use ($source, $incoming, $currentId) {
+            foreach ($this->candidateRootIdPages($source, $incoming['names'], $currentId, false) as $chunk) {
+                $roots = Performer::query()->whereNull('canonical_performer_id')->whereIn('id', $chunk)
+                    ->orderBy('id')->with(['aliases', 'sources.sourcePerformer.aliases'])->get();
+                foreach ($roots as $root) {
+                    yield $this->rootIdentity($root);
+                }
             }
-        })();
+        };
 
         return $this->matcher->evaluate($incoming, $candidates);
     }
 
     /**
+     * Pages of candidate root ids for the backfill: roots sharing a cross-link, a normalized name or (when
+     * $withGrams) a name trigram with the source. Keyset pages keep a common trigram from materializing a catalog-sized list.
+     *
      * @param list<string> $names
-     * @return list<int>
+     * @return \Generator<int, list<int>>
      */
-    private function candidateRootIds(PerformerSource $source, array $names, int $currentId): array
+    private function candidateRootIdPages(PerformerSource $source, array $names, int $currentId, bool $withGrams = true): \Generator
     {
-        $ids = [];
+        $union = null;
+        $add = static function ($query) use (&$union): void {
+            $union = $union === null ? $query : $union->union($query);
+        };
+
         if ($source->cross_link_id !== null && $source->cross_link_id !== '') {
-            $ids = PerformerSource::query()
-                ->where('cross_link_source', (string) ($source->cross_link_source ?: $source->site_slug))
-                ->where('cross_link_id', (string) $source->cross_link_id)
-                ->pluck('performer_id')->map(static fn(mixed $id): int => (int) $id)->all();
+            $add(DB::table('performer_sources as s')
+                ->join('performers as p', 'p.id', '=', 's.performer_id')
+                ->where('s.cross_link_source', (string) ($source->cross_link_source ?: $source->site_slug))
+                ->where('s.cross_link_id', (string) $source->cross_link_id)
+                ->selectRaw('COALESCE(p.canonical_performer_id, p.id) as root_id'));
         }
 
         $keys = $this->normalizedNames($names);
         if ($keys !== []) {
-            $nameIds = DB::table('performer_name_keys as k')
+            $add(DB::table('performer_name_keys as k')
                 ->join('performers as p', 'p.id', '=', 'k.source_performer_id')
                 ->whereIn('k.normalized_name', $keys)
-                ->selectRaw('COALESCE(p.canonical_performer_id, p.id) as root_id')
-                ->distinct()->pluck('root_id');
-            foreach ($nameIds as $id) {
-                $ids[] = (int) $id;
-            }
+                ->selectRaw('COALESCE(p.canonical_performer_id, p.id) as root_id'));
         }
 
-        return array_values(array_diff(array_unique($ids), [$currentId]));
+        foreach ($withGrams ? array_chunk($this->nameGrams($names), 400) : [] as $chunk) {
+            $add(DB::table('performer_name_grams as g')
+                ->join('performers as p', 'p.id', '=', 'g.source_performer_id')
+                ->whereIn('g.gram', $chunk)
+                ->selectRaw('COALESCE(p.canonical_performer_id, p.id) as root_id'));
+        }
+
+        if ($union === null) {
+            return;
+        }
+
+        $last = 0;
+        while (true) {
+            $page = DB::query()->fromSub($union, 'c')
+                ->where('c.root_id', '>', $last)->where('c.root_id', '<>', $currentId)
+                ->distinct()->orderBy('c.root_id')->limit(200)->pluck('c.root_id')
+                ->map(static fn(mixed $id): int => (int) $id)->all();
+            if ($page === []) {
+                return;
+            }
+            yield $page;
+            $last = $page[array_key_last($page)];
+        }
     }
 
     /** Stores the normalized names of a source performer so the crawl path can find candidates by index. */
     private function refreshNameKeys(PerformerSource $source): void
     {
         $sourcePerformerId = (int) ($source->source_performer_id ?? $source->performer_id);
-        $keys = $this->normalizedNames($this->sourceIdentity($source)['names']);
+        $names = $this->sourceIdentity($source)['names'];
+        $keys = $this->normalizedNames($names);
         if ($keys === []) {
             return;
         }
 
-        DB::table('performer_name_keys')->insertOrIgnore(array_map(
+        $this->insertKeyRows('performer_name_keys', array_map(
             static fn(string $key): array => ['source_performer_id' => $sourcePerformerId, 'normalized_name' => $key],
             $keys,
+        ));
+        $this->insertKeyRows('performer_name_grams', array_map(
+            static fn(string $gram): array => ['source_performer_id' => $sourcePerformerId, 'gram' => $gram],
+            $this->nameGrams($names),
         ));
     }
 
@@ -407,7 +573,7 @@ final class PerformerIdentityService
     /** @return array{id: int, names: list<string>, birth_dates: list<string>, cross_links: list<array{source: string, id: string}>} */
     private function sourceIdentity(PerformerSource $source): array
     {
-        $performer = $source->sourcePerformer()->first();
+        $performer = $source->sourcePerformer;
         $names = array_filter([
             $source->name_romaji,
             $source->name_kanji,
@@ -417,8 +583,8 @@ final class PerformerIdentityService
             $performer?->name_kana,
         ], static fn(mixed $name): bool => is_string($name) && trim($name) !== '');
         $sourcePerformerId = (int) ($source->source_performer_id ?? $source->performer_id);
-        $names = array_merge($names, DB::table('performer_aliases')
-            ->where('source_performer_id', $sourcePerformerId)->pluck('alias')->all());
+        $names = array_merge($names, $this->preloadedAliases[$sourcePerformerId]
+            ?? DB::table('performer_aliases')->where('source_performer_id', $sourcePerformerId)->pluck('alias')->all());
 
         $birthDate = $this->dateString($source->birth_date ?? $performer?->getAttribute('birth_date'));
 
@@ -490,8 +656,10 @@ final class PerformerIdentityService
         }
 
         $details = DB::transaction(function () use ($fromId, $toId, $evaluation): array {
-            $from = Performer::query()->lockForUpdate()->findOrFail($fromId);
-            $to = Performer::query()->lockForUpdate()->findOrFail($toId);
+            // Lock in ascending id order, the same order undoSplit() uses, so the two cannot deadlock.
+            $locked = Performer::query()->whereIn('id', [$fromId, $toId])->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            $from = $locked->get($fromId) ?? throw (new ModelNotFoundException())->setModel(Performer::class, [$fromId]);
+            $to = $locked->get($toId) ?? throw (new ModelNotFoundException())->setModel(Performer::class, [$toId]);
             if ($from->canonical_performer_id !== null || $to->canonical_performer_id !== null) {
                 return [];
             }
@@ -502,7 +670,6 @@ final class PerformerIdentityService
             $sourceLinkIds = PerformerSource::query()->where('performer_id', $fromId)->pluck('id')->map(fn(mixed $id): int => (int) $id)->all();
             $aliasOwners = $this->relationOwners('performer_aliases', $sourceIds);
             $mediaOwners = $this->relationOwners('performer_media', $sourceIds);
-            $createdMovieLinks = $this->copyMovieLinks($sourceIds, $toId);
 
             DB::table('performer_sources')->whereIn('id', $sourceLinkIds)->update(['performer_id' => $toId]);
             Performer::query()->whereIn('id', $sourceIds)->where('id', '<>', $toId)
@@ -515,18 +682,18 @@ final class PerformerIdentityService
                 'source_link_ids' => $sourceLinkIds,
                 'alias_owners' => $aliasOwners,
                 'media_owners' => $mediaOwners,
-                'created_movie_links' => $createdMovieLinks,
                 'reason' => $evaluation['reason'] ?? 'backfill',
                 'similarity' => $evaluation['similarity'] ?? 1.0,
             ];
 
-            PerformerIdentityEvent::query()->create([
+            $mergeEvent = PerformerIdentityEvent::query()->create([
                 'event_type' => 'merge',
                 'from_performer_id' => $fromId,
                 'to_performer_id' => $toId,
                 'details' => $eventDetails,
                 'created_at' => now(),
             ]);
+            $this->copyMovieLinks($sourceIds, $toId, (int) $mergeEvent->id);
 
             return $eventDetails;
         });
@@ -546,31 +713,107 @@ final class PerformerIdentityService
             ->all();
     }
 
-    /** @param list<int> $sourceIds @return list<array{movie_id: int, source_slug: string, crawled_at: string}> */
-    private function copyMovieLinks(array $sourceIds, int $targetId): array
+    /**
+     * Copies the movie links of the source performers to the target in pages. With an event id, the created
+     * links are recorded in performer_identity_event_movie_links so split and undo can page through them.
+     *
+     * @param list<int> $sourceIds
+     */
+    private function copyMovieLinks(array $sourceIds, int $targetId, ?int $eventId): void
     {
-        $created = [];
-        foreach (DB::table('movie_performers')->whereIn('performer_id', $sourceIds)->get() as $link) {
-            $exists = DB::table('movie_performers')->where('movie_id', $link->movie_id)
-                ->where('performer_id', $targetId)->exists();
-            if ($exists) {
-                continue;
+        $lastMovie = 0;
+        $lastPerformer = 0;
+        while (true) {
+            // Keyset pages over the composite primary key keep memory and query count bounded per 500 links.
+            $page = DB::table('movie_performers')->whereIn('performer_id', $sourceIds)
+                ->where(static function ($query) use ($lastMovie, $lastPerformer): void {
+                    $query->where('movie_id', '>', $lastMovie)
+                        ->orWhere(static fn($same) => $same->where('movie_id', $lastMovie)->where('performer_id', '>', $lastPerformer));
+                })
+                ->orderBy('movie_id')->orderBy('performer_id')->limit(500)->get();
+            if ($page->isEmpty()) {
+                break;
             }
 
-            DB::table('movie_performers')->insert([
-                'movie_id' => $link->movie_id,
-                'performer_id' => $targetId,
-                'source_slug' => $link->source_slug,
-                'crawled_at' => $link->crawled_at,
-            ]);
-            $created[] = [
-                'movie_id' => (int) $link->movie_id,
-                'source_slug' => (string) $link->source_slug,
-                'crawled_at' => (string) $link->crawled_at,
-            ];
+            $last = $page->last();
+            $lastMovie = (int) $last->movie_id;
+            $lastPerformer = (int) $last->performer_id;
+
+            $existing = array_flip(DB::table('movie_performers')->where('performer_id', $targetId)
+                ->whereIn('movie_id', $page->pluck('movie_id')->unique()->all())->pluck('movie_id')
+                ->map(static fn(mixed $id): int => (int) $id)->all());
+            $rows = [];
+            $recorded = [];
+            foreach ($page as $link) {
+                $movieId = (int) $link->movie_id;
+                if (isset($existing[$movieId])) {
+                    continue;
+                }
+
+                $existing[$movieId] = true;
+                $rows[] = [
+                    'movie_id' => $movieId,
+                    'performer_id' => $targetId,
+                    'source_slug' => (string) $link->source_slug,
+                    'crawled_at' => (string) $link->crawled_at,
+                ];
+                $recorded[] = [
+                    'event_id' => $eventId,
+                    'movie_id' => $movieId,
+                    'source_slug' => (string) $link->source_slug,
+                    'crawled_at' => (string) $link->crawled_at,
+                ];
+            }
+
+            if ($rows !== []) {
+                DB::table('movie_performers')->insert($rows);
+                if ($eventId !== null) {
+                    DB::table('performer_identity_event_movie_links')->insert($recorded);
+                }
+            }
+        }
+    }
+
+    /**
+     * Pages the links a merge created: the legacy inline list first, then the rows recorded for the event.
+     *
+     * @param list<array{movie_id: int, source_slug: string, crawled_at: string}> $legacyLinks
+     * @return \Generator<int, list<array{movie_id: int, source_slug: string, crawled_at: string}>>
+     */
+    private function createdMovieLinkPages(PerformerIdentityEvent $merge, array $legacyLinks): \Generator
+    {
+        foreach (array_chunk($legacyLinks, 500) as $chunk) {
+            yield $chunk;
         }
 
-        return $created;
+        $lastId = 0;
+        while (true) {
+            $rows = DB::table('performer_identity_event_movie_links')->where('event_id', $merge->id)
+                ->where('id', '>', $lastId)->orderBy('id')->limit(500)->get();
+            if ($rows->isEmpty()) {
+                return;
+            }
+
+            $lastId = (int) $rows->last()->id;
+            yield $rows->map(static fn(object $row): array => [
+                'movie_id' => (int) $row->movie_id,
+                'source_slug' => (string) $row->source_slug,
+                'crawled_at' => (string) $row->crawled_at,
+            ])->all();
+        }
+    }
+
+    /** @param list<array{movie_id: int, source_slug: string, crawled_at: string}> $legacyLinks */
+    private function restoreCreatedMovieLinks(PerformerIdentityEvent $merge, array $legacyLinks, int $canonicalId): void
+    {
+        foreach ($this->createdMovieLinkPages($merge, $legacyLinks) as $page) {
+            DB::table('movie_performers')->insertOrIgnore(array_map(static fn(array $link): array => [
+                'movie_id' => $link['movie_id'],
+                'performer_id' => $canonicalId,
+                'source_slug' => $link['source_slug'],
+                'crawled_at' => $link['crawled_at'],
+            ], $page));
+        }
     }
 
     /** @param list<array{id: int, performer_id: int}> $owners */
@@ -589,25 +832,61 @@ final class PerformerIdentityService
         }
     }
 
-    /** @param list<array{movie_id: int, source_slug: string, crawled_at: string}> $links @param list<int> $splitIds */
-    private function removeCreatedMovieLinks(array $links, array $splitIds, int $canonicalId): void
+    /**
+     * Removes the canonical movie links that exist only because of the merge, in pages of 500 movies.
+     *
+     * @param list<array{movie_id: int, source_slug: string, crawled_at: string}> $legacyLinks
+     * @param list<int> $splitIds
+     */
+    private function removeCreatedMovieLinks(PerformerIdentityEvent $merge, array $legacyLinks, array $splitIds, int $canonicalId): void
     {
-        $remainingIds = Performer::query()->where('canonical_performer_id', $canonicalId)
-            ->whereNotIn('id', $splitIds)->pluck('id')->all();
         $ownSlug = Performer::query()->whereKey($canonicalId)->value('source_slug');
-        $mergeCopies = [];
-        foreach ($links as $link) {
-            $mergeCopies[$link['movie_id']] = $link;
-        }
-        $splitMovieIds = DB::table('movie_performers')->whereIn('performer_id', $splitIds)->pluck('movie_id')
-            ->map(static fn(mixed $id): int => (int) $id)->all();
 
-        foreach (array_unique(array_merge(array_keys($mergeCopies), $splitMovieIds)) as $movieId) {
-            $stillLinked = DB::table('movie_performers')->where('movie_id', $movieId)
-                ->whereIn('performer_id', $remainingIds)->exists();
-            $canonicalLink = DB::table('movie_performers')->where('movie_id', $movieId)
-                ->where('performer_id', $canonicalId)->first();
-            if ($stillLinked || $canonicalLink === null) {
+        foreach ($this->createdMovieLinkPages($merge, $legacyLinks) as $page) {
+            $copies = [];
+            foreach ($page as $link) {
+                $copies[$link['movie_id']] = $link;
+            }
+            $this->removeMovieLinkChunk($copies, array_keys($copies), $splitIds, $canonicalId, $ownSlug);
+        }
+
+        // Later crawls of a split source may have written the canonical row too, so walk the split movies as well.
+        $lastMovie = 0;
+        while (true) {
+            $movieIds = DB::table('movie_performers')->whereIn('performer_id', $splitIds)->where('movie_id', '>', $lastMovie)
+                ->distinct()->orderBy('movie_id')->limit(500)->pluck('movie_id')
+                ->map(static fn(mixed $id): int => (int) $id)->all();
+            if ($movieIds === []) {
+                return;
+            }
+
+            $lastMovie = $movieIds[array_key_last($movieIds)];
+            $this->removeMovieLinkChunk([], $movieIds, $splitIds, $canonicalId, $ownSlug);
+        }
+    }
+
+    /**
+     * @param array<int, array{movie_id: int, source_slug: string, crawled_at: string}> $mergeCopies
+     * @param list<int> $movieIds
+     * @param list<int> $splitIds
+     */
+    private function removeMovieLinkChunk(array $mergeCopies, array $movieIds, array $splitIds, int $canonicalId, mixed $ownSlug): void
+    {
+        $remaining = DB::table('performers')->select('id')->where('canonical_performer_id', $canonicalId)->whereNotIn('id', $splitIds);
+        $stillLinked = array_flip(DB::table('movie_performers')->whereIn('movie_id', $movieIds)
+            ->whereIn('performer_id', $remaining)->pluck('movie_id')
+            ->map(static fn(mixed $id): int => (int) $id)->all());
+        $canonicalLinks = DB::table('movie_performers')->where('performer_id', $canonicalId)
+            ->whereIn('movie_id', $movieIds)->get()->keyBy('movie_id');
+        $splitWrites = [];
+        foreach (DB::table('movie_performers')->whereIn('performer_id', $splitIds)->whereIn('movie_id', $movieIds)
+            ->get(['movie_id', 'source_slug', 'crawled_at']) as $row) {
+            $splitWrites[$row->movie_id . '|' . $row->source_slug . '|' . $row->crawled_at] = true;
+        }
+
+        $delete = [];
+        foreach ($canonicalLinks as $movieId => $canonicalLink) {
+            if (isset($stillLinked[$movieId])) {
                 continue;
             }
 
@@ -616,139 +895,159 @@ final class PerformerIdentityService
             $isMergeCopy = $copy !== null && $canonicalLink->source_slug === $copy['source_slug']
                 && (string) $canonicalLink->crawled_at === $copy['crawled_at'];
             $isSplitSourceWrite = $canonicalLink->source_slug !== $ownSlug
-                && DB::table('movie_performers')->where('movie_id', $movieId)
-                    ->whereIn('performer_id', $splitIds)
-                    ->where('source_slug', $canonicalLink->source_slug)
-                    ->where('crawled_at', $canonicalLink->crawled_at)->exists();
+                && isset($splitWrites[$movieId . '|' . $canonicalLink->source_slug . '|' . $canonicalLink->crawled_at]);
             if ($isMergeCopy || $isSplitSourceWrite) {
-                DB::table('movie_performers')->where('movie_id', $movieId)
-                    ->where('performer_id', $canonicalId)->delete();
-            }
-        }
-    }
-
-    /** @param array<string, mixed> $review */
-    private function recordReview(array $review): void
-    {
-        DB::table('performer_identity_reviews')->updateOrInsert(
-            [
-                'source_performer_id' => $review['source_performer_id'],
-                'candidate_performer_id' => $review['candidate_performer_id'],
-                'status' => 'open',
-            ],
-            static fn(bool $exists): array => [
-                'reason' => $review['reason'],
-                'similarity' => $review['similarity'],
-                'resolved_at' => null,
-                ...($exists ? [] : ['created_at' => now()]),
-            ],
-        );
-        Performer::query()->whereKey($review['source_performer_id'])->update(['needs_review' => true]);
-        Performer::query()->whereKey($review['candidate_performer_id'])->update(['needs_review' => true]);
-    }
-
-    /** @param array<string, mixed> $details */
-    private function assertMergeCanBeSplit(PerformerIdentityEvent $merge, array $details): void
-    {
-        $canonicalId = (int) $merge->to_performer_id;
-        $canonical = Performer::query()->find($canonicalId);
-        if (! $canonical instanceof Performer || $canonical->canonical_performer_id !== null) {
-            throw new RuntimeException('Split later merge events first; the recorded canonical performer has changed.');
-        }
-
-        $members = Performer::query()->whereIn('id', $details['source_performer_ids'])
-            ->get(['id', 'canonical_performer_id'])->keyBy('id');
-        foreach ($details['source_performer_ids'] as $performerId) {
-            $member = $members->get($performerId);
-            if (! $member instanceof Performer || (int) $member->canonical_performer_id !== $canonicalId) {
-                throw new RuntimeException('Split later merge events first; the recorded performer group has changed.');
+                $delete[] = (int) $movieId;
             }
         }
 
-        $sourceLinksChanged = DB::table('performer_sources')->whereIn('id', $details['source_link_ids'])
-            ->where('performer_id', '<>', $canonicalId)->exists();
-        if ($sourceLinksChanged) {
-            throw new RuntimeException('Split later merge events first; the recorded source links have changed.');
+        if ($delete !== []) {
+            DB::table('movie_performers')->where('performer_id', $canonicalId)->whereIn('movie_id', $delete)->delete();
         }
     }
 
-    /** @param array<string, mixed> $details */
-    private function assertSplitCanBeUndone(PerformerIdentityEvent $merge, array $details): void
+    /** Creates the missing source links in batches. */
+    private function ensureSourceLinks(): void
     {
-        if ($merge->reversed_at === null) {
-            throw new RuntimeException('The merge event is not currently split.');
-        }
-
-        $fromId = (int) $merge->from_performer_id;
-        $toId = (int) $merge->to_performer_id;
-        $from = Performer::query()->find($fromId);
-        $to = Performer::query()->find($toId);
-        if (! $from instanceof Performer || $from->canonical_performer_id !== null
-            || ! $to instanceof Performer || $to->canonical_performer_id !== null) {
-            throw new RuntimeException('Restore later identity changes before undoing this split.');
-        }
-
-        if (! in_array($fromId, $details['source_performer_ids'], true)) {
-            throw new RuntimeException('The split event does not contain its original source performer.');
-        }
-
-        $children = array_values(array_diff($details['source_performer_ids'], [$fromId]));
-        if ($children !== []) {
-            $linkedChildren = Performer::query()->whereIn('id', $children)
-                ->where('canonical_performer_id', $fromId)->count();
-            if ($linkedChildren !== count($children)) {
-                throw new RuntimeException('Restore later identity changes before undoing this split.');
-            }
-        }
-
-        $unexpectedChildren = Performer::query()->where('canonical_performer_id', $fromId)
-            ->whereNotIn('id', $details['source_performer_ids'])->exists();
-        if ($unexpectedChildren) {
-            throw new RuntimeException('Restore later identity changes before undoing this split.');
-        }
-
-        $sourceLinksChanged = DB::table('performer_sources')->whereIn('id', $details['source_link_ids'])
-            ->where('performer_id', '<>', $fromId)->exists();
-        if ($sourceLinksChanged) {
-            throw new RuntimeException('Restore later identity changes before undoing this split.');
-        }
-    }
-
-    /** @return list<PerformerSource> */
-    private function ensureSourceLinks(bool $dryRun): array
-    {
-        $missing = [];
-        $unlinked = Performer::query()->whereNotExists(static function ($query): void {
+        Performer::query()->whereNotExists(static function ($query): void {
             $query->selectRaw('1')->from('performer_sources')
                 ->whereColumn('performer_sources.source_performer_id', 'performers.id');
-        })->orderBy('id');
+        })->chunkById(500, function ($performers): void {
+            $rows = [];
+            foreach ($performers as $performer) {
+                $rows[] = [
+                    'performer_id' => $performer->canonical_performer_id ?? $performer->id,
+                    'source_performer_id' => $performer->id,
+                    'site_slug' => $performer->source_slug,
+                    'mongo_id' => 'local:' . $performer->id,
+                    'external_id' => $performer->external_id,
+                    'source_url' => $performer->profile_url,
+                    'name_romaji' => $performer->name_romaji,
+                    'name_kanji' => $performer->name_kanji,
+                    'name_kana' => $performer->name_kana,
+                    'birth_date' => $this->dateString($performer->getAttribute('birth_date')),
+                    'crawled_at' => ($performer->crawled_at ?? now())->toDateTimeString(),
+                    'removed_at' => null,
+                ];
+            }
 
-        foreach ($unlinked->get() as $performer) {
-            $attributes = [
-                'performer_id' => $performer->canonical_performer_id ?? $performer->id,
-                'source_performer_id' => $performer->id,
-                'site_slug' => $performer->source_slug,
-                'mongo_id' => 'local:' . $performer->id,
-                'external_id' => $performer->external_id,
-                'source_url' => $performer->profile_url,
-                'name_romaji' => $performer->name_romaji,
-                'name_kanji' => $performer->name_kanji,
-                'name_kana' => $performer->name_kana,
-                'birth_date' => $this->dateString($performer->getAttribute('birth_date')),
-                'crawled_at' => $performer->crawled_at ?? now(),
-            ];
+            DB::table('performer_sources')->insertOrIgnore($rows);
+        });
+    }
 
-            if ($dryRun) {
-                $missing[] = new PerformerSource($attributes);
-            } else {
-                PerformerSource::query()->firstOrCreate(
-                    ['site_slug' => $attributes['site_slug'], 'mongo_id' => $attributes['mongo_id']],
-                    $attributes,
-                );
+    /**
+     * Lazily yields the root identities that can be compared with a source: roots sharing a cross-link, a
+     * normalized name or a name trigram with it. Below the trigram guarantee every root is compared.
+     *
+     * @param array{names: list<string>} $incoming
+     * @return \Generator<int, array<string, mixed>>
+     */
+    private function backfillCandidates(PerformerSource $source, array $incoming, int $currentId): \Generator
+    {
+        $roots = Performer::query()->whereNull('canonical_performer_id')->where('id', '<>', $currentId)
+            ->with(['aliases', 'sources.sourcePerformer.aliases']);
+        if ((float) config('performer_identity.review_name_similarity', 0.82) < self::MIN_BLOCKED_REVIEW_SIMILARITY) {
+            // Below this similarity names can be reviewable without sharing any trigram, so the block cannot
+            // be trusted: compare against every root instead of omitting configured reviews.
+            foreach ($roots->lazyById(200) as $root) {
+                $this->candidateComparisons++;
+                yield $this->rootIdentity($root);
+            }
+
+            return;
+        }
+
+        $ids = $this->candidateRootIdPages($source, $incoming['names'], $currentId);
+        foreach ($ids as $chunk) {
+            foreach ((clone $roots)->whereIn('id', $chunk)->orderBy('id')->get() as $root) {
+                $this->candidateComparisons++;
+                yield $this->rootIdentity($root);
+            }
+        }
+    }
+
+    /**
+     * Name trigrams of the normalized names: a pair of names that can reach the review similarity shares one.
+     *
+     * @param list<string> $names
+     * @return list<string>
+     */
+    private function nameGrams(array $names): array
+    {
+        $grams = [];
+        foreach ($this->normalizedNames($names) as $name) {
+            $characters = preg_split('//u', ' ' . $name . ' ', -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            for ($i = 0, $last = count($characters) - 3; $i <= $last; $i++) {
+                $grams[$characters[$i] . $characters[$i + 1] . $characters[$i + 2]] = true;
             }
         }
 
-        return $dryRun ? $missing : [];
+        return array_map('strval', array_keys($grams));
+    }
+
+    /** Writes the name keys and trigrams of every stored source performer, one chunk of sources at a time. */
+    private function storeNameKeys(): void
+    {
+        foreach ($this->sourceBatches(PerformerSource::query()) as $sources) {
+            $keys = [];
+            $grams = [];
+            foreach ($sources as $source) {
+                $identity = $this->sourceIdentity($source);
+                foreach ($this->normalizedNames($identity['names']) as $key) {
+                    $keys[] = ['source_performer_id' => $identity['id'], 'normalized_name' => $key];
+                }
+                foreach ($this->nameGrams($identity['names']) as $gram) {
+                    $grams[] = ['source_performer_id' => $identity['id'], 'gram' => $gram];
+                }
+            }
+            $this->insertKeyRows('performer_name_keys', $keys);
+            $this->insertKeyRows('performer_name_grams', $grams);
+        }
+        $this->preloadedAliases = [];
+    }
+
+    /** @return \Generator<int, PerformerSource> */
+    private function activeSources(): \Generator
+    {
+        foreach ($this->sourceBatches(PerformerSource::query()->whereNull('removed_at')) as $sources) {
+            yield from $sources;
+        }
+        $this->preloadedAliases = [];
+    }
+
+    /**
+     * Reads source rows in id-ordered batches with their source performer eager-loaded and the aliases of the
+     * whole batch preloaded in one query, so a pass costs a constant number of queries per batch.
+     *
+     * @param \Illuminate\Database\Eloquent\Builder<PerformerSource> $query
+     * @return \Generator<int, \Illuminate\Database\Eloquent\Collection<int, PerformerSource>>
+     */
+    private function sourceBatches($query): \Generator
+    {
+        $lastId = 0;
+        while (true) {
+            $sources = (clone $query)->where('id', '>', $lastId)->orderBy('id')->limit(500)
+                ->with('sourcePerformer')->get();
+            if ($sources->isEmpty()) {
+                return;
+            }
+            $ids = $sources->map(static fn(PerformerSource $source): int => (int) ($source->source_performer_id ?? $source->performer_id))
+                ->unique()->values()->all();
+            $this->preloadedAliases = array_fill_keys($ids, []);
+            foreach (DB::table('performer_aliases')->whereIn('source_performer_id', $ids)->get(['source_performer_id', 'alias']) as $row) {
+                $this->preloadedAliases[(int) $row->source_performer_id][] = $row->alias;
+            }
+            yield $sources;
+            $lastId = (int) $sources->last()->getKey();
+        }
+    }
+
+    /** @param list<array<string, mixed>> $rows */
+    private function insertKeyRows(string $table, array $rows): void
+    {
+        foreach (array_chunk($rows, 400) as $chunk) {
+            DB::table($table)->insertOrIgnore($chunk);
+        }
     }
 
     /**
@@ -780,100 +1079,5 @@ final class PerformerIdentityService
         }
 
         return is_string($value) && $value !== '' ? substr($value, 0, 10) : null;
-    }
-
-    /**
-     * @return array{
-     *     source_performer_ids: list<int>,
-     *     source_link_ids: list<int>,
-     *     alias_owners: list<array{id: int, performer_id: int}>,
-     *     media_owners: list<array{id: int, performer_id: int}>,
-     *     created_movie_links: list<array{movie_id: int, source_slug: string, crawled_at: string}>
-     * }
-     */
-    private function mergeDetails(PerformerIdentityEvent $event): array
-    {
-        $details = $event->getAttribute('details');
-        if (! is_array($details)) {
-            throw new RuntimeException('The merge event details are invalid.');
-        }
-
-        $sourceIds = $this->integerList($details['source_performer_ids'] ?? null);
-        $sourceLinkIds = $this->integerList($details['source_link_ids'] ?? null);
-        $aliasOwners = $this->relationOwnerList($details['alias_owners'] ?? null);
-        $mediaOwners = $this->relationOwnerList($details['media_owners'] ?? null);
-        $movieLinks = $this->movieLinkList($details['created_movie_links'] ?? null);
-        if ($sourceIds === null || $sourceLinkIds === null || $aliasOwners === null || $mediaOwners === null || $movieLinks === null) {
-            throw new RuntimeException('The merge event details are incomplete.');
-        }
-
-        return [
-            'source_performer_ids' => $sourceIds,
-            'source_link_ids' => $sourceLinkIds,
-            'alias_owners' => $aliasOwners,
-            'media_owners' => $mediaOwners,
-            'created_movie_links' => $movieLinks,
-        ];
-    }
-
-    /** @return list<int>|null */
-    private function integerList(mixed $value): ?array
-    {
-        if (! is_array($value) || ! array_is_list($value)) {
-            return null;
-        }
-
-        $items = [];
-        foreach ($value as $item) {
-            if (! is_int($item) && !(is_string($item) && ctype_digit($item))) {
-                return null;
-            }
-            $items[] = (int) $item;
-        }
-
-        return $items;
-    }
-
-    /** @return list<array{id: int, performer_id: int}>|null */
-    private function relationOwnerList(mixed $value): ?array
-    {
-        if (! is_array($value) || ! array_is_list($value)) {
-            return null;
-        }
-
-        $owners = [];
-        foreach ($value as $owner) {
-            if (! is_array($owner) || ! is_numeric($owner['id'] ?? null) || ! is_numeric($owner['performer_id'] ?? null)) {
-                return null;
-            }
-            $owners[] = ['id' => (int) $owner['id'], 'performer_id' => (int) $owner['performer_id']];
-        }
-
-        return $owners;
-    }
-
-    /** @return list<array{movie_id: int, source_slug: string, crawled_at: string}>|null */
-    private function movieLinkList(mixed $value): ?array
-    {
-        if (! is_array($value) || ! array_is_list($value)) {
-            return null;
-        }
-
-        $links = [];
-        foreach ($value as $link) {
-            if (! is_array($link)
-                || ! is_numeric($link['movie_id'] ?? null)
-                || ! is_string($link['source_slug'] ?? null)
-                || ! is_string($link['crawled_at'] ?? null)) {
-                return null;
-            }
-            $links[] = [
-                'movie_id' => (int) $link['movie_id'],
-                'source_slug' => $link['source_slug'],
-                'crawled_at' => $link['crawled_at'],
-            ];
-        }
-
-        return $links;
     }
 }

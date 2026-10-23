@@ -17,6 +17,10 @@ and search records.
 The `performer_identity.merge_name_similarity` threshold remains `1.0` so names
 must match exactly after normalization. `performer_identity.review_name_similarity`
 controls which weaker name matches appear for review; it never permits a merge.
+The backfill narrows candidates with a trigram block, which is only guaranteed to
+cover every reviewable pair at `0.82` or higher. Below `0.82` the backfill compares
+against every canonical performer so no configured review is omitted; this is
+slower on large catalogs.
 
 ## Matching during crawls
 
@@ -29,6 +33,22 @@ share the same namespaced cross-link, or the same normalized name stored in
 `performers:backfill-identities`, which also fills `performer_name_keys` for
 existing records. Run the backfill once after deploying so existing performers
 can be matched by the crawl path.
+
+The backfill streams source records in id order and looks up each one's
+candidates through `performer_name_keys` and `performer_name_grams` (name
+trigrams). Candidate ids are read in keyset pages of 200 and the merge and
+review report is printed row by row instead of collected. The matcher streams
+the candidates of one source record: one pass counts strong and reviewable
+matches, and the review list is a lazy generator that re-reads the candidates,
+so matcher state is constant however many candidates a source has. Every
+ambiguous candidate is reported, strong matches first and then weaker reviews,
+each in candidate order; a single strong match merges and still records the
+other ambiguous candidates for review. The price is up to three passes over the
+candidate pages of a source record. `performers:identity-report` pages the
+open reviews by id and prints one line per review instead of loading them all.
+A unit test asserts that ten times the candidates need no more memory.
+The dry run executes the same pass inside a transaction that is rolled back, so
+it lists exactly the merges and reviews a real run would produce.
 
 ## Deployment
 
@@ -75,6 +95,12 @@ php artisan performers:source-removed <source_slug> <external_id>
 When a source record returns, its next crawl marks it active again.
 
 ## Split and undo
+
+The movie links a merge copies are recorded per merge event in
+`performer_identity_event_movie_links` (not in the event JSON). Merge, split and
+undo read and write them in pages of 500 with batched statements, so their cost
+does not grow per movie. Merge events created before this table existed keep the
+inline `created_movie_links` list and are still read.
 
 Every merge creates an event with the moved source links and performer
 associations. Use the merge event ID to split the identities, and the resulting
