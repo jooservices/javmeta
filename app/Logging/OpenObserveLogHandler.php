@@ -58,7 +58,7 @@ final class OpenObserveLogHandler extends AbstractProcessingHandler
         $strip = static fn(string $path): string => $base !== '' && str_starts_with($path, $base) ? substr($path, strlen($base)) : $path;
         $frames = [];
         foreach (array_slice($exception->getTrace(), 0, 10) as $frame) {
-            $frames[] = $strip((string) ($frame['file'] ?? '[internal]')) . ':' . ($frame['line'] ?? 0) . ' ' . (isset($frame['class']) ? $frame['class'] . '::' : '') . ($frame['function'] ?? '');
+            $frames[] = $strip((string) ($frame['file'] ?? '[internal]')) . ':' . ($frame['line'] ?? 0) . ' ' . (isset($frame['class']) ? $frame['class'] . '::' : '') . $frame['function'];
         }
 
         return [
