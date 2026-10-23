@@ -39,6 +39,9 @@ final class CrawlQueueService
             // A site that is waiting out a block delay gets no new claims until the delay is over.
             $query->whereNotIn('source_slug', $this->sourcesHeldByBlockDelay());
 
+            // Fairness: a source that already has its share of claimed, unfinished rows (of this kind) waits for them.
+            $query->whereNotIn('source_slug', $this->sourcesAtInflightLimit($kind));
+
             if (DB::getDriverName() === 'pgsql') {
                 $query->lockForUpdate();
             }
@@ -57,6 +60,27 @@ final class CrawlQueueService
 
             return $row->refresh();
         });
+    }
+
+    /**
+     * Sources that already hold `javmeta_queues.per_source_inflight` claimed rows of the given kind (all kinds when null).
+     *
+     * @return list<string>
+     */
+    private function sourcesAtInflightLimit(?string $kind): array
+    {
+        $limit = max(1, (int) config('javmeta_queues.per_source_inflight', 4));
+
+        $query = CrawlQueue::query()
+            ->where('status', CrawlQueue::STATUS_CLAIMED)
+            ->select('source_slug')
+            ->groupBy('source_slug')
+            ->havingRaw('COUNT(*) >= ?', [$limit]);
+        if ($kind !== null) {
+            $query->where('kind', $kind);
+        }
+
+        return array_values(array_map('strval', $query->pluck('source_slug')->all()));
     }
 
     public function enqueue(string $url, string $sourceSlug, string $kind, ?int $maxAttempts = null): CrawlQueue

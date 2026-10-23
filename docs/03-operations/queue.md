@@ -77,3 +77,11 @@ Before replacing an application image, run `php artisan horizon:terminate` on th
 The dashboard route is `/horizon`. `HorizonServiceProvider` uses the same `X-Owner-Token` header and `JAVMETA_OWNER_ADMIN_TOKEN` value as `OwnerAdminGuard`. Keep the app listener private. For browser access, use a trusted loopback-only reverse proxy that injects the header for authenticated operators; do not put the token in the URL. A missing or empty token denies dashboard requests in every environment.
 
 See the [Laravel Horizon documentation](https://laravel.com/docs/13.x/horizon) for the dashboard and worker commands.
+
+
+## Fairness between sources
+
+`CrawlQueueService::claimNext` skips a source that already has `JAVMETA_PER_SOURCE_INFLIGHT` (default 4) claimed, unfinished
+rows of the same kind, so one source with thousands of older rows cannot fill the worker queue and starve the others.
+Parallelism comes from `JAVMETA_WORKERS_PER_QUEUE` (processes per queue name); each source is still limited by its own
+throttle gap.
