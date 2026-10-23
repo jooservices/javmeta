@@ -408,7 +408,7 @@ runs on merge (a one-time trigger starts it when development is finished).
 Order of the steps: check the branch (develop), a clean tree, the private `.env` and
 `scripts/docker/shared check-project javmeta --mode live`; take a quick `pg_dump` of the `javmeta` database
 (`.tmp/javmeta-deploy/backups`, newest seven kept); `git pull --ff-only`; `composer install --no-dev`; `php artisan migrate --force`
-(forward only, never fresh or reset); `php artisan es:setup`; clear Laravel optimization caches; install and restart
+(forward only, never fresh or reset); `php artisan es:setup`; clear Laravel optimization caches with `optimize:clear --except=cache` (preserve Redis queues); install and restart
 the systemd user units (`deploy/systemd`), with scheduler and Horizon stopped before code and schema changes;
 then run `php artisan javmeta:smoke`. Set `APP_URL=http://javmeta.localhost:8085` and
 `JAVMETA_SMOKE_BASE_URL=http://workspaces-wp-web-85` on WSL. The smoke check sends the public Host header

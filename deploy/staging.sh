@@ -131,7 +131,8 @@ main() {
   artisan es:setup
   # Shared CLI and web runtimes mount the same code at different absolute paths;
   # cached Laravel paths generated in the CLI break web requests.
-  artisan optimize:clear
+  # Skip cache:clear: with CACHE_STORE=redis it calls FLUSHDB and drops queued jobs.
+  artisan optimize:clear --except=cache
 
   install_units
   log 'Restarting the JavMeta units: scheduler stopped first, started last.'
