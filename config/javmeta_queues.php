@@ -44,5 +44,11 @@ return [
     /** Jobs the feed pool may dispatch per run (every minute); the per-source in-flight cap and throttle keep each site polite. */
     'feed_pool_limit' => max(1, (int) env('JAVMETA_FEED_POOL_LIMIT', 50)),
 
+    /** Seconds of work a source may have queued at once; with its gap this gives its per-minute budget (floor(horizon / gap)). */
+    'pacing_horizon_seconds' => max(1, (int) env('JAVMETA_PACING_HORIZON_SECONDS', 60)),
+
+    /** Highest gap (seconds) the throttle may reach after rate limits, blocks and challenges. */
+    'gap_blocked_max_seconds' => max(1, (int) env('JAVMETA_GAP_BLOCKED_MAX_SECONDS', 600)),
+
     'worker_timeout' => (int) env('JAVMETA_QUEUE_TIMEOUT', 180),
 ];

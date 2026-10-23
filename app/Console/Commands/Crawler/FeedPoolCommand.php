@@ -10,9 +10,11 @@ use App\Jobs\FetchListingJob;
 use App\Jobs\FetchPerformerDetailJob;
 use App\Jobs\FetchPerformerListingJob;
 use App\Models\CrawlQueue;
+use App\Models\Source;
 use App\Observability\ObservabilityEmitter;
 use App\Observability\TraceContext;
 use App\Services\Crawl\CrawlQueueService;
+use App\Services\Crawl\SourceThrottle;
 use App\Support\Crawl\LaravelCrawlQueue;
 use Illuminate\Console\Command;
 
@@ -27,7 +29,7 @@ final class FeedPoolCommand extends Command
 
     protected $description = 'Claim pending crawl_queue rows and dispatch FetchListing/FetchDetail/Performer/Gallery jobs.';
 
-    public function handle(CrawlQueueService $queue, ObservabilityEmitter $observability): int
+    public function handle(CrawlQueueService $queue, ObservabilityEmitter $observability, SourceThrottle $throttle): int
     {
         $limit = max(1, (int) ($this->option('limit') ?: config('javmeta_queues.feed_pool_limit', 50)));
         $depthLimit = max(1, (int) config('javmeta_queues.depth_limit', 100));
@@ -43,6 +45,28 @@ final class FeedPoolCommand extends Command
             }
         }
         $workerId = gethostname() . ':' . getmypid();
+
+        // Pacing: a source may have at most floor(horizon / gap) rows waiting at once, and its rows start one gap apart.
+        $horizon = max(1, (int) config('javmeta_queues.pacing_horizon_seconds', 60));
+        $sources = Source::query()->get()->keyBy('slug');
+        $waiting = $queue->claimedWaitingBySource();
+        $gapOf = static function (string $slug) use ($sources, $throttle): float {
+            $source = $sources->get($slug);
+
+            return max(1.0, $source instanceof Source ? $throttle->currentGap($source) : 5.0);
+        };
+        $budgetUsed = [];
+        $exhausted = static function () use (&$waiting, &$budgetUsed, $horizon, $gapOf): array {
+            $slugs = [];
+            foreach (array_keys($waiting + $budgetUsed) as $slug) {
+                $slug = (string) $slug;
+                if (($waiting[$slug] ?? 0) + ($budgetUsed[$slug] ?? 0) >= max(1, (int) floor($horizon / $gapOf($slug)))) {
+                    $slugs[] = $slug;
+                }
+            }
+
+            return $slugs;
+        };
         $dispatched = 0;
         $traceId = TraceContext::newTraceId();
         $parentSpanId = TraceContext::newSpanId();
@@ -70,17 +94,22 @@ final class FeedPoolCommand extends Command
 
             $queueCapacity = min($capacity, $limit - $dispatched);
             for ($i = 0; $i < $queueCapacity; $i++) {
-                $row = $queue->claimNext($workerId, $kind);
+                $row = $queue->claimNext($workerId, $kind, $exhausted());
                 if (! $row instanceof CrawlQueue) {
                     break;
                 }
 
+                $slug = (string) $row->source_slug;
+                $ahead = ($waiting[$slug] ?? 0) + ($budgetUsed[$slug] ?? 0);
+                $delay = (int) round($ahead * $gapOf($slug));
+                $budgetUsed[$slug] = ($budgetUsed[$slug] ?? 0) + 1;
+
                 match ($row->kind) {
-                    CrawlQueue::KIND_LISTING => FetchListingJob::dispatch($row->id, $traceparent, $workerId),
-                    CrawlQueue::KIND_DETAIL => FetchDetailJob::dispatch($row->id, $traceparent, $workerId),
-                    CrawlQueue::KIND_PERFORMER_LISTING => FetchPerformerListingJob::dispatch($row->id, $traceparent, $workerId),
-                    CrawlQueue::KIND_PERFORMER_DETAIL => FetchPerformerDetailJob::dispatch($row->id, $traceparent, $workerId),
-                    CrawlQueue::KIND_GALLERY => FetchGalleryJob::dispatch($row->id, $traceparent, $workerId),
+                    CrawlQueue::KIND_LISTING => FetchListingJob::dispatch($row->id, $traceparent, $workerId)->delay($delay),
+                    CrawlQueue::KIND_DETAIL => FetchDetailJob::dispatch($row->id, $traceparent, $workerId)->delay($delay),
+                    CrawlQueue::KIND_PERFORMER_LISTING => FetchPerformerListingJob::dispatch($row->id, $traceparent, $workerId)->delay($delay),
+                    CrawlQueue::KIND_PERFORMER_DETAIL => FetchPerformerDetailJob::dispatch($row->id, $traceparent, $workerId)->delay($delay),
+                    CrawlQueue::KIND_GALLERY => FetchGalleryJob::dispatch($row->id, $traceparent, $workerId)->delay($delay),
                     default => null,
                 };
 
