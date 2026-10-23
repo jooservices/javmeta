@@ -41,5 +41,8 @@ return [
      */
     'per_source_inflight' => max(1, (int) env('JAVMETA_PER_SOURCE_INFLIGHT', 4)),
 
+    /** Jobs the feed pool may dispatch per run (every minute); the per-source in-flight cap and throttle keep each site polite. */
+    'feed_pool_limit' => max(1, (int) env('JAVMETA_FEED_POOL_LIMIT', 50)),
+
     'worker_timeout' => (int) env('JAVMETA_QUEUE_TIMEOUT', 180),
 ];

@@ -34,7 +34,8 @@ final class FeedPoolCommandTest extends TestCase
         $this->assertArrayHasKey($legacyAlias, $commands);
         $this->assertInstanceOf(FeedPoolCommand::class, $commands['crawler:feed-pool']);
         $this->assertSame($commands['crawler:feed-pool'], $commands[$legacyAlias]);
-        $this->assertSame('50', $commands['crawler:feed-pool']->getDefinition()->getOption('limit')->getDefault());
+        $this->assertNull($commands['crawler:feed-pool']->getDefinition()->getOption('limit')->getDefault());
+        $this->assertSame(50, config('javmeta_queues.feed_pool_limit'));
     }
 
     public function test_feed_pool_claims_and_dispatches_only_up_to_the_requested_limit(): void
