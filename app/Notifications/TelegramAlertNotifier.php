@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Notifications;
 
 use App\Contracts\AlertNotifier;
+use App\Contracts\ReportChannel;
 use Illuminate\Support\Facades\Log;
 use JOOservices\Client\Client\HttpClient;
 use JOOservices\LaravelNotifications\Channels\TelegramChannel;
@@ -15,11 +16,16 @@ use JOOservices\LaravelNotifications\Message;
  * sends via jooservices/laravel-notifications TelegramChannel. Templates,
  * debounce, and Log stay in the application layer.
  */
-final class TelegramAlertNotifier implements AlertNotifier
+final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
 {
     public function __construct(private readonly ?HttpClient $httpClient = null) {}
 
     public function notify(string $subject, string $body, array $context = []): void
+    {
+        $this->deliver($subject, $body, $context);
+    }
+
+    public function deliver(string $subject, string $body, array $context = []): bool
     {
         $token = $this->stringConfig('laravel-notifications.channels.telegram.bot_token')
             ?: $this->stringConfig('javmeta_alerts.telegram.bot_token');
@@ -54,7 +60,7 @@ final class TelegramAlertNotifier implements AlertNotifier
                 'subject' => $subject,
             ]);
 
-            return;
+            return false;
         }
 
         if ($result->isFailed()) {
@@ -62,7 +68,11 @@ final class TelegramAlertNotifier implements AlertNotifier
                 'reason' => $result->reason ?? 'failed',
                 'subject' => $subject,
             ]);
+
+            return false;
         }
+
+        return true;
     }
 
     private function stringConfig(string $key, string $default = ''): string

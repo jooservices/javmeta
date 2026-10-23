@@ -48,6 +48,7 @@ final class ScheduleTest extends TestCase
             'crawler:sync-sources' => '*/15 * * * *',
             'crawler:watchdog' => '*/5 * * * *',
             'javmeta:backup-status' => '* * * * *',
+            'javmeta:hourly-report' => '0 * * * *',
             'obs:publish-metrics' => '* * * * *',
             'search:backfill-embeddings' => '0 * * * *',
         ];
@@ -59,6 +60,7 @@ final class ScheduleTest extends TestCase
         $this->assertSame($expectedFrequencies, $actualFrequencies);
         $this->assertTrue($scheduled['crawler:feed-pool']->withoutOverlapping);
         $this->assertTrue($scheduled['crawler:recrawl-incomplete']->withoutOverlapping);
+        $this->assertTrue($scheduled['javmeta:hourly-report']->withoutOverlapping);
         $this->assertTrue($scheduled['search:backfill-embeddings']->withoutOverlapping);
         foreach ($events as $event) {
             $this->assertFalse($event->onOneServer);
