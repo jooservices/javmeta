@@ -5,9 +5,9 @@ After=network-online.target docker.service
 [Service]
 Type=simple
 WorkingDirectory=%h/Workspaces/JOOservices/projects/javmeta
-ExecStart=%h/Workspaces/scripts/docker/runtime php@8.5 php artisan schedule:work
-# schedule:work has no graceful stop through docker exec; end any leftover process of this project.
-ExecStopPost=-%h/Workspaces/scripts/docker/runtime php@8.5 pkill -f "artisan schedule:work"
+ExecStart=%h/Workspaces/scripts/docker/runtime php@8.5 php %h/Workspaces/JOOservices/projects/javmeta/artisan schedule:work
+# Match the absolute JavMeta artisan path so another project scheduler cannot be stopped.
+ExecStopPost=-%h/Workspaces/scripts/docker/runtime php@8.5 pkill -f "[j]avmeta/artisan schedule:work"
 Restart=always
 RestartSec=15
 

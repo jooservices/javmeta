@@ -27,7 +27,7 @@ foreach ($queueNames as $queueName) {
     $waits['redis:' . $queueName] = 60;
 }
 
-$environments = array_fill_keys(['production', 'local', 'testing'], $supervisors);
+$environments = array_fill_keys(['production', 'staging', 'local', 'testing'], $supervisors);
 
 return [
 

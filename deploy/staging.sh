@@ -48,6 +48,7 @@ artisan() { (cd "${APP_DIR}" && run "${RUNTIME}" php@8.5 php artisan "$@"); }
 previous_commit=''
 backup_file=''
 pulled=0
+services_stopped=0
 migrate_started=0
 
 rollback() {
@@ -71,6 +72,8 @@ rollback() {
   if (( pulled == 1 )); then
     (cd "${APP_DIR}" && "${RUNTIME}" php@8.5 composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader) \
       || log 'WARNING: dependencies of the previous commit could not be reinstalled.'
+  fi
+  if (( services_stopped == 1 )); then
     systemctl --user start "${UNITS[@]}" 2>/dev/null || true
   fi
   exit "${status}"
@@ -106,6 +109,13 @@ main() {
   fi
 
   trap rollback ERR
+  # Quiesce this project's workers before code or schema changes.
+  for unit in "${UNITS[@]}"; do
+    if systemctl --user cat "$unit" >/dev/null 2>&1; then
+      run systemctl --user stop "$unit"
+      services_stopped=1
+    fi
+  done
   run git -C "${APP_DIR}" fetch --prune origin
   run git -C "${APP_DIR}" pull --ff-only origin develop
   pulled=1
@@ -118,8 +128,9 @@ main() {
   migrate_started=0
 
   artisan es:setup
+  # Shared CLI and web runtimes mount the same code at different absolute paths;
+  # cached Laravel paths generated in the CLI break web requests.
   artisan optimize:clear
-  artisan optimize
 
   install_units
   log 'Restarting the JavMeta units: scheduler stopped first, started last.'
