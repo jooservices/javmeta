@@ -7,6 +7,7 @@ namespace App\Console\Commands\Crawler;
 use App\Models\CrawlEvent;
 use App\Models\Source;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 final class SourceToggleCommand extends Command
 {
@@ -24,25 +25,35 @@ final class SourceToggleCommand extends Command
             return self::INVALID;
         }
 
-        $source = Source::query()->find($slug);
-        if (! $source instanceof Source) {
+        $enabled = $state === 'on';
+        $by = (string) $this->option('by');
+
+        // Read, switch and audit in one transaction on a locked row, so two overlapping toggles cannot record a stale transition.
+        $was = DB::transaction(static function () use ($slug, $enabled, $by): ?bool {
+            $source = Source::query()->whereKey($slug)->lockForUpdate()->first();
+            if (! $source instanceof Source) {
+                return null;
+            }
+
+            $was = (bool) $source->enabled;
+            if ($was !== $enabled) {
+                $source->forceFill(['enabled' => $enabled])->save();
+                CrawlEvent::query()->create([
+                    'source_slug' => $slug,
+                    'kind' => CrawlEvent::KIND_SOURCE_TOGGLED,
+                    'url' => null,
+                    'detail' => ['from' => $was, 'to' => $enabled, 'by' => $by],
+                    'created_at' => now(),
+                ]);
+            }
+
+            return $was;
+        });
+
+        if ($was === null) {
             $this->components->error("Unknown source \"{$slug}\". Run crawler:sources to list them.");
 
             return self::FAILURE;
-        }
-
-        $enabled = $state === 'on';
-        $was = (bool) $source->enabled;
-        $source->forceFill(['enabled' => $enabled])->save();
-
-        if ($was !== $enabled) {
-            CrawlEvent::query()->create([
-                'source_slug' => $slug,
-                'kind' => CrawlEvent::KIND_SOURCE_TOGGLED,
-                'url' => null,
-                'detail' => ['from' => $was, 'to' => $enabled, 'by' => (string) $this->option('by')],
-                'created_at' => now(),
-            ]);
         }
 
         $this->components->info(sprintf('%s is now %s%s.', $slug, $enabled ? 'ON' : 'OFF', $was === $enabled ? ' (no change)' : ''));
