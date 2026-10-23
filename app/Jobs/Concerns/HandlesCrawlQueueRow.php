@@ -144,7 +144,7 @@ trait HandlesCrawlQueueRow
         $this->markFailed($row, CrawlErrorCode::fromCrawlerx($errorCode), $message, $result->retryable, $result->retryAfterSeconds);
 
         $activity->recordFailure($source, $message);
-        $throttle->onFailure($source);
+        $throttle->onFailure($source, $errorCode);
 
         if (in_array($row->kind, [CrawlQueue::KIND_DETAIL, CrawlQueue::KIND_PERFORMER_DETAIL], true)) {
             app(TitleFailureTracker::class)->recordFailure(

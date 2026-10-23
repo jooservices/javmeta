@@ -19,9 +19,12 @@ final class CrawlQueueService
     /** Retry delay by attempt number when crawlerx gives no Retry-After hint. */
     private const RETRY_BACKOFF_SECONDS = [60, 300, 1800];
 
-    public function claimNext(string $workerId, ?string $kind = null): ?CrawlQueue
+    /**
+     * @param  list<string>  $excludeSources  sources that must not get a row now (for example their pacing budget is used up)
+     */
+    public function claimNext(string $workerId, ?string $kind = null, array $excludeSources = []): ?CrawlQueue
     {
-        return DB::transaction(function () use ($workerId, $kind): ?CrawlQueue {
+        return DB::transaction(function () use ($workerId, $kind, $excludeSources): ?CrawlQueue {
             $query = CrawlQueue::query()
                 ->where('status', CrawlQueue::STATUS_PENDING)
                 ->where(function ($q): void {
@@ -38,6 +41,10 @@ final class CrawlQueueService
 
             // A site that is waiting out a block delay gets no new claims until the delay is over.
             $query->whereNotIn('source_slug', $this->sourcesHeldByBlockDelay());
+
+            if ($excludeSources !== []) {
+                $query->whereNotIn('source_slug', $excludeSources);
+            }
 
             // Fairness: a source that already has its share of claimed, unfinished rows (of this kind) waits for them.
             $query->whereNotIn('source_slug', $this->sourcesAtInflightLimit($kind));
@@ -60,6 +67,21 @@ final class CrawlQueueService
 
             return $row->refresh();
         });
+    }
+
+    /**
+     * Rows that are claimed and not finished yet, per source (all kinds): work that is already waiting in the worker queues.
+     *
+     * @return array<string, int>
+     */
+    public function claimedWaitingBySource(): array
+    {
+        $counts = [];
+        foreach (CrawlQueue::query()->where('status', CrawlQueue::STATUS_CLAIMED)->select('source_slug', DB::raw('COUNT(*) AS total'))->groupBy('source_slug')->get() as $row) {
+            $counts[(string) $row->source_slug] = (int) $row->total;
+        }
+
+        return $counts;
     }
 
     /**

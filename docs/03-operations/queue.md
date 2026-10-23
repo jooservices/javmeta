@@ -85,3 +85,14 @@ See the [Laravel Horizon documentation](https://laravel.com/docs/13.x/horizon) f
 rows of the same kind, so one source with thousands of older rows cannot fill the worker queue and starve the others.
 Parallelism comes from `JAVMETA_WORKERS_PER_QUEUE` (processes per queue name); each source is still limited by its own
 throttle gap.
+
+
+## Request pacing and adaptive gap
+
+The gap between requests of one source (`sources.gap_seconds_current`, between its min and max) is enforced when the
+feed pool hands out work: a source may have at most `floor(JAVMETA_PACING_HORIZON_SECONDS / gap)` rows waiting (default
+horizon 60 seconds), and its jobs are delayed so that they start one gap apart. Rows that are still claimed from an
+earlier run count against the budget. The gap adapts to the answers of the site: rate limits, blocks and challenges
+double it up to `JAVMETA_GAP_BLOCKED_MAX_SECONDS` (default 600); timeouts and network errors raise it by half up to the
+source maximum; parse and not-found errors do not change it; every success lowers it by 10 percent of the distance to
+its minimum. The current gap is in `crawler:sources`, the status API and the metric `javmeta_source_gap_seconds`.
