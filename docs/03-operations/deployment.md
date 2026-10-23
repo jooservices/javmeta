@@ -62,7 +62,7 @@ binary and defaults to `php`.
 
 The scheduler runs these commands:
 
-- `crawler:sync-sources` every 15 minutes.
+- `crawler:sync-sources` every 15 minutes. It updates the description of each source (name, URL, gaps, priority) but never the on/off switch of an existing source.
 - `crawler:reclaim` and `crawler:seed` every minute.
 - `crawler:feed-pool` every minute with overlapping runs prevented.
 - `crawler:watchdog` every five minutes.
@@ -417,3 +417,18 @@ mount the checkout at different absolute paths.
 
 If a step fails after the pull, the script returns the code to the previous commit; when the migration was the failing step it
 also restores the quick backup. The log of every run is `.tmp/javmeta-deploy/staging-<time>.log` and holds no secrets.
+
+
+## Switching a source on or off
+
+The database column `sources.enabled` is the only switch; there is no environment variable or config list for it.
+A new source starts on, except a source whose configuration says `requires_login` (for example `avfan`), which starts off.
+
+```bash
+php artisan crawler:sources                 # list sources with their switch, last success and last error
+php artisan crawler:source-toggle javbus off
+php artisan crawler:source-toggle javbus on --by=owner
+```
+
+A switch is written to `crawl_events` (kind `source_toggled`, with who and when). The queued rows of a switched-off source
+wait until it is switched on again. The XCrawler UI will use the same column.

@@ -19,14 +19,13 @@ final class SourceHealthCommandTest extends TestCase
     public function test_json_reports_a_blocked_source_and_a_disabled_one_and_writes_the_report(): void
     {
         config([
-            'javmeta_sources.disabled' => ['off'],
             'javmeta_sources.sources' => [
                 'demo' => ['movie_listing_urls' => ['https://example.test/']],
                 'off' => ['movie_listing_urls' => ['https://off.test/']],
             ],
         ]);
         Source::query()->create(['slug' => 'demo', 'name' => 'Demo', 'base_url' => 'https://example.test', 'enabled' => true, 'priority' => 1, 'gap_seconds_default' => 10, 'gap_seconds_min' => 5, 'gap_seconds_max' => 45, 'gap_seconds_current' => 10]);
-        Source::query()->create(['slug' => 'off', 'name' => 'Off', 'base_url' => 'https://off.test', 'enabled' => true, 'priority' => 2, 'gap_seconds_default' => 10, 'gap_seconds_min' => 5, 'gap_seconds_max' => 45, 'gap_seconds_current' => 10]);
+        Source::query()->create(['slug' => 'off', 'name' => 'Off', 'base_url' => 'https://off.test', 'enabled' => false, 'priority' => 2, 'gap_seconds_default' => 10, 'gap_seconds_min' => 5, 'gap_seconds_max' => 45, 'gap_seconds_current' => 10]);
         $this->app->instance(CrawlerxClient::class, new class extends CrawlerxClient {
             public function fetchListing(string $sourceSlug, string $url): CrawlerxFetchResult
             {
@@ -49,7 +48,7 @@ final class SourceHealthCommandTest extends TestCase
 
     public function test_table_output_and_the_source_filter(): void
     {
-        config(['javmeta_sources.disabled' => [], 'javmeta_sources.sources' => [
+        config(['javmeta_sources.sources' => [
             'one' => ['movie_listing_urls' => ['https://one.test/']],
             'two' => ['movie_listing_urls' => ['https://two.test/']],
         ]]);
