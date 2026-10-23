@@ -113,3 +113,21 @@ has published at least once, use OpenObserve in the configured organisation:
 The importer writes to `OPENOBSERVE_ORG`, so use the approved shared staging
 organisation for this manual check. The importer also updates its Telegram
 destination from environment-backed notification settings.
+
+
+## What is sent for debugging (JOOXCR-235)
+
+Everything needed to debug a crawl goes to OpenObserve, stream `javmeta_logs`:
+
+- `crawl_fetch` (every fetch, success or failure): `source_slug`, `crawl_type`, `ok`, `duration_ms`, `error_code`,
+  `error_message`, `page_url` (scheme, host and path only), `http_status` and `method` of the winning or last attempt,
+  `retryable`, `retry_after_seconds`, `attempt_count`, the attempts list (method, elapsed, status, challenge, ok) and
+  `crawlerx_version`.
+- `crawl_event` (blocked, challenge, parse drift, soft 404, rate limit, source toggled...): `kind`, `source_slug`, and in
+  `detail` the reason, `page_url` and `error_message`.
+- Every ERROR/WARNING log record with an exception: `exception_class`, `exception_message`, `exception_file`,
+  `exception_line` and a ten-frame `exception_trace`.
+- `persist` events carry `movie_code` next to `is_new`, `sharp_drop` and `completeness_tier`.
+
+Never sent: cookies, tokens, passwords, API keys, authorization headers, HTML bodies, query strings and fragments of
+page addresses. Free text is masked by `TelemetrySanitizer::sanitizeText` and cut to a safe length.
