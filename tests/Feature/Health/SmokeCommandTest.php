@@ -196,7 +196,7 @@ final class SmokeCommandTest extends TestCase
         $output = Artisan::output();
 
         self::assertStringContainsString('[FAIL] horizon:', $output);
-        self::assertStringContainsString('[FAIL] queue_depth:', $output);
+        self::assertStringContainsString('[WARN] queue_depth:', $output);
     }
 
     public function test_api_and_mcp_failures_still_revoke_the_temporary_key(): void

@@ -178,9 +178,10 @@ final class DeploymentSmokeCheck
         if ($fullQueues !== []) {
             $names = implode(', ', array_keys($fullQueues));
 
+            // A full queue means the crawl is busy and backpressure is working: a warning, not a failed deploy.
             return $this->check(
                 'queue_depth',
-                'fail',
+                'warn',
                 "Queue depth reached the limit of {$limit} for: {$names}.",
             );
         }

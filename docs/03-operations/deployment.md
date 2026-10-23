@@ -447,3 +447,11 @@ php artisan operations:make-super-admin owner@example.com --rotate  # new passwo
 
 Behind the gatekeeper set `APP_URL=https://jav.soulevil.com` and `SESSION_SECURE_COOKIE=true`; the app trusts the
 forwarded headers of the proxy, so redirects and cookies use https. Login attempts are limited to 6 per minute.
+
+
+## File permissions on staging
+
+`deploy/staging.sh` runs with `umask 022` so the web server can read what the pull and composer write; only the database
+backups under the state directory are private (0600). Do not `chmod` the `.env` file: it carries an ACL entry for the web
+user (`user:www-data:r--`) and a plain `chmod 600` sets the ACL mask to nothing, which makes every request fail with HTTP 500.
+Restore it with `setfacl -m m::r .env`. A full crawl queue is reported by the smoke check as a warning, not a failure.
