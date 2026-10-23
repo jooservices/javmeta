@@ -164,8 +164,15 @@ install_units() {
       run cp -f "${APP_DIR}/deploy/systemd/${unit}" "${unit_dir}/${unit}"
     fi
   done
+  if [[ -f "${APP_DIR}/deploy/systemd/javmeta-backup.timer" ]]; then
+    run cp -f "${APP_DIR}/deploy/systemd/javmeta-backup.service" "${unit_dir}/javmeta-backup.service"
+    run cp -f "${APP_DIR}/deploy/systemd/javmeta-backup.timer" "${unit_dir}/javmeta-backup.timer"
+  fi
   run systemctl --user daemon-reload
   run systemctl --user enable "${UNITS[@]}"
+  if [[ -f "${unit_dir}/javmeta-backup.timer" ]]; then
+    run systemctl --user enable --now javmeta-backup.timer
+  fi
 }
 
 main "$@"

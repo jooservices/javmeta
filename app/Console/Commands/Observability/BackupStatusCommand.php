@@ -12,7 +12,7 @@ use Throwable;
 
 final class BackupStatusCommand extends Command
 {
-    protected $signature = 'javmeta:backup-status';
+    protected $signature = 'javmeta:backup-status {--lenient : Exit 0 even when the backup is missing or stale (the metric and the alert are still sent); used by the scheduler}';
 
     protected $description = 'Publish the last successful backup age and alert when it is stale.';
 
@@ -38,7 +38,7 @@ final class BackupStatusCommand extends Command
             );
             $this->error('No successful backup manifest is available.');
 
-            return self::FAILURE;
+            return $this->option('lenient') ? self::SUCCESS : self::FAILURE;
         }
 
         if ($age > $threshold) {
@@ -51,7 +51,7 @@ final class BackupStatusCommand extends Command
             );
             $this->warn("Last successful backup is stale ({$age} seconds old).");
 
-            return self::FAILURE;
+            return $this->option('lenient') ? self::SUCCESS : self::FAILURE;
         }
 
         $alerts->resolve('backup:stale', 'Database backup recovered', 'The last successful database backup is fresh again.', ['backup_age_seconds' => $age]);
