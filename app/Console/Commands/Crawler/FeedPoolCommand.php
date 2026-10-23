@@ -21,7 +21,7 @@ use Illuminate\Console\Command;
  */
 final class FeedPoolCommand extends Command
 {
-    protected $signature = 'crawler:feed-pool {--limit=50}';
+    protected $signature = 'crawler:feed-pool {--limit= : Jobs to dispatch per run (default javmeta_queues.feed_pool_limit)}';
 
     protected $aliases = ['crawl:dispatch'];
 
@@ -29,7 +29,7 @@ final class FeedPoolCommand extends Command
 
     public function handle(CrawlQueueService $queue, ObservabilityEmitter $observability): int
     {
-        $limit = max(1, (int) $this->option('limit'));
+        $limit = max(1, (int) ($this->option('limit') ?: config('javmeta_queues.feed_pool_limit', 50)));
         $depthLimit = max(1, (int) config('javmeta_queues.depth_limit', 100));
         /** @var array<string, string> $crawlQueueNames */
         $crawlQueueNames = config('javmeta_queues.names', []);
