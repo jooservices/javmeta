@@ -13,6 +13,11 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
+/**
+ * The identity rules (match, merge, split, undo, backfill) stay in one service until they are split in a follow-up.
+ *
+ * @SuppressWarnings("PHPMD.ExcessiveClassLength")
+ */
 final class PerformerIdentityService
 {
     public function __construct(
