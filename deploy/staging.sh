@@ -48,7 +48,7 @@ artisan() { (cd "${APP_DIR}" && run "${RUNTIME}" php@8.5 php artisan "$@"); }
 previous_commit=''
 backup_file=''
 pulled=0
-services_stopped=0
+active_units_before=()
 migrate_started=0
 
 rollback() {
@@ -73,9 +73,10 @@ rollback() {
     (cd "${APP_DIR}" && "${RUNTIME}" php@8.5 composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader) \
       || log 'WARNING: dependencies of the previous commit could not be reinstalled.'
   fi
-  if (( services_stopped == 1 )); then
-    systemctl --user start "${UNITS[@]}" 2>/dev/null || true
-  fi
+  for unit in "${active_units_before[@]}"; do
+    systemctl --user start "$unit" 2>/dev/null \
+      || log "WARNING: could not restart ${unit} during rollback."
+  done
   exit "${status}"
 }
 
@@ -109,11 +110,11 @@ main() {
   fi
 
   trap rollback ERR
-  # Quiesce this project's workers before code or schema changes.
+  # Quiesce only the JavMeta services that were active before deployment.
   for unit in "${UNITS[@]}"; do
-    if systemctl --user cat "$unit" >/dev/null 2>&1; then
+    if systemctl --user is-active --quiet "$unit"; then
+      active_units_before+=("$unit")
       run systemctl --user stop "$unit"
-      services_stopped=1
     fi
   done
   run git -C "${APP_DIR}" fetch --prune origin
