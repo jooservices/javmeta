@@ -87,3 +87,15 @@ MongoDB can be rehearsed with
 <code>rehearse.sh --namespace=javmeta_it --postgres-mongo-only</code>; this mode
 reports Elasticsearch as pending and cannot publish a partial manifest as the
 latest complete backup.
+
+
+## Staging on WSL (daily backup, no extra container)
+
+`deploy/backup/staging-backup.sh` writes a custom-format `pg_dump` of the staging database to
+`Workspaces/.tmp/javmeta-backups/daily/<UTC time>/`, keeps the newest 7 and publishes the manifest
+`storage/app/private/backups/latest.json` that `javmeta:backup-status` reads. The systemd user timer
+`javmeta-backup.timer` (installed by `deploy/staging.sh`) runs it every day at 02:30 local time.
+MongoDB (raw page archive; the shared Mongo image has no dump tool) and Elasticsearch (rebuildable from PostgreSQL) are
+listed as `pending` in the manifest. `deploy/backup/staging-restore-check.sh` restores the newest dump into the scratch
+database `javmeta_restore_check`, counts tables and rows and drops it. `javmeta:backup-status --lenient` (the scheduled
+form) publishes the age metric and raises the alert without making the scheduler log an error every minute.

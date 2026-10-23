@@ -146,4 +146,13 @@ final class BackupStatusCommandTest extends TestCase
         Storage::disk('local')->makeDirectory('backups');
         file_put_contents($path, json_encode(['created_at' => $createdAt], JSON_THROW_ON_ERROR));
     }
+
+    public function test_lenient_mode_exits_zero_when_the_backup_is_missing_but_still_reports_it(): void
+    {
+        config()->set('backup.manifest_path', sys_get_temp_dir() . '/javmeta-no-such-manifest-' . uniqid('', true) . '.json');
+
+        $this->artisan('javmeta:backup-status', ['--lenient' => true])
+            ->expectsOutputToContain('No successful backup manifest is available.')
+            ->assertSuccessful();
+    }
 }
