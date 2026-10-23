@@ -17,6 +17,12 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias(['requires' => RequiresDependency::class]);
+        // JavMeta sits behind the gatekeeper (HAProxy) that terminates TLS: trust its forwarded headers so
+        // redirects, signed URLs and the Secure session cookie use https://jav.soulevil.com.
+        $middleware->trustProxies(at: '*', headers: \Illuminate\Http\Request::HEADER_X_FORWARDED_FOR
+            | \Illuminate\Http\Request::HEADER_X_FORWARDED_HOST
+            | \Illuminate\Http\Request::HEADER_X_FORWARDED_PORT
+            | \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         Integration::handles($exceptions);

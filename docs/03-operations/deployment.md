@@ -432,3 +432,18 @@ php artisan crawler:source-toggle javbus on --by=owner
 
 A switch is written to `crawl_events` (kind `source_toggled`, with who and when). The queued rows of a switched-off source
 wait until it is switched on again. The XCrawler UI will use the same column.
+
+
+## Operations dashboard (jav.soulevil.com)
+
+`/ops` is a read-only page for the crawl: catalogue totals, per-source health, queue, last-hour performance and recent
+issues. It needs a signed-in Super Administrator; the root address redirects to it. Create or rotate the account (the
+password is random, 40 characters, shown once and stored hashed):
+
+```bash
+php artisan operations:make-super-admin owner@example.com           # create
+php artisan operations:make-super-admin owner@example.com --rotate  # new password
+```
+
+Behind the gatekeeper set `APP_URL=https://jav.soulevil.com` and `SESSION_SECURE_COOKIE=true`; the app trusts the
+forwarded headers of the proxy, so redirects and cookies use https. Login attempts are limited to 6 per minute.

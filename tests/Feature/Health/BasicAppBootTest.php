@@ -10,9 +10,7 @@ final class BasicAppBootTest extends TestCase
 {
     public function test_root_endpoint_boots_the_application(): void
     {
-        $this->get('/')
-            ->assertOk()
-            ->assertJsonPath('name', 'javmeta')
-            ->assertJsonPath('status', 'ok');
+        // The web root sends visitors to the (authenticated) operations dashboard.
+        $this->get('/')->assertRedirect(route('operations.index'));
     }
 }
