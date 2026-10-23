@@ -79,4 +79,78 @@ final class CrawlQueueServiceClaimTest extends TestCase
         $this->assertNull($service->startClaimedRow($row->id, CrawlQueue::KIND_LISTING, 'test-worker'));
         $this->assertSame(3, $row->refresh()->attempts);
     }
+
+    private function source(string $slug): void
+    {
+        Source::query()->create([
+            'slug' => $slug,
+            'name' => $slug,
+            'base_url' => 'https://' . $slug . '.test',
+            'enabled' => true,
+            'priority' => 1,
+            'needs_proxy' => false,
+            'gap_seconds_default' => 1,
+            'gap_seconds_min' => 1,
+            'gap_seconds_max' => 10,
+            'gap_seconds_current' => 1,
+        ]);
+    }
+
+    private function row(string $slug, string $status, string $kind = CrawlQueue::KIND_DETAIL): CrawlQueue
+    {
+        return CrawlQueue::factory()->create([
+            'source_slug' => $slug,
+            'kind' => $kind,
+            'status' => $status,
+            'attempts' => 0,
+            'max_attempts' => 3,
+            'next_attempt_at' => now()->subSecond(),
+            'claimed_at' => $status === CrawlQueue::STATUS_CLAIMED ? now() : null,
+        ]);
+    }
+
+    public function test_a_source_at_its_inflight_limit_is_skipped_so_other_sources_get_their_turn(): void
+    {
+        config()->set('javmeta_queues.per_source_inflight', 2);
+        $this->source('big');
+        $this->source('small');
+        $this->row('big', CrawlQueue::STATUS_CLAIMED);
+        $this->row('big', CrawlQueue::STATUS_CLAIMED);
+        $this->row('big', CrawlQueue::STATUS_PENDING);   // oldest pending row belongs to the saturated source
+        $wanted = $this->row('small', CrawlQueue::STATUS_PENDING);
+
+        $claimed = app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_DETAIL);
+
+        $this->assertInstanceOf(CrawlQueue::class, $claimed);
+        $this->assertSame($wanted->id, $claimed->id);
+    }
+
+    public function test_a_source_alone_can_still_use_its_limit_and_is_released_when_a_row_finishes(): void
+    {
+        config()->set('javmeta_queues.per_source_inflight', 2);
+        $this->source('only');
+        $first = $this->row('only', CrawlQueue::STATUS_PENDING);
+        $second = $this->row('only', CrawlQueue::STATUS_PENDING);
+        $third = $this->row('only', CrawlQueue::STATUS_PENDING);
+        $service = app(CrawlQueueService::class);
+
+        $this->assertSame($first->id, $service->claimNext('worker', CrawlQueue::KIND_DETAIL)?->id);
+        $this->assertSame($second->id, $service->claimNext('worker', CrawlQueue::KIND_DETAIL)?->id);
+        $this->assertNull($service->claimNext('worker', CrawlQueue::KIND_DETAIL));
+
+        $first->forceFill(['status' => CrawlQueue::STATUS_DONE])->save();
+        $this->assertSame($third->id, $service->claimNext('worker', CrawlQueue::KIND_DETAIL)?->id);
+    }
+
+    public function test_the_limit_is_per_kind(): void
+    {
+        config()->set('javmeta_queues.per_source_inflight', 1);
+        $this->source('mixed');
+        $this->row('mixed', CrawlQueue::STATUS_CLAIMED, CrawlQueue::KIND_DETAIL);
+        $listing = $this->row('mixed', CrawlQueue::STATUS_PENDING, CrawlQueue::KIND_LISTING);
+
+        $claimed = app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_LISTING);
+
+        $this->assertSame($listing->id, $claimed?->id);
+    }
 }

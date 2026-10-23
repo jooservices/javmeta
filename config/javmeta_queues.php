@@ -35,5 +35,11 @@ return [
     /** Maximum ready Laravel jobs buffered for each crawl queue. */
     'depth_limit' => max(1, (int) env('JAVMETA_QUEUE_DEPTH_LIMIT', 100)),
 
+    /**
+     * Fairness: at most this many rows per source and kind may be claimed and unfinished at the same time, so one
+     * source with thousands of older rows cannot fill the worker queue and starve the others.
+     */
+    'per_source_inflight' => max(1, (int) env('JAVMETA_PER_SOURCE_INFLIGHT', 4)),
+
     'worker_timeout' => (int) env('JAVMETA_QUEUE_TIMEOUT', 180),
 ];
