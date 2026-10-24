@@ -395,3 +395,12 @@ performers (canonical, one person once) at that moment and how many were added s
 included in the next one. The first report has no comparison. `--dry-run` prints the message and sends nothing. The time
 is shown in `JAVMETA_REPORT_TIMEZONE` (default Asia/Ho_Chi_Minh). The report does not depend on `JAVMETA_ALERTS_ENABLED`;
 it needs `NOTIFICATION_TELEGRAM_BOT_TOKEN` and `NOTIFICATION_TELEGRAM_CHAT_ID`.
+
+### JavPhotos source health sample
+
+JavPhotos declares both `gallery_listing_urls` for discovery and `gallery_urls`
+for `crawler:source-health`. The health checker checks a gallery URL directly;
+a listing-only configuration produces `DEGRADED` with no page to check. The
+configured gallery sample matches CrawlerX's `javphotos_gallery_sample` target.
+A declared sample does not guarantee the upstream site is reachable: fetch and
+parse failures keep their normal BLOCKED/DEGRADED verdicts.

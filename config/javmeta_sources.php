@@ -308,6 +308,7 @@ return [
             'gap_seconds_min' => 4,
             'gap_seconds_max' => 60,
             'gallery_listing_urls' => ['https://jav.photos/free/'],
+            'gallery_urls' => ['https://jav.photos/free/1pondo-hana-aoyama-sexist-mobile-pics'],
         ],
     ],
 ];
