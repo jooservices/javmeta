@@ -23,6 +23,11 @@ final class LogApiUsage
     public function handle(Request $request, Closure $next): Response
     {
         $startedAt = hrtime(true);
+        if ($request->attributes->get('javmeta.internal_ui') === true) {
+            // The owner's UI is not an API consumer: no key limit, no usage row.
+            return $next($request);
+        }
+
         $apiKey = $request->attributes->get('api_key');
         $limiterKey = $this->limiterKey($request, $apiKey);
         $maxAttempts = $apiKey instanceof ApiKey ? max(1, $apiKey->abuse_rpm) : 60;

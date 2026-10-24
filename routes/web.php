@@ -5,9 +5,11 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Operations\DashboardController;
 use App\Http\Controllers\Operations\LoginController;
+use App\Http\Controllers\Ui\UiApiController;
+use App\Http\Controllers\Ui\UiShellController;
 use App\Http\Middleware\EnsureSuperAdministrator;
 
-Route::get('/', static fn() => redirect()->route('operations.index'));
+Route::get('/', static fn() => redirect()->route('ui.index'));
 
 Route::get('/login', [LoginController::class, 'show'])->name('login');
 Route::post('/login', [LoginController::class, 'store'])->middleware('throttle:6,1');
@@ -16,4 +18,7 @@ Route::post('/logout', [LoginController::class, 'destroy'])->middleware('auth')-
 Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static function (): void {
     Route::get('/ops', [DashboardController::class, 'index'])->name('operations.index');
     Route::get('/ops/data', [DashboardController::class, 'data'])->name('operations.data');
+
+    Route::get('/app', UiShellController::class)->name('ui.index');
+    Route::get('/ui-api/{path}', UiApiController::class)->where('path', '.*')->name('ui.api');
 });

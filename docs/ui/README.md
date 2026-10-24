@@ -25,3 +25,15 @@ Screens that belong to later epics (download queue, library of the 20 TB disk, c
 - Omnibox groups suggestions (movies, performers, genres, studios, series) and keeps recent searches.
 - Keyboard: `/` or Ctrl/Cmd-K search, `?` help, arrows and Enter in lists.
 - Missing data shows "not known yet" (a waiting-for-crawl badge), never a blank.
+
+
+## The running UI (first version)
+
+The UI is a single page of plain ES modules served from `public/ui` (no build step): `/app` (the page, owner session
+required) and `/ui/*` (static files). It reads the API through `/ui-api/<path>`, which runs `/api/v1/<path>` in the same
+process for the signed-in owner (GET only; paths movies, performers, meta, status, suggest, search), so the browser never
+holds an API key. Views: Discover, search, movies (filters, grid or table, infinite scroll), movie, performers,
+performer, facet pages (genre, maker, series, label, year), crawl status and settings. Routes use the hash
+(`#/movies?genre=Drama`), so every state is a shareable link.
+
+Check the views without a browser: `scripts/docker/runtime node node ui-tests/render-smoke.mjs`.

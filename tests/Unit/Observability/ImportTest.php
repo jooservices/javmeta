@@ -35,6 +35,7 @@ final class ImportTest extends TestCase
             ['dashboards' => [
                 ['dashboard_id' => 'operations-id', 'title' => 'JAVMETA Operations', 'hash' => 'operations-hash', 'folder_id' => 'default'],
                 ['dashboard_id' => 'quality-id', 'title' => 'JAVMETA Data Quality', 'hash' => 'quality-hash', 'folder_id' => 'default'],
+                ['dashboard_id' => 'crawl-id', 'title' => 'JAVMETA Crawl debug', 'hash' => 'crawl-hash', 'folder_id' => 'default'],
             ]],
         ]);
         $this->respond('GET', '/api/v2/javmeta_it/alerts', [
@@ -55,6 +56,7 @@ final class ImportTest extends TestCase
             ['PUT', '/api/javmeta_it/alerts/destinations/javmeta_telegram'],
             ['PUT', '/api/javmeta_it/dashboards/operations-id'],
             ['PUT', '/api/javmeta_it/dashboards/quality-id'],
+            ['PUT', '/api/javmeta_it/dashboards/crawl-id'],
             ['PUT', '/api/v2/javmeta_it/alerts/stale-id'],
             ['PUT', '/api/v2/javmeta_it/alerts/error-rate-id'],
             ['PUT', '/api/v2/javmeta_it/alerts/failure-rate-id'],
@@ -64,14 +66,14 @@ final class ImportTest extends TestCase
         ] as [$method, $path]) {
             $this->respond($method, $path, [[]]);
         }
-        $this->respond('POST', '/api/javmeta_it/dashboards', [[], []]);
+        $this->respond('POST', '/api/javmeta_it/dashboards', [[], [], []]);
         $this->respond('POST', '/api/v2/javmeta_it/alerts', array_fill(0, 6, []));
 
         $this->artisan('observability:import')
-            ->expectsOutputToContain('Imported 2 dashboards and 6 alerts')
+            ->expectsOutputToContain('Imported 3 dashboards and 6 alerts')
             ->assertSuccessful();
         $this->artisan('observability:import')
-            ->expectsOutputToContain('Imported 2 dashboards and 6 alerts')
+            ->expectsOutputToContain('Imported 3 dashboards and 6 alerts')
             ->assertSuccessful();
 
         $counts = [];
@@ -84,9 +86,10 @@ final class ImportTest extends TestCase
         self::assertSame(1, $counts['PUT /api/javmeta_it/alerts/templates/javmeta_telegram']);
         self::assertSame(1, $counts['POST /api/javmeta_it/alerts/destinations']);
         self::assertSame(1, $counts['PUT /api/javmeta_it/alerts/destinations/javmeta_telegram']);
-        self::assertSame(2, $counts['POST /api/javmeta_it/dashboards']);
+        self::assertSame(3, $counts['POST /api/javmeta_it/dashboards']);
         self::assertSame(1, $counts['PUT /api/javmeta_it/dashboards/operations-id']);
         self::assertSame(1, $counts['PUT /api/javmeta_it/dashboards/quality-id']);
+        self::assertSame(1, $counts['PUT /api/javmeta_it/dashboards/crawl-id']);
         self::assertSame(6, $counts['POST /api/v2/javmeta_it/alerts']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/stale-id']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/error-rate-id']);
@@ -143,7 +146,7 @@ final class ImportTest extends TestCase
         $this->respond('GET', '/api/v2/javmeta_it/alerts', [['list' => []], ['list' => []]]);
         $this->respond('PUT', '/api/javmeta_it/alerts/templates/javmeta_telegram', [[], []]);
         $this->respond('PUT', '/api/javmeta_it/alerts/destinations/javmeta_telegram', [[], []]);
-        $this->respond('POST', '/api/javmeta_it/dashboards', array_fill(0, 4, []));
+        $this->respond('POST', '/api/javmeta_it/dashboards', array_fill(0, 6, []));
         // Every alert creation answers 404 as OpenObserve does for a stream without data.
         $this->respond('POST', '/api/v2/javmeta_it/alerts', array_fill(0, 12, ['code' => 404, 'message' => 'Stream not found']), 404);
 
