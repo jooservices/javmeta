@@ -10,3 +10,5 @@ Every feature switch and operational value is stored in the database (the `joose
 - **API:** `GET /ui-admin/settings` and `PUT /ui-admin/settings` with `{"settings": {"queue.feed_pool_limit": 300}}`, behind the owner login. Invalid values answer 422 with a message per key.
 
 New features (Telegram follow notifications and bot, the library scanner) read their configuration only from here.
+
+Media processing settings (`media.*`) are defined in `config/javmeta_media.php` and registered in `config/javmeta_settings.php`. They are database/UI settings, never environment variables. See [media.md](media.md) for queue limits and bootstrap credentials.

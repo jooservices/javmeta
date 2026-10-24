@@ -3,7 +3,7 @@
   "info": {
     "title": "JavMeta API",
     "version": "1.0.0",
-    "description": "Movie and performer metadata crawled from many sources. Send the key in the X-API-Key header. A key may be limited to scopes: movies, bulk, performers, catalog, status, mcp."
+    "description": "Movie and performer metadata crawled from many sources. Send the key in the X-API-Key header. A key may be limited to scopes: movies, bulk, performers, catalog, status, mcp. The media scope is reserved for the local media worker."
   },
   "servers": [
     {
@@ -1714,6 +1714,187 @@
           },
           "429": {
             "description": "Rate limited"
+          }
+        }
+      }
+    },
+    "/api/v1/media/config": {
+      "get": {
+        "summary": "Read local worker settings",
+        "tags": [
+          "media"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Worker response"
+          },
+          "409": {
+            "description": "Expired claim"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        }
+      }
+    },
+    "/api/v1/media/jobs/next": {
+      "get": {
+        "summary": "Atomically claim a media job",
+        "tags": [
+          "media"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Worker response"
+          },
+          "409": {
+            "description": "Expired claim"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        },
+        "parameters": [
+          {
+            "name": "worker",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/media/jobs/{id}/complete": {
+      "post": {
+        "summary": "Complete a claimed media job",
+        "tags": [
+          "media"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Worker response"
+          },
+          "409": {
+            "description": "Expired claim"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "claim_token",
+                  "result"
+                ],
+                "properties": {
+                  "claim_token": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "error": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "result": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/jobs/{id}/fail": {
+      "post": {
+        "summary": "Fail a claimed media job",
+        "tags": [
+          "media"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Worker response"
+          },
+          "409": {
+            "description": "Expired claim"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "claim_token",
+                  "error"
+                ],
+                "properties": {
+                  "claim_token": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "error": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "result": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         }
       }

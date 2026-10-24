@@ -32,7 +32,8 @@ ENV_RUN="${WORKSPACES_ROOT}/scripts/docker/env-run"
 STATE_DIR="${JAVMETA_DEPLOY_STATE_DIR:-${STATE_DIR_DEFAULT}}"
 BACKUP_KEEP="${JAVMETA_DEPLOY_BACKUP_KEEP:-7}"
 POSTGRES_DATABASE="${JAVMETA_DEPLOY_POSTGRES_DATABASE:-${POSTGRES_DATABASE_DEFAULT}}"
-UNITS=("${HORIZON_UNIT}" "${SCHEDULER_UNIT}")
+MEDIA_UNIT="${UNIT_PREFIX}-media-worker.service"
+UNITS=("${HORIZON_UNIT}" "${SCHEDULER_UNIT}" "${MEDIA_UNIT}")
 
 dry_run=0
 case "${1:-}" in
@@ -152,6 +153,7 @@ main() {
   log 'Restarting the JavMeta units: scheduler stopped first, started last.'
   run systemctl --user stop "${SCHEDULER_UNIT}"
   run systemctl --user restart "${HORIZON_UNIT}"
+  run systemctl --user restart "${MEDIA_UNIT}"
   run systemctl --user start "${SCHEDULER_UNIT}"
 
   log 'Smoke checks.'

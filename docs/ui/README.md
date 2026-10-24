@@ -37,3 +37,5 @@ performer, facet pages (genre, maker, series, label, year), crawl status and set
 (`#/movies?genre=Drama`), so every state is a shareable link.
 
 Check the views without a browser: `scripts/docker/runtime node node ui-tests/render-smoke.mjs`.
+
+The Library page offers per-file preview and scene extraction buttons. **Media** (`#/media`) lists queued jobs, indeterminate progress while running, errors and retries for failed jobs. Paging and a refresh button keep the queue bounded. All changes use the owner's session and CSRF token; worker credentials are never sent to the browser.
