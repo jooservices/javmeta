@@ -72,3 +72,7 @@ empty array); keys are never omitted. Changes are additive: existing keys keep t
 | `linked_title_count` | integer or null | Number of linked movies, when counted |
 | `profile_url`, `image_url` | string or null | Source profile and image |
 | `photos` | object | Images and galleries |
+
+## OpenAPI
+
+The machine-readable contract is published at `/api/openapi.json` (source: `resources/openapi/javmeta.json`). A test fails when an API route is missing from it, so add a new route to the file in the same change.

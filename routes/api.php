@@ -10,6 +10,7 @@ use App\Http\Controllers\HealthController;
 use App\Http\Controllers\HealthLiveController;
 use App\Http\Controllers\McpHttpController;
 use App\Http\Controllers\MetaGenreController;
+use App\Http\Controllers\OpenApiController;
 use App\Http\Controllers\MovieBulkController;
 use App\Http\Controllers\MovieCalendarController;
 use App\Http\Controllers\MovieRelatedController;
@@ -28,6 +29,7 @@ use JOOservices\LaravelController\Traits\HasApiResponses;
 
 Route::get('/health', HealthController::class);
 Route::get('/health/live', HealthLiveController::class);
+Route::get('/openapi.json', OpenApiController::class);
 
 Route::middleware(TraceHttpRequest::class)->group(function (): void {
     Route::prefix('v1')->group(function (): void {
