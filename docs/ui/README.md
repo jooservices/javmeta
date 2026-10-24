@@ -87,3 +87,7 @@ escaping, picker keyboard/debounce, request cancellation, cache and saved-search
 The crawl source-health status for JavPhotos uses its configured gallery sample.
 An upstream fetch failure remains visible as BLOCKED; defining the sample only
 removes the false “no page to check” DEGRADED verdict.
+
+# Performer list performance
+
+Name and update-time lists batch movie counts for the returned page. Ordering, cursor fields and API response fields are unchanged. See [performance measurements](../03-operations/performance.md) for measured limits and pending PostgreSQL index verification.
