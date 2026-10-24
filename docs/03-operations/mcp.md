@@ -12,6 +12,7 @@ All listed inputs are optional unless marked **required**.
 | `get_movie` | `code` (string, **required**): normalized DVD or amateur code. |
 | `search` | `q` (string, **required**); `entity` (`movie`, `performer`, or `all`; default `movie`); `per_page` (integer 1–100; default 10). |
 | `lookup_performers` | `q`, `cup` and `blood_type` (several values separated by commas mean any of them), `location`, `source` (strings); `has_image`, `has_bio` (booleans); `status` (`active` or `retired`); `movies_min`, `debut_from`, `debut_to` (integers); `age_min`, `age_max`, `height_min`, `height_max`, `bust_min`, `bust_max`, `waist_min`, `waist_max`, `hip_min`, `hip_max` (integers); `sort` (`name`, `updated_at`, `linked_title_count`; default `name`); `cursor` (string); `per_page` (integer 1–100; default 10); `count_only` (boolean). |
+| `search_scenes` | `q` (string, 3–200 characters, **required**); `per_page` (integer 1–50; default 10). |
 | `get_counts` | No inputs. |
 | `crawl_status` | No inputs. |
 | `system_status` | No inputs. |

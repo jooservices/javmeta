@@ -27,6 +27,7 @@ const sources = [
 const route = url => {
   const u = new URL(url, 'https://x.test');
   const p = u.pathname.replace('/ui-api/', '');
+  if (p === 'scenes/search') return { data: [{ movie_code: 'AAA-001', library_file_id: 1, start_sec: 12, description: '<b>red room</b>', thumb_url: null }] };
   if (p === 'status/summary') return { data: summary };
   if (p === 'status/sources') return { data: sources };
   if (p === 'movies') return { data: [movie('AAA-001'), movie('BBB-002', { title_en: '<script>alert(1)</script>' })], ...pg(2) };
@@ -116,3 +117,6 @@ globalThis.fetch = async () => { throw new Error('Offline'); };
 assert.match((await mediaView.render({ query: {} })).html, /Offline/);
 globalThis.fetch = normalFetch;
 globalThis.innerWidth = 1280;
+
+assert.match(out.search, /<h2>Cảnh<\/h2>/);
+assert.match(out.search, /&lt;b&gt;red room&lt;\/b&gt;/);

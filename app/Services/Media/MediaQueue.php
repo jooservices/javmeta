@@ -10,7 +10,7 @@ use Illuminate\Validation\ValidationException;
 
 final class MediaQueue
 {
-    public const KINDS = ['thumbnails', 'scenes', 'transcribe', 'translate'];
+    public const KINDS = ['thumbnails', 'scenes', 'transcribe', 'translate', 'describe'];
 
     public function enqueue(string $kind, int $file): int
     {
@@ -45,6 +45,7 @@ final class MediaQueue
             DB::table('media_jobs')->where('id', $job->id)->update(['status' => 'running', 'attempts' => $job->attempts + 1, 'locked_by' => $worker, 'claim_token' => $token, 'started_at' => now(), 'finished_at' => null]);
             $data = (array) DB::table('media_jobs')->where('id', $job->id)->first();
             $data['params'] = json_decode($data['params'], true);
+            $data['scenes'] = DB::table('media_scenes')->where('library_file_id', $job->library_file_id)->orderBy('start_sec')->get()->map(static fn($row): array => (array) $row)->all();
             $data['subtitles'] = DB::table('media_subtitles')->where('library_file_id', $job->library_file_id)->get()->map(static fn($row): array => (array) $row)->all();
             $data['path'] = DB::table('library_files')->where('id', $job->library_file_id)->value('path');
             return $data;
@@ -59,6 +60,12 @@ final class MediaQueue
             if ($error === null) {
                 $this->storeScenes($job, $result['scenes'] ?? []);
                 $this->storeSubtitles($job, $result['subtitles'] ?? []);
+                if ($job->kind === 'describe') {
+                    foreach ($result['descriptions'] ?? [] as $row) {
+                        abort_unless(DB::table('media_scenes')->where('id', $row['id'])->where('library_file_id', $job->library_file_id)->exists(), 422, 'Cảnh không thuộc tệp của việc này.');
+                        DB::table('media_scenes')->where('id', $row['id'])->update(['description' => $row['description'], 'tags' => json_encode($row['tags'], JSON_THROW_ON_ERROR), 'confidence' => $row['confidence'], 'embedding_indexed_at' => null]);
+                    }
+                }
             }
             $status = $error === null ? 'done' : ($job->attempts < (int) config('javmeta_media.max_attempts') ? 'pending' : 'failed');
             DB::table('media_jobs')->where('id', $id)->update(['status' => $status, 'result' => $result === null ? null : json_encode($result, JSON_THROW_ON_ERROR), 'error' => $error, 'claim_token' => null, 'finished_at' => $status === 'pending' ? null : now()]);
