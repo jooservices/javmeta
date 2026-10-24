@@ -80,7 +80,7 @@ final class SourceHealthCommand extends Command
      */
     private function recordHistory(array $report, ReportChannel $channel): void
     {
-        $file = base_path('artifacts/reports/source-health-history.jsonl');
+        $file = storage_path('app/private/reports/source-health-history.jsonl');
         $blocked = array_values(array_unique(array_map(
             static fn(array $row): string => (string) $row['source'],
             array_filter($report['rows'], static fn(array $row): bool => $row['verdict'] === SourceHealthChecker::BLOCKED),
@@ -108,7 +108,7 @@ final class SourceHealthCommand extends Command
     /** @param array{generated_at: string, summary: array<string, int>, rows: list<array<string, mixed>>} $report */
     private function write(array $report): void
     {
-        $directory = base_path('artifacts/reports');
+        $directory = storage_path('app/private/reports');
         File::ensureDirectoryExists($directory);
         File::put($directory . '/source-health.json', (string) json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
 

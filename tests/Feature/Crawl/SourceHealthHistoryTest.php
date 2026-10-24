@@ -21,7 +21,7 @@ final class SourceHealthHistoryTest extends TestCase
     {
         config(['javmeta_sources.sources' => ['demo' => ['movie_listing_urls' => ['https://example.test/']]]]);
         Source::query()->create(['slug' => 'demo', 'name' => 'Demo', 'base_url' => 'https://example.test', 'enabled' => true, 'priority' => 1, 'gap_seconds_default' => 10, 'gap_seconds_min' => 5, 'gap_seconds_max' => 45, 'gap_seconds_current' => 10]);
-        $history = base_path('artifacts/reports/source-health-history.jsonl');
+        $history = storage_path('app/private/reports/source-health-history.jsonl');
         File::delete($history);
 
         $sent = [];

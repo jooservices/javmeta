@@ -156,7 +156,7 @@ final class ReportService
     /** @return array<string, string> source slug => worst verdict from the last source health report */
     private function sourceHealthVerdicts(): array
     {
-        $path = base_path('artifacts/reports/source-health.json');
+        $path = storage_path('app/private/reports/source-health.json');
         if (! File::exists($path)) {
             return [];
         }

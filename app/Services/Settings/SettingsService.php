@@ -169,8 +169,17 @@ final class SettingsService
         }
         self::$defaults = [];
         foreach ($this->definitions() as $key => $definition) {
-            $first = (array) $definition['config'];
-            self::$defaults[$key] = config($first[0]);
+            // The first config key that holds a value: a setting may drive several keys and env fills only some of them.
+            $value = null;
+            foreach ((array) $definition['config'] as $configKey) {
+                $candidate = config($configKey);
+                if ($candidate !== null && $candidate !== '') {
+                    $value = $candidate;
+                    break;
+                }
+                $value ??= $candidate;
+            }
+            self::$defaults[$key] = $value;
         }
     }
 
