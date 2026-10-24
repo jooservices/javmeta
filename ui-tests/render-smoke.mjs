@@ -30,6 +30,7 @@ const route = url => {
   const p = u.pathname.replace('/ui-api/', '');
   if (p === 'movies/facets') return { data: { total: u.searchParams.get('q') === 'empty' ? 0 : 12, genres: [{ name: 'Drama', count: 12 }, { name: '<b>School</b>', count: 3 }], makers: [{ name: 'Maker One', count: 10 }], series: [{ name: 'Series One', count: 9 }], labels: [{ name: 'Label One', count: 8 }], years: [{ name: '2025', count: 7 }], sources: [{ name: 'javdb', count: 6 }], performers: [{ id: 92, name: 'Eimi <b>x</b>', count: 5 }] } };
   if (p === 'performers/facets') return { data: { total: 7, cups: [{ name: 'D', count: 5 }], blood_types: [{ name: 'O', count: 4 }], locations: [{ name: 'Tokyo', count: 3 }], sources: [{ name: 'javdb', count: 2 }], status: [{ name: 'active', count: 7 }], with_image: 6, with_bio: 4 } };
+  if (p === 'scenes/search') return { data: [{ movie_code: 'AAA-001', library_file_id: 1, start_sec: 12, description: '<b>red room</b>', thumb_url: null }] };
   if (p === 'status/summary') return { data: summary };
   if (p === 'status/sources') return { data: sources };
   if (p === 'movies') return { data: [movie('AAA-001'), movie('BBB-002', { title_en: '<script>alert(1)</script>' })], ...pg(2) };
@@ -161,3 +162,6 @@ globalThis.fetch = async () => { throw new Error('Offline'); };
 assert.match((await mediaView.render({ query: {} })).html, /Offline/);
 globalThis.fetch = normalFetch;
 globalThis.innerWidth = 1280;
+
+assert.match(out.search, /<h2>Cảnh<\/h2>/);
+assert.match(out.search, /&lt;b&gt;red room&lt;\/b&gt;/);

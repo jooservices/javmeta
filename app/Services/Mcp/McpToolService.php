@@ -59,6 +59,7 @@ final class McpToolService
             $this->suggestDefinition(),
             $this->relatedMoviesDefinition(),
             $this->releaseCalendarDefinition(),
+            ['name' => 'search_scenes', 'description' => 'Search local scene descriptions and return movie, timestamp and signed thumbnail.', 'inputSchema' => ['type' => 'object', 'properties' => ['q' => ['type' => 'string', 'minLength' => 3, 'maxLength' => 200], 'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 50]], 'required' => ['q']]],
         ];
     }
 
@@ -244,6 +245,7 @@ final class McpToolService
                 'get_release_calendar' => $this->viaController(fn() => app(MovieCalendarController::class)->index($this->request($arguments))),
                 'crawl_status' => $this->crawlStatus(),
                 'system_status' => $this->systemStatus(),
+                'search_scenes' => $this->searchScenes($arguments),
                 default => ['error' => 'unknown_tool'],
             };
         } catch (InvalidFilterException $exception) {
@@ -251,6 +253,16 @@ final class McpToolService
         } catch (MovieNotFoundException $exception) {
             return ['error' => 'not_found', 'message' => $exception->getMessage()];
         }
+    }
+
+    private function searchScenes(array $arguments): array
+    {
+        $q = $this->requiredStringArgument($arguments, 'q');
+        $limit = $this->perPage($arguments);
+        if (mb_strlen($q) < 3 || mb_strlen($q) > 200 || $limit > 50) {
+            throw new InvalidFilterException('Scene q must be 3–200 characters and per_page 1–50.');
+        }
+        return ['items' => app(\App\Services\Media\SceneSearchService::class)->search($q, $limit)];
     }
 
     /** @param array<string, mixed> $arguments */

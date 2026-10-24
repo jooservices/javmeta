@@ -25,7 +25,7 @@ final class FileLinkService
     /** @return list<string> real paths of the folders files may be served from */
     public function roots(): array
     {
-        $configured = array_merge((array) $this->settings->get('files.root_folders'), [(string) $this->settings->get('downloads.save_path')]);
+        $configured = array_merge((array) $this->settings->get('files.root_folders'), [(string) $this->settings->get('downloads.save_path'), (string) $this->settings->get('media.output_folder')]);
         $roots = [];
         foreach ($configured as $folder) {
             $real = is_string($folder) && $folder !== '' ? realpath($folder) : false;

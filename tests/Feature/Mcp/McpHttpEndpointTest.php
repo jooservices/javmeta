@@ -231,6 +231,7 @@ final class McpHttpEndpointTest extends TestCase
             'suggest' => ['suggest', ['q' => 'abc']],
             'get_related_movies' => ['get_related_movies', ['code' => 'SSIS-001']],
             'get_release_calendar' => ['get_release_calendar', ['month' => '2026-10']],
+            'search_scenes' => ['search_scenes', ['q' => 'generated scene', 'per_page' => 5]],
         ];
     }
 
