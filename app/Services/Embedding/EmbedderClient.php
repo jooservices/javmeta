@@ -28,6 +28,10 @@ final class EmbedderClient
             return [];
         }
 
+        if ((string) config('javmeta_ai.embedding_provider', 'embedder') === 'ollama') {
+            return app(OllamaClient::class)->embed($texts);
+        }
+
         try {
             $response = Http::timeout(15)->post(
                 rtrim((string) config('elasticsearch.embedder_url', 'http://embedder:8000'), '/') . '/v1/embeddings',
