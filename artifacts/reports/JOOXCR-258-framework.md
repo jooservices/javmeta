@@ -12,3 +12,5 @@ Commands run from the task worktree:
 Static analysis needs a non-secret test APP_KEY and SQLite in-memory connection to bootstrap this isolated checkout. Full PHPStan reports existing findings in FeedPoolCommand, ApiKeyController, CatalogController, MovieRelatedController, CrawlQueueService, DownloadService and HybridSearchService. No findings in the new media classes. ApiKey scopes now has its array PHPDoc because the changed public scope contract requires it.
 
 Out-of-scope infrastructure: company GitHub helper refuses all checks because its sibling Sites directory does not exist. Direct `gh api user --jq .login` verifies soulevilx. SSH transport fails on system SSH configuration file ownership; HTTPS with task-scoped gh credential helper successfully fetches origin/develop. No OS/global changes made.
+
+Full framework suite: **1009 tests, 8080 assertions, PASS**, 92.226 seconds. Additional valid scene output test: focused suite 7 tests / 39 assertions PASS. New-media-only PHPStan is checked independently from the existing repository findings.
