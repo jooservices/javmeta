@@ -49,7 +49,7 @@ const NAV = [
   ['Khám phá', [['home', 'Discover', 'home', '#/'], ['search', 'Tìm kiếm', 'search', '#/search'], ['stats', 'Thống kê', 'chart', '#/stats']]],
   ['Danh mục', [['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers'], ['bio', 'Hồ sơ diễn viên', 'user', '#/bio'], ['smart-new', 'Mới cập nhật', 'film', '#/movies?sort=update_date'], ['catalog-genres', 'Thể loại', 'tag', '#/catalog/genres'], ['catalog-makers', 'Maker', 'building', '#/catalog/makers'], ['catalog-series', 'Series', 'folder', '#/catalog/series'], ['catalog-labels', 'Label', 'layers', '#/catalog/labels'], ['catalog-years', 'Năm', 'cal', '#/catalog/years'], ['calendar', 'Lịch phát hành', 'cal', '#/calendar']]],
   ['Của tôi', [['me-favourite', 'Yêu thích', 'tag', '#/me/favourite'], ['me-watch_later', 'Xem sau', 'cal', '#/me/watch_later'], ['me-seen', 'Đã xem', 'film', '#/me/seen'], ['feed', 'Theo dõi', 'user', '#/feed'], ['library', 'Thư viện', 'layers', '#/library'], ['downloads', 'Tải về', 'disk', '#/downloads']]],
-  ['Công cụ', [['crawl', 'Crawl & nguồn', 'spider', '#/crawl'], ['ops', 'Vận hành (/ops)', 'chart', '/ops'], ['admin', 'Quản trị', 'gear', '#/admin'], ['settings', 'Cài đặt', 'gear', '#/settings']]],
+  ['Công cụ', [['crawl', 'Crawl & nguồn', 'spider', '#/crawl'], ['ops', 'Vận hành (Command Center)', 'chart', document.querySelector('meta[name=command-center-url]')?.content || '/ops'], ['admin', 'Quản trị', 'gear', '#/admin'], ['settings', 'Cài đặt', 'gear', '#/settings']]],
 ];
 
 let cleanup = null;
