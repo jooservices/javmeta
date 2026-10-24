@@ -15,6 +15,7 @@ use App\Http\Controllers\MovieLookupController;
 use App\Http\Controllers\MovieSearchController;
 use App\Http\Controllers\PerformerController;
 use App\Http\Controllers\StatusController;
+use App\Http\Controllers\SuggestController;
 use App\Http\Middleware\AuthenticateApiKey;
 use App\Http\Middleware\LogApiUsage;
 use App\Http\Middleware\OwnerAdminGuard;
@@ -50,6 +51,7 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
             Route::post('movies:bulk', [MovieBulkController::class, 'store']);
             Route::get('meta/genres', [MetaGenreController::class, 'index']);
             Route::get('meta/catalog/{kind}', [CatalogController::class, 'index']);
+            Route::get('suggest', [SuggestController::class, 'index']);
         });
 
         Route::middleware([AuthenticateApiKey::class, LogApiUsage::class])->group(function (): void {
