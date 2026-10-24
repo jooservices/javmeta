@@ -13,6 +13,7 @@ use App\Http\Controllers\MetaGenreController;
 use App\Http\Controllers\OpenApiController;
 use App\Http\Controllers\MovieBulkController;
 use App\Http\Controllers\MovieCalendarController;
+use App\Http\Controllers\MovieFacetsController;
 use App\Http\Controllers\MovieRelatedController;
 use App\Http\Controllers\MovieLookupController;
 use App\Http\Controllers\MovieSearchController;
@@ -54,6 +55,7 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
             Route::get('performers', [PerformerController::class, 'index']);
             Route::get('performers/{id}', [PerformerController::class, 'show']);
             Route::get('movies/calendar', [MovieCalendarController::class, 'index']);
+            Route::get('movies/facets', [MovieFacetsController::class, 'index']);
             Route::get('movies/{code}/related', [MovieRelatedController::class, 'show']);
             Route::get('movies/{code}', [MovieLookupController::class, 'show']);
             Route::post('movies:bulk', [MovieBulkController::class, 'store']);

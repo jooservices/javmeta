@@ -33,6 +33,14 @@ final class MovieSearchRequest extends FormRequest
             'runtime_max' => ['sometimes', 'integer'],
             'censored' => ['sometimes', 'in:0,1,censored,uncensored'],
             'on_disk' => ['sometimes', 'in:0,1'],
+            'actress_id' => ['sometimes', 'string', 'regex:/^\d+(,\d+)*$/'],
+            'genre_all' => ['sometimes', 'in:0,1'],
+            'source' => ['sometimes', 'string', 'max:200'],
+            'score_min' => ['sometimes', 'numeric', 'min:0', 'max:10'],
+            'tier_min' => ['sometimes', 'integer', 'min:0', 'max:3'],
+            'has_cover' => ['sometimes', 'in:0,1'],
+            'has_magnet' => ['sometimes', 'in:0,1'],
+            'has_performers' => ['sometimes', 'in:0,1'],
             'sort' => ['sometimes', 'in:relevance,release_date,update_date,rating'],
             'cursor' => ['sometimes', 'string'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
@@ -67,7 +75,7 @@ final class MovieSearchRequest extends FormRequest
                 if ($this->hasAny([
                     'code', 'genre', 'actress', 'maker', 'series', 'label',
                     'released_from', 'released_to', 'runtime_min', 'runtime_max',
-                    'censored', 'on_disk', 'sort', 'cursor',
+                    'censored', 'on_disk', 'actress_id', 'genre_all', 'source', 'score_min', 'tier_min', 'has_cover', 'has_magnet', 'has_performers', 'sort', 'cursor',
                 ])) {
                     $validator->errors()->add('semantic', 'Semantic search supports only q and per_page.');
                 }

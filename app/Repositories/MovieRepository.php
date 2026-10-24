@@ -130,13 +130,28 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
 
         $like = $this->likeOperator();
 
-        $genre = $filters['genre'] ?? null;
-        if (is_string($genre) && $genre !== '') {
-            $pattern = '%' . $genre . '%';
-            $query->whereHas('genres', static function (Builder $genres) use ($like, $pattern): void {
-                $genres->where('label_normalized', $like, $pattern)
-                    ->orWhere('label_raw', $like, $pattern);
-            });
+        $genres = self::list($filters['genre'] ?? null);
+        if ($genres !== []) {
+            $all = (string) ($filters['genre_all'] ?? '0') === '1';
+            $one = static function (Builder $query, string $genre) use ($like): void {
+                $pattern = '%' . self::escapeLike($genre) . '%';
+                $query->whereHas('genres', static function (Builder $g) use ($like, $pattern): void {
+                    $g->where('label_normalized', $like, $pattern)->orWhere('label_raw', $like, $pattern);
+                });
+            };
+            if ($all) {
+                foreach ($genres as $genre) {
+                    $one($query, $genre);
+                }
+            } else {
+                $query->where(static function (Builder $any) use ($genres, $one): void {
+                    foreach ($genres as $genre) {
+                        $any->orWhere(static function (Builder $w) use ($one, $genre): void {
+                            $one($w, $genre);
+                        });
+                    }
+                });
+            }
         }
 
         $code = $filters['code'] ?? null;
@@ -154,24 +169,33 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
 
         $actress = $filters['actress'] ?? null;
         if (is_string($actress) && $actress !== '') {
-            $pattern = '%' . $actress . '%';
-            $query->whereHas('performers', static function (Builder $performers) use ($like, $pattern): void {
-                $performers->where(static function (Builder $names) use ($like, $pattern): void {
-                    $names->where('name_romaji', $like, $pattern)
-                        ->orWhere('name_kanji', $like, $pattern)
-                        ->orWhere('name_kana', $like, $pattern)
-                        ->orWhereHas('aliases', static function (Builder $aliases) use ($like, $pattern): void {
-                            $aliases->where('alias', $like, $pattern);
-                        })
-                        ->orWhereHas('sources', static function (Builder $sources) use ($like, $pattern): void {
-                            $sources->where(static function (Builder $sourceNames) use ($like, $pattern): void {
-                                $sourceNames->where('name_romaji', $like, $pattern)
-                                    ->orWhere('name_kanji', $like, $pattern)
-                                    ->orWhere('name_kana', $like, $pattern);
-                            });
-                        });
-                });
-            });
+            $query->whereIn('movies.id', self::movieIdsOfPerformers(self::performerIdsMatching($like, '%' . self::escapeLike($actress) . '%')));
+        }
+
+        // Exact performers (the picker): several ids mean movies they share.
+        foreach (self::ids($filters['actress_id'] ?? null) as $performerId) {
+            $query->whereIn('movies.id', DB::table('movie_performers')->select('movie_id')->where('performer_id', $performerId));
+        }
+
+        $source = $filters['source'] ?? null;
+        if (is_string($source) && $source !== '') {
+            $query->whereIn('movies.id', DB::table('movie_codes')->select('movie_id')->whereIn('source_slug', self::list($source)));
+        }
+        if (is_numeric($filters['score_min'] ?? null)) {
+            $query->where('community_score', '>=', (float) $filters['score_min']);
+        }
+        if (is_numeric($filters['tier_min'] ?? null)) {
+            $query->where('completeness_tier', '>=', (int) $filters['tier_min']);
+        }
+        if (isset($filters['has_cover'])) {
+            (string) $filters['has_cover'] === '1'
+                ? $query->whereNotNull('cover_url')->where('cover_url', '<>', '')
+                : $query->where(static fn(Builder $w) => $w->whereNull('cover_url')->orWhere('cover_url', ''));
+        }
+        foreach (['has_magnet' => DB::table('movie_media')->select('movie_id')->where('kind', 'magnet'), 'has_performers' => DB::table('movie_performers')->select('movie_id')] as $flag => $sub) {
+            if (isset($filters[$flag])) {
+                (string) $filters[$flag] === '1' ? $query->whereIn('movies.id', $sub) : $query->whereNotIn('movies.id', $sub);
+            }
         }
 
         foreach (['maker', 'series', 'label'] as $column) {
@@ -213,6 +237,71 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
         }
     }
 
+    /** @return list<string> comma separated values, trimmed and without blanks */
+    private static function list(mixed $value): array
+    {
+        $parts = is_array($value) ? $value : explode(',', (string) $value);
+
+        return array_values(array_unique(array_filter(array_map(static fn($p): string => trim((string) $p), $parts), static fn(string $p): bool => $p !== '')));
+    }
+
+    /** @return list<int> */
+    private static function ids(mixed $value): array
+    {
+        return array_values(array_unique(array_map('intval', array_filter(self::list($value), 'is_numeric'))));
+    }
+
+    private static function escapeLike(string $text): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $text);
+    }
+
+    /** The performers whose name, kana, kanji, alias or source name contains the text: one indexed branch per column. */
+    private static function performerIdsMatching(string $like, string $pattern): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('performers')->select('id')->where('name_romaji', $like, $pattern)
+            ->union(DB::table('performers')->select('id')->where('name_kanji', $like, $pattern))
+            ->union(DB::table('performers')->select('id')->where('name_kana', $like, $pattern))
+            ->union(DB::table('performer_aliases')->select('performer_id')->where('alias', $like, $pattern))
+            ->union(DB::table('performer_sources')->select('performer_id')->where('name_romaji', $like, $pattern)->orWhere('name_kanji', $like, $pattern)->orWhere('name_kana', $like, $pattern));
+    }
+
+    private static function movieIdsOfPerformers(\Illuminate\Database\Query\Builder $performerIds): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('movie_performers')->select('movie_id')->whereIn('performer_id', $performerIds);
+    }
+
+    /**
+     * Counts inside the current result: what the filtered movies have in common, to narrow the search one click at a time.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>
+     */
+    public function facets(array $filters): array
+    {
+        $q = isset($filters['q']) && is_string($filters['q']) ? trim($filters['q']) : null;
+        $query = $this->newQuery();
+        $this->applyFilters($query, $filters, $q === '' ? null : $q);
+        $ids = $query->toBase()->select('movies.id');
+
+        $count = static fn($rows): array => $rows->map(static fn($r): array => ['name' => (string) $r->name, 'count' => (int) $r->c])->all();
+        $byColumn = static fn(string $column) => $count(DB::table('movies')->whereIn('id', clone $ids)->whereNotNull($column)->where($column, '<>', '')->selectRaw($column . ' AS name, COUNT(*) AS c')->groupBy($column)->orderByDesc('c')->orderBy($column)->limit(15)->get());
+        $year = DB::getDriverName() === 'sqlite' ? "CAST(strftime('%Y', release_date) AS INTEGER)" : 'EXTRACT(YEAR FROM release_date)::int';
+
+        return [
+            'total' => (int) DB::table('movies')->whereIn('id', clone $ids)->count(),
+            'genres' => $count(DB::table('movie_genres')->join('genres', 'genres.id', '=', 'movie_genres.genre_id')->whereIn('movie_genres.movie_id', clone $ids)->selectRaw('COALESCE(genres.label_raw, genres.label_normalized) AS name, COUNT(DISTINCT movie_genres.movie_id) AS c')->groupByRaw('COALESCE(genres.label_raw, genres.label_normalized)')->orderByDesc('c')->limit(20)->get()),
+            'makers' => $byColumn('maker'),
+            'series' => $byColumn('series'),
+            'labels' => $byColumn('label'),
+            'years' => $count(DB::table('movies')->whereIn('id', clone $ids)->whereNotNull('release_date')->selectRaw($year . ' AS name, COUNT(*) AS c')->groupByRaw($year)->orderByDesc('name')->limit(15)->get()),
+            'sources' => $count(DB::table('movie_codes')->whereIn('movie_id', clone $ids)->selectRaw('source_slug AS name, COUNT(DISTINCT movie_id) AS c')->groupBy('source_slug')->orderByDesc('c')->limit(15)->get()),
+            'performers' => DB::table('movie_performers')->join('performers', 'performers.id', '=', 'movie_performers.performer_id')->whereIn('movie_performers.movie_id', clone $ids)->whereNull('performers.canonical_performer_id')
+                ->selectRaw("performers.id, COALESCE(performers.name_romaji, performers.name_kanji, performers.name_kana) AS name, COUNT(DISTINCT movie_performers.movie_id) AS c")->groupBy('performers.id', 'performers.name_romaji', 'performers.name_kanji', 'performers.name_kana')->orderByDesc('c')->limit(12)->get()
+                ->map(static fn($r): array => ['id' => (int) $r->id, 'name' => (string) $r->name, 'count' => (int) $r->c])->all(),
+        ];
+    }
+
     private function applyTextSearch(Builder $query, string $q): void
     {
         $like = $this->likeOperator();
@@ -230,23 +319,7 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
                     ->orWhere('code_normalized', 'like', $pattern);
             }
 
-            $text->orWhereHas('performers', static function (Builder $performers) use ($like, $pattern): void {
-                $performers->where(static function (Builder $names) use ($like, $pattern): void {
-                    $names->where('name_romaji', $like, $pattern)
-                        ->orWhere('name_kanji', $like, $pattern)
-                        ->orWhere('name_kana', $like, $pattern)
-                        ->orWhereHas('aliases', static function (Builder $aliases) use ($like, $pattern): void {
-                            $aliases->where('alias', $like, $pattern);
-                        })
-                        ->orWhereHas('sources', static function (Builder $sources) use ($like, $pattern): void {
-                            $sources->where(static function (Builder $sourceNames) use ($like, $pattern): void {
-                                $sourceNames->where('name_romaji', $like, $pattern)
-                                    ->orWhere('name_kanji', $like, $pattern)
-                                    ->orWhere('name_kana', $like, $pattern);
-                            });
-                        });
-                });
-            });
+            $text->orWhereIn('movies.id', self::movieIdsOfPerformers(self::performerIdsMatching($like, $pattern)));
         });
     }
 
