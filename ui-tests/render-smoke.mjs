@@ -165,3 +165,27 @@ globalThis.innerWidth = 1280;
 
 assert.match(out.search, /<h2>Cảnh<\/h2>/);
 assert.match(out.search, /&lt;b&gt;red room&lt;\/b&gt;/);
+
+// Player behavior and rendered states use generated-media API fixtures.
+const playerModule = await import('../public/ui/js/views/player.js');
+const playerView = playerModule.default;
+const playerData = { enabled: true, url: '/signed/video', library_file_id: 1, files: [{ id: 1, name: '<b>video</b>.mp4' }], subtitles: [{ id: 1, language: 'en', source: 'whisper', url: '/signed/en.vtt' }, { id: 2, language: 'vi', source: 'translation', url: '/signed/vi.vtt' }], scenes: [{ start_sec: 12, description: '<b>scene</b>' }], error: null };
+globalThis.fetch = async () => jsonResponse({ data: playerData });
+globalThis.innerWidth = 375;
+const playerHtml = (await playerView.render({ params: { code: 'GEN-001' }, query: {} })).html;
+assert.match(playerHtml, /<video controls/); assert.match(playerHtml, /kind="subtitles"/);
+assert.match(playerHtml, /Tiếng Việt/); assert.match(playerHtml, /data-seek="12"/);
+assert.ok(!playerHtml.includes('<b>scene</b>'));
+const videoFake = { duration: 20, currentTime: 0, textTracks: [{ id: 'subtitle-1', mode: 'disabled' }, { id: 'subtitle-2', mode: 'disabled' }] };
+playerModule.seek(videoFake, 12); assert.equal(videoFake.currentTime, 12);
+playerModule.seek(videoFake, 99); assert.equal(videoFake.currentTime, 20);
+playerModule.selectTrack(videoFake, 'subtitle-2'); assert.equal(videoFake.textTracks[1].mode, 'showing'); assert.equal(videoFake.textTracks[0].mode, 'disabled');
+playerModule.selectTrack(videoFake, ''); assert.ok(videoFake.textTracks.every(t => t.mode === 'disabled'));
+globalThis.fetch = async () => jsonResponse({ data: { ...playerData, enabled: false } });
+assert.match((await playerView.render({ params: { code: 'GEN-001' } })).html, /Máy chủ tệp đang tắt/);
+globalThis.fetch = async () => jsonResponse({ data: { ...playerData, url: null, error: 'Missing' } });
+assert.match((await playerView.render({ params: { code: 'GEN-001' } })).html, /Không thể mở video/);
+globalThis.fetch = async () => { throw new Error('Offline'); };
+assert.match((await playerView.render({ params: { code: 'GEN-001' } })).html, /Offline/);
+globalThis.fetch = normalFetch;
+globalThis.innerWidth = 1280;
