@@ -43,6 +43,11 @@ final class SuggestEndpointTest extends TestCase
         $this->assertSame(['Abe Tester'], array_column($data['performers'], 'name'));
         $this->assertSame([], $data['movies']);
 
+        $g = \App\Models\Genre::factory()->create(['label_raw' => 'Abc Genre']);
+        $movie = Movie::query()->where('display_code', 'ABC-001')->first();
+        DB::table('movie_genres')->insert(['movie_id' => $movie->id, 'genre_id' => $g->id, 'source_slug' => 's', 'crawled_at' => now()]);
+        $this->assertSame([['name' => 'Abc Genre', 'movie_count' => 1]], $this->getJson('/api/v1/suggest?q=abc', $this->headers())->json('data.genres'));
+
         $this->assertSame([['name' => 'Abacus', 'movie_count' => 1]], $this->getJson('/api/v1/suggest?q=abac', $this->headers())->json('data.makers'));
     }
 }
