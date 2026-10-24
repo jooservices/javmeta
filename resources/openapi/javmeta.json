@@ -1,0 +1,930 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "JavMeta API",
+    "version": "1.0.0",
+    "description": "Movie and performer metadata crawled from many sources. Send the key in the X-API-Key header. A key may be limited to scopes: movies, bulk, performers, catalog, status, mcp."
+  },
+  "servers": [
+    {
+      "url": "https://jav.soulevil.com"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      }
+    }
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Service health",
+        "tags": [
+          "health"
+        ],
+        "responses": {
+          "200": {
+            "description": "Healthy"
+          }
+        }
+      }
+    },
+    "/api/health/live": {
+      "get": {
+        "summary": "Liveness",
+        "tags": [
+          "health"
+        ],
+        "responses": {
+          "200": {
+            "description": "Alive"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/verify": {
+      "get": {
+        "summary": "Check that the API key works",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "none",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
+      }
+    },
+    "/api/v1/movies": {
+      "get": {
+        "summary": "Search and list movies",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "movies",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Text, at least 2 characters",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "description": "Movie code",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "genre",
+            "in": "query",
+            "required": false,
+            "description": "Genre name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actress",
+            "in": "query",
+            "required": false,
+            "description": "Performer name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "maker",
+            "in": "query",
+            "required": false,
+            "description": "Maker",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "series",
+            "in": "query",
+            "required": false,
+            "description": "Series",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "label",
+            "in": "query",
+            "required": false,
+            "description": "Label",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "released_from",
+            "in": "query",
+            "required": false,
+            "description": "YYYY-MM-DD",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "released_to",
+            "in": "query",
+            "required": false,
+            "description": "YYYY-MM-DD",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "runtime_min",
+            "in": "query",
+            "required": false,
+            "description": "Minutes",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "runtime_max",
+            "in": "query",
+            "required": false,
+            "description": "Minutes",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "censored",
+            "in": "query",
+            "required": false,
+            "description": "0, 1, censored or uncensored",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "relevance, release_date, update_date or rating",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Cursor of the next page",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "description": "1 to 100",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "semantic",
+            "in": "query",
+            "required": false,
+            "description": "1 for search by meaning (only q and per_page)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/movies/{code}": {
+      "get": {
+        "summary": "One movie by code",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "movies",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "description": "DVD or amateur code",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/movies/{code}/related": {
+      "get": {
+        "summary": "Movies related to one movie",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "movies",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "description": "Movie code",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/movies/calendar": {
+      "get": {
+        "summary": "Movies released in a month, by day",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "movies",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "description": "YYYY-MM, default the current month",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/movies:bulk": {
+      "post": {
+        "summary": "Look up many movies by code",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "bulk",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "codes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/performers": {
+      "get": {
+        "summary": "Search and list performers",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "performers",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Name or alias",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cup",
+            "in": "query",
+            "required": false,
+            "description": "Cup size",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "blood_type",
+            "in": "query",
+            "required": false,
+            "description": "Blood type",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "description": "Location",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "name, updated_at or linked_title_count",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "description": "1 to 100",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/performers/{id}": {
+      "get": {
+        "summary": "One performer by id or UUID",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "performers",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Numeric id or UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/meta/genres": {
+      "get": {
+        "summary": "All genres",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "catalog",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
+      }
+    },
+    "/api/v1/meta/catalog/{kind}": {
+      "get": {
+        "summary": "Genres, makers, series, labels or years with movie counts",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "catalog",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "description": "genres, makers, series, labels or years",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Name contains",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "movie_count or name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "description": "1 to 200",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "Page",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/suggest": {
+      "get": {
+        "summary": "Suggestions for typed text",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "catalog",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "2 to 100 characters",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "1 to 20",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/status": {
+      "get": {
+        "summary": "Overall status",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "status",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
+      }
+    },
+    "/api/v1/status/summary": {
+      "get": {
+        "summary": "Counts, ingest rates and queue",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "status",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
+      }
+    },
+    "/api/v1/status/sources": {
+      "get": {
+        "summary": "Health of every crawl source",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "status",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
+      }
+    },
+    "/api/v1/mcp": {
+      "get": {
+        "summary": "MCP endpoint (server information)",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "mcp",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
+      },
+      "post": {
+        "summary": "MCP JSON-RPC: tools/list and tools/call",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "mcp",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/keys": {
+      "get": {
+        "summary": "Owner administration",
+        "tags": [
+          "admin"
+        ],
+        "x-admin": true,
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "post": {
+        "summary": "Owner administration",
+        "tags": [
+          "admin"
+        ],
+        "x-admin": true,
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/keys/{id}": {
+      "delete": {
+        "summary": "Owner administration",
+        "tags": [
+          "admin"
+        ],
+        "x-admin": true,
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/keys/{id}/usage": {
+      "get": {
+        "summary": "Owner administration",
+        "tags": [
+          "admin"
+        ],
+        "x-admin": true,
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/report/{type}": {
+      "get": {
+        "summary": "Owner administration",
+        "tags": [
+          "admin"
+        ],
+        "x-admin": true,
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/sources/{slug}/login-cookies": {
+      "put": {
+        "summary": "Owner administration",
+        "tags": [
+          "admin"
+        ],
+        "x-admin": true,
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Owner administration",
+        "tags": [
+          "admin"
+        ],
+        "x-admin": true,
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    }
+  }
+}
