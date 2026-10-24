@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Operations\DashboardController;
 use App\Http\Controllers\Operations\LoginController;
+use App\Http\Controllers\Ui\UiAdminController;
 use App\Http\Controllers\Ui\UiApiController;
 use App\Http\Controllers\Ui\UiShellController;
 use App\Http\Middleware\EnsureSuperAdministrator;
@@ -20,5 +21,10 @@ Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static funct
     Route::get('/ops/data', [DashboardController::class, 'data'])->name('operations.data');
 
     Route::get('/app', UiShellController::class)->name('ui.index');
+    Route::get('/ui-admin/keys', [UiAdminController::class, 'keys']);
+    Route::post('/ui-admin/keys', [UiAdminController::class, 'createKey']);
+    Route::get('/ui-admin/keys/{id}/usage', [UiAdminController::class, 'usage'])->whereNumber('id');
+    Route::delete('/ui-admin/keys/{id}', [UiAdminController::class, 'revoke'])->whereNumber('id');
+    Route::get('/ui-admin/report/{type}', [UiAdminController::class, 'report']);
     Route::get('/ui-api/{path}', UiApiController::class)->where('path', '.*')->name('ui.api');
 });

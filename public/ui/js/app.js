@@ -14,6 +14,7 @@ import search from './views/search.js';
 import settings from './views/settings.js';
 import catalog from './views/catalog.js';
 import calendar from './views/calendar.js';
+import adminView from './views/admin.js';
 
 const ROUTES = [
   [/^$/, home, 'home'], [/^home$/, home, 'home'],
@@ -25,6 +26,7 @@ const ROUTES = [
   [/^facet\/([a-z]+)\/(.+)$/, facet, 'movies', ['kind', 'value']],
   [/^catalog\/([a-z]+)$/, catalog, 'catalog', ['kind']],
   [/^calendar$/, calendar, 'calendar'],
+  [/^admin$/, adminView, 'admin'],
   [/^crawl$/, crawl, 'crawl'],
   [/^settings$/, settings, 'settings'],
 ];
@@ -32,7 +34,7 @@ const ROUTES = [
 const NAV = [
   ['Khám phá', [['home', 'Discover', 'home', '#/'], ['search', 'Tìm kiếm', 'search', '#/search']]],
   ['Danh mục', [['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers'], ['catalog-genres', 'Thể loại', 'tag', '#/catalog/genres'], ['catalog-makers', 'Maker', 'building', '#/catalog/makers'], ['catalog-series', 'Series', 'folder', '#/catalog/series'], ['catalog-labels', 'Label', 'layers', '#/catalog/labels'], ['catalog-years', 'Năm', 'cal', '#/catalog/years'], ['calendar', 'Lịch phát hành', 'cal', '#/calendar']]],
-  ['Công cụ', [['crawl', 'Crawl & nguồn', 'spider', '#/crawl'], ['ops', 'Vận hành (/ops)', 'chart', '/ops'], ['settings', 'Cài đặt', 'gear', '#/settings']]],
+  ['Công cụ', [['crawl', 'Crawl & nguồn', 'spider', '#/crawl'], ['ops', 'Vận hành (/ops)', 'chart', '/ops'], ['admin', 'Quản trị', 'gear', '#/admin'], ['settings', 'Cài đặt', 'gear', '#/settings']]],
 ];
 
 let cleanup = null;
