@@ -1,5 +1,6 @@
 // Renders every UI view against sample API responses (no browser, no network): `node ui-tests/render-smoke.mjs`.
 import assert from 'node:assert/strict';
+import { readFile, readdir, stat } from 'node:fs/promises';
 
 const store = {};
 globalThis.localStorage = { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); } };
@@ -101,4 +102,37 @@ assert.match(await run('catalog-unknown', await load('views/catalog.js'), { para
 const movieList = (await import('../public/ui/js/components.js')).movieCard(movie('XSS-1', { title_en: '<img src=x onerror=alert(1)>' }));
 assert.ok(!movieList.includes('<img src=x'), 'titles are escaped');
 await import('./search-filters.mjs');
+
+// Keep user instructions tied to the current menus and filter labels.
+const docsRoot = new URL('../docs/', import.meta.url);
+const guideIndex = await readFile(new URL('user-guide/README.md', docsRoot), 'utf8');
+const shellSource = await readFile(new URL('../public/ui/js/app.js', import.meta.url), 'utf8');
+const navSource = shellSource.split('const NAV = [')[1].split('let cleanup')[0];
+const menuLabels = [...navSource.matchAll(/\['[^']+', '([^']+)', '[^']+',/g)].map(m => m[1]);
+assert.ok(menuLabels.length >= 20, 'read the full current NAV');
+for (const label of menuLabels) assert.ok(guideIndex.includes(label), 'user index covers menu: ' + label);
+const { movieKeys, performerKeys, labels } = await import('../public/ui/js/filterState.js');
+for (const [file, keys] of [['movies.md', movieKeys], ['performers.md', performerKeys]]) {
+  const guide = await readFile(new URL('user-guide/' + file, docsRoot), 'utf8');
+  for (const key of keys) assert.ok(guide.includes(key === 'sort' ? 'Xếp theo' : labels[key]), file + ' covers current filter: ' + labels[key]);
+}
+let guidePages = 0, checkedLinks = 0;
+for (const folder of ['user-guide', 'developer-guide']) {
+  for (const file of await readdir(new URL(folder + '/', docsRoot))) {
+    if (!file.endsWith('.md')) continue;
+    const url = new URL(folder + '/' + file, docsRoot);
+    const text = await readFile(url, 'utf8');
+    if (folder === 'user-guide' && file !== 'settings-reference.md') {
+      assert.match(text, /## Khi nào dùng/, file + ' explains when to use it');
+      assert.match(text, /## Nếu có vẻ sai/, file + ' explains recovery');
+    }
+    if (folder === 'user-guide' && file !== 'README.md') assert.ok(guideIndex.includes('](' + file + ')'), file + ' reachable from index');
+    for (const link of text.matchAll(/\]\(([^)]+)\)/g)) {
+      if (/^(https?:|#)/.test(link[1])) continue;
+      await stat(new URL(link[1].split('#')[0], url)); checkedLinks++;
+    }
+    guidePages++;
+  }
+}
+console.log(`Documentation: ${guidePages} pages, ${menuLabels.length} menu labels and ${checkedLinks} links verified.`);
 console.log('UI render smoke: ' + Object.keys(out).length + ' views rendered, all assertions passed');
