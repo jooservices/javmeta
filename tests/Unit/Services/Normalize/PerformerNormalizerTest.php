@@ -221,4 +221,16 @@ final class PerformerNormalizerTest extends TestCase
         self::assertNull($draft->hip);
         self::assertNull($draft->cup);
     }
+
+    public function test_malformed_utf8_and_nul_bytes_are_scrubbed_before_persistence(): void
+    {
+        $dto = PerformerDto::fromParsed('1', "Mai§ Arisu ", ['location_raw' => "Tokyo§"], 'https://example.test/1');
+
+        $draft = (new PerformerNormalizer())->normalize($dto, 'minnanoav', 'https://example.test/1');
+
+        self::assertNotNull($draft);
+        self::assertTrue(mb_check_encoding((string) $draft->nameRomaji, 'UTF-8'));
+        self::assertStringNotContainsString(" ", (string) $draft->nameRomaji);
+        self::assertTrue(mb_check_encoding((string) json_encode($draft->extra ?? [], JSON_INVALID_UTF8_SUBSTITUTE), 'UTF-8'));
+    }
 }
