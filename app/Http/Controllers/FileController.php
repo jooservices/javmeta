@@ -31,6 +31,6 @@ final class FileController
         $observability->emitOps('file_served', ['file' => basename($path), 'ip_hash' => hash('sha256', (string) $request->ip())]);
         Log::info('javmeta.file_served', ['file' => basename($path)]);
 
-        return response()->file($path);
+        return response()->file($path, str_ends_with(strtolower($path), '.vtt') ? ['Content-Type' => 'text/vtt; charset=UTF-8'] : []);
     }
 }
