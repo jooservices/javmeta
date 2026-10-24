@@ -105,3 +105,7 @@ Names allow 1–80 characters; queries allow up to 1500; there are no browser-st
 
 Verification: `scripts/docker/runtime node node ui-tests/render-smoke.mjs` includes sample facets/suggestions and parameter,
 escaping, picker keyboard/debounce, request cancellation, cache and saved-search interaction assertions without site login.
+
+## Search performance setting
+
+Cài đặt → Tìm kiếm exposes **Ngân sách tìm kiếm (mili giây)** (`search.budget_ms`). A smaller budget prioritizes keyword results when local models or vector services are slow. Full keyword performer pages skip performer vector lookup. The search response fields, authentication and UI states are unchanged. See [performance](../03-operations/performance.md) for measured limitations.

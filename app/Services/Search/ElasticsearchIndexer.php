@@ -233,6 +233,34 @@ final class ElasticsearchIndexer
         );
     }
 
+    /** @return array{movies: list<string>, performers: list<string>} */
+    public function semanticCatalogUuids(string $query, int $size, bool $includePerformers): array
+    {
+        $empty = ['movies' => [], 'performers' => []];
+        $vector = $this->embedder->embedOne($query, true);
+        if ($vector === null || app(SearchBudget::class)->expired()) {
+            return $empty;
+        }
+        $requests = [];
+        foreach ($includePerformers ? ['movies', 'performers'] : ['movies'] as $entity) {
+            $index = (string) config('elasticsearch.' . $entity . '_index');
+            $requests[$entity] = ['path' => "/{$index}/_search", 'body' => [
+                'size' => $size,
+                'knn' => ['field' => $entity === 'movies' ? 'embedding_movie' : 'embedding_performer', 'query_vector' => $vector, 'k' => $size, 'num_candidates' => max($size * 10, 100)],
+            ]];
+        }
+        foreach ($this->elasticsearch->postPool($requests) as $entity => $response) {
+            foreach ($response->json('hits.hits') ?? [] as $hit) {
+                $uuid = $hit['_source']['uuid'] ?? $hit['_id'] ?? null;
+                if (is_string($uuid) && $uuid !== '') {
+                    $empty[$entity][] = $uuid;
+                }
+            }
+        }
+
+        return $empty;
+    }
+
     /**
      * @return list<string> uuids
      */

@@ -10,3 +10,7 @@ Every feature switch and operational value is stored in the database (the `joose
 - **API:** `GET /ui-admin/settings` and `PUT /ui-admin/settings` with `{"settings": {"queue.feed_pool_limit": 300}}`, behind the owner login. Invalid values answer 422 with a message per key.
 
 New features (Telegram follow notifications and bot, the library scanner) read their configuration only from here.
+
+## Hybrid search HTTP budget
+
+`search.budget_ms` (default 300, range 25–1500, group Tìm kiếm) maps to `javmeta_search.budget_ms` through the database settings service. It limits optional HTTP work within one hybrid search. SQL and response serialization can exceed that budget. A timeout falls back to keyword results; the existing response keys remain unchanged. No environment variable is needed. See [performance](performance.md) for measurements and acceptance limits.
