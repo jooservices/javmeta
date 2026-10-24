@@ -27,4 +27,17 @@ Target: p95 under 400 ms for list and lookup calls. Not met yet, and stated plai
 
 Before JOOXCR-255 the performer text search took 0.7 to 1.4 s for any text (it scanned every performer, bio and alias); trigram indexes and one indexed branch per column made it 6 to 70 ms in isolation.
 
+### JOOXCR-261: performer list profiling, 2026-10-25
+
+WSL shared PHP 8.5 runtime, real staging catalog (29,529 movies / 30,506 canonical performers before; 29,566 / 30,553 after). Each row is 30 sequential repository calls in one bootstrapped process, bypassing HTTP, authentication and response serialization. PostgreSQL was read-only. These are application-layer samples, **not replacements for the web-server measurements above**. Crawling continued between runs; results are observations, not controlled causal estimates.
+
+| Repository operation | Before p50 / p95 | After p50 / p95 | First before / after |
+|---|---|---|---|
+| `performers?per_page=24` | 35.0 / 104.9 ms | 69.7 / 119.7 ms | 50.8 / 83.3 ms |
+| `performers?q=aiko` | 10.8 / 12.0 ms | 10.5 / 11.6 ms | 31.5 / 17.2 ms |
+
+The new batch counts are restricted to returned IDs; count sorting retains the existing correlated count. Both measured list paths are below 400 ms in this sample; the default list did not improve. `EXPLAIN (ANALYZE, BUFFERS)` still shows a sequential scan plus top-N name sort (about 22 ms / 2,925 shared hit blocks) and a source-relation sequential scan. The migration adds a partial `(COALESCE(name_romaji, name_kanji, name_kana, ''), id)` index and a `performer_sources(performer_id)` index, smaller relation first.
+
+**Pending QA:** no indexes were installed on staging. The isolated PostgreSQL provisioner failed persisting its metadata (`Invalid cross-device link`); its environment generator subsequently refused the worktree database. PostgreSQL index build/lock duration and after-index plans are therefore unmeasured. The migration uses transactional `CREATE INDEX IF NOT EXISTS`, without `CONCURRENTLY`; QA must measure the write-lock interval before deploying it. SQLite regression tests exercise equivalent B-tree definitions, idempotency, rollback and unchanged name order. End-to-end warm p95 and expired-cache cold timing remain unverified.
+
 To repeat the measurement, create a temporary key with a high `abuse_rpm`, call each endpoint with the `Host: jav.soulevil.com` header, and revoke the key.
