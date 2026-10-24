@@ -7,6 +7,7 @@ use App\Http\Controllers\Operations\DashboardController;
 use App\Http\Controllers\Operations\LoginController;
 use App\Http\Controllers\Ui\UiAdminController;
 use App\Http\Controllers\Ui\UiApiController;
+use App\Http\Controllers\Ui\UiMarksController;
 use App\Http\Controllers\Ui\UiShellController;
 use App\Http\Middleware\EnsureSuperAdministrator;
 
@@ -26,5 +27,10 @@ Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static funct
     Route::get('/ui-admin/keys/{id}/usage', [UiAdminController::class, 'usage'])->whereNumber('id');
     Route::delete('/ui-admin/keys/{id}', [UiAdminController::class, 'revoke'])->whereNumber('id');
     Route::get('/ui-admin/report/{type}', [UiAdminController::class, 'report']);
+    Route::get('/ui-me/marks', [UiMarksController::class, 'index']);
+    Route::post('/ui-me/marks', [UiMarksController::class, 'toggle']);
+    Route::get('/ui-me/movies/{kind}', [UiMarksController::class, 'movies']);
+    Route::get('/ui-me/feed', [UiMarksController::class, 'feed']);
+    Route::post('/ui-me/feed/seen', [UiMarksController::class, 'feedSeen']);
     Route::get('/ui-api/{path}', UiApiController::class)->where('path', '.*')->name('ui.api');
 });

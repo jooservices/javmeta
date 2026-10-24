@@ -1,5 +1,6 @@
 import { esc, fmt } from '../util.js';
 import { api } from '../api.js';
+import { myMarks, markBtn } from '../marks.js';
 import { crumbs, a, href, avatar, performerName, kv, notKnown, errorBox, emptyBox, facetLink } from '../components.js';
 import { moviesBrowser } from './movies.js';
 
@@ -20,6 +21,7 @@ export default {
       return { html: `<div class="wrap">${errorBox(body.error)}</div>` };
     }
     const p = body.data;
+    const marks = await myMarks();
     const name = performerName(p);
     const tab = new URLSearchParams(location.hash.split('?')[1] || '').get('tab') || 'movies';
     const fields = ['birth_date', 'height_cm', 'bust', 'waist', 'hip', 'cup', 'blood_type', 'bio_text', 'debut_date', 'location', 'image_url'];
@@ -51,7 +53,7 @@ export default {
     }
     const html = `<div class="wrap">${crumbs([['Diễn viên', '#/performers'], [name]])}
       <div class="cols" style="grid-template-columns:minmax(0,320px) minmax(0,1fr)"><div class="col">
-        <div class="panel"><div class="bd" style="display:flex;flex-direction:column;gap:12px"><div style="display:flex;gap:14px;align-items:center">${avatar(p, 'lg')}<div><h1 style="font-size:20px">${esc(name)}</h1><div class="muted">${esc(p.name_kanji || '')}</div>${(p.aliases || []).length ? `<div class="dim">aka ${esc(p.aliases.slice(0, 3).join(', '))}</div>` : ''}</div></div>
+        <div class="panel"><div class="bd" style="display:flex;flex-direction:column;gap:12px"><div style="display:flex;gap:14px;align-items:center">${avatar(p, 'lg')}<div><h1 style="font-size:20px">${esc(name)}</h1><div style="margin-top:4px">${markBtn(marks, 'follow', 'performer', String(p.id), '🔔 Đang theo dõi', '🔔 Theo dõi')}</div><div class="muted">${esc(p.name_kanji || '')}</div>${(p.aliases || []).length ? `<div class="dim">aka ${esc(p.aliases.slice(0, 3).join(', '))}</div>` : ''}</div></div>
           ${kv([
             ['Tuổi', p.birth_date ? `<span class="mono">${age(p.birth_date)}</span>` : notKnown()],
             ['Nhóm máu', v(p.blood_type)], ['Nơi sống', v(p.location)],

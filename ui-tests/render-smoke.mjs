@@ -40,7 +40,7 @@ const route = url => {
   throw new Error('no sample for ' + p);
 };
 const adminSample = u => u.includes('report/quality') ? { data: { movies: 100, performers: 50, movies_by_source: { javdb: 60 }, core_fields: { code: { filled: 100, percent: 100 }, maker: { filled: 80, percent: 80 } }, movies_with_8_of_11: { count: 70, percent: 70 }, completeness_tiers: { 1: 20, 2: 80 }, needs_review: 3 } } : { data: [{ id: 1, prefix: 'jvm_abc', label: 'Key <b>one</b>', status: 'active', abuse_rpm: 60, scopes: ['catalog'], created_at: '2026-10-24T00:00:00Z' }] };
-globalThis.fetch = async url => url.startsWith('/ui-admin/') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => adminSample(url) } : ({ ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => route(url) });
+globalThis.fetch = async url => url.startsWith('/ui-me/') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => (url.includes('/marks') ? { data: [{ kind: 'favourite', subject: 'movie', key: 'AAA-001' }] } : { data: [movie('AAA-001')], meta: { follows: 2, new_since_last_visit: 1, total: 1 } }) } : url.startsWith('/ui-admin/') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => adminSample(url) } : ({ ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => route(url) });
 
 const load = async f => (await import('../public/ui/js/' + f)).default;
 const out = {};
@@ -69,6 +69,10 @@ const cal = await run('calendar', await load('views/calendar.js'), { params: {},
 assert.match(cal, /Lịch phát hành/); assert.match(cal, /AAA-001/);
 const adm = await run('admin', await load('views/admin.js'), { params: {}, query: {} });
 assert.match(adm, /Chất lượng dữ liệu/); assert.match(adm, /jvm_abc/); assert.ok(!adm.includes('<b>one</b>'), 'key labels are escaped');
+const lib = await run('library', await load('views/library.js'), { params: { kind: 'favourite' }, query: {} });
+assert.match(lib, /Yêu thích/); assert.match(lib, /AAA-001/);
+assert.match(await run('feed', await load('views/feed.js'), { params: {}, query: {} }), /Theo dõi/);
+assert.match(out.movie, /data-mark/); assert.match(out.movie, /aria-pressed="true"/);
 await run('settings', await load('views/settings.js'), { params: {}, query: {} });
 const cat = await run('catalog', await load('views/catalog.js'), { params: { kind: 'genres' }, query: {} });
 assert.match(cat, /Thể loại/);

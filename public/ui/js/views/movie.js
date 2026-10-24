@@ -1,5 +1,6 @@
 import { esc, fmt, titleOf } from '../util.js';
 import { api } from '../api.js';
+import { myMarks, markBtn } from '../marks.js';
 import { crumbs, cover, a, href, facetLink, facetChip, performerCard, movieCard, kv, notKnown, errorBox, emptyBox, ic, performerName } from '../components.js';
 
 export default {
@@ -10,6 +11,7 @@ export default {
       return { html: `<div class="wrap">${errorBox(body.error)}</div>` };
     }
     const m = body.data;
+    const marks = await myMarks();
     const performers = m.performers || [];
     const tab = new URLSearchParams(location.hash.split('?')[1] || '').get('tab') || 'meta';
     const tabs = [['meta', 'Metadata'], ['media', 'Liên kết & media'], ['codes', 'Mã & nguồn']];
@@ -50,7 +52,7 @@ export default {
       <div class="col"><div><div class="mono muted">${esc(m.code)}${m.release_date ? ' · ' + esc(m.release_date) : ''}${m.needs_review ? ' · <span class="chip warn">cần xem lại</span>' : ''}${m.delisted_at ? ' · <span class="chip bad">đã gỡ</span>' : ''}</div><h1 style="font-size:22px">${esc(titleOf(m))}</h1></div>
         <div class="chips">${(m.genres || []).map(g => facetChip('genre', g)).join('')}${m.series ? facetChip('series', m.series) : ''}${m.maker ? facetChip('maker', m.maker) : ''}${m.runtime_minutes ? `<span class="chip mono">${m.runtime_minutes}′</span>` : ''}${m.community_score !== null ? `<span class="chip mono">★ ${esc(m.community_score)}</span>` : ''}</div>
         <div class="agrid S">${performers.map((p, i) => performerCard(p, i)).join('') || '<span class="muted">Chưa có diễn viên.</span>'}</div>
-        <div class="ibtns"><button class="btn" data-act="copy" data-v="${esc(m.code)}">${ic('copy')} Sao chép mã</button></div>
+        <div class="ibtns"><button class="btn" data-act="copy" data-v="${esc(m.code)}">${ic('copy')} Sao chép mã</button>${markBtn(marks, 'favourite', 'movie', m.code, '★ Đã yêu thích', '☆ Yêu thích')}${markBtn(marks, 'watch_later', 'movie', m.code, '⏱ Trong danh sách xem sau', '⏱ Xem sau')}${markBtn(marks, 'seen', 'movie', m.code, '✓ Đã xem', '✓ Đánh dấu đã xem')}</div>
         <div class="panel">${tabsHtml}<div class="bd">${content}</div></div></div></div>
       <div class="panel" id="related"><div class="hd"><h2>Phim liên quan</h2><span class="dim">cùng diễn viên, series, maker</span></div><div class="bd"><div class="strip" id="relstrip"><span class="loader"><i></i><i></i><i></i></span></div></div></div></div>`;
     return {

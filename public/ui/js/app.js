@@ -15,6 +15,9 @@ import settings from './views/settings.js';
 import catalog from './views/catalog.js';
 import calendar from './views/calendar.js';
 import adminView from './views/admin.js';
+import library from './views/library.js';
+import feed from './views/feed.js';
+import { toggleMark } from './marks.js';
 
 const ROUTES = [
   [/^$/, home, 'home'], [/^home$/, home, 'home'],
@@ -27,6 +30,8 @@ const ROUTES = [
   [/^catalog\/([a-z]+)$/, catalog, 'catalog', ['kind']],
   [/^calendar$/, calendar, 'calendar'],
   [/^admin$/, adminView, 'admin'],
+  [/^me\/([a-z_]+)$/, library, 'me', ['kind']],
+  [/^feed$/, feed, 'feed'],
   [/^crawl$/, crawl, 'crawl'],
   [/^settings$/, settings, 'settings'],
 ];
@@ -34,6 +39,7 @@ const ROUTES = [
 const NAV = [
   ['Khám phá', [['home', 'Discover', 'home', '#/'], ['search', 'Tìm kiếm', 'search', '#/search']]],
   ['Danh mục', [['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers'], ['catalog-genres', 'Thể loại', 'tag', '#/catalog/genres'], ['catalog-makers', 'Maker', 'building', '#/catalog/makers'], ['catalog-series', 'Series', 'folder', '#/catalog/series'], ['catalog-labels', 'Label', 'layers', '#/catalog/labels'], ['catalog-years', 'Năm', 'cal', '#/catalog/years'], ['calendar', 'Lịch phát hành', 'cal', '#/calendar']]],
+  ['Của tôi', [['me-favourite', 'Yêu thích', 'tag', '#/me/favourite'], ['me-watch_later', 'Xem sau', 'cal', '#/me/watch_later'], ['me-seen', 'Đã xem', 'film', '#/me/seen'], ['feed', 'Theo dõi', 'user', '#/feed']]],
   ['Công cụ', [['crawl', 'Crawl & nguồn', 'spider', '#/crawl'], ['ops', 'Vận hành (/ops)', 'chart', '/ops'], ['admin', 'Quản trị', 'gear', '#/admin'], ['settings', 'Cài đặt', 'gear', '#/settings']]],
 ];
 
@@ -49,7 +55,7 @@ function parse() {
     if (m) {
       const params = {};
       (names || []).forEach((n, i) => { params[n] = decodeURIComponent(m[i + 1]); });
-      return { view, top: top === 'catalog' ? 'catalog-' + params.kind : top, params, query };
+      return { view, top: top === 'catalog' ? 'catalog-' + params.kind : top === 'me' ? 'me-' + params.kind : top, params, query };
     }
   }
   return { view: null, top: '', params: {}, query };
@@ -142,6 +148,7 @@ $('#omq').addEventListener('keydown', e => {
 document.addEventListener('click', e => {
   if (!e.target.closest('#omni')) omniClose();
   const oi = e.target.closest('#odrop .oi'); if (oi) { omniClose(); $('#omq').value = ''; }
+  const mk = e.target.closest('[data-mark]'); if (mk) { toggleMark(mk); return; }
   const t = e.target.closest('[data-act]'); if (!t) return;
   const act = t.dataset.act;
   if (act === 'theme') toggleTheme();
