@@ -22,6 +22,7 @@ return [
         'search' => 'Tìm kiếm',
         'observability' => 'Giám sát',
         'backup' => 'Sao lưu',
+        'follow_notifications' => 'Thông báo theo dõi (Telegram)',
     ],
 
     'definitions' => [
@@ -70,6 +71,11 @@ return [
         'observability.trace_sample_rate' => ['group' => 'observability', 'label' => 'Tỷ lệ lấy mẫu trace (0 đến 1)', 'description' => '1 là lấy mọi request.', 'type' => 'float', 'config' => ['openobserve.trace_sample_rate'], 'min' => 0, 'max' => 1],
         'observability.sentry_traces_sample_rate' => ['group' => 'observability', 'label' => 'Tỷ lệ lấy mẫu trace Sentry (0 đến 1)', 'description' => '0 là tắt trace Sentry.', 'type' => 'float', 'config' => ['sentry.traces_sample_rate'], 'min' => 0, 'max' => 1],
 
+        'follow_notifications.enabled' => ['group' => 'follow_notifications', 'label' => 'Gửi thông báo phim mới của mục đang theo dõi', 'description' => 'Mỗi phim mới của diễn viên, maker hoặc series đang theo dõi gửi một tin Telegram kèm ảnh bìa và nút Mở.', 'type' => 'bool', 'config' => ['javmeta_notifications.follow.enabled']],
+        'follow_notifications.daily_cap' => ['group' => 'follow_notifications', 'label' => 'Số tin tối đa mỗi ngày', 'description' => 'Quá số này, các phim còn lại chờ sang ngày sau.', 'type' => 'int', 'config' => ['javmeta_notifications.follow.daily_cap'], 'min' => 1, 'max' => 500],
+        'follow_notifications.quiet_from_hour' => ['group' => 'follow_notifications', 'label' => 'Giờ yên lặng từ (0 đến 23)', 'description' => 'Trong giờ yên lặng không gửi tin; tin được gửi sau khi hết giờ. Bằng giờ kết thúc thì tắt giờ yên lặng.', 'type' => 'int', 'config' => ['javmeta_notifications.follow.quiet_from_hour'], 'min' => 0, 'max' => 23],
+        'follow_notifications.quiet_to_hour' => ['group' => 'follow_notifications', 'label' => 'Giờ yên lặng đến (0 đến 23)', 'description' => 'Giờ kết thúc (không gồm giờ này), theo múi giờ báo cáo.', 'type' => 'int', 'config' => ['javmeta_notifications.follow.quiet_to_hour'], 'min' => 0, 'max' => 23],
+        'follow_notifications.lookback_days' => ['group' => 'follow_notifications', 'label' => 'Chỉ báo phim thấy trong (ngày)', 'description' => 'Phim cũ hơn mức này không được báo.', 'type' => 'int', 'config' => ['javmeta_notifications.follow.lookback_days'], 'min' => 1, 'max' => 30],
         'backup.stale_after_seconds' => ['group' => 'backup', 'label' => 'Bản sao lưu coi là cũ sau (giây)', 'description' => 'Dùng cho cảnh báo sao lưu hằng phút.', 'type' => 'int', 'config' => ['backup.stale_after_seconds'], 'min' => 3600, 'max' => 2592000],
     ],
 ];
