@@ -28,12 +28,24 @@ return [
         'library' => 'Thư viện trên đĩa',
         'downloads' => 'Tải về (qBittorrent)',
         'files' => 'Máy chủ tệp',
+        'media' => 'Xử lý media',
     ],
 
     'definitions' => [
         'perf.warm_enabled' => ['group' => 'search', 'label' => 'Làm ấm bộ nhớ đệm', 'description' => 'Tự làm mới trạng thái và bộ lọc toàn bộ danh mục theo lịch, giảm thời gian chờ khi bộ nhớ đệm hết hạn.', 'type' => 'bool', 'config' => ['javmeta_perf.warm_enabled']],
 
         'search.budget_ms' => ['group' => 'search', 'label' => 'Ngân sách tìm kiếm (mili giây)', 'description' => 'Tổng thời gian dành cho HTTP tùy chọn trong một lượt tìm kiếm kết hợp. Hết thời gian thì trả kết quả từ khóa; không giới hạn truy vấn cơ sở dữ liệu.', 'type' => 'int', 'config' => ['javmeta_search.budget_ms'], 'min' => 25, 'max' => 1500],
+
+        'media.api_url' => ['group' => 'media', 'label' => 'Địa chỉ JavMeta cho worker', 'description' => 'Địa chỉ nội bộ của API JavMeta.', 'type' => 'string', 'config' => ['javmeta_media.api_url']],
+        'media.output_folder' => ['group' => 'media', 'label' => 'Thư mục output media', 'description' => 'Chỉ ghi ảnh và phụ đề tại đây; không ghi vào thư viện.', 'type' => 'string', 'config' => ['javmeta_media.output_folder']],
+        'media.max_parallel' => ['group' => 'media', 'label' => 'Số việc media đồng thời', 'description' => 'Giới hạn chung cho mọi worker.', 'type' => 'int', 'config' => ['javmeta_media.max_parallel'], 'min' => 1, 'max' => 16],
+        'media.max_attempts' => ['group' => 'media', 'label' => 'Số lần thử media tối đa', 'description' => 'Sau mức này cần chủ sở hữu bấm thử lại.', 'type' => 'int', 'config' => ['javmeta_media.max_attempts'], 'min' => 1, 'max' => 10],
+        'media.lease_seconds' => ['group' => 'media', 'label' => 'Thời hạn lượt xử lý (giây)', 'description' => 'Phải lớn hơn thời gian tối đa một việc.', 'type' => 'int', 'config' => ['javmeta_media.lease_seconds'], 'min' => 60, 'max' => 86400],
+        'media.job_timeout_sec' => ['group' => 'media', 'label' => 'Thời gian tối đa một việc media', 'description' => 'Dừng tiến trình quá hạn (giây).', 'type' => 'int', 'config' => ['javmeta_media.job_timeout_sec'], 'min' => 10, 'max' => 72000],
+        'media.poll_sec' => ['group' => 'media', 'label' => 'Nghỉ khi hàng đợi trống (giây)', 'description' => 'Worker đọc lại cấu hình mỗi lượt.', 'type' => 'int', 'config' => ['javmeta_media.poll_sec'], 'min' => 1, 'max' => 60],
+        'media.thumb_interval_sec' => ['group' => 'media', 'label' => 'Khoảng cách ảnh preview (giây)', 'description' => 'Lấy một ảnh sau mỗi khoảng này.', 'type' => 'int', 'config' => ['javmeta_media.thumb_interval_sec'], 'min' => 1, 'max' => 3600],
+        'media.scene_threshold' => ['group' => 'media', 'label' => 'Ngưỡng chuyển cảnh', 'description' => 'Độ khác biệt hình ảnh để tách cảnh.', 'type' => 'float', 'config' => ['javmeta_media.scene_threshold'], 'min' => 0.01, 'max' => 1],
+        'media.ffmpeg_threads' => ['group' => 'media', 'label' => 'Số luồng ffmpeg', 'description' => 'Giới hạn CPU để giữ máy đáp ứng.', 'type' => 'int', 'config' => ['javmeta_media.ffmpeg_threads'], 'min' => 1, 'max' => 16],
         'queue.workers_per_queue' => ['group' => 'queue', 'label' => 'Số worker mỗi hàng đợi', 'description' => 'Horizon chạy bấy nhiêu tiến trình cho mỗi hàng đợi.', 'type' => 'int', 'config' => ['javmeta_queues.workers_per_queue'], 'min' => 1, 'max' => 32, 'restart' => 'javmeta-horizon'],
         'queue.depth_limit' => ['group' => 'queue', 'label' => 'Ngưỡng hàng đợi đầy', 'description' => 'Trên số việc chờ này, kiểm tra sẵn sàng báo hàng đợi đầy.', 'type' => 'int', 'config' => ['javmeta_queues.depth_limit'], 'min' => 1, 'max' => 100000],
         'queue.per_source_inflight' => ['group' => 'queue', 'label' => 'Việc đồng thời mỗi nguồn', 'description' => 'Tối đa số việc của một nguồn được chạy cùng lúc.', 'type' => 'int', 'config' => ['javmeta_queues.per_source_inflight'], 'min' => 1, 'max' => 64],
