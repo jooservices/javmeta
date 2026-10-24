@@ -16,14 +16,25 @@ class ApiKey extends Model
     public const STATUS_ACTIVE = 'active';
     public const STATUS_REVOKED = 'revoked';
 
+    /** movies: lookup, search, related, calendar; bulk: movies:bulk; performers; catalog: meta and suggest; status; mcp. */
+    public const SCOPES = ['movies', 'bulk', 'performers', 'catalog', 'status', 'mcp'];
+
     protected $table = 'api_keys';
     public $timestamps = false;
     /** @var list<string> */
-    protected $fillable = ['prefix', 'key_hash', 'label', 'status', 'revoked_at', 'abuse_rpm', 'created_at'];
+    protected $fillable = ['prefix', 'key_hash', 'label', 'status', 'revoked_at', 'abuse_rpm', 'scopes', 'created_at'];
 
     /** @return array<string, string> */
     protected function casts(): array
     {
-        return ['revoked_at' => 'datetime', 'abuse_rpm' => 'integer', 'created_at' => 'datetime'];
+        return ['revoked_at' => 'datetime', 'abuse_rpm' => 'integer', 'scopes' => 'array', 'created_at' => 'datetime'];
+    }
+
+    /** A key without scopes (null) may use everything. */
+    public function allows(string $scope): bool
+    {
+        $scopes = $this->scopes;
+
+        return $scopes === null || in_array($scope, $scopes, true);
     }
 }

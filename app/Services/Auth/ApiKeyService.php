@@ -10,7 +10,8 @@ use Illuminate\Support\Str;
 
 final class ApiKeyService
 {
-    public function create(string $label, int $abuseRpm = 60): CreatedApiKey
+    /** @param list<string>|null $scopes null grants every scope */
+    public function create(string $label, int $abuseRpm = 60, ?array $scopes = null): CreatedApiKey
     {
         $plaintext = 'jvm_' . Str::random(48);
         $prefix = substr($plaintext, 0, 12);
@@ -22,6 +23,7 @@ final class ApiKeyService
             'status' => ApiKey::STATUS_ACTIVE,
             'revoked_at' => null,
             'abuse_rpm' => $abuseRpm,
+            'scopes' => $scopes,
             'created_at' => now(),
         ]);
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Exceptions\ForbiddenScopeException;
 use App\Exceptions\UnauthorizedException;
 use App\Services\Auth\ApiKeyService;
 use Closure;
@@ -29,8 +30,29 @@ final readonly class AuthenticateApiKey
             throw new UnauthorizedException();
         }
 
+        $scope = $this->scopeOf($request);
+        if ($scope !== null && ! $apiKey->allows($scope)) {
+            throw new ForbiddenScopeException($scope);
+        }
+
         $request->attributes->set('api_key', $apiKey);
 
         return $next($request);
+    }
+
+    /** The scope a request needs, from the first path segment after /api/v1. */
+    private function scopeOf(Request $request): ?string
+    {
+        $segment = explode('/', ltrim((string) preg_replace('#^/?api/v1/#', '', ltrim($request->path(), '/')), '/'))[0];
+
+        return match (true) {
+            $segment === 'movies:bulk' => 'bulk',
+            $segment === 'movies' => 'movies',
+            $segment === 'performers' => 'performers',
+            $segment === 'meta', $segment === 'suggest' => 'catalog',
+            $segment === 'status' => 'status',
+            $segment === 'mcp' => 'mcp',
+            default => null,
+        };
     }
 }
