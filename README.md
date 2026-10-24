@@ -10,7 +10,7 @@ Status: Beta — v0.1.0-beta
 
 - **Crawl all sites:** `make crawl ACTION=tick` → `make crawl ACTION=dispatch` (worker in compose). 25 sources in `config/javmeta_sources.php` — **movies, performers, and galleries** by capability.
 - **Query API:** `GET /api/v1/movies/{code}` · `GET /api/v1/movies?q=…` · `GET /api/v1/performers` (aliases `/movies`). API key via admin.
-- **MCP for AI:** stdio and HTTP expose `lookup_movies`, `get_movie`, `search`, `lookup_performers`, `get_counts`, `crawl_status`, `system_status`, and `get_performer`. See the [MCP guide](docs/03-operations/mcp.md) for inputs and examples.
+- **MCP for AI:** stdio and HTTP expose `lookup_movies`, `get_movie`, `search`, `lookup_performers`, `get_counts`, `crawl_status`, `system_status`, `get_performer`, `get_catalog`, `suggest`, `get_related_movies`, and `get_release_calendar`. See the [MCP guide](docs/03-operations/mcp.md) for inputs and examples.
 - **Docker + durable DB:** Postgres / Mongo / ES bind-mounted under `./data/*` (survive container drop; avoid `down -v`).
 
 ## Site capability matrix
@@ -56,6 +56,19 @@ Status: Beta — v0.1.0-beta
 **Search:** `ES → uuid → Postgres → respond`  
 **Lookup by code:** Postgres only  
 **Persistence:** Postgres + Elasticsearch host bind mounts under `./data/*`; MongoDB uses a Docker named volume (`mongo-db-data`) because its WiredTiger engine is incompatible with Docker Desktop macOS bind mounts. `docker compose down` keeps all data (do **not** use `docker compose down -v`).
+
+## Where things are
+
+| What | Where |
+|---|---|
+| Web UI (owner login) | `/app`; how it works: [docs/ui/README.md](docs/ui/README.md) |
+| API contract (OpenAPI) | `/api/openapi.json`, source `resources/openapi/javmeta.json`; notes in [api-contract.md](docs/03-operations/api-contract.md) |
+| API keys, scopes, limits | the Admin page of the UI, `POST /api/v1/admin/keys` |
+| Run, stop and recover staging | [staging-runbook.md](docs/03-operations/staging-runbook.md) (`php artisan staging:readiness` is the one-command health answer) |
+| Staging and UAT, deploy, reset | [environments.md](docs/03-operations/environments.md) |
+| Backups and restore | [backup.md](docs/03-operations/backup.md) |
+| Sample dataset for tests and UAT | [sample-dataset.md](docs/03-operations/sample-dataset.md) |
+| Measured response times | [performance.md](docs/03-operations/performance.md) |
 
 Canonical performer matching, backfill, review, split, and undo procedures are documented in [performer identity operations](docs/03-operations/performer-identity.md).
 
@@ -119,7 +132,7 @@ MCP (stdio for AI clients) — set `JAVMETA_MCP_API_KEY` to an **active** `jvm_�
 
 ```bash
 docker compose --profile mcp run --rm mcp
-# tools: lookup_movies, get_movie, search, lookup_performers, get_counts, crawl_status, system_status, get_performer
+# tools: lookup_movies, get_movie, search, lookup_performers, get_counts, crawl_status, system_status, get_performer, get_catalog, suggest, get_related_movies, get_release_calendar
 ```
 
 Movie and performer detail responses (`get_movie`, `get_performer`, and the
