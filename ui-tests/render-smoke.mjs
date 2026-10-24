@@ -27,6 +27,8 @@ const sources = [
 const route = url => {
   const u = new URL(url, 'https://x.test');
   const p = u.pathname.replace('/ui-api/', '');
+  if (p === 'movies/facets') return { data: { total: u.searchParams.get('q') === 'empty' ? 0 : 12, genres: [{ name: 'Drama', count: 12 }, { name: '<b>School</b>', count: 3 }], makers: [{ name: 'Maker One', count: 10 }], series: [{ name: 'Series One', count: 9 }], labels: [{ name: 'Label One', count: 8 }], years: [{ name: '2025', count: 7 }], sources: [{ name: 'javdb', count: 6 }], performers: [{ id: 92, name: 'Eimi <b>x</b>', count: 5 }] } };
+  if (p === 'performers/facets') return { data: { total: 7, cups: [{ name: 'D', count: 5 }], blood_types: [{ name: 'O', count: 4 }], locations: [{ name: 'Tokyo', count: 3 }], sources: [{ name: 'javdb', count: 2 }], status: [{ name: 'active', count: 7 }], with_image: 6, with_bio: 4 } };
   if (p === 'status/summary') return { data: summary };
   if (p === 'status/sources') return { data: sources };
   if (p === 'movies') return { data: [movie('AAA-001'), movie('BBB-002', { title_en: '<script>alert(1)</script>' })], ...pg(2) };
@@ -34,7 +36,7 @@ const route = url => {
   if (['cups', 'blood_types', 'locations'].includes(p.replace('meta/catalog/', ''))) return { data: [{ name: 'D', performer_count: 30 }, { name: 'E', performer_count: 9 }], meta: { pagination: { total: 2, per_page: 24, page: 1, last_page: 1 } } };
   if (p.startsWith('meta/catalog/')) return { data: [{ name: '2025', movie_count: 40 }, { name: 'School', movie_count: 12 }], meta: { pagination: { total: 2, per_page: 60, page: 1, last_page: 1, sort: 'movie_count' } } };
   if (p === 'search') return { data: { movies: [movie('AAA-001'), movie('BBB-002')], performers: [performer(1)], interpretation: { keywords: 'night', filters: { maker: 'Mankitsu', released_from: '2024-01-01' }, by: 'rules' } } };
-  if (p === 'suggest') return { data: { movies: [], performers: [], genres: [{ name: 'Drama', movie_count: 40 }], makers: [{ name: 'Mankitsu', movie_count: 9 }], series: [] } };
+  if (p === 'suggest') return { data: { movies: [], performers: [{ id: 92, name: 'Eimi <b>x</b>', movie_count: 5 }], genres: [{ name: 'Drama', movie_count: 40 }], makers: [{ name: 'Mankitsu', movie_count: 9 }], series: [] } };
   if (p === 'movies/calendar') return { data: [{ date: '2026-10-05', count: 5, movies: [{ code: 'AAA-001', title: 'T', cover_url: null, maker: 'M' }] }], meta: { month: '2026-10', total: 5 } };
   if (p.endsWith('/related')) return { data: [movie('REL-001')] };
   if (p === 'performers') return { data: [performer(1), performer(2)], ...pg(2) };
@@ -58,7 +60,7 @@ assert.deepEqual(toApi({ from: '2020', to: '2022' }), { released_from: '2020-01-
 const home = await run('home', await load('views/home.js'), { params: {}, query: {} });
 assert.match(home, /phim trong DB/); assert.match(home, /data-to="4469"/); assert.match(home, /Hỏng|Tắt|Ổn/);
 await run('movies', await load('views/movies.js'), { params: {}, query: { genre: 'Drama' } });
-assert.match(out.movies, /Bộ lọc/); assert.match(out.movies, /genre: <b>Drama/);
+assert.match(out.movies, /Bộ lọc/); assert.match(out.movies, /data-drop="genre" data-value="Drama"/); assert.match(out.movies, /Thể loại: Drama/);
 const detail = await run('movie', await load('views/movie.js'), { params: { code: 'AAA-001' }, query: {} });
 assert.match(detail, /Title of AAA-001/); assert.match(detail, /Eimi Fukada/); assert.match(detail, /#\/facet\/genre\/Drama/);
 await run('performers', await load('views/performers.js'), { params: {}, query: { blood_type: 'O' } });
@@ -98,4 +100,5 @@ assert.match(await run('catalog-unknown', await load('views/catalog.js'), { para
 // a title with markup must never reach the page unescaped
 const movieList = (await import('../public/ui/js/components.js')).movieCard(movie('XSS-1', { title_en: '<img src=x onerror=alert(1)>' }));
 assert.ok(!movieList.includes('<img src=x'), 'titles are escaped');
+await import('./search-filters.mjs');
 console.log('UI render smoke: ' + Object.keys(out).length + ' views rendered, all assertions passed');
