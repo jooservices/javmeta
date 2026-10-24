@@ -79,6 +79,7 @@ final class SampleDataset
             foreach (array_chunk($performerIds, 500) as $chunk) {
                 DB::table('movie_performers')->whereIn('performer_id', $chunk)->delete();
                 DB::table('performer_aliases')->whereIn('performer_id', $chunk)->delete();
+                DB::table('performer_sources')->whereIn('performer_id', $chunk)->delete();
                 DB::table('performers')->whereIn('id', $chunk)->delete();
             }
             DB::table('movie_genres')->whereIn('genre_id', $genreIds)->delete();
@@ -142,6 +143,16 @@ final class SampleDataset
         for ($i = 10; $i <= self::PERFORMERS; $i += 10) {
             $aliases[] = ['performer_id' => $ids[sprintf('p%04d', $i)], 'alias' => 'Sample Nick ' . $i, 'kind' => 'alias'];
         }
+        // Every sample performer is known by one source page, like a crawled performer.
+        $sources = [];
+        foreach ($ids as $external => $performerId) {
+            $row = DB::table('performers')->where('id', $performerId)->first(['name_romaji', 'name_kanji', 'name_kana', 'birth_date']);
+            $sources[] = ['performer_id' => $performerId, 'site_slug' => self::SOURCE, 'mongo_id' => 'sample-' . $external, 'external_id' => $external, 'source_url' => null, 'crawled_at' => $now, 'name_romaji' => $row->name_romaji, 'name_kanji' => $row->name_kanji, 'name_kana' => $row->name_kana, 'birth_date' => $row->birth_date];
+        }
+        foreach (array_chunk($sources, 100) as $chunk) {
+            DB::table('performer_sources')->upsert($chunk, ['site_slug', 'mongo_id'], ['performer_id', 'name_romaji', 'name_kanji', 'name_kana', 'birth_date', 'crawled_at']);
+        }
+
         // The aliases belong to the sample performers: replace them, so a second load adds nothing.
         DB::table('performer_aliases')->whereIn('performer_id', array_values($ids))->delete();
         DB::table('performer_aliases')->insert($aliases);

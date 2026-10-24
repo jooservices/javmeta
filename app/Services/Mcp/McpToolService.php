@@ -151,6 +151,13 @@ final class McpToolService
                 'type' => 'object',
                 'properties' => [
                     'q' => ['type' => 'string', 'description' => 'Name, alias or bio text.'],
+                    'has_image' => ['type' => 'boolean'],
+                    'has_bio' => ['type' => 'boolean'],
+                    'status' => ['type' => 'string', 'enum' => ['active', 'retired']],
+                    'movies_min' => ['type' => 'integer', 'description' => 'Minimum number of linked movies.'],
+                    'debut_from' => ['type' => 'integer', 'description' => 'First debut year.'],
+                    'debut_to' => ['type' => 'integer', 'description' => 'Last debut year.'],
+                    'source' => ['type' => 'string', 'description' => 'Source slugs separated by commas.'],
                     'age_min' => ['type' => 'integer'],
                     'age_max' => ['type' => 'integer'],
                     'height_min' => ['type' => 'integer'],
@@ -599,7 +606,7 @@ final class McpToolService
     private function performerFilters(array $arguments): array
     {
         $filters = [];
-        foreach (['q', 'cup', 'blood_type', 'location'] as $key) {
+        foreach (['q', 'cup', 'blood_type', 'location', 'source'] as $key) {
             if (array_key_exists($key, $arguments)) {
                 $value = $this->stringArgument($arguments, $key);
                 if ($value !== null) {
@@ -607,9 +614,17 @@ final class McpToolService
                 }
             }
         }
+        foreach (['has_image', 'has_bio'] as $flag) {
+            if (($arguments[$flag] ?? null) !== null) {
+                $filters[$flag] = filter_var($arguments[$flag], FILTER_VALIDATE_BOOLEAN) ? '1' : '0';
+            }
+        }
+        if (in_array($arguments['status'] ?? null, ['active', 'retired'], true)) {
+            $filters['status'] = $arguments['status'];
+        }
 
         foreach ([
-            'age_min', 'age_max', 'height_min', 'height_max', 'bust_min', 'bust_max',
+            'movies_min', 'debut_from', 'debut_to', 'age_min', 'age_max', 'height_min', 'height_max', 'bust_min', 'bust_max',
             'waist_min', 'waist_max', 'hip_min', 'hip_max',
         ] as $key) {
             if (($arguments[$key] ?? null) !== null) {

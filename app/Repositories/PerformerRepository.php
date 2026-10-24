@@ -169,12 +169,76 @@ final class PerformerRepository extends EloquentRepository implements Repository
             $query->whereDate('birth_date', '>', today()->subYears((int) $ageMax + 1)->toDateString());
         }
 
+        // Several values separated by commas mean any of them (cups B and C, blood types A or O).
         foreach (['cup', 'blood_type', 'location'] as $column) {
-            $value = $filters[$column] ?? null;
-            if (is_string($value) && trim($value) !== '') {
-                $query->where($column, $like, '%' . trim($value) . '%');
+            $values = array_values(array_filter(array_map('trim', explode(',', (string) ($filters[$column] ?? ''))), static fn(string $v): bool => $v !== ''));
+            if ($values !== []) {
+                $query->where(static function (Builder $any) use ($values, $column, $like): void {
+                    foreach ($values as $value) {
+                        $any->orWhere($column, $like, '%' . $value . '%');
+                    }
+                });
             }
         }
+
+        if (isset($filters['has_image'])) {
+            (string) $filters['has_image'] === '1'
+                ? $query->whereNotNull('image_url')->where('image_url', '<>', '')
+                : $query->where(static fn(Builder $w) => $w->whereNull('image_url')->orWhere('image_url', ''));
+        }
+        if (isset($filters['has_bio'])) {
+            (string) $filters['has_bio'] === '1'
+                ? $query->whereNotNull('bio_text')->where('bio_text', '<>', '')
+                : $query->where(static fn(Builder $w) => $w->whereNull('bio_text')->orWhere('bio_text', ''));
+        }
+        if (isset($filters['status'])) {
+            $filters['status'] === 'retired' ? $query->whereNotNull('retired_date') : $query->whereNull('retired_date');
+        }
+        if (is_numeric($filters['movies_min'] ?? null)) {
+            $query->whereRaw('(select count(*) from movie_performers mp where mp.performer_id = performers.id) >= ?', [(int) $filters['movies_min']]);
+        }
+        $year = DB::getDriverName() === 'sqlite' ? "CAST(strftime('%Y', debut_date) AS INTEGER)" : 'EXTRACT(YEAR FROM debut_date)';
+        if (is_numeric($filters['debut_from'] ?? null)) {
+            $query->whereRaw($year . ' >= ?', [(int) $filters['debut_from']]);
+        }
+        if (is_numeric($filters['debut_to'] ?? null)) {
+            $query->whereRaw($year . ' <= ?', [(int) $filters['debut_to']]);
+        }
+        if (is_string($filters['source'] ?? null) && trim($filters['source']) !== '') {
+            $slugs = array_values(array_filter(array_map('trim', explode(',', $filters['source']))));
+            $query->whereIn('performers.id', DB::table('performer_sources')->select('performer_id')->whereIn('site_slug', $slugs));
+        }
+    }
+
+    /**
+     * What the performers of a filter have in common, with counts, to narrow the search one click at a time.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>
+     */
+    public function facets(array $filters): array
+    {
+        $query = $this->newQuery()->whereNull('canonical_performer_id');
+        $this->applyFilters($query, $filters);
+        $ids = $query->toBase()->select('performers.id');
+        $count = static fn($rows): array => $rows->map(static fn($r): array => ['name' => (string) $r->name, 'count' => (int) $r->c])->all();
+        $by = static fn(string $column) => $count(DB::table('performers')->whereIn('id', clone $ids)->whereNotNull($column)->where($column, '<>', '')->selectRaw($column . ' AS name, COUNT(*) AS c')->groupBy($column)->orderByDesc('c')->orderBy($column)->limit(15)->get());
+        $decade = DB::getDriverName() === 'sqlite' ? "(CAST(strftime('%Y', birth_date) AS INTEGER) / 10) * 10" : '(EXTRACT(YEAR FROM birth_date)::int / 10) * 10';
+
+        return [
+            'total' => (int) DB::table('performers')->whereIn('id', clone $ids)->count(),
+            'cups' => $by('cup'),
+            'blood_types' => $by('blood_type'),
+            'locations' => $by('location'),
+            'birth_decades' => $count(DB::table('performers')->whereIn('id', clone $ids)->whereNotNull('birth_date')->selectRaw($decade . ' AS name, COUNT(*) AS c')->groupByRaw($decade)->orderByDesc('name')->limit(10)->get()),
+            'sources' => $count(DB::table('performer_sources')->whereIn('performer_id', clone $ids)->selectRaw('site_slug AS name, COUNT(DISTINCT performer_id) AS c')->groupBy('site_slug')->orderByDesc('c')->limit(15)->get()),
+            'status' => [
+                ['name' => 'active', 'count' => (int) DB::table('performers')->whereIn('id', clone $ids)->whereNull('retired_date')->count()],
+                ['name' => 'retired', 'count' => (int) DB::table('performers')->whereIn('id', clone $ids)->whereNotNull('retired_date')->count()],
+            ],
+            'with_image' => (int) DB::table('performers')->whereIn('id', clone $ids)->whereNotNull('image_url')->where('image_url', '<>', '')->count(),
+            'with_bio' => (int) DB::table('performers')->whereIn('id', clone $ids)->whereNotNull('bio_text')->where('bio_text', '<>', '')->count(),
+        ];
     }
 
     /**
