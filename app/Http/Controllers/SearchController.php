@@ -10,6 +10,7 @@ use App\Http\Resources\PerformerSummaryResource;
 use App\Services\Search\HybridSearchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use JOOservices\LaravelController\Http\Controllers\BaseApiController;
 
 /** One search box for everything: movies and performers, keywords, filters read from the question, and meaning. */
@@ -23,15 +24,18 @@ final class SearchController extends BaseApiController
             throw new InvalidFilterException('Invalid q or per_page.', ['q' => ['2 to 300 characters'], 'per_page' => ['1 to 50']]);
         }
 
-        $result = $search->search($q, $perPage, ! in_array((string) $request->query('understand', '1'), ['0', 'false'], true));
+        $understand = ! in_array((string) $request->query('understand', '1'), ['0', 'false'], true);
+        // The same question asked again within a minute (the UI re-sends it while typing and paging) is answered from the cache.
+        $data = Cache::remember('javmeta:search:' . md5($q . '|' . $perPage . '|' . (int) $understand), 60, function () use ($search, $q, $perPage, $understand, $request): array {
+            $result = $search->search($q, $perPage, $understand);
 
-        return $this->respondWithData(
-            data: [
+            return [
                 'movies' => MovieSummaryResource::collection($result['movies'])->resolve($request),
                 'performers' => PerformerSummaryResource::collection($result['performers'])->resolve($request),
                 'interpretation' => $result['interpretation'],
-            ],
-            message: 'Search completed successfully.',
-        );
+            ];
+        });
+
+        return $this->respondWithData(data: $data, message: 'Search completed successfully.');
     }
 }
