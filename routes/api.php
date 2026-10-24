@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\Admin\ApiKeyController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Admin\SourceLoginCookieController;
+use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\HealthLiveController;
 use App\Http\Controllers\McpHttpController;
@@ -48,6 +49,7 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
             Route::get('movies/{code}', [MovieLookupController::class, 'show']);
             Route::post('movies:bulk', [MovieBulkController::class, 'store']);
             Route::get('meta/genres', [MetaGenreController::class, 'index']);
+            Route::get('meta/catalog/{kind}', [CatalogController::class, 'index']);
         });
 
         Route::middleware([AuthenticateApiKey::class, LogApiUsage::class])->group(function (): void {

@@ -12,6 +12,7 @@ import facet from './views/facet.js';
 import crawl from './views/crawl.js';
 import search from './views/search.js';
 import settings from './views/settings.js';
+import catalog from './views/catalog.js';
 
 const ROUTES = [
   [/^$/, home, 'home'], [/^home$/, home, 'home'],
@@ -21,13 +22,14 @@ const ROUTES = [
   [/^performers$/, performers, 'performers'],
   [/^performer\/(.+)$/, performer, 'performers', ['id']],
   [/^facet\/([a-z]+)\/(.+)$/, facet, 'movies', ['kind', 'value']],
+  [/^catalog\/([a-z]+)$/, catalog, 'catalog', ['kind']],
   [/^crawl$/, crawl, 'crawl'],
   [/^settings$/, settings, 'settings'],
 ];
 
 const NAV = [
   ['Khám phá', [['home', 'Discover', 'home', '#/'], ['search', 'Tìm kiếm', 'search', '#/search']]],
-  ['Danh mục', [['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers']]],
+  ['Danh mục', [['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers'], ['catalog-genres', 'Thể loại', 'tag', '#/catalog/genres'], ['catalog-makers', 'Maker', 'building', '#/catalog/makers'], ['catalog-series', 'Series', 'folder', '#/catalog/series'], ['catalog-labels', 'Label', 'layers', '#/catalog/labels'], ['catalog-years', 'Năm', 'cal', '#/catalog/years']]],
   ['Công cụ', [['crawl', 'Crawl & nguồn', 'spider', '#/crawl'], ['ops', 'Vận hành (/ops)', 'chart', '/ops'], ['settings', 'Cài đặt', 'gear', '#/settings']]],
 ];
 
@@ -43,7 +45,7 @@ function parse() {
     if (m) {
       const params = {};
       (names || []).forEach((n, i) => { params[n] = decodeURIComponent(m[i + 1]); });
-      return { view, top, params, query };
+      return { view, top: top === 'catalog' ? 'catalog-' + params.kind : top, params, query };
     }
   }
   return { view: null, top: '', params: {}, query };

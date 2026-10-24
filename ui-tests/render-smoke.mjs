@@ -31,6 +31,7 @@ const route = url => {
   if (p === 'status/sources') return { data: sources };
   if (p === 'movies') return { data: [movie('AAA-001'), movie('BBB-002', { title_en: '<script>alert(1)</script>' })], ...pg(2) };
   if (p.startsWith('movies/')) return { data: { ...movie(decodeURIComponent(p.slice(7))), codes: [{ code: 'AAA-001', kind: 'display' }], directors: [], description: 'A story', attrs: { k: 'v' }, magnets: [{ url: 'magnet:?xt=1' }], hls_stream_urls: [], gallery: [], photos: {}, crawled_at: '2026-10-24T00:00:00Z', delisted_at: null } };
+  if (p.startsWith('meta/catalog/')) return { data: [{ name: 'Drama', movie_count: 40 }, { name: 'School', movie_count: 12 }], meta: { pagination: { total: 2, per_page: 60, page: 1, last_page: 1, sort: 'movie_count' } } };
   if (p === 'performers') return { data: [performer(1), performer(2)], ...pg(2) };
   if (p.startsWith('performers/')) return { data: performer(1) };
   throw new Error('no sample for ' + p);
@@ -61,6 +62,10 @@ assert.match(s, /Kết quả/);
 await run('facet-genre', await load('views/facet.js'), { params: { kind: 'genre', value: 'Drama' }, query: {} });
 await run('facet-year', await load('views/facet.js'), { params: { kind: 'year', value: '2025' }, query: {} });
 await run('settings', await load('views/settings.js'), { params: {}, query: {} });
+const cat = await run('catalog', await load('views/catalog.js'), { params: { kind: 'genres' }, query: {} });
+assert.match(cat, /Thể loại/);
+await run('catalog-years', await load('views/catalog.js'), { params: { kind: 'years' }, query: {} });
+assert.match(await run('catalog-unknown', await load('views/catalog.js'), { params: { kind: 'nope' }, query: {} }), /không tồn tại/);
 
 // a title with markup must never reach the page unescaped
 const movieList = (await import('../public/ui/js/components.js')).movieCard(movie('XSS-1', { title_en: '<img src=x onerror=alert(1)>' }));
