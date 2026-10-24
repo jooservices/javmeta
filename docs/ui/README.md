@@ -90,4 +90,6 @@ removes the false “no page to check” DEGRADED verdict.
 
 # Performer list performance
 
+## Performer list performance
+
 Name and update-time lists batch movie counts for the returned page. Ordering, cursor fields and API response fields are unchanged. See [performance measurements](../03-operations/performance.md) for measured limits and pending PostgreSQL index verification.
