@@ -36,6 +36,7 @@ const input = r => {
   const id = 'st-' + r.key;
   if (r.type === 'bool') return `<label class="sw"><input type="checkbox" id="${id}" data-key="${esc(r.key)}" data-type="bool" ${r.value ? 'checked' : ''}> <span>${r.value ? 'Bật' : 'Tắt'}</span></label>`;
   if (r.type === 'secret') return `<input type="password" id="${id}" data-key="${esc(r.key)}" data-type="secret" autocomplete="new-password" placeholder="${r.is_set ? 'đã đặt, nhập để thay (để trống = giữ nguyên)' : 'chưa đặt'}" style="min-width:240px">`;
+  if (r.type === 'string_list') return `<textarea id="${id}" data-key="${esc(r.key)}" data-type="string_list" rows="3" style="min-width:300px">${esc((r.value || []).join('\n'))}</textarea>`;
   const num = r.type === 'int' || r.type === 'float';
   return `<input ${num ? `type="number" step="${r.type === 'float' ? '0.05' : '1'}"` : 'type="text"'} id="${id}" data-key="${esc(r.key)}" data-type="${r.type}" value="${esc(Array.isArray(r.value) ? r.value.join(',') : (r.value ?? ''))}" ${r.min != null ? `min="${r.min}"` : ''} ${r.max != null ? `max="${r.max}"` : ''} style="min-width:140px">`;
 };

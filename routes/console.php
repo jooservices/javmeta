@@ -28,6 +28,7 @@ if (! app()->runningUnitTests()) {
     Schedule::command('crawler:source-health')->dailyAt('04:00')->withoutOverlapping(120)->runInBackground();
     Schedule::command('staging:readiness')->hourly()->withoutOverlapping();
     Schedule::command('telegram:poll')->everyMinute()->withoutOverlapping();
+    Schedule::command('library:scan')->hourly()->withoutOverlapping();
     Schedule::command('follows:notify')->everyFiveMinutes()->withoutOverlapping();
     Schedule::command('javmeta:hourly-report')->hourly()->withoutOverlapping();
 }

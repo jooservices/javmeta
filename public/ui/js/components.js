@@ -37,13 +37,15 @@ export function avatar(p, cls = '') {
 export const performerName = p => p.name_romaji || p.name_kanji || p.name_kana || '(chưa có tên)';
 
 /* ---------- cards and rows ---------- */
+/* codes of the movies that have a file on disk (loaded from the library); the cards show a badge for them */
+export const disk = { codes: new Set() };
 export function movieCard(m, i = 0) {
   const performers = (m.performers || []).slice(0, 3).map(p => a(href.performer(p.id), esc(performerName(p)))).join(', ');
   const genres = (m.genres || []).slice(0, 2).map(g => facetChip('genre', g, 'g')).join('');
   return `<div class="mc" style="--i:${i % 14}"><a href="${href.movie(m.code)}" style="display:contents">${cover(m, { dur: true })}</a>
    <div class="t ell"><a href="${href.movie(m.code)}" class="lnk" title="${esc(titleOf(m))}">${esc(titleOf(m))}</a></div>
    <div class="m">${performers || '<span class="dim">chưa có diễn viên</span>'}</div>
-   <div class="chips mini">${genres}${(m.genres || []).length > 2 ? `<span class="chip">+${m.genres.length - 2}</span>` : ''}</div></div>`;
+   <div class="chips mini">${disk.codes.has(m.code) ? '<span class="chip ok">Trên máy</span>' : ''}${genres}${(m.genres || []).length > 2 ? `<span class="chip">+${m.genres.length - 2}</span>` : ''}</div></div>`;
 }
 export function movieRow(m) {
   return `<tr class="row"><td class="mono">${a(href.movie(m.code), esc(m.code))}</td><td>${esc(titleOf(m))}</td>
