@@ -1,0 +1,9 @@
+# Ollama (on the Windows host) for JavMeta on WSL
+
+WSL and Windows are two different environments. Ollama runs on **Windows** (port 11434, GPU RTX 4070 Ti Super); JavMeta runs in **WSL**. In WSL's mirrored network mode `127.0.0.1` inside WSL is not reliably the Windows loopback: tested 2026-10-24, every Windows listener (135, 445, 3389, 5040 and 11434) times out from WSL over `127.0.0.1`, and `192.168.2.10` (the shared LAN address) is answered by WSL itself, so it refuses. The Hyper-V firewall (a separate firewall from Windows Defender Firewall) blocks traffic from the WSL VM to the host, and turning Windows Defender Firewall off does not change that.
+
+What works, and is used: the gatekeeper (HAProxy, 192.168.10.4) reaches Windows Ollama on the LAN address and listens for WSL on `192.168.10.4:11434`, only for `192.168.2.10` and `192.168.10.0/24` (frontend `ollama-lan` in `/etc/haproxy/haproxy.cfg`, backup `haproxy.cfg.bak-jav-cc-20261024T153147Z`). So JavMeta's setting `ai.ollama_url` is `http://192.168.10.4:11434`. The public name `ai-ollama.jooservices.com` (basic auth) is for use from outside.
+
+If the Hyper-V firewall is opened later (`Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow` on Windows), `http://127.0.0.1:11434` would work from WSL too; nothing needs to change in JavMeta except the setting.
+
+Check it: `php artisan ai:check` (models installed, vector size). Models used (settings in the database): chat `qwen2.5:7b` (reads typed questions), embeddings `nomic-embed-text` when the provider is switched with `php artisan search:switch-embeddings ollama`. A cold model load takes 10 to 40 seconds, so a typed question waits at most `ai.nl_timeout_seconds` (8) before the rules answer, `ai.ollama_keep_alive` (30m) keeps the model loaded and `ai:warm` (every 15 minutes) reloads it before it expires.

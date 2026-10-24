@@ -91,4 +91,16 @@ final class OllamaProviderTest extends TestCase
         $this->assertSame('embedder', config('javmeta_ai.embedding_provider'));
         $this->assertSame('javmeta_movies', config('elasticsearch.movies_index'));
     }
+
+    public function test_warm_keeps_the_chat_model_loaded_and_the_question_timeout_is_short(): void
+    {
+        config(['javmeta_ai.nl_timeout_seconds' => 3, 'javmeta_ai.ollama_keep_alive' => '45m']);
+        Http::fake(['ollama.test:11434/api/generate' => Http::response(['done' => true]), 'ollama.test:11434/api/chat' => Http::response(['message' => ['content' => '{}']])]);
+
+        $this->artisan('ai:warm')->expectsOutputToContain('qwen2.5:7b: loaded')->assertSuccessful();
+        Http::assertSent(fn($r) => str_contains($r->url(), '/api/generate') && $r['model'] === 'qwen2.5:7b' && $r['keep_alive'] === '45m');
+
+        app(OllamaClient::class)->json('s', 'u');
+        Http::assertSent(fn($r) => str_contains($r->url(), '/api/chat') && $r['keep_alive'] === '45m');
+    }
 }

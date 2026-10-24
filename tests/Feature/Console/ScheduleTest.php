@@ -41,6 +41,7 @@ final class ScheduleTest extends TestCase
         ksort($actualFrequencies);
 
         $expectedFrequencies = [
+            'ai:warm' => '*/15 * * * *',
             'crawler:feed-pool' => '* * * * *',
             'crawler:reclaim' => '* * * * *',
             'crawler:recrawl-incomplete' => '0 * * * *',
