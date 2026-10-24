@@ -111,23 +111,35 @@ final class PerformerRepository extends EloquentRepository implements Repository
         $q = isset($filters['q']) && is_string($filters['q']) ? trim($filters['q']) : '';
 
         if ($q !== '') {
-            $pattern = '%' . $q . '%';
-            $query->where(static function (Builder $performers) use ($like, $pattern): void {
-                $performers->where('name_romaji', $like, $pattern)
-                    ->orWhere('name_kanji', $like, $pattern)
-                    ->orWhere('name_kana', $like, $pattern)
-                    ->orWhere('bio_text', $like, $pattern)
-                    ->orWhereHas('aliases', static function (Builder $aliases) use ($like, $pattern): void {
-                        $aliases->where('alias', $like, $pattern);
-                    })
-                    ->orWhereHas('sources', static function (Builder $sources) use ($like, $pattern): void {
-                        $sources->where(static function (Builder $sourceNames) use ($like, $pattern): void {
-                            $sourceNames->where('name_romaji', $like, $pattern)
-                                ->orWhere('name_kanji', $like, $pattern)
-                                ->orWhere('name_kana', $like, $pattern);
+            $pattern = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q) . '%';
+            if (DB::getDriverName() === 'pgsql') {
+                // Each branch can use its own trigram index; one OR over a sub-select and a long text cannot.
+                $query->whereIn('performers.id', static function ($ids) use ($like, $pattern): void {
+                    $ids->select('id')->from('performers')->where('name_romaji', $like, $pattern)
+                        ->union(DB::table('performers')->select('id')->where('name_kanji', $like, $pattern))
+                        ->union(DB::table('performers')->select('id')->where('name_kana', $like, $pattern))
+                        ->union(DB::table('performers')->select('id')->where('bio_text', $like, $pattern))
+                        ->union(DB::table('performer_aliases')->select('performer_id')->where('alias', $like, $pattern))
+                        ->union(DB::table('performer_sources')->select('performer_id')->where('name_romaji', $like, $pattern)->orWhere('name_kanji', $like, $pattern)->orWhere('name_kana', $like, $pattern));
+                });
+            } else {
+                $query->where(static function (Builder $performers) use ($like, $pattern): void {
+                    $performers->where('name_romaji', $like, $pattern)
+                        ->orWhere('name_kanji', $like, $pattern)
+                        ->orWhere('name_kana', $like, $pattern)
+                        ->orWhere('bio_text', $like, $pattern)
+                        ->orWhereHas('aliases', static function (Builder $aliases) use ($like, $pattern): void {
+                            $aliases->where('alias', $like, $pattern);
+                        })
+                        ->orWhereHas('sources', static function (Builder $sources) use ($like, $pattern): void {
+                            $sources->where(static function (Builder $sourceNames) use ($like, $pattern): void {
+                                $sourceNames->where('name_romaji', $like, $pattern)
+                                    ->orWhere('name_kanji', $like, $pattern)
+                                    ->orWhere('name_kana', $like, $pattern);
+                            });
                         });
-                    });
-            });
+                });
+            }
         }
 
         foreach ([
