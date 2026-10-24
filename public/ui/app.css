@@ -294,3 +294,11 @@ tr.sel td:first-child{box-shadow:inset 2px 0 var(--accent)}
 .tbl-wrap{overflow-x:auto}
 .logout-form{display:inline}
 .help-keys kbd{margin-right:4px}
+
+/* release calendar */
+.calgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.calw{text-align:center;font-size:11px;padding:2px 0}
+.calcell{min-height:84px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-size:12px;overflow:hidden}
+.calcell.off{border:0}.calcell.has{background:var(--panel2)}
+.calhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
+@media (max-width:640px){.calcell{min-height:56px;padding:2px 3px}.calcell .ell{font-size:10px}}

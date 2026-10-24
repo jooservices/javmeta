@@ -11,6 +11,8 @@ use App\Http\Controllers\HealthLiveController;
 use App\Http\Controllers\McpHttpController;
 use App\Http\Controllers\MetaGenreController;
 use App\Http\Controllers\MovieBulkController;
+use App\Http\Controllers\MovieCalendarController;
+use App\Http\Controllers\MovieRelatedController;
 use App\Http\Controllers\MovieLookupController;
 use App\Http\Controllers\MovieSearchController;
 use App\Http\Controllers\PerformerController;
@@ -47,6 +49,8 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
         Route::middleware([AuthenticateApiKey::class, 'requires:postgres', LogApiUsage::class])->group(function (): void {
             Route::get('performers', [PerformerController::class, 'index']);
             Route::get('performers/{id}', [PerformerController::class, 'show']);
+            Route::get('movies/calendar', [MovieCalendarController::class, 'index']);
+            Route::get('movies/{code}/related', [MovieRelatedController::class, 'show']);
             Route::get('movies/{code}', [MovieLookupController::class, 'show']);
             Route::post('movies:bulk', [MovieBulkController::class, 'store']);
             Route::get('meta/genres', [MetaGenreController::class, 'index']);
