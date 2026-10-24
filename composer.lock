@@ -1181,16 +1181,16 @@
         },
         {
             "name": "jooservices/crawlerx",
-            "version": "v1.4.1",
+            "version": "v1.4.2",
             "source": {
                 "type": "git",
                 "url": "https://github.com/jooservices/crawlerx.git",
-                "reference": "313416a02ecc47129ed37ab0ad93032637e20957"
+                "reference": "e10d25209f98fc8dca2e4fbe717a7fb1ed5312a2"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/jooservices/crawlerx/zipball/313416a02ecc47129ed37ab0ad93032637e20957",
-                "reference": "313416a02ecc47129ed37ab0ad93032637e20957",
+                "url": "https://api.github.com/repos/jooservices/crawlerx/zipball/e10d25209f98fc8dca2e4fbe717a7fb1ed5312a2",
+                "reference": "e10d25209f98fc8dca2e4fbe717a7fb1ed5312a2",
                 "shasum": ""
             },
             "require": {
@@ -1231,9 +1231,9 @@
             "description": "URL-driven crawl and parse library for JAV catalog sites.",
             "support": {
                 "issues": "https://github.com/jooservices/crawlerx/issues",
-                "source": "https://github.com/jooservices/crawlerx/tree/v1.4.1"
+                "source": "https://github.com/jooservices/crawlerx/tree/v1.4.2"
             },
-            "time": "2026-10-19T03:42:27+00:00"
+            "time": "2026-10-24T13:01:20+00:00"
         },
         {
             "name": "jooservices/dto",
