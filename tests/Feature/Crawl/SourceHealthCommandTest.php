@@ -32,7 +32,7 @@ final class SourceHealthCommandTest extends TestCase
                 return CrawlerxFetchResult::failure(CrawlerxClient::ERROR_BLOCKED, 'Blocked by the site');
             }
         });
-        $directory = base_path('artifacts/reports');
+        $directory = storage_path('app/private/reports');
         File::delete([$directory . '/source-health.json', $directory . '/source-health.md', $directory . '/source-health-history.jsonl']);
 
         $exit = Artisan::call('crawler:source-health', ['--json' => true]);

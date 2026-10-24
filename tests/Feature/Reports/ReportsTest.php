@@ -78,7 +78,7 @@ final class ReportsTest extends TestCase
     public function test_sources_report_shows_freshness_and_the_health_verdict(): void
     {
         Source::query()->create(['slug' => 'demo', 'name' => 'Demo', 'base_url' => 'https://demo.test', 'enabled' => true, 'priority' => 1, 'gap_seconds_default' => 10, 'gap_seconds_min' => 5, 'gap_seconds_max' => 45, 'gap_seconds_current' => 10, 'last_success_at' => now()->subMinutes(5)]);
-        $directory = base_path('artifacts/reports');
+        $directory = storage_path('app/private/reports');
         @mkdir($directory, 0775, true);
         file_put_contents($directory . '/source-health.json', json_encode(['rows' => [['source' => 'demo', 'verdict' => 'WORKING'], ['source' => 'demo', 'verdict' => 'BLOCKED']]]));
 

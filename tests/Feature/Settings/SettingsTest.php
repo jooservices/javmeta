@@ -108,4 +108,13 @@ final class SettingsTest extends TestCase
         $this->putJson('/ui-admin/settings', ['settings' => ['queue.feed_pool_limit' => -5]])->assertStatus(422)->assertJsonStructure(['data' => ['errors' => ['queue.feed_pool_limit']]]);
         $this->putJson('/ui-admin/settings', [])->assertStatus(422);
     }
+
+    public function test_a_secret_default_comes_from_the_first_config_key_that_has_a_value(): void
+    {
+        config(["javmeta_alerts.telegram.bot_token" => "", "laravel-notifications.channels.telegram.bot_token" => "123:live"]);
+        $settings = app(SettingsService::class);
+
+        $this->assertContains("telegram.bot_token", $settings->importDefaults());
+        $this->assertSame("123:live", $this->store->get("settings.telegram.bot_token"));
+    }
 }
