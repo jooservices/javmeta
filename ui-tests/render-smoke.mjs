@@ -40,7 +40,8 @@ const route = url => {
   if (p.startsWith('performers/')) return { data: performer(1) };
   throw new Error('no sample for ' + p);
 };
-const adminSample = u => u.includes('report/quality') ? { data: { movies: 100, performers: 50, movies_by_source: { javdb: 60 }, core_fields: { code: { filled: 100, percent: 100 }, maker: { filled: 80, percent: 80 } }, movies_with_8_of_11: { count: 70, percent: 70 }, completeness_tiers: { 1: 20, 2: 80 }, needs_review: 3 } } : { data: [{ id: 1, prefix: 'jvm_abc', label: 'Key <b>one</b>', status: 'active', abuse_rpm: 60, scopes: ['catalog'], created_at: '2026-10-24T00:00:00Z' }] };
+const settingsSample = { data: { groups: { queue: 'Hàng đợi crawl', telegram: 'Telegram' }, settings: [{ key: 'queue.feed_pool_limit', group: 'queue', label: 'Việc nạp mỗi phút', description: 'd', type: 'int', min: 1, max: 5000, restart: null, source: 'database', value: 300, is_set: null }, { key: 'telegram.bot_token', group: 'telegram', label: 'Token <b>x</b>', description: 'd', type: 'secret', min: null, max: null, restart: null, source: 'default', value: null, is_set: true }] } };
+const adminSample = u => u.includes('/ui-admin/settings') ? settingsSample :  u.includes('report/quality') ? { data: { movies: 100, performers: 50, movies_by_source: { javdb: 60 }, core_fields: { code: { filled: 100, percent: 100 }, maker: { filled: 80, percent: 80 } }, movies_with_8_of_11: { count: 70, percent: 70 }, completeness_tiers: { 1: 20, 2: 80 }, needs_review: 3 } } : { data: [{ id: 1, prefix: 'jvm_abc', label: 'Key <b>one</b>', status: 'active', abuse_rpm: 60, scopes: ['catalog'], created_at: '2026-10-24T00:00:00Z' }] };
 globalThis.fetch = async url => url.startsWith('/ui-me/') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => (url.includes('/marks') ? { data: [{ kind: 'favourite', subject: 'movie', key: 'AAA-001' }] } : { data: [movie('AAA-001')], meta: { follows: 2, new_since_last_visit: 1, total: 1 } }) } : url.startsWith('/ui-admin/') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => adminSample(url) } : ({ ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => route(url) });
 
 const load = async f => (await import('../public/ui/js/' + f)).default;
@@ -78,7 +79,8 @@ const bioHtml = await run('bio', await load('views/bio.js'), { params: {}, query
 assert.match(bioHtml, /Hồ sơ diễn viên/); assert.match(bioHtml, /#\/performers\?cup=/);
 const statsHtml = await run('stats', await load('views/stats.js'), { params: {}, query: {} });
 assert.match(statsHtml, /Thống kê/); assert.match(statsHtml, /Phim theo năm/);
-await run('settings', await load('views/settings.js'), { params: {}, query: {} });
+const st = await run('settings', await load('views/settings.js'), { params: {}, query: {} });
+assert.match(st, /Cấu hình hệ thống/); assert.match(st, /queue\.feed_pool_limit/); assert.ok(!st.includes('<b>x</b>'), 'labels are escaped'); assert.match(st, /đã đặt, nhập để thay/);
 const cat = await run('catalog', await load('views/catalog.js'), { params: { kind: 'genres' }, query: {} });
 assert.match(cat, /Thể loại/);
 await run('catalog-years', await load('views/catalog.js'), { params: { kind: 'years' }, query: {} });

@@ -8,6 +8,7 @@ use App\Http\Controllers\Operations\LoginController;
 use App\Http\Controllers\Ui\UiAdminController;
 use App\Http\Controllers\Ui\UiApiController;
 use App\Http\Controllers\Ui\UiMarksController;
+use App\Http\Controllers\Ui\UiSettingsController;
 use App\Http\Controllers\Ui\UiShellController;
 use App\Http\Middleware\EnsureSuperAdministrator;
 
@@ -32,5 +33,7 @@ Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static funct
     Route::get('/ui-me/movies/{kind}', [UiMarksController::class, 'movies']);
     Route::get('/ui-me/feed', [UiMarksController::class, 'feed']);
     Route::post('/ui-me/feed/seen', [UiMarksController::class, 'feedSeen']);
+    Route::get('/ui-admin/settings', [UiSettingsController::class, 'index']);
+    Route::put('/ui-admin/settings', [UiSettingsController::class, 'update']);
     Route::get('/ui-api/{path}', UiApiController::class)->where('path', '.*')->name('ui.api');
 });
