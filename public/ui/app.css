@@ -302,3 +302,7 @@ tr.sel td:first-child{box-shadow:inset 2px 0 var(--accent)}
 .calcell.off{border:0}.calcell.has{background:var(--panel2)}
 .calhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
 @media (max-width:640px){.calcell{min-height:56px;padding:2px 3px}.calcell .ell{font-size:10px}}
+
+/* admin quality rows: the bar shrinks on a phone so the field name keeps its room */
+.barfield{width:160px;flex:none}
+@media (max-width:640px){.barfield{width:70px}}
