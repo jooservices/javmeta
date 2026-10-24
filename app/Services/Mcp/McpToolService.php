@@ -5,6 +5,12 @@ declare(strict_types=1);
 namespace App\Services\Mcp;
 
 use App\Exceptions\InvalidFilterException;
+use App\Exceptions\MovieNotFoundException;
+use App\Http\Controllers\CatalogController;
+use App\Http\Controllers\MovieCalendarController;
+use App\Http\Controllers\MovieRelatedController;
+use App\Http\Controllers\SuggestController;
+use Illuminate\Http\JsonResponse;
 use App\Http\Resources\MovieResource;
 use App\Http\Resources\MovieSummaryResource;
 use App\Http\Resources\PerformerResource;
@@ -49,6 +55,10 @@ final class McpToolService
             $this->crawlStatusDefinition(),
             $this->systemStatusDefinition(),
             $this->getPerformerDefinition(),
+            $this->getCatalogDefinition(),
+            $this->suggestDefinition(),
+            $this->relatedMoviesDefinition(),
+            $this->releaseCalendarDefinition(),
         ];
     }
 
@@ -212,12 +222,18 @@ final class McpToolService
                 'lookup_performers' => $this->lookupPerformers($arguments),
                 'get_performer' => $this->getPerformer($arguments),
                 'get_counts' => $this->getCounts($arguments),
+                'get_catalog' => $this->viaController(fn() => app(CatalogController::class)->index($this->request($arguments), (string) ($arguments['kind'] ?? ''))),
+                'suggest' => $this->viaController(fn() => app(SuggestController::class)->index($this->request($arguments))),
+                'get_related_movies' => $this->viaController(fn() => app(MovieRelatedController::class)->show((string) ($arguments['code'] ?? ''), $this->movieLookup, $this->movieSearch)),
+                'get_release_calendar' => $this->viaController(fn() => app(MovieCalendarController::class)->index($this->request($arguments))),
                 'crawl_status' => $this->crawlStatus(),
                 'system_status' => $this->systemStatus(),
                 default => ['error' => 'unknown_tool'],
             };
         } catch (InvalidFilterException $exception) {
             return ['error' => 'invalid_filter', 'message' => $exception->getMessage()];
+        } catch (MovieNotFoundException $exception) {
+            return ['error' => 'not_found', 'message' => $exception->getMessage()];
         }
     }
 
@@ -413,6 +429,78 @@ final class McpToolService
         return [
             'movies' => (int) Movie::query()->count(),
             'performers' => (int) Performer::query()->whereNull('canonical_performer_id')->count(),
+        ];
+    }
+
+    /**
+     * The same code path as the HTTP endpoint, so the tool and the API cannot drift apart.
+     *
+     * @param callable(): JsonResponse $call
+     * @return array<string, mixed>
+     */
+    private function viaController(callable $call): array
+    {
+        $payload = $call()->getData(true);
+
+        return ['items' => $payload['data'] ?? [], 'meta' => $payload['meta'] ?? []];
+    }
+
+    /** @param array<string, mixed> $arguments */
+    private function request(array $arguments): Request
+    {
+        return Request::create('/', 'GET', array_filter($arguments, static fn($v): bool => $v !== null && $v !== 'kind'));
+    }
+
+    /** @return array<string, mixed> */
+    private function getCatalogDefinition(): array
+    {
+        return [
+            'name' => 'get_catalog',
+            'description' => 'List genres, makers, series, labels or release years with the number of movies of each.',
+            'inputSchema' => ['type' => 'object', 'properties' => [
+                'kind' => ['type' => 'string', 'enum' => ['genres', 'makers', 'series', 'labels', 'years']],
+                'q' => ['type' => 'string', 'description' => 'Text the name contains.'],
+                'sort' => ['type' => 'string', 'enum' => ['movie_count', 'name']],
+                'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 200],
+                'page' => ['type' => 'integer', 'minimum' => 1],
+            ], 'required' => ['kind']],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function suggestDefinition(): array
+    {
+        return [
+            'name' => 'suggest',
+            'description' => 'Quick suggestions for typed text: movies, performers, genres, makers and series.',
+            'inputSchema' => ['type' => 'object', 'properties' => [
+                'q' => ['type' => 'string', 'description' => 'At least two characters.'],
+                'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 20],
+            ], 'required' => ['q']],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function relatedMoviesDefinition(): array
+    {
+        return [
+            'name' => 'get_related_movies',
+            'description' => 'Movies related to one movie: same performer, then same series, then same maker.',
+            'inputSchema' => ['type' => 'object', 'properties' => [
+                'code' => ['type' => 'string', 'description' => 'Normalized DVD or amateur code.'],
+            ], 'required' => ['code']],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function releaseCalendarDefinition(): array
+    {
+        return [
+            'name' => 'get_release_calendar',
+            'description' => 'Movies released in one month, grouped by day.',
+            'inputSchema' => ['type' => 'object', 'properties' => [
+                'month' => ['type' => 'string', 'description' => 'YYYY-MM; default the current month.'],
+            ]],
         ];
     }
 

@@ -227,6 +227,10 @@ final class McpHttpEndpointTest extends TestCase
             'crawl_status' => ['crawl_status', []],
             'system_status' => ['system_status', []],
             'get_performer' => ['get_performer', ['id' => '{{performer_uuid}}']],
+            'get_catalog' => ['get_catalog', ['kind' => 'makers']],
+            'suggest' => ['suggest', ['q' => 'abc']],
+            'get_related_movies' => ['get_related_movies', ['code' => 'SSIS-001']],
+            'get_release_calendar' => ['get_release_calendar', ['month' => '2026-10']],
         ];
     }
 

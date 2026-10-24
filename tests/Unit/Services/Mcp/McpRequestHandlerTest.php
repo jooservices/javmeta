@@ -49,7 +49,7 @@ final class McpRequestHandlerTest extends TestCase
     {
         $response = app(McpRequestHandler::class)->handle(['id' => 10, 'method' => 'tools/list']);
 
-        self::assertCount(8, $response['result']['tools']);
+        self::assertCount(12, $response['result']['tools']);
         self::assertSame('lookup_movies', $response['result']['tools'][0]['name']);
     }
 
