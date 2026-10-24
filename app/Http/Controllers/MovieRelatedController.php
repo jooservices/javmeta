@@ -10,9 +10,14 @@ use App\Models\Movie;
 use App\Services\Movies\MovieLookupService;
 use App\Services\Search\MovieSearchService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use JOOservices\LaravelController\Http\Controllers\BaseApiController;
 
-/** Movies related to one movie: same performer, then same series, then same maker; the movie itself is never listed. */
+/**
+ * Movies related to one movie: same performer, then same series, then same maker; the movie itself is never listed.
+ * The answer is cached for ten minutes because three searches make it slow.
+ */
 final class MovieRelatedController extends BaseApiController
 {
     private const LIMIT = 12;
@@ -24,6 +29,14 @@ final class MovieRelatedController extends BaseApiController
             throw new MovieNotFoundException($code);
         }
 
+        $items = Cache::remember('javmeta:related:' . $movie->id, 600, fn(): array => $this->related($movie, $search));
+
+        return $this->respondWithData(data: $items, message: 'Related movies retrieved successfully.');
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function related(Movie $movie, MovieSearchService $search): array
+    {
         $filters = [];
         $performer = $movie->performers()->orderBy('performers.id')->first();
         $name = $performer?->name_romaji ?? $performer?->name_kanji;
@@ -50,9 +63,6 @@ final class MovieRelatedController extends BaseApiController
             }
         }
 
-        return $this->respondWithData(
-            data: MovieSummaryResource::collection(collect(array_slice(array_values($related), 0, self::LIMIT))),
-            message: 'Related movies retrieved successfully.',
-        );
+        return MovieSummaryResource::collection(collect(array_slice(array_values($related), 0, self::LIMIT)))->resolve(Request::create('/'));
     }
 }
