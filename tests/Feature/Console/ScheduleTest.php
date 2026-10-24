@@ -45,6 +45,7 @@ final class ScheduleTest extends TestCase
             'crawler:reclaim' => '* * * * *',
             'crawler:recrawl-incomplete' => '0 * * * *',
             'crawler:seed' => '* * * * *',
+            'crawler:source-health' => '0 4 * * *',
             'crawler:sync-sources' => '*/15 * * * *',
             'crawler:watchdog' => '*/5 * * * *',
             'javmeta:backup-status' => '* * * * *',

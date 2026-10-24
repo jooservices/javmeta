@@ -33,7 +33,7 @@ final class SourceHealthCommandTest extends TestCase
             }
         });
         $directory = base_path('artifacts/reports');
-        File::delete([$directory . '/source-health.json', $directory . '/source-health.md']);
+        File::delete([$directory . '/source-health.json', $directory . '/source-health.md', $directory . '/source-health-history.jsonl']);
 
         $exit = Artisan::call('crawler:source-health', ['--json' => true]);
         $output = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
