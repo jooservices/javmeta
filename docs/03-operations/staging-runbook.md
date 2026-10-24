@@ -50,6 +50,7 @@ Deploy a new version with `deploy/staging.sh` (it refuses a dirty clone, takes a
 | Failed jobs with `22021` (invalid UTF-8) | Fixed in the normalizer (JOOXCR-248). If it returns, find the source in `crawler:failures` and open a ticket. |
 | Smoke check fails right after a deploy | Wait a minute (workers restart) and run `$A javmeta:smoke --json` again; the deploy script retries once itself. |
 | `.env` change needed | Edit in place and keep its ACL (`user:www-data:r--`); never `chmod`. Restart the two units afterwards. |
+| Prove it recovers on its own | `deploy/chaos-check.sh` kills Horizon and the scheduler with SIGKILL and waits up to 10 minutes for `staging:readiness` to return to READY. Measured 2026-10-24: back to READY in under one minute (systemd restarts the units, `crawler:reclaim` frees jobs of dead workers). |
 | Restore the database | Follow `docs/03-operations/backup.md` (`staging-restore-check.sh` proves a backup restores). |
 | The clone is dirty and the deploy refuses | Someone edited a file directly. Move the change into a ticket and a pull request, then `git checkout -- <file>`. |
 | Similarity search does not work | The Ollama or embedder service is not reachable from WSL; the keyword search keeps working. |
