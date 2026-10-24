@@ -105,3 +105,7 @@ Names allow 1–80 characters; queries allow up to 1500; there are no browser-st
 
 Verification: `scripts/docker/runtime node node ui-tests/render-smoke.mjs` includes sample facets/suggestions and parameter,
 escaping, picker keyboard/debounce, request cancellation, cache and saved-search interaction assertions without site login.
+
+The crawl source-health status for JavPhotos uses its configured gallery sample.
+An upstream fetch failure remains visible as BLOCKED; defining the sample only
+removes the false “no page to check” DEGRADED verdict.
