@@ -31,7 +31,8 @@ final class ScheduleTest extends TestCase
 
             $matchedCommand = preg_match('/artisan[\'"]?\s+[\'"]?([^\s\'"]+)/', (string) $event->command, $matches);
             $this->assertSame(1, $matchedCommand);
-            $scheduled[$matches[1]] = $event;
+            $key = $matches[1] . (str_contains((string) $event->command, '--status-only') ? ' --status-only' : '');
+            $scheduled[$key] = $event;
         }
 
         $actualFrequencies = [];
@@ -54,6 +55,8 @@ final class ScheduleTest extends TestCase
             'javmeta:hourly-report' => '0 * * * *',
             'library:scan' => '0 * * * *',
             'obs:publish-metrics' => '* * * * *',
+            'perf:warm' => '* * * * *',
+            'perf:warm --status-only' => '* * * * *',
             'search:backfill-embeddings' => '0 * * * *',
             'staging:readiness' => '0 * * * *',
             'telegram:poll' => '* * * * *',
@@ -69,6 +72,8 @@ final class ScheduleTest extends TestCase
         $this->assertTrue($scheduled['javmeta:hourly-report']->withoutOverlapping);
         $this->assertTrue($scheduled['search:backfill-embeddings']->withoutOverlapping);
         $this->assertTrue($scheduled['staging:readiness']->withoutOverlapping);
+        $this->assertTrue($scheduled['perf:warm']->withoutOverlapping);
+        $this->assertSame(10, $scheduled['perf:warm --status-only']->repeatSeconds);
         foreach ($events as $event) {
             $this->assertFalse($event->onOneServer);
         }
