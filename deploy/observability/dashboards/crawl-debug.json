@@ -1,0 +1,672 @@
+{
+  "version": 8,
+  "title": "JAVMETA Crawl debug",
+  "description": "Fetches, failures, errors and request gaps per source (JOOXCR-245).",
+  "tabs": [
+    {
+      "tabId": "default",
+      "name": "Crawl",
+      "panels": [
+        {
+          "id": "crawl-fetch-rate",
+          "type": "line",
+          "title": "Fetches per minute by source",
+          "description": "Every crawl_fetch record, grouped by source.",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": "numbers",
+            "base_map": null,
+            "map_view": null
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp, '1 minute') AS \"x_axis_1\", count(*) AS \"y_axis_1\", source_slug AS \"breakdown_1\" FROM \"javmeta_logs\" WHERE event = 'crawl_fetch' GROUP BY x_axis_1, breakdown_1 ORDER BY x_axis_1",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "javmeta_logs",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "x_axis_1",
+                    "column": "_timestamp",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Fetches",
+                    "alias": "y_axis_1",
+                    "column": "_timestamp",
+                    "color": "#5960b2",
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Source",
+                    "alias": "breakdown_1",
+                    "column": "source_slug",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "line",
+                "weight_fixed": 1.0,
+                "limit": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 0,
+            "w": 96,
+            "h": 18,
+            "i": 0
+          }
+        },
+        {
+          "id": "crawl-fetch-failed-by-code",
+          "type": "bar",
+          "title": "Failed fetches by error code",
+          "description": "Why fetches fail: timeout, network, blocked, challenge, rate_limited, parse_failed.",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": "numbers",
+            "base_map": null,
+            "map_view": null
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT error_code AS \"x_axis_1\", count(*) AS \"y_axis_1\" FROM \"javmeta_logs\" WHERE event = 'crawl_fetch' AND ok = false GROUP BY x_axis_1 ORDER BY y_axis_1 DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "javmeta_logs",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Error code",
+                    "alias": "x_axis_1",
+                    "column": "error_code",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Failures",
+                    "alias": "y_axis_1",
+                    "column": "_timestamp",
+                    "color": "#e0584a",
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "bar",
+                "weight_fixed": 1.0,
+                "limit": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 0,
+            "w": 96,
+            "h": 18,
+            "i": 1
+          }
+        },
+        {
+          "id": "crawl-fetch-by-source",
+          "type": "table",
+          "title": "Per source: fetches, success rate and p95 duration",
+          "description": "Success rate and the 95th percentile duration per source in the selected time range.",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": "numbers",
+            "base_map": null,
+            "map_view": null
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT source_slug AS \"x_axis_1\", count(*) AS \"y_axis_1\", round(100.0 * sum(CASE WHEN ok = true THEN 1 ELSE 0 END) / count(*), 1) AS \"y_axis_2\", round(approx_percentile_cont(duration_ms, 0.95)) AS \"y_axis_3\" FROM \"javmeta_logs\" WHERE event = 'crawl_fetch' GROUP BY x_axis_1 ORDER BY y_axis_1 DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "javmeta_logs",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Source",
+                    "alias": "x_axis_1",
+                    "column": "source_slug",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Fetches",
+                    "alias": "y_axis_1",
+                    "column": "_timestamp",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  },
+                  {
+                    "label": "Success %",
+                    "alias": "y_axis_2",
+                    "column": "_timestamp",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  },
+                  {
+                    "label": "p95 ms",
+                    "alias": "y_axis_3",
+                    "column": "duration_ms",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "table",
+                "weight_fixed": 1.0,
+                "limit": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 18,
+            "w": 96,
+            "h": 18,
+            "i": 2
+          }
+        },
+        {
+          "id": "crawl-fetch-last-failures",
+          "type": "table",
+          "title": "Last 20 failed fetches",
+          "description": "Time, source, error code, HTTP status, fetch method, page and message.",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": "numbers",
+            "base_map": null,
+            "map_view": null
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT _timestamp AS \"x_axis_1\", source_slug AS \"x_axis_2\", error_code AS \"x_axis_3\", http_status AS \"x_axis_4\", method AS \"x_axis_5\", page_url AS \"x_axis_6\", error_message AS \"x_axis_7\" FROM \"javmeta_logs\" WHERE event = 'crawl_fetch' AND ok = false ORDER BY _timestamp DESC LIMIT 20",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "javmeta_logs",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "x_axis_1",
+                    "column": "_timestamp",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  },
+                  {
+                    "label": "Source",
+                    "alias": "x_axis_2",
+                    "column": "source_slug",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  },
+                  {
+                    "label": "Error",
+                    "alias": "x_axis_3",
+                    "column": "error_code",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  },
+                  {
+                    "label": "HTTP",
+                    "alias": "x_axis_4",
+                    "column": "http_status",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  },
+                  {
+                    "label": "Method",
+                    "alias": "x_axis_5",
+                    "column": "method",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  },
+                  {
+                    "label": "Page",
+                    "alias": "x_axis_6",
+                    "column": "page_url",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  },
+                  {
+                    "label": "Message",
+                    "alias": "x_axis_7",
+                    "column": "error_message",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "y": [],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "table",
+                "weight_fixed": 1.0,
+                "limit": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 18,
+            "w": 96,
+            "h": 18,
+            "i": 3
+          }
+        },
+        {
+          "id": "crawl-errors-last",
+          "type": "table",
+          "title": "Last 20 errors with their cause",
+          "description": "Exception class, message, file and line of recent ERROR records.",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": "numbers",
+            "base_map": null,
+            "map_view": null
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT _timestamp AS \"x_axis_1\", exception_class AS \"x_axis_2\", exception_message AS \"x_axis_3\", exception_file AS \"x_axis_4\", exception_line AS \"x_axis_5\" FROM \"javmeta_logs\" WHERE level = 'ERROR' ORDER BY _timestamp DESC LIMIT 20",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "javmeta_logs",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "x_axis_1",
+                    "column": "_timestamp",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  },
+                  {
+                    "label": "Class",
+                    "alias": "x_axis_2",
+                    "column": "exception_class",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  },
+                  {
+                    "label": "Message",
+                    "alias": "x_axis_3",
+                    "column": "exception_message",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  },
+                  {
+                    "label": "File",
+                    "alias": "x_axis_4",
+                    "column": "exception_file",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  },
+                  {
+                    "label": "Line",
+                    "alias": "x_axis_5",
+                    "column": "exception_line",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "y": [],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "table",
+                "weight_fixed": 1.0,
+                "limit": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 36,
+            "w": 96,
+            "h": 18,
+            "i": 4
+          }
+        },
+        {
+          "id": "crawl-events-by-kind",
+          "type": "bar",
+          "title": "Crawl events by kind",
+          "description": "blocked, challenge, parse_drift, soft404, rate_limited, source_toggled ...",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": "numbers",
+            "base_map": null,
+            "map_view": null
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT kind AS \"x_axis_1\", count(*) AS \"y_axis_1\" FROM \"javmeta_logs\" WHERE event = 'crawl_event' GROUP BY x_axis_1 ORDER BY y_axis_1 DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "javmeta_logs",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Kind",
+                    "alias": "x_axis_1",
+                    "column": "kind",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Events",
+                    "alias": "y_axis_1",
+                    "column": "_timestamp",
+                    "color": "#e0a03a",
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "bar",
+                "weight_fixed": 1.0,
+                "limit": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 36,
+            "w": 96,
+            "h": 18,
+            "i": 5
+          }
+        },
+        {
+          "id": "crawl-persist-new-vs-updated",
+          "type": "line",
+          "title": "New versus updated movies per minute",
+          "description": "persist events by is_new.",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": "numbers",
+            "base_map": null,
+            "map_view": null
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp, '1 minute') AS \"x_axis_1\", count(*) AS \"y_axis_1\", is_new AS \"breakdown_1\" FROM \"javmeta_logs\" WHERE event = 'persist' AND entity = 'movie' GROUP BY x_axis_1, breakdown_1 ORDER BY x_axis_1",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "javmeta_logs",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "x_axis_1",
+                    "column": "_timestamp",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Movies",
+                    "alias": "y_axis_1",
+                    "column": "_timestamp",
+                    "color": "#3aa675",
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Is new",
+                    "alias": "breakdown_1",
+                    "column": "is_new",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "line",
+                "weight_fixed": 1.0,
+                "limit": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 54,
+            "w": 96,
+            "h": 18,
+            "i": 6
+          }
+        },
+        {
+          "id": "crawl-source-gap",
+          "type": "line",
+          "title": "Request gap per source (seconds)",
+          "description": "The adaptive gap: it grows after rate limits, blocks and challenges and shrinks after successes.",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": "seconds",
+            "base_map": null,
+            "map_view": null
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT _timestamp AS \"x_axis_1\", value AS \"y_axis_1\", source_slug AS \"breakdown_1\" FROM \"javmeta_source_gap_seconds\" ORDER BY _timestamp",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "javmeta_source_gap_seconds",
+                "stream_type": "metrics",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "x_axis_1",
+                    "column": "_timestamp",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Gap seconds",
+                    "alias": "y_axis_1",
+                    "column": "value",
+                    "color": "#5960b2",
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Source",
+                    "alias": "breakdown_1",
+                    "column": "source_slug",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "line",
+                "weight_fixed": 1.0,
+                "limit": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 54,
+            "w": 96,
+            "h": 18,
+            "i": 7
+          }
+        }
+      ]
+    }
+  ],
+  "variables": {
+    "list": [],
+    "showDynamicFilters": true
+  },
+  "defaultDatetimeDuration": {
+    "type": "relative",
+    "relativeTimePeriod": "1h",
+    "startTime": 0,
+    "endTime": 0
+  }
+}
