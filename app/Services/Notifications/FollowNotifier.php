@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Notifications;
 
+use App\Services\Downloads\DownloadService;
 use App\Services\Settings\SettingsService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +18,7 @@ use Throwable;
  */
 final class FollowNotifier
 {
-    public function __construct(private readonly SettingsService $settings) {}
+    public function __construct(private readonly SettingsService $settings, private readonly DownloadService $downloads) {}
 
     /** @return array{sent: int, held: int, skipped: string|null} */
     public function run(?CarbonImmutable $now = null): array
@@ -133,7 +134,11 @@ final class FollowNotifier
         $timeout = max(1, (int) $this->settings->get('telegram.timeout'));
         $url = rtrim((string) config('app.url'), '/') . '/app#/movie/' . rawurlencode($match['code']);
         $caption = $match['code'] . ' · ' . $match['title'] . "\n" . 'Vì theo dõi: ' . $match['reason'];
-        $keyboard = ['inline_keyboard' => [[['text' => 'Mở', 'url' => $url]]]];
+        $buttons = [['text' => 'Mở', 'url' => $url]];
+        if ($this->downloads->enabled()) {
+            $buttons[] = ['text' => 'Tải về', 'callback_data' => 'dl:' . $match['code']];
+        }
+        $keyboard = ['inline_keyboard' => [$buttons]];
 
         try {
             if (is_string($match['cover']) && $match['cover'] !== '') {

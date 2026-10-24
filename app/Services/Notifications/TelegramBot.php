@@ -6,6 +6,7 @@ namespace App\Services\Notifications;
 
 use App\Http\Controllers\SuggestController;
 use App\Services\Crawl\CrawlStatusService;
+use App\Services\Downloads\DownloadService;
 use App\Services\Settings\SettingsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +22,7 @@ final class TelegramBot
 {
     private const OFFSET_KIND = 'tg_offset';
 
-    public function __construct(private readonly SettingsService $settings, private readonly CrawlStatusService $status) {}
+    public function __construct(private readonly SettingsService $settings, private readonly CrawlStatusService $status, private readonly DownloadService $downloads) {}
 
     /** @return array{handled: int, ignored: int, skipped: string|null} */
     public function poll(): array
@@ -36,7 +37,7 @@ final class TelegramBot
 
         $offset = (int) DB::table('user_marks')->where(['user_id' => 0, 'kind' => self::OFFSET_KIND])->value('key');
         try {
-            $response = Http::timeout(max(1, (int) $this->settings->get('telegram.timeout')) + 5)->get($this->url($token, 'getUpdates'), ['offset' => $offset + 1, 'timeout' => 0, 'allowed_updates' => json_encode(['message'])]);
+            $response = Http::timeout(max(1, (int) $this->settings->get('telegram.timeout')) + 5)->get($this->url($token, 'getUpdates'), ['offset' => $offset + 1, 'timeout' => 0, 'allowed_updates' => json_encode(['message', 'callback_query'])]);
         } catch (Throwable) {
             return ['handled' => 0, 'ignored' => 0, 'skipped' => 'telegram unreachable'];
         }
@@ -64,6 +65,9 @@ final class TelegramBot
     /** Answer one update; false when it is not from the owner's chat or has no text. */
     public function handle(array $update): bool
     {
+        if (isset($update['callback_query'])) {
+            return $this->callback((array) $update['callback_query']);
+        }
         $message = (array) ($update['message'] ?? []);
         $chat = (string) ($message['chat']['id'] ?? '');
         $text = trim((string) ($message['text'] ?? ''));
@@ -77,6 +81,53 @@ final class TelegramBot
         return true;
     }
 
+    /** The Download button of a notification: "dl:CODE". Only the owner's chat counts. */
+    private function callback(array $query): bool
+    {
+        $chat = (string) ($query['message']['chat']['id'] ?? '');
+        $data = (string) ($query['data'] ?? '');
+        if ($chat === '' || $chat !== (string) $this->settings->get('telegram.chat_id') || ! str_starts_with($data, 'dl:')) {
+            return false;
+        }
+        $reply = $this->download(substr($data, 3));
+        try {
+            Http::timeout(max(1, (int) $this->settings->get('telegram.timeout')))->asJson()->post($this->url((string) $this->settings->get('telegram.bot_token'), 'answerCallbackQuery'), ['callback_query_id' => (string) ($query['id'] ?? ''), 'text' => $reply]);
+        } catch (Throwable) {
+            // The text answer below still reaches the owner.
+        }
+        $this->send($chat, $reply, []);
+
+        return true;
+    }
+
+    private function download(string $code): string
+    {
+        if (! $this->downloads->enabled()) {
+            return 'Tải về đang tắt trong Cài đặt.';
+        }
+        try {
+            $added = $this->downloads->add(trim($code));
+
+            return 'Đã thêm ' . $added['movie_code'] . ' vào danh sách tải.';
+        } catch (\RuntimeException $e) {
+            return $e->getMessage();
+        }
+    }
+
+    private function downloadsText(): string
+    {
+        if (! $this->downloads->enabled()) {
+            return 'Tải về đang tắt trong Cài đặt.';
+        }
+        try {
+            $items = $this->downloads->list();
+        } catch (\RuntimeException $e) {
+            return $e->getMessage();
+        }
+
+        return $items === [] ? 'Chưa có mục nào đang tải.' : implode("\n", array_map(static fn(array $t): string => ($t['movie_code'] ?? $t['name']) . ' · ' . $t['progress'] . '% · ' . $t['state'], array_slice($items, 0, 15)));
+    }
+
     /** @return array{0: string, 1: list<array{text: string, url: string}>} */
     private function answer(string $text): array
     {
@@ -87,6 +138,8 @@ final class TelegramBot
         return match ($command) {
             '/start', '/help' => [$this->help(), []],
             '/status' => [$this->statusText(), []],
+            '/download' => [$this->download($argument), []],
+            '/downloads' => [$this->downloadsText(), []],
             '/movie' => $this->movie($argument),
             '/follow', '/unfollow' => [$this->follow($command === '/follow', $argument), []],
             '/follows' => [$this->follows(), []],
@@ -97,7 +150,7 @@ final class TelegramBot
 
     private function help(): string
     {
-        return "Gõ tên diễn viên, mã phim, thể loại hoặc từ khoá để tìm.\n/search <từ khoá>\n/movie <mã phim>\n/status – số liệu hiện tại\n/follow maker|series|performer <tên> – theo dõi\n/unfollow maker|series|performer <tên>\n/follows – danh sách đang theo dõi";
+        return "Gõ tên diễn viên, mã phim, thể loại hoặc từ khoá để tìm.\n/search <từ khoá>\n/movie <mã phim>\n/status – số liệu hiện tại\n/download <mã phim> – tải về (khi bật)\n/downloads – các mục đang tải\n/follow maker|series|performer <tên> – theo dõi\n/unfollow maker|series|performer <tên>\n/follows – danh sách đang theo dõi";
     }
 
     private function statusText(): string

@@ -19,6 +19,16 @@ export async function loadDisk(disk) {
   try { disk.codes = new Set((await admin('/ui-me/library/codes')).data || []); } catch { /* the badge is optional */ }
 }
 
+let dlAt = 0, dlStatus = { enabled: false, files_enabled: false };
+/* are downloads switched on (checked at most once a minute) */
+export async function downloadsStatus() {
+  if (Date.now() - dlAt > 60000) {
+    dlAt = Date.now();
+    try { dlStatus = (await admin('/ui-me/downloads/status')).data; } catch { /* keep the last answer */ }
+  }
+  return dlStatus;
+}
+
 export const markBtn = (set, kind, subject, key, on, off, extra = '') => {
   const is = set.has([kind, subject, key].join('\u0001'));
   return `<button class="btn sm ${is ? 'pri' : ''} ${extra}" data-mark data-kind="${esc(kind)}" data-subject="${esc(subject)}" data-key="${esc(key)}" data-on-label="${esc(on)}" data-off-label="${esc(off)}" aria-pressed="${is}">${esc(is ? on : off)}</button>`;
