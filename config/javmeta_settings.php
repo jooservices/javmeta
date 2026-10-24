@@ -58,6 +58,8 @@ return [
         'telegram.api_base' => ['group' => 'telegram', 'label' => 'Địa chỉ API Telegram', 'description' => 'Mặc định https://api.telegram.org.', 'type' => 'string', 'config' => ['javmeta_alerts.telegram.api_base', 'laravel-notifications.channels.telegram.api_base']],
         'telegram.timeout' => ['group' => 'telegram', 'label' => 'Thời gian chờ Telegram (giây)', 'description' => 'Quá thời gian này tin được xem là chưa gửi.', 'type' => 'int', 'config' => ['javmeta_alerts.telegram.timeout', 'laravel-notifications.channels.telegram.timeout'], 'min' => 1, 'max' => 60],
 
+        'telegram.bot_enabled' => ['group' => 'telegram', 'label' => 'Bật bot hỏi đáp', 'description' => 'Bot trả lời tin của chủ sở hữu: tìm phim, diễn viên, trạng thái, theo dõi. Chỉ chat ID ở trên được dùng.', 'type' => 'bool', 'config' => ['javmeta_notifications.bot.enabled']],
+        'telegram.bot_max_results' => ['group' => 'telegram', 'label' => 'Số kết quả bot trả mỗi nhóm', 'description' => 'Tối đa 10.', 'type' => 'int', 'config' => ['javmeta_notifications.bot.max_results'], 'min' => 1, 'max' => 10],
         'report.timezone' => ['group' => 'report', 'label' => 'Múi giờ báo cáo', 'description' => 'Ví dụ Asia/Ho_Chi_Minh.', 'type' => 'string', 'config' => ['javmeta_alerts.hourly_report.timezone']],
 
         'readiness.max_newest_movie_age_minutes' => ['group' => 'readiness', 'label' => 'Phim mới nhất không cũ quá (phút)', 'description' => 'Cũ hơn mức này nghĩa là crawl không chạy.', 'type' => 'int', 'config' => ['javmeta_readiness.max_newest_movie_age_minutes'], 'min' => 1, 'max' => 10080],

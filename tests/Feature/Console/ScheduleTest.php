@@ -54,6 +54,7 @@ final class ScheduleTest extends TestCase
             'obs:publish-metrics' => '* * * * *',
             'search:backfill-embeddings' => '0 * * * *',
             'staging:readiness' => '0 * * * *',
+            'telegram:poll' => '* * * * *',
         ];
 
         $this->assertCount(count($expectedFrequencies) + 1, $events);

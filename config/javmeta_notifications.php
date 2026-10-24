@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 // Defaults only: the values are settings in the database (docs/03-operations/settings.md) and are edited in the UI.
 return [
+    'bot' => [
+        'enabled' => true,
+        'max_results' => 5,
+    ],
     'follow' => [
         'enabled' => true,
         'daily_cap' => 30,
