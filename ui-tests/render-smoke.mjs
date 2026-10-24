@@ -31,7 +31,8 @@ const route = url => {
   if (p === 'status/sources') return { data: sources };
   if (p === 'movies') return { data: [movie('AAA-001'), movie('BBB-002', { title_en: '<script>alert(1)</script>' })], ...pg(2) };
   if (p.startsWith('movies/') && !p.endsWith('/related') && p !== 'movies/calendar') return { data: { ...movie(decodeURIComponent(p.slice(7))), codes: [{ code: 'AAA-001', kind: 'display' }], directors: [], description: 'A story', attrs: { k: 'v' }, magnets: [{ url: 'magnet:?xt=1' }], hls_stream_urls: [], gallery: [], photos: {}, crawled_at: '2026-10-24T00:00:00Z', delisted_at: null } };
-  if (p.startsWith('meta/catalog/')) return { data: [{ name: 'Drama', movie_count: 40 }, { name: 'School', movie_count: 12 }], meta: { pagination: { total: 2, per_page: 60, page: 1, last_page: 1, sort: 'movie_count' } } };
+  if (['cups', 'blood_types', 'locations'].includes(p.replace('meta/catalog/', ''))) return { data: [{ name: 'D', performer_count: 30 }, { name: 'E', performer_count: 9 }], meta: { pagination: { total: 2, per_page: 24, page: 1, last_page: 1 } } };
+  if (p.startsWith('meta/catalog/')) return { data: [{ name: '2025', movie_count: 40 }, { name: 'School', movie_count: 12 }], meta: { pagination: { total: 2, per_page: 60, page: 1, last_page: 1, sort: 'movie_count' } } };
   if (p === 'suggest') return { data: { movies: [], performers: [], genres: [{ name: 'Drama', movie_count: 40 }], makers: [{ name: 'Mankitsu', movie_count: 9 }], series: [] } };
   if (p === 'movies/calendar') return { data: [{ date: '2026-10-05', count: 5, movies: [{ code: 'AAA-001', title: 'T', cover_url: null, maker: 'M' }] }], meta: { month: '2026-10', total: 5 } };
   if (p.endsWith('/related')) return { data: [movie('REL-001')] };
@@ -73,6 +74,10 @@ const lib = await run('library', await load('views/library.js'), { params: { kin
 assert.match(lib, /Yêu thích/); assert.match(lib, /AAA-001/);
 assert.match(await run('feed', await load('views/feed.js'), { params: {}, query: {} }), /Theo dõi/);
 assert.match(out.movie, /data-mark/); assert.match(out.movie, /aria-pressed="true"/);
+const bioHtml = await run('bio', await load('views/bio.js'), { params: {}, query: {} });
+assert.match(bioHtml, /Hồ sơ diễn viên/); assert.match(bioHtml, /#\/performers\?cup=/);
+const statsHtml = await run('stats', await load('views/stats.js'), { params: {}, query: {} });
+assert.match(statsHtml, /Thống kê/); assert.match(statsHtml, /Phim theo năm/);
 await run('settings', await load('views/settings.js'), { params: {}, query: {} });
 const cat = await run('catalog', await load('views/catalog.js'), { params: { kind: 'genres' }, query: {} });
 assert.match(cat, /Thể loại/);
