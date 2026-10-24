@@ -31,6 +31,9 @@ return [
     ],
 
     'definitions' => [
+        'media.translate_model' => ['group' => 'media', 'label' => 'Mô hình dịch phụ đề', 'description' => 'Chỉ chạy mô hình Ollama cục bộ để dịch sang EN và VI.', 'type' => 'string', 'config' => ['javmeta_media.translate_model']],
+        'media.translate_batch_segments' => ['group' => 'media', 'label' => 'Số câu phụ đề mỗi đợt dịch', 'description' => 'Giữ nguyên mốc thời gian và số thứ tự.', 'type' => 'int', 'config' => ['javmeta_media.translate_batch_segments'], 'min' => 1, 'max' => 100],
+        'media.ollama_timeout_sec' => ['group' => 'media', 'label' => 'Thời gian chờ Ollama media (giây)', 'description' => 'Lỗi thì dừng; không dùng cloud.', 'type' => 'int', 'config' => ['javmeta_media.ollama_timeout_sec'], 'min' => 1, 'max' => 3600],
         'media.whisper_model' => ['group' => 'media', 'label' => 'Mô hình nhận dạng giọng nói', 'description' => 'Whisper chạy CUDA float16 trên GPU nội bộ; không chuyển sang cloud.', 'type' => 'string', 'config' => ['javmeta_media.whisper_model']],
         'media.api_url' => ['group' => 'media', 'label' => 'Địa chỉ JavMeta cho worker', 'description' => 'Địa chỉ nội bộ của API JavMeta.', 'type' => 'string', 'config' => ['javmeta_media.api_url']],
         'media.output_folder' => ['group' => 'media', 'label' => 'Thư mục output media', 'description' => 'Chỉ ghi ảnh và phụ đề tại đây; không ghi vào thư viện.', 'type' => 'string', 'config' => ['javmeta_media.output_folder']],

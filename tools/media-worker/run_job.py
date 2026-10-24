@@ -5,7 +5,7 @@ import sys
 
 payload = json.load(sys.stdin)
 job, config = payload['job'], payload['config']
-if job['kind'] not in ('thumbnails', 'scenes', 'transcribe'):
+if job['kind'] not in ('thumbnails', 'scenes', 'transcribe', 'translate'):
     raise ValueError('Unsupported job kind')
 result = importlib.import_module('jobs.' + job['kind']).process(job, config)
 json.dump(result, sys.stdout)

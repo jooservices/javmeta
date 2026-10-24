@@ -50,3 +50,9 @@ Measured on Workstation / RTX 4070 Ti SUPER (16,376 MiB), faster-whisper 1.1.1, 
 | Generated video E2E, GPU contention | 20 s | 19.798 s | 0.990 | detected English, both subtitle formats |
 
 Sequential GPU memory was 7,476 MiB before loading and 11,448 MiB after recognition (about 3,972 MiB additional). `large-v3` fits this measured workload, so it remains the default, with max parallel jobs = 1. This includes model startup in every fresh worker process; it is not steady-state model throughput. These are synthetic English checks, **not Japanese quality measurements**; no Japanese corpus was supplied and no quality promise is made for Japanese.
+
+## Subtitle translation (JOOXCR-228)
+
+Queue `translate` only after a Whisper SRT exists. The worker reads the original SRT from the output folder, translates batches of `media.translate_batch_segments` cues into English and Vietnamese, then writes `.en.srt/.en.vtt` and `.vi.srt/.vi.vtt` under its own output directory. IDs and timestamps come from the original transcript, never from the LLM. Missing/extra/reordered IDs, empty output and malformed JSON are retried once then fail.
+
+`media.translate_model` defaults to `qwen2.5:7b`; `media.ollama_timeout_sec` bounds each request. The worker receives the existing `ai.ollama_url` setting from the config API. Only loopback, RFC1918 and IPv6 local addresses are accepted; HTTP redirects and environment proxies are disabled. Failure never falls back to cloud. The E2E script now includes translation through a loopback HTTP Ollama stub and checks all four output files. This tests the contract and format; translation quality on real content requires an owner-provided quality set.
