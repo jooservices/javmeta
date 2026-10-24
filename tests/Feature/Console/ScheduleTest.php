@@ -51,6 +51,7 @@ final class ScheduleTest extends TestCase
             'follows:notify' => '*/5 * * * *',
             'javmeta:backup-status' => '* * * * *',
             'javmeta:hourly-report' => '0 * * * *',
+            'library:scan' => '0 * * * *',
             'obs:publish-metrics' => '* * * * *',
             'search:backfill-embeddings' => '0 * * * *',
             'staging:readiness' => '0 * * * *',

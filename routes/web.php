@@ -7,6 +7,7 @@ use App\Http\Controllers\Operations\DashboardController;
 use App\Http\Controllers\Operations\LoginController;
 use App\Http\Controllers\Ui\UiAdminController;
 use App\Http\Controllers\Ui\UiApiController;
+use App\Http\Controllers\Ui\UiLibraryController;
 use App\Http\Controllers\Ui\UiMarksController;
 use App\Http\Controllers\Ui\UiSettingsController;
 use App\Http\Controllers\Ui\UiShellController;
@@ -33,6 +34,10 @@ Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static funct
     Route::get('/ui-me/movies/{kind}', [UiMarksController::class, 'movies']);
     Route::get('/ui-me/feed', [UiMarksController::class, 'feed']);
     Route::post('/ui-me/feed/seen', [UiMarksController::class, 'feedSeen']);
+    Route::get('/ui-me/library', [UiLibraryController::class, 'summary']);
+    Route::get('/ui-me/library/codes', [UiLibraryController::class, 'codes']);
+    Route::get('/ui-me/library/on-disk', [UiLibraryController::class, 'onDisk']);
+    Route::get('/ui-me/library/unmatched', [UiLibraryController::class, 'unmatched']);
     Route::get('/ui-admin/settings', [UiSettingsController::class, 'index']);
     Route::put('/ui-admin/settings', [UiSettingsController::class, 'update']);
     Route::get('/ui-api/{path}', UiApiController::class)->where('path', '.*')->name('ui.api');

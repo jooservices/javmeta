@@ -181,6 +181,12 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
             }
         }
 
+        if (isset($filters['on_disk'])) {
+            // A movie is on disk when a library file that is not missing was matched to it.
+            $present = static fn($q) => $q->select('library_files.movie_id')->from('library_files')->whereNull('missing_at')->whereNotNull('movie_id');
+            ((string) $filters['on_disk'] === '1') ? $query->whereIn('movies.id', $present) : $query->whereNotIn('movies.id', $present);
+        }
+
         $releasedFrom = $filters['released_from'] ?? null;
         if (is_string($releasedFrom) && $releasedFrom !== '') {
             $query->where('release_date', '>=', $releasedFrom);

@@ -2,7 +2,7 @@ import { $, $$, esc, fmt, debounce, copyText, titleOf } from './util.js';
 import { ic } from './icons.js';
 import { api } from './api.js';
 import { initTheme, toggleTheme } from './theme.js';
-import { errorBox, loadingBox, performerName, href, avatar } from './components.js';
+import { errorBox, loadingBox, performerName, href, avatar, disk } from './components.js';
 import home from './views/home.js';
 import movies from './views/movies.js';
 import movie from './views/movie.js';
@@ -19,7 +19,8 @@ import library from './views/library.js';
 import feed from './views/feed.js';
 import bio from './views/bio.js';
 import stats from './views/stats.js';
-import { toggleMark } from './marks.js';
+import { toggleMark, loadDisk } from './marks.js';
+import library2 from './views/libraryPage.js';
 
 const ROUTES = [
   [/^$/, home, 'home'], [/^home$/, home, 'home'],
@@ -34,6 +35,7 @@ const ROUTES = [
   [/^admin$/, adminView, 'admin'],
   [/^me\/([a-z_]+)$/, library, 'me', ['kind']],
   [/^feed$/, feed, 'feed'],
+  [/^library$/, library2, 'library'],
   [/^bio$/, bio, 'bio'],
   [/^stats$/, stats, 'stats'],
   [/^crawl$/, crawl, 'crawl'],
@@ -43,7 +45,7 @@ const ROUTES = [
 const NAV = [
   ['Khám phá', [['home', 'Discover', 'home', '#/'], ['search', 'Tìm kiếm', 'search', '#/search'], ['stats', 'Thống kê', 'chart', '#/stats']]],
   ['Danh mục', [['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers'], ['bio', 'Hồ sơ diễn viên', 'user', '#/bio'], ['smart-new', 'Mới cập nhật', 'film', '#/movies?sort=update_date'], ['catalog-genres', 'Thể loại', 'tag', '#/catalog/genres'], ['catalog-makers', 'Maker', 'building', '#/catalog/makers'], ['catalog-series', 'Series', 'folder', '#/catalog/series'], ['catalog-labels', 'Label', 'layers', '#/catalog/labels'], ['catalog-years', 'Năm', 'cal', '#/catalog/years'], ['calendar', 'Lịch phát hành', 'cal', '#/calendar']]],
-  ['Của tôi', [['me-favourite', 'Yêu thích', 'tag', '#/me/favourite'], ['me-watch_later', 'Xem sau', 'cal', '#/me/watch_later'], ['me-seen', 'Đã xem', 'film', '#/me/seen'], ['feed', 'Theo dõi', 'user', '#/feed']]],
+  ['Của tôi', [['me-favourite', 'Yêu thích', 'tag', '#/me/favourite'], ['me-watch_later', 'Xem sau', 'cal', '#/me/watch_later'], ['me-seen', 'Đã xem', 'film', '#/me/seen'], ['feed', 'Theo dõi', 'user', '#/feed'], ['library', 'Thư viện', 'layers', '#/library']]],
   ['Công cụ', [['crawl', 'Crawl & nguồn', 'spider', '#/crawl'], ['ops', 'Vận hành (/ops)', 'chart', '/ops'], ['admin', 'Quản trị', 'gear', '#/admin'], ['settings', 'Cài đặt', 'gear', '#/settings']]],
 ];
 
@@ -82,6 +84,7 @@ async function render() {
   const token = current = {};
   view.innerHTML = loadingBox();
   try {
+    await loadDisk(disk);
     const out = await r.view.render({ params: r.params, query: r.query });
     if (token !== current) return;
     view.innerHTML = out.html;

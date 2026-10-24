@@ -23,6 +23,7 @@ return [
         'observability' => 'Giám sát',
         'backup' => 'Sao lưu',
         'follow_notifications' => 'Thông báo theo dõi (Telegram)',
+        'library' => 'Thư viện trên đĩa',
     ],
 
     'definitions' => [
@@ -78,6 +79,11 @@ return [
         'follow_notifications.quiet_from_hour' => ['group' => 'follow_notifications', 'label' => 'Giờ yên lặng từ (0 đến 23)', 'description' => 'Trong giờ yên lặng không gửi tin; tin được gửi sau khi hết giờ. Bằng giờ kết thúc thì tắt giờ yên lặng.', 'type' => 'int', 'config' => ['javmeta_notifications.follow.quiet_from_hour'], 'min' => 0, 'max' => 23],
         'follow_notifications.quiet_to_hour' => ['group' => 'follow_notifications', 'label' => 'Giờ yên lặng đến (0 đến 23)', 'description' => 'Giờ kết thúc (không gồm giờ này), theo múi giờ báo cáo.', 'type' => 'int', 'config' => ['javmeta_notifications.follow.quiet_to_hour'], 'min' => 0, 'max' => 23],
         'follow_notifications.lookback_days' => ['group' => 'follow_notifications', 'label' => 'Chỉ báo phim thấy trong (ngày)', 'description' => 'Phim cũ hơn mức này không được báo.', 'type' => 'int', 'config' => ['javmeta_notifications.follow.lookback_days'], 'min' => 1, 'max' => 30],
+        'library.enabled' => ['group' => 'library', 'label' => 'Bật quét thư viện hằng ngày', 'description' => 'Quét các thư mục bên dưới, nhận mã phim trong tên tệp và ghép với phim đã biết. Không tải gì lên và không sửa tệp.', 'type' => 'bool', 'config' => ['javmeta_library.enabled']],
+        'library.folders' => ['group' => 'library', 'label' => 'Thư mục cần quét (mỗi dòng một đường dẫn)', 'description' => 'Đường dẫn tuyệt đối mà máy chạy JavMeta đọc được. Thư mục phải được gắn vào môi trường PHP dùng chung.', 'type' => 'string_list', 'config' => ['javmeta_library.folders']],
+        'library.extensions' => ['group' => 'library', 'label' => 'Đuôi tệp video', 'description' => 'Cách nhau bằng dấu phẩy hoặc xuống dòng.', 'type' => 'string_list', 'config' => ['javmeta_library.extensions']],
+        'library.scan_hour' => ['group' => 'library', 'label' => 'Giờ quét hằng ngày (0 đến 23)', 'description' => 'Theo múi giờ báo cáo. Có thể quét ngay bằng php artisan library:scan --force.', 'type' => 'int', 'config' => ['javmeta_library.scan_hour'], 'min' => 0, 'max' => 23],
+        'library.hash_kilobytes' => ['group' => 'library', 'label' => 'Số KB đầu và cuối dùng để băm nhanh', 'description' => 'Mã băm nhanh = kích thước + phần đầu + phần cuối của tệp.', 'type' => 'int', 'config' => ['javmeta_library.hash_kilobytes'], 'min' => 1, 'max' => 65536],
         'backup.stale_after_seconds' => ['group' => 'backup', 'label' => 'Bản sao lưu coi là cũ sau (giây)', 'description' => 'Dùng cho cảnh báo sao lưu hằng phút.', 'type' => 'int', 'config' => ['backup.stale_after_seconds'], 'min' => 3600, 'max' => 2592000],
     ],
 ];

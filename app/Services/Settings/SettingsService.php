@@ -216,6 +216,17 @@ final class SettingsService
 
             return $number;
         }
+        if ($type === 'string_list') {
+            $parts = is_array($value) ? $value : preg_split('/[\r\n,]+/', (string) $value);
+            $items = array_values(array_unique(array_filter(array_map(static fn($p): string => trim((string) $p), $parts ?: []), static fn(string $p): bool => $p !== '')));
+            foreach ($items as $item) {
+                if (mb_strlen($item) > 500) {
+                    $fail('an entry is too long');
+                }
+            }
+
+            return $items;
+        }
         if ($type === 'int_list') {
             $parts = is_array($value) ? $value : explode(',', (string) $value);
             $numbers = [];
@@ -250,7 +261,11 @@ final class SettingsService
     /** @param array<string, mixed> $definition */
     private function toStorage(array $definition, mixed $value): mixed
     {
-        return $definition['type'] === 'int_list' ? implode(',', (array) $value) : $value;
+        return match ($definition['type']) {
+            'int_list' => implode(',', (array) $value),
+            'string_list' => implode("\n", (array) $value),
+            default => $value,
+        };
     }
 
     /** @param array<string, mixed> $definition */
@@ -261,6 +276,7 @@ final class SettingsService
             'float' => (float) $stored,
             'bool' => filter_var($stored, FILTER_VALIDATE_BOOLEAN),
             'int_list' => array_values(array_filter(array_map('intval', explode(',', (string) $stored)), static fn(int $n): bool => $n > 0)),
+            'string_list' => array_values(array_filter(array_map('trim', preg_split('/[\r\n]+/', (string) $stored) ?: []), static fn(string $p): bool => $p !== '')),
             default => (string) $stored,
         };
     }

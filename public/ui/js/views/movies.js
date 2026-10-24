@@ -3,12 +3,12 @@ import { head, crumbs, emptyBox, movieCard, movieRow, movieHead, infiniteList, m
 import { api } from '../api.js';
 
 export const SORTS = [['release_date', 'Mới phát hành'], ['update_date', 'Mới cập nhật'], ['rating', 'Điểm cao'], ['relevance', 'Liên quan (cần từ khoá)']];
-const FIELDS = ['q', 'genre', 'actress', 'maker', 'series', 'label', 'year', 'from', 'to', 'rmin', 'rmax', 'censored', 'sort'];
+const FIELDS = ['q', 'genre', 'actress', 'maker', 'series', 'label', 'year', 'from', 'to', 'rmin', 'rmax', 'censored', 'on_disk', 'sort'];
 
 /* the URL uses friendly names; the API gets its own parameter names */
 export function toApi(query) {
   const p = {};
-  ['q', 'genre', 'actress', 'maker', 'series', 'label', 'censored', 'sort'].forEach(k => { if (query[k]) p[k] = query[k]; });
+  ['q', 'genre', 'actress', 'maker', 'series', 'label', 'censored', 'on_disk', 'sort'].forEach(k => { if (query[k]) p[k] = query[k]; });
   if (query.year) { p.released_from = query.year + '-01-01'; p.released_to = query.year + '-12-31'; }
   else {
     if (query.from) p.released_from = query.from + '-01-01';
@@ -43,6 +43,7 @@ export function moviesBrowser(query, { fixed = {}, apiExtra = {}, closed = false
     <details><summary>Thời gian</summary><div class="fb">
       ${fixed.year ? '' : `<div class="two">${field('from', 'Từ năm', query.from, '2020', 'number')}${field('to', 'Đến năm', query.to, '2026', 'number')}</div>`}
       <div class="two">${field('rmin', 'Dài ≥ (phút)', query.rmin, '', 'number')}${field('rmax', 'Dài ≤', query.rmax, '', 'number')}</div>
+      <label class="f">Trên máy<select name="on_disk"><option value="">Tất cả</option><option value="1" ${query.on_disk === '1' ? 'selected' : ''}>Đã có trên máy</option><option value="0" ${query.on_disk === '0' ? 'selected' : ''}>Chưa có</option></select></label>
       <label class="f">Kiểm duyệt<select name="censored"><option value="">Tất cả</option><option value="censored" ${query.censored === 'censored' ? 'selected' : ''}>Có che</option><option value="uncensored" ${query.censored === 'uncensored' ? 'selected' : ''}>Không che</option></select></label></div></details>
     <div class="fb"><button class="btn sm" type="reset" data-act="clearfilters">Xoá bộ lọc</button></div>${Object.keys(LISTED).map(n => `<datalist id="dl-${n}"></datalist>`).join('')}</form>`;
   const chips = FIELDS.filter(k => k !== 'sort' && query[k] && !fixed[k]).map(k => `<button class="chip on" data-act="dropfilter" data-k="${k}">${esc(k)}: <b>${esc(query[k])}</b><span class="x">×</span></button>`).join('');
@@ -74,7 +75,7 @@ function mountBrowser(root, query, fixed, apiExtra, sort, mode, size) {
   const read = () => {
     const f = Object.fromEntries(new FormData(root.querySelector('#mf')).entries());
     const out = { ...query };
-    ['q', 'genre', 'maker', 'series', 'label', 'actress', 'from', 'to', 'rmin', 'rmax', 'censored'].forEach(k => { if (k in f) out[k] = f[k]; });
+    ['q', 'genre', 'maker', 'series', 'label', 'actress', 'from', 'to', 'rmin', 'rmax', 'censored', 'on_disk'].forEach(k => { if (k in f) out[k] = f[k]; });
     out.sort = root.querySelector('#sortsel').value;
     return out;
   };

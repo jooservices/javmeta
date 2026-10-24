@@ -32,6 +32,7 @@ final class MovieSearchRequest extends FormRequest
             'runtime_min' => ['sometimes', 'integer'],
             'runtime_max' => ['sometimes', 'integer'],
             'censored' => ['sometimes', 'in:0,1,censored,uncensored'],
+            'on_disk' => ['sometimes', 'in:0,1'],
             'sort' => ['sometimes', 'in:relevance,release_date,update_date,rating'],
             'cursor' => ['sometimes', 'string'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
@@ -66,7 +67,7 @@ final class MovieSearchRequest extends FormRequest
                 if ($this->hasAny([
                     'code', 'genre', 'actress', 'maker', 'series', 'label',
                     'released_from', 'released_to', 'runtime_min', 'runtime_max',
-                    'censored', 'sort', 'cursor',
+                    'censored', 'on_disk', 'sort', 'cursor',
                 ])) {
                     $validator->errors()->add('semantic', 'Semantic search supports only q and per_page.');
                 }

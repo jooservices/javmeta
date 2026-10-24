@@ -11,6 +11,14 @@ export async function myMarks(force = false) {
   return cache;
 }
 
+let diskAt = 0;
+/* refresh the set of on-disk codes (at most once a minute) */
+export async function loadDisk(disk) {
+  if (Date.now() - diskAt < 60000) return;
+  diskAt = Date.now();
+  try { disk.codes = new Set((await admin('/ui-me/library/codes')).data || []); } catch { /* the badge is optional */ }
+}
+
 export const markBtn = (set, kind, subject, key, on, off, extra = '') => {
   const is = set.has([kind, subject, key].join('\u0001'));
   return `<button class="btn sm ${is ? 'pri' : ''} ${extra}" data-mark data-kind="${esc(kind)}" data-subject="${esc(subject)}" data-key="${esc(key)}" data-on-label="${esc(on)}" data-off-label="${esc(off)}" aria-pressed="${is}">${esc(is ? on : off)}</button>`;
