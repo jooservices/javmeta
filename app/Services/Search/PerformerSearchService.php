@@ -25,7 +25,7 @@ final class PerformerSearchService
     /**
      * @return array{items: Collection<int, Performer>, total: int, has_more: bool, last_id: int|null, last_sort: mixed, sort: string}
      */
-    public function semanticSearch(string $query, int $perPage): array
+    public function semanticSearch(string $query, int $perPage, ?array $prefetchedUuids = null): array
     {
         if (
             ! (bool) config('elasticsearch.enabled', true)
@@ -36,7 +36,7 @@ final class PerformerSearchService
             return $this->performers->search(['q' => $query], 'name', null, $perPage);
         }
 
-        $uuids = $this->elasticsearch->semanticPerformerUuids(
+        $uuids = $prefetchedUuids ?? $this->elasticsearch->semanticPerformerUuids(
             $query,
             min(100, max($perPage * 5, $perPage)),
         );

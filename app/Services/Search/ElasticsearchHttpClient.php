@@ -7,7 +7,9 @@ namespace App\Services\Search;
 use InvalidArgumentException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Facades\Http;
+use RuntimeException;
 use Throwable;
 
 final class ElasticsearchHttpClient
@@ -35,6 +37,42 @@ final class ElasticsearchHttpClient
     public function post(string $operation, string $path, array $body, int $timeout = 5): Response
     {
         return $this->send($operation, 'POST', $path, $body, $timeout);
+    }
+
+    /** @param array<string, array{path: string, body: array<string, mixed>}> $requests
+     * @return array<string, Response>
+     */
+    public function postPool(array $requests): array
+    {
+        $host = rtrim((string) config('elasticsearch.host', 'http://elasticsearch:9200'), '/');
+        if (app(SearchBudget::class)->expired()) {
+            return [];
+        }
+        try {
+            $responses = Http::pool(function (Pool $pool) use ($requests, $host): array {
+                $pending = [];
+                foreach ($requests as $name => $request) {
+                    $pending[$name] = $this->request(5, null, $pool->as($name))->post($host . '/' . ltrim($request['path'], '/'), $request['body']);
+                }
+
+                return $pending;
+            });
+        } catch (Throwable) {
+            $this->health->recordFailure('search', null);
+
+            return [];
+        }
+        $results = [];
+        foreach ($responses as $name => $response) {
+            if ($response instanceof Response && $response->successful()) {
+                $this->health->recordSuccess('search');
+                $results[$name] = $response;
+            } else {
+                $this->health->recordFailure('search', $response instanceof Response ? $response->status() : null);
+            }
+        }
+
+        return $results;
     }
 
     /** @param array<string, mixed> $body */
@@ -93,9 +131,13 @@ final class ElasticsearchHttpClient
         return $response;
     }
 
-    private function request(int $timeout, ?int $connectTimeout): PendingRequest
+    private function request(int $timeout, ?int $connectTimeout, ?PendingRequest $pending = null): PendingRequest
     {
-        $request = Http::acceptJson()->timeout($timeout);
+        $seconds = app(SearchBudget::class)->seconds($timeout);
+        if ($seconds <= 0) {
+            throw new RuntimeException('Search HTTP budget exhausted.');
+        }
+        $request = ($pending ?? Http::acceptJson())->acceptJson()->timeout($seconds)->connectTimeout($seconds);
         if ($connectTimeout !== null) {
             $request = $request->connectTimeout($connectTimeout);
         }

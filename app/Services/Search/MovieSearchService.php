@@ -90,7 +90,7 @@ final class MovieSearchService
      *
      * @return array{items: Collection<int, Movie>, total: int, has_more: bool, last_id: int|null, last_sort: mixed, sort: string}
      */
-    public function semanticSearch(string $query, int $perPage): array
+    public function semanticSearch(string $query, int $perPage, ?array $prefetchedUuids = null): array
     {
         if (
             ! (bool) config('elasticsearch.enabled', true)
@@ -101,7 +101,7 @@ final class MovieSearchService
             return $this->movies->search(['q' => $query], 'relevance', null, $perPage);
         }
 
-        $uuids = $this->elasticsearch->semanticMovieUuids($query, min(100, max($perPage * 5, $perPage)));
+        $uuids = $prefetchedUuids ?? $this->elasticsearch->semanticMovieUuids($query, min(100, max($perPage * 5, $perPage)));
         if ($uuids !== []) {
             $pageUuids = array_slice($uuids, 0, $perPage);
             $byUuid = Movie::query()

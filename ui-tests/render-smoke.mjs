@@ -96,6 +96,11 @@ assert.match(st, /Cấu hình hệ thống/); assert.match(st, /queue\.feed_pool
 settingsSample.data.settings.push({ key: 'perf.warm_enabled', group: 'queue', label: 'Làm ấm bộ nhớ đệm', description: 'Tự làm mới trạng thái và bộ lọc.', type: 'bool', source: 'default', value: true });
 const perfSettings = await run('performance-settings', await load('views/settings.js'), { params: {}, query: {} });
 assert.match(perfSettings, /perf\.warm_enabled/); assert.match(perfSettings, /Làm ấm bộ nhớ đệm/);
+
+settingsSample.data.groups.search = 'Tìm kiếm';
+settingsSample.data.settings.push({ key: 'search.budget_ms', group: 'search', label: 'Ngân sách tìm kiếm (mili giây)', description: 'Giới hạn HTTP tùy chọn.', type: 'int', min: 25, max: 1500, source: 'default', value: 300 });
+const searchSettings = await run('search-settings', await load('views/settings.js'), { params: {}, query: {} });
+assert.match(searchSettings, /search\.budget_ms/); assert.match(searchSettings, /Ngân sách tìm kiếm/);
 const cat = await run('catalog', await load('views/catalog.js'), { params: { kind: 'genres' }, query: {} });
 assert.match(cat, /Thể loại/);
 await run('catalog-years', await load('views/catalog.js'), { params: { kind: 'years' }, query: {} });

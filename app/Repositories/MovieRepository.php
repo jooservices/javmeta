@@ -314,7 +314,7 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
         $like = $this->likeOperator();
         $pattern = '%' . $q . '%';
 
-        $query->where(static function (Builder $text) use ($q, $like, $pattern): void {
+        $matching = DB::table('movies')->select('id')->where(static function ($text) use ($q, $pattern): void {
             if (DB::getDriverName() === 'pgsql') {
                 // Title/code via generated tsvector; performers are not in that
                 // column, so OR the same name/alias match used by `actress=`.
@@ -326,8 +326,10 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
                     ->orWhere('code_normalized', 'like', $pattern);
             }
 
-            $text->orWhereIn('movies.id', self::movieIdsOfPerformers(self::performerIdsMatching($like, $pattern)));
         });
+        // A UNION lets the full-text and performer branches use their indexes independently.
+        $matching->union(self::movieIdsOfPerformers(self::performerIdsMatching($like, $pattern)));
+        $query->whereIn('movies.id', $matching);
     }
 
     private function applySort(Builder $query, string $sort, ?string $q): void
