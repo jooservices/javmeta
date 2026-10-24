@@ -102,7 +102,20 @@ final class CrawlQueueService
             $query->where('kind', $kind);
         }
 
-        return array_values(array_map('strval', $query->pluck('source_slug')->all()));
+        $atLimit = array_values(array_map('strval', $query->pluck('source_slug')->all()));
+
+        // The browser services (FlareSolverr, Playwright on the Dev VM) serve every Cloudflare source at once: when the rows
+        // claimed by those sources reach the shared cap, none of them is claimed until some finish.
+        $cap = (int) config('javmeta_queues.browser_inflight', 0);
+        $browserSources = array_values(array_filter((array) config('javmeta_queues.browser_sources', []), 'is_string'));
+        if ($cap > 0 && $browserSources !== []) {
+            $claimed = CrawlQueue::query()->where('status', CrawlQueue::STATUS_CLAIMED)->whereIn('source_slug', $browserSources)->count();
+            if ($claimed >= $cap) {
+                $atLimit = array_values(array_unique([...$atLimit, ...$browserSources]));
+            }
+        }
+
+        return $atLimit;
     }
 
     public function enqueue(string $url, string $sourceSlug, string $kind, ?int $maxAttempts = null): CrawlQueue
