@@ -52,6 +52,7 @@ final readonly class AuthenticateApiKey
             $segment === 'meta', $segment === 'suggest' => 'catalog',
             $segment === 'status' => 'status',
             $segment === 'mcp' => 'mcp',
+            $segment === 'media' => 'media',
             default => null,
         };
     }

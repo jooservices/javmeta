@@ -71,6 +71,7 @@ second="$(push_new_commit)"
 out="$(run_staging --dry-run 2>&1)" || fail_test "dry run failed: ${out}"
 [[ "${out}" == *'DRY RUN'* ]] || fail_test 'dry run printed no steps.'
 [[ "$(git -C "${APP}" rev-parse HEAD)" == "${first}" ]] || fail_test 'dry run moved the code.'
+[[ "${out}" == *'javmeta-media-worker.service'* ]] || fail_test 'dry run omitted the media worker.'
 ! grep -q 'migrate' "${CALLS}" || fail_test 'dry run ran the migration.'
 
 # 2. Wrong branch is refused.
@@ -91,8 +92,8 @@ run_staging >"${TEST_TMP}/ok.log" 2>&1 || fail_test "deployment failed: $(tail -
 for step in 'pg_dump' 'composer install --no-dev' 'artisan migrate --force' 'artisan es:setup' 'artisan optimize' 'artisan javmeta:smoke'; do
   grep -q -- "${step}" "${CALLS}" || fail_test "step missing: ${step}"
 done
-ordered="$(grep -n -E 'artisan migrate --force|stop javmeta-scheduler|restart javmeta-horizon|start javmeta-scheduler|javmeta:smoke' "${CALLS}" | sed 's/^[0-9]*://')"
-expected=$'runtime php@8.5 php artisan migrate --force\nsystemctl --user stop javmeta-scheduler.service\nsystemctl --user restart javmeta-horizon.service\nsystemctl --user start javmeta-scheduler.service\nruntime php@8.5 php artisan javmeta:smoke'
+ordered="$(grep -n -E 'artisan migrate --force|stop javmeta-scheduler|restart javmeta-horizon|restart javmeta-media-worker|start javmeta-scheduler|javmeta:smoke' "${CALLS}" | sed 's/^[0-9]*://')"
+expected=$'systemctl --user stop javmeta-scheduler.service\nruntime php@8.5 php artisan migrate --force\nsystemctl --user stop javmeta-scheduler.service\nsystemctl --user restart javmeta-horizon.service\nsystemctl --user restart javmeta-media-worker.service\nsystemctl --user start javmeta-scheduler.service\nruntime php@8.5 php artisan javmeta:smoke'
 [[ "${ordered}" == "${expected}" ]] || fail_test "wrong step order: ${ordered}"
 ls "${JAVMETA_DEPLOY_STATE_DIR}"/backups/*.dump >/dev/null 2>&1 || fail_test 'no quick backup file.'
 
