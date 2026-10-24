@@ -382,7 +382,15 @@
                   "conditions": []
                 }
               },
-              "config": {}
+              "config": {
+                "promql_legend": "",
+                "layer_type": "table",
+                "weight_fixed": 1.0,
+                "limit": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "time_shift": []
+              }
             }
           ],
           "layout": {
