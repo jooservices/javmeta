@@ -157,16 +157,18 @@ final class CrawlStatusService
      */
     private function runsStatus(): array
     {
+        // Aggregate in PostgreSQL instead of hydrating every run in the busy 24-hour window.
         $runs = CrawlRun::query()
             ->where('started_at', '>=', now()->subDay())
-            ->get();
+            ->selectRaw('COUNT(*) AS runs, SUM(pages_fetched) AS pages_fetched, SUM(movies_new) AS movies_new, SUM(movies_updated) AS movies_updated, SUM(failures) AS failures')
+            ->first();
 
         return [
-            'runs' => $runs->count(),
-            'pages_fetched' => (int) $runs->sum('pages_fetched'),
-            'movies_new' => (int) $runs->sum('movies_new'),
-            'movies_updated' => (int) $runs->sum('movies_updated'),
-            'failures' => (int) $runs->sum('failures'),
+            'runs' => (int) $runs?->getAttribute('runs'),
+            'pages_fetched' => (int) $runs?->getAttribute('pages_fetched'),
+            'movies_new' => (int) $runs?->getAttribute('movies_new'),
+            'movies_updated' => (int) $runs?->getAttribute('movies_updated'),
+            'failures' => (int) $runs?->getAttribute('failures'),
         ];
     }
 

@@ -105,3 +105,7 @@ Names allow 1–80 characters; queries allow up to 1500; there are no browser-st
 
 Verification: `scripts/docker/runtime node node ui-tests/render-smoke.mjs` includes sample facets/suggestions and parameter,
 escaping, picker keyboard/debounce, request cancellation, cache and saved-search interaction assertions without site login.
+
+## Performance cache setting
+
+Cài đặt → Tìm kiếm includes **Làm ấm bộ nhớ đệm** (`perf.warm_enabled`). It controls background refresh of status and whole-catalog movie facets. Saving uses the existing authenticated settings flow. API fields and UI loading/error/empty states are unchanged. See [performance](../03-operations/performance.md) before interpreting benchmark numbers.

@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CrawlQueue;
 use App\Services\Crawl\CrawlStatusService;
+use App\Services\Performance\PerformanceCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -14,14 +15,9 @@ use JOOservices\LaravelController\Http\Controllers\BaseApiController;
 final class StatusController extends BaseApiController
 {
     /** Totals, ingest, queue, workers and the 24 hour runs: the same data as the MCP tool crawl_status. Cached for 15 seconds. */
-    public function summary(CrawlStatusService $status): JsonResponse
+    public function summary(PerformanceCache $cache): JsonResponse
     {
-        $data = Cache::remember('javmeta:status:summary', 15, static function () use ($status): array {
-            $data = $status->status();
-            unset($data['sources']);
-
-            return $data;
-        });
+        $data = $cache->summary();
 
         return $this->respondWithData(data: $data, message: 'Crawl status retrieved successfully.');
     }
