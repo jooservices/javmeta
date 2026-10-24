@@ -45,10 +45,17 @@ final class SuggestController extends BaseApiController
             ->selectRaw($column . ' AS name, COUNT(*) AS movie_count')->groupBy($column)->orderByDesc('movie_count')->limit($limit)
             ->get()->map(static fn($r): array => ['name' => (string) $r->name, 'movie_count' => (int) $r->movie_count])->all();
 
+        $genres = DB::table('genres')->join('movie_genres', 'movie_genres.genre_id', '=', 'genres.id')
+            ->whereRaw('COALESCE(genres.label_raw, genres.label_normalized) ' . $op . ' ?', [$like])
+            ->selectRaw('COALESCE(genres.label_raw, genres.label_normalized) AS name, COUNT(DISTINCT movie_genres.movie_id) AS movie_count')
+            ->groupByRaw('COALESCE(genres.label_raw, genres.label_normalized)')->orderByDesc('movie_count')->limit($limit)
+            ->get()->map(static fn($r): array => ['name' => (string) $r->name, 'movie_count' => (int) $r->movie_count])->all();
+
         return $this->respondWithData(
             data: [
                 'movies' => $movies->map(static fn($m): array => ['code' => $m->display_code, 'title' => $m->title_en ?? $m->title_jp, 'maker' => $m->maker])->all(),
                 'performers' => $performers->map(static fn($p): array => ['id' => (int) $p->id, 'name' => $p->name_romaji ?? $p->name_kanji])->all(),
+                'genres' => $genres,
                 'makers' => $facet('maker'),
                 'series' => $facet('series'),
             ],
