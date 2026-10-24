@@ -47,7 +47,7 @@ final readonly class AuthenticateApiKey
 
         return match (true) {
             $segment === 'movies:bulk' => 'bulk',
-            $segment === 'movies' => 'movies',
+            $segment === 'movies', $segment === 'search' => 'movies',
             $segment === 'performers' => 'performers',
             $segment === 'meta', $segment === 'suggest' => 'catalog',
             $segment === 'status' => 'status',

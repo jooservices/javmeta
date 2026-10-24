@@ -17,6 +17,7 @@ use App\Http\Controllers\MovieRelatedController;
 use App\Http\Controllers\MovieLookupController;
 use App\Http\Controllers\MovieSearchController;
 use App\Http\Controllers\PerformerController;
+use App\Http\Controllers\SearchController;
 use App\Http\Controllers\StatusController;
 use App\Http\Controllers\SuggestController;
 use App\Http\Middleware\AuthenticateApiKey;
@@ -59,6 +60,7 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
             Route::get('meta/genres', [MetaGenreController::class, 'index']);
             Route::get('meta/catalog/{kind}', [CatalogController::class, 'index']);
             Route::get('suggest', [SuggestController::class, 'index']);
+            Route::get('search', [SearchController::class, 'index']);
         });
 
         Route::middleware([AuthenticateApiKey::class, LogApiUsage::class])->group(function (): void {

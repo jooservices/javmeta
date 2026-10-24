@@ -33,6 +33,7 @@ const route = url => {
   if (p.startsWith('movies/') && !p.endsWith('/related') && p !== 'movies/calendar') return { data: { ...movie(decodeURIComponent(p.slice(7))), codes: [{ code: 'AAA-001', kind: 'display' }], directors: [], description: 'A story', attrs: { k: 'v' }, magnets: [{ url: 'magnet:?xt=1' }], hls_stream_urls: [], gallery: [], photos: {}, crawled_at: '2026-10-24T00:00:00Z', delisted_at: null } };
   if (['cups', 'blood_types', 'locations'].includes(p.replace('meta/catalog/', ''))) return { data: [{ name: 'D', performer_count: 30 }, { name: 'E', performer_count: 9 }], meta: { pagination: { total: 2, per_page: 24, page: 1, last_page: 1 } } };
   if (p.startsWith('meta/catalog/')) return { data: [{ name: '2025', movie_count: 40 }, { name: 'School', movie_count: 12 }], meta: { pagination: { total: 2, per_page: 60, page: 1, last_page: 1, sort: 'movie_count' } } };
+  if (p === 'search') return { data: { movies: [movie('AAA-001'), movie('BBB-002')], performers: [performer(1)], interpretation: { keywords: 'night', filters: { maker: 'Mankitsu', released_from: '2024-01-01' }, by: 'rules' } } };
   if (p === 'suggest') return { data: { movies: [], performers: [], genres: [{ name: 'Drama', movie_count: 40 }], makers: [{ name: 'Mankitsu', movie_count: 9 }], series: [] } };
   if (p === 'movies/calendar') return { data: [{ date: '2026-10-05', count: 5, movies: [{ code: 'AAA-001', title: 'T', cover_url: null, maker: 'M' }] }], meta: { month: '2026-10', total: 5 } };
   if (p.endsWith('/related')) return { data: [movie('REL-001')] };
@@ -66,7 +67,9 @@ assert.match(pd, /Aaliyah Love/); assert.match(pd, /Tokyo/);
 const crawl = await run('crawl', await load('views/crawl.js'), { params: {}, query: {} });
 assert.match(crawl, /JavBus/); assert.match(crawl, /600s/);
 const s = await run('search', await load('views/search.js'), { params: {}, query: { q: 'Drama' } });
-assert.match(s, /Kết quả/); assert.match(s, /Danh mục khớp/); assert.match(s, /#\/facet\/maker\/Mankitsu/);
+assert.match(s, /Kết quả/);
+const sm = await run('search-meaning', await load('views/search.js'), { params: {}, query: { q: 'Mankitsu night movies from 2024', mode: 'meaning' } });
+assert.match(sm, /Tôi hiểu là/); assert.match(sm, /Mankitsu/); assert.match(s, /Danh mục khớp/); assert.match(s, /#\/facet\/maker\/Mankitsu/);
 await run('facet-genre', await load('views/facet.js'), { params: { kind: 'genre', value: 'Drama' }, query: {} });
 await run('facet-year', await load('views/facet.js'), { params: { kind: 'year', value: '2025' }, query: {} });
 const cal = await run('calendar', await load('views/calendar.js'), { params: {}, query: { month: '2026-10' } });

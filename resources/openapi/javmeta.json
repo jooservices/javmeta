@@ -925,6 +925,63 @@
           }
         }
       }
+    },
+    "/api/v1/search": {
+      "get": {
+        "summary": "One search for movies and performers: keywords, filters read from the question, and meaning",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "movies",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "description": "The question, 2 to 300 characters",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "description": "1 to 50",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "understand",
+            "in": "query",
+            "required": false,
+            "description": "0 turns the reading of the question into filters off",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "movies, performers and the interpretation (keywords, filters, by rules or ollama)"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
+      }
     }
   }
 }
