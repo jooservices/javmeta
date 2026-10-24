@@ -260,9 +260,14 @@ final class PerformerPersister implements PerformerDraftSink
      */
     private function mergeAttrs(array $current, array $incoming): array
     {
-        return array_filter(
+        $attributes = array_filter(
             [...$current, ...$incoming],
-            static fn(mixed $v): bool => $v !== null && $v !== '' && $v !== [],
+            static fn(mixed $value): bool => $value !== null && $value !== '' && $value !== [],
         );
+
+        $json = json_encode($attributes, JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
+        $normalized = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+
+        return is_array($normalized) ? $normalized : [];
     }
 }
