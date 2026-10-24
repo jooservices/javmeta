@@ -11,8 +11,8 @@ export default {
     let keys, quality;
     try { [keys, quality] = await Promise.all([admin('keys'), admin('report/quality')]); } catch (e) { return { html: `<div class="wrap">${head('Quản trị', '')}${errorBox(e)}</div>` }; }
     const q = quality.data;
-    const bar = p => `<div class="bar" style="width:160px"><i style="width:${Math.max(1, p)}%"></i></div>`;
-    const fields = Object.entries(q.core_fields).map(([k, v]) => `<div class="row-i"><div class="grow">${esc(FIELD_NAMES[k] || k)}</div>${bar(v.percent)}<span class="mono" style="width:60px;text-align:right">${esc(v.percent)}%</span><span class="mono muted" style="width:80px;text-align:right">${fmt(v.filled)}</span></div>`).join('');
+    const bar = p => `<div class="bar barfield"><i style="width:${Math.max(1, p)}%"></i></div>`;
+    const fields = Object.entries(q.core_fields).map(([k, v]) => `<div class="row-i"><div class="grow ell" style="min-width:72px">${esc(FIELD_NAMES[k] || k)}</div>${bar(v.percent)}<span class="mono" style="width:60px;text-align:right">${esc(v.percent)}%</span><span class="mono muted" style="width:80px;text-align:right">${fmt(v.filled)}</span></div>`).join('');
     const sources = Object.entries(q.movies_by_source || {}).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="row-i"><div class="grow">${esc(k)}</div><span class="mono">${fmt(v)}</span></div>`).join('');
     const tiers = Object.entries(q.completeness_tiers || {}).map(([k, v]) => `<span class="chip mono">tầng ${esc(k)}: ${fmt(v)}</span>`).join(' ');
     const html = `<div class="wrap">${head('Quản trị', 'chất lượng dữ liệu và khoá API')}
