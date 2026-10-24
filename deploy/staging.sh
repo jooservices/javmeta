@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Update the JavMeta staging environment on the WSL main clone (branch develop), safely and without a person.
 #
-#   deploy/staging.sh [--dry-run]
+#   deploy/staging.sh [staging|uat] [--dry-run]
+#
+# The target defaults to staging. The names that must differ between the two (database, Mongo, Elasticsearch, Redis,
+# port, clone, systemd units) are in deploy/environments.sh.
 #
 # Steps: check the branch, the clean tree and the .env, take a quick Postgres backup, pull with fast-forward only,
 # install dependencies with the shared PHP runtime, migrate forward only, set up Elasticsearch, refresh the caches,
@@ -13,15 +16,23 @@ set -Eeuo pipefail
 umask 022
 
 SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-APP_DIR="${JAVMETA_APP_DIR:-$(CDPATH='' cd -- "${SCRIPT_DIR}/.." && pwd)}"
+# shellcheck source=deploy/environments.sh
+source "${SCRIPT_DIR}/environments.sh"
+
+target=staging
+case "${1:-}" in staging|uat) target="$1"; shift ;; esac
+load_environment "${target}"
+
+APP_DIR="${JAVMETA_APP_DIR:-${APP_DIR_DEFAULT}}"
+[[ "${target}" == staging ]] && APP_DIR="${JAVMETA_APP_DIR:-$(CDPATH='' cd -- "${SCRIPT_DIR}/.." && pwd)}"
 WORKSPACES_ROOT="${WORKSPACES_ROOT:-$(CDPATH='' cd -- "${APP_DIR}/../../.." && pwd)}"
 RUNTIME="${WORKSPACES_ROOT}/scripts/docker/runtime"
 SHARED="${WORKSPACES_ROOT}/scripts/docker/shared"
 ENV_RUN="${WORKSPACES_ROOT}/scripts/docker/env-run"
-STATE_DIR="${JAVMETA_DEPLOY_STATE_DIR:-${WORKSPACES_ROOT}/.tmp/javmeta-deploy}"
+STATE_DIR="${JAVMETA_DEPLOY_STATE_DIR:-${STATE_DIR_DEFAULT}}"
 BACKUP_KEEP="${JAVMETA_DEPLOY_BACKUP_KEEP:-7}"
-POSTGRES_DATABASE="${JAVMETA_DEPLOY_POSTGRES_DATABASE:-javmeta}"
-UNITS=(javmeta-horizon.service javmeta-scheduler.service)
+POSTGRES_DATABASE="${JAVMETA_DEPLOY_POSTGRES_DATABASE:-${POSTGRES_DATABASE_DEFAULT}}"
+UNITS=("${HORIZON_UNIT}" "${SCHEDULER_UNIT}")
 
 dry_run=0
 case "${1:-}" in
@@ -84,9 +95,9 @@ rollback() {
 main() {
   mkdir -p "${STATE_DIR}/backups"
   chmod 700 "${STATE_DIR}" "${STATE_DIR}/backups"
-  log_file="${STATE_DIR}/staging-$(date -u '+%Y%m%dT%H%M%SZ').log"
+  log_file="${STATE_DIR}/${target}-$(date -u '+%Y%m%dT%H%M%SZ').log"
   exec > >(tee -a "${log_file}") 2>&1
-  log "JavMeta staging deployment starts (dry run: ${dry_run}); log: ${log_file}"
+  log "JavMeta ${target} deployment starts (dry run: ${dry_run}); log: ${log_file}"
 
   [[ -d "${APP_DIR}/.git" ]] || die "${APP_DIR} is not a git clone."
   [[ "$(git -C "${APP_DIR}" rev-parse --abbrev-ref HEAD)" == 'develop' ]] || die 'The staging clone must be on branch develop.'
@@ -139,9 +150,9 @@ main() {
 
   install_units
   log 'Restarting the JavMeta units: scheduler stopped first, started last.'
-  run systemctl --user stop javmeta-scheduler.service
-  run systemctl --user restart javmeta-horizon.service
-  run systemctl --user start javmeta-scheduler.service
+  run systemctl --user stop "${SCHEDULER_UNIT}"
+  run systemctl --user restart "${HORIZON_UNIT}"
+  run systemctl --user start "${SCHEDULER_UNIT}"
 
   log 'Smoke checks.'
   if ! artisan javmeta:smoke; then
@@ -160,17 +171,24 @@ install_units() {
   local unit_dir="${HOME}/.config/systemd/user" unit
   run mkdir -p "${unit_dir}"
   for unit in "${UNITS[@]}"; do
-    if [[ -f "${APP_DIR}/deploy/systemd/${unit}" ]]; then
-      run cp -f "${APP_DIR}/deploy/systemd/${unit}" "${unit_dir}/${unit}"
+    # The repository holds the staging units; the UAT units are the same with the UAT clone and a UAT name.
+    local source_unit="${unit/#${UNIT_PREFIX}-/javmeta-}"
+    if [[ -f "${APP_DIR}/deploy/systemd/${source_unit}" ]]; then
+      if [[ "${target}" == staging ]]; then
+        run cp -f "${APP_DIR}/deploy/systemd/${source_unit}" "${unit_dir}/${unit}"
+      else
+        run sed "s#JOOservices/projects/javmeta\$#JOOservices/projects/javmeta-uat#" "${APP_DIR}/deploy/systemd/${source_unit}" > "${unit_dir}/${unit}"
+      fi
     fi
   done
-  if [[ -f "${APP_DIR}/deploy/systemd/javmeta-backup.timer" ]]; then
+  # Only staging has the backup timer for now.
+  if [[ "${target}" == staging && -f "${APP_DIR}/deploy/systemd/javmeta-backup.timer" ]]; then
     run cp -f "${APP_DIR}/deploy/systemd/javmeta-backup.service" "${unit_dir}/javmeta-backup.service"
     run cp -f "${APP_DIR}/deploy/systemd/javmeta-backup.timer" "${unit_dir}/javmeta-backup.timer"
   fi
   run systemctl --user daemon-reload
   run systemctl --user enable "${UNITS[@]}"
-  if [[ -f "${unit_dir}/javmeta-backup.timer" ]]; then
+  if [[ "${target}" == staging && -f "${unit_dir}/javmeta-backup.timer" ]]; then
     run systemctl --user enable --now javmeta-backup.timer
   fi
 }
