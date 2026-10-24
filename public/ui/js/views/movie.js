@@ -65,15 +65,8 @@ export default {
 async function loadRelated(m, root) {
   const strip = root.querySelector('#relstrip');
   try {
-    const wants = [];
-    const first = (m.performers || [])[0];
-    if (first) wants.push(api('movies', { actress: performerName(first), per_page: 10 }));
-    if (m.series) wants.push(api('movies', { series: m.series, per_page: 10 }));
-    if (!wants.length && m.maker) wants.push(api('movies', { maker: m.maker, per_page: 10 }));
-    const seen = new Set([m.code]);
-    const items = [];
-    for (const r of await Promise.all(wants)) for (const x of r.data || []) if (!seen.has(x.code)) { seen.add(x.code); items.push(x); }
-    strip.innerHTML = items.slice(0, 12).map((x, i) => movieCard(x, i)).join('') || '<span class="muted">Chưa có phim liên quan.</span>';
+    const r = await api('movies/' + encodeURIComponent(m.code) + '/related');
+    strip.innerHTML = (r.data || []).map((x, i) => movieCard(x, i)).join('') || '<span class="muted">Chưa có phim liên quan.</span>';
   } catch (e) {
     strip.innerHTML = `<span class="err">${esc(e.message)}</span>`;
   }
