@@ -1,5 +1,6 @@
 import { esc, fmt, queryString, $, debounce } from '../util.js';
 import { head, crumbs, emptyBox, movieCard, movieRow, movieHead, infiniteList, moviePage, ic } from '../components.js';
+import { api } from '../api.js';
 
 export const SORTS = [['release_date', 'Mới phát hành'], ['update_date', 'Mới cập nhật'], ['rating', 'Điểm cao'], ['relevance', 'Liên quan (cần từ khoá)']];
 const FIELDS = ['q', 'genre', 'actress', 'maker', 'series', 'label', 'year', 'from', 'to', 'rmin', 'rmax', 'censored', 'sort'];
@@ -21,7 +22,8 @@ export function toApi(query) {
 const prefs = () => { try { return JSON.parse(localStorage.getItem('xc-list') || '{}'); } catch { return {}; } };
 const savePrefs = p => { try { localStorage.setItem('xc-list', JSON.stringify(p)); } catch { /* ignore */ } };
 
-const field = (name, label, value, ph = '', type = 'text') => `<label class="f">${label}<input type="${type}" name="${name}" value="${esc(value || '')}" placeholder="${esc(ph)}"></label>`;
+const LISTED = { genre: 'genres', maker: 'makers', series: 'series', label: 'labels' };
+const field = (name, label, value, ph = '', type = 'text') => `<label class="f">${label}<input type="${type}" name="${name}" value="${esc(value || '')}" placeholder="${esc(ph)}"${LISTED[name] ? ` list="dl-${name}"` : ''}></label>`;
 
 /* A filter panel + list of movies; `fixed` filters (from a facet or a performer page) are applied and hidden. */
 export function moviesBrowser(query, { fixed = {}, apiExtra = {}, closed = false } = {}) {
@@ -42,7 +44,7 @@ export function moviesBrowser(query, { fixed = {}, apiExtra = {}, closed = false
       ${fixed.year ? '' : `<div class="two">${field('from', 'Từ năm', query.from, '2020', 'number')}${field('to', 'Đến năm', query.to, '2026', 'number')}</div>`}
       <div class="two">${field('rmin', 'Dài ≥ (phút)', query.rmin, '', 'number')}${field('rmax', 'Dài ≤', query.rmax, '', 'number')}</div>
       <label class="f">Kiểm duyệt<select name="censored"><option value="">Tất cả</option><option value="censored" ${query.censored === 'censored' ? 'selected' : ''}>Có che</option><option value="uncensored" ${query.censored === 'uncensored' ? 'selected' : ''}>Không che</option></select></label></div></details>
-    <div class="fb"><button class="btn sm" type="reset" data-act="clearfilters">Xoá bộ lọc</button></div></form>`;
+    <div class="fb"><button class="btn sm" type="reset" data-act="clearfilters">Xoá bộ lọc</button></div>${Object.keys(LISTED).map(n => `<datalist id="dl-${n}"></datalist>`).join('')}</form>`;
   const chips = FIELDS.filter(k => k !== 'sort' && query[k] && !fixed[k]).map(k => `<button class="chip on" data-act="dropfilter" data-k="${k}">${esc(k)}: <b>${esc(query[k])}</b><span class="x">×</span></button>`).join('');
   const html = `<div class="br" data-key="movies"><div class="brbar"><button class="btn ${open ? 'on' : ''}" data-act="toggleside">${ic('filter')} Bộ lọc</button><b class="mono" data-count></b> <span class="muted">phim</span>
     <span class="sp"></span><label class="muted">Xếp theo <select id="sortsel">${SORTS.map(s => `<option value="${s[0]}" ${sort === s[0] ? 'selected' : ''}>${s[1]}</option>`).join('')}</select></label>
@@ -76,6 +78,7 @@ function mountBrowser(root, query, fixed, apiExtra, sort, mode, size) {
     out.sort = root.querySelector('#sortsel').value;
     return out;
   };
+  fillLists(root);
   const form = root.querySelector('#mf');
   form.addEventListener('input', debounce(() => go(read()), 600));
   form.addEventListener('submit', e => { e.preventDefault(); go(read()); });
@@ -98,3 +101,15 @@ export default {
     return { html: `<div class="wrap">${head('Phim', 'toàn bộ phim đã crawl, cuộn để tải thêm')}${b.html}</div>`, mount: b.mount };
   },
 };
+
+/* the most used values fill the suggestion lists of the filter inputs */
+async function fillLists(root) {
+  for (const [name, kind] of Object.entries(LISTED)) {
+    const dl = root.querySelector('#dl-' + name);
+    if (!dl) continue;
+    try {
+      const body = await api('meta/catalog/' + kind, { per_page: 200 }, { ttl: 300000 });
+      dl.innerHTML = (body.data || []).map(x => `<option value="${esc(x.name)}">${fmt(x.movie_count)} phim</option>`).join('');
+    } catch { /* suggestions are optional */ }
+  }
+}
