@@ -21,6 +21,8 @@ import bio from './views/bio.js';
 import stats from './views/stats.js';
 import { toggleMark, loadDisk } from './marks.js';
 import library2 from './views/libraryPage.js';
+import downloads from './views/downloads.js';
+import { send } from './api.js';
 
 const ROUTES = [
   [/^$/, home, 'home'], [/^home$/, home, 'home'],
@@ -36,6 +38,7 @@ const ROUTES = [
   [/^me\/([a-z_]+)$/, library, 'me', ['kind']],
   [/^feed$/, feed, 'feed'],
   [/^library$/, library2, 'library'],
+  [/^downloads$/, downloads, 'downloads'],
   [/^bio$/, bio, 'bio'],
   [/^stats$/, stats, 'stats'],
   [/^crawl$/, crawl, 'crawl'],
@@ -45,7 +48,7 @@ const ROUTES = [
 const NAV = [
   ['Khám phá', [['home', 'Discover', 'home', '#/'], ['search', 'Tìm kiếm', 'search', '#/search'], ['stats', 'Thống kê', 'chart', '#/stats']]],
   ['Danh mục', [['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers'], ['bio', 'Hồ sơ diễn viên', 'user', '#/bio'], ['smart-new', 'Mới cập nhật', 'film', '#/movies?sort=update_date'], ['catalog-genres', 'Thể loại', 'tag', '#/catalog/genres'], ['catalog-makers', 'Maker', 'building', '#/catalog/makers'], ['catalog-series', 'Series', 'folder', '#/catalog/series'], ['catalog-labels', 'Label', 'layers', '#/catalog/labels'], ['catalog-years', 'Năm', 'cal', '#/catalog/years'], ['calendar', 'Lịch phát hành', 'cal', '#/calendar']]],
-  ['Của tôi', [['me-favourite', 'Yêu thích', 'tag', '#/me/favourite'], ['me-watch_later', 'Xem sau', 'cal', '#/me/watch_later'], ['me-seen', 'Đã xem', 'film', '#/me/seen'], ['feed', 'Theo dõi', 'user', '#/feed'], ['library', 'Thư viện', 'layers', '#/library']]],
+  ['Của tôi', [['me-favourite', 'Yêu thích', 'tag', '#/me/favourite'], ['me-watch_later', 'Xem sau', 'cal', '#/me/watch_later'], ['me-seen', 'Đã xem', 'film', '#/me/seen'], ['feed', 'Theo dõi', 'user', '#/feed'], ['library', 'Thư viện', 'layers', '#/library'], ['downloads', 'Tải về', 'disk', '#/downloads']]],
   ['Công cụ', [['crawl', 'Crawl & nguồn', 'spider', '#/crawl'], ['ops', 'Vận hành (/ops)', 'chart', '/ops'], ['admin', 'Quản trị', 'gear', '#/admin'], ['settings', 'Cài đặt', 'gear', '#/settings']]],
 ];
 
@@ -156,6 +159,7 @@ document.addEventListener('click', e => {
   if (!e.target.closest('#omni')) omniClose();
   const oi = e.target.closest('#odrop .oi'); if (oi) { omniClose(); $('#omq').value = ''; }
   const mk = e.target.closest('[data-mark]'); if (mk) { toggleMark(mk); return; }
+  const dlb = e.target.closest('[data-dl]'); if (dlb) { dlb.disabled = true; send('POST', '/ui-me/downloads', { code: dlb.dataset.dl }).then(() => { dlb.textContent = '✓ Đã thêm vào Tải về'; }).catch(err => { dlb.textContent = err.message; dlb.disabled = false; }); return; }
   const t = e.target.closest('[data-act]'); if (!t) return;
   const act = t.dataset.act;
   if (act === 'theme') toggleTheme();
