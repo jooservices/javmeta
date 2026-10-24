@@ -34,6 +34,7 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
         Route::middleware([OwnerAdminGuard::class, 'requires:postgres'])->prefix('admin')->group(function (): void {
             Route::get('keys', [ApiKeyController::class, 'index']);
             Route::post('keys', [ApiKeyController::class, 'store']);
+            Route::get('keys/{id}/usage', [ApiKeyController::class, 'usage'])->whereNumber('id');
             Route::delete('keys/{id}', [ApiKeyController::class, 'destroy'])->whereNumber('id');
             Route::get('report/{type}', [ReportController::class, 'show']);
             Route::put('sources/{slug}/login-cookies', [SourceLoginCookieController::class, 'update']);
