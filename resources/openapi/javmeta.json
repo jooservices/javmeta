@@ -123,7 +123,7 @@
             "name": "genre",
             "in": "query",
             "required": false,
-            "description": "Genre name",
+            "description": "Genre name; several separated by commas (any of them, or all with genre_all)",
             "schema": {
               "type": "string"
             }
@@ -132,7 +132,7 @@
             "name": "actress",
             "in": "query",
             "required": false,
-            "description": "Performer name",
+            "description": "Part of a performer name, kana, kanji or alias",
             "schema": {
               "type": "string"
             }
@@ -241,6 +241,87 @@
             "in": "query",
             "required": false,
             "description": "1 for search by meaning (only q and per_page)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actress_id",
+            "in": "query",
+            "required": false,
+            "description": "Performer ids separated by commas (several mean shared movies)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "genre_all",
+            "in": "query",
+            "required": false,
+            "description": "1 = with several genres, all of them",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "description": "Source slugs separated by commas",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "score_min",
+            "in": "query",
+            "required": false,
+            "description": "Minimum community score 0 to 10",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "tier_min",
+            "in": "query",
+            "required": false,
+            "description": "Minimum completeness tier 0 to 3",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "has_cover",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "has_magnet",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "has_performers",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "on_disk",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0 (library)",
             "schema": {
               "type": "string"
             }
@@ -970,6 +1051,261 @@
         "responses": {
           "200": {
             "description": "movies, performers and the interpretation (keywords, filters, by rules or ollama)"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
+      }
+    },
+    "/api/v1/movies/facets": {
+      "get": {
+        "summary": "Counts inside the current result: genres, makers, series, labels, years, sources and performers",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "movies",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Text, at least 2 characters",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "description": "Movie code",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "genre",
+            "in": "query",
+            "required": false,
+            "description": "Genre name; several separated by commas (any of them, or all with genre_all)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actress",
+            "in": "query",
+            "required": false,
+            "description": "Part of a performer name, kana, kanji or alias",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "maker",
+            "in": "query",
+            "required": false,
+            "description": "Maker",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "series",
+            "in": "query",
+            "required": false,
+            "description": "Series",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "label",
+            "in": "query",
+            "required": false,
+            "description": "Label",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "released_from",
+            "in": "query",
+            "required": false,
+            "description": "YYYY-MM-DD",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "released_to",
+            "in": "query",
+            "required": false,
+            "description": "YYYY-MM-DD",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "runtime_min",
+            "in": "query",
+            "required": false,
+            "description": "Minutes",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "runtime_max",
+            "in": "query",
+            "required": false,
+            "description": "Minutes",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "censored",
+            "in": "query",
+            "required": false,
+            "description": "0, 1, censored or uncensored",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "relevance, release_date, update_date or rating",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "description": "Cursor of the next page",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "description": "1 to 100",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "semantic",
+            "in": "query",
+            "required": false,
+            "description": "1 for search by meaning (only q and per_page)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actress_id",
+            "in": "query",
+            "required": false,
+            "description": "Performer ids separated by commas (several mean shared movies)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "genre_all",
+            "in": "query",
+            "required": false,
+            "description": "1 = with several genres, all of them",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "description": "Source slugs separated by commas",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "score_min",
+            "in": "query",
+            "required": false,
+            "description": "Minimum community score 0 to 10",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "tier_min",
+            "in": "query",
+            "required": false,
+            "description": "Minimum completeness tier 0 to 3",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "has_cover",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "has_magnet",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "has_performers",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "on_disk",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0 (library)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "total and the facet lists with counts"
           },
           "401": {
             "description": "Missing or invalid API key"

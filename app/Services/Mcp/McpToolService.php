@@ -73,8 +73,17 @@ final class McpToolService
                 'properties' => [
                     'q' => ['type' => 'string', 'description' => 'Keyword across code, title and performer names.'],
                     'code' => ['type' => 'string', 'description' => 'Movie code or partial code.'],
-                    'genre' => ['type' => 'string'],
-                    'actress' => ['type' => 'string'],
+                    'genre' => ['type' => 'string', 'description' => 'One or several genres separated by commas (any of them, or all with genre_all).'],
+                    'genre_all' => ['type' => 'boolean', 'description' => 'With several genres: the movie must have all of them.'],
+                    'actress' => ['type' => 'string', 'description' => 'Part of a performer name, kana, kanji or alias.'],
+                    'actress_id' => ['type' => 'string', 'description' => 'Performer ids separated by commas; several mean movies they share.'],
+                    'source' => ['type' => 'string', 'description' => 'Source slugs separated by commas.'],
+                    'score_min' => ['type' => 'number', 'description' => 'Minimum community score (0 to 10).'],
+                    'tier_min' => ['type' => 'integer', 'minimum' => 0, 'maximum' => 3, 'description' => 'Minimum completeness tier.'],
+                    'has_cover' => ['type' => 'boolean'],
+                    'has_magnet' => ['type' => 'boolean'],
+                    'has_performers' => ['type' => 'boolean'],
+                    'on_disk' => ['type' => 'boolean'],
                     'maker' => ['type' => 'string'],
                     'series' => ['type' => 'string'],
                     'label' => ['type' => 'string'],
@@ -545,7 +554,7 @@ final class McpToolService
     {
         $filters = [];
         foreach ([
-            'q', 'code', 'genre', 'actress', 'maker', 'series', 'label',
+            'q', 'code', 'genre', 'actress', 'maker', 'series', 'label', 'actress_id', 'source',
             'released_from', 'released_to',
         ] as $key) {
             if (array_key_exists($key, $arguments)) {
@@ -560,9 +569,17 @@ final class McpToolService
             }
         }
 
-        foreach (['runtime_min', 'runtime_max'] as $key) {
+        foreach (['runtime_min', 'runtime_max', 'tier_min'] as $key) {
             if (($arguments[$key] ?? null) !== null) {
                 $filters[$key] = $this->integerArgument($arguments, $key);
+            }
+        }
+        if (is_numeric($arguments['score_min'] ?? null)) {
+            $filters['score_min'] = (float) $arguments['score_min'];
+        }
+        foreach (['genre_all', 'on_disk', 'has_cover', 'has_magnet', 'has_performers'] as $flag) {
+            if (($arguments[$flag] ?? null) !== null) {
+                $filters[$flag] = filter_var($arguments[$flag], FILTER_VALIDATE_BOOLEAN) ? '1' : '0';
             }
         }
 
