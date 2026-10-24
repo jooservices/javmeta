@@ -10,7 +10,7 @@ use Illuminate\Validation\ValidationException;
 
 final class MediaQueue
 {
-    public const KINDS = ['thumbnails', 'scenes', 'transcribe'];
+    public const KINDS = ['thumbnails', 'scenes', 'transcribe', 'translate'];
 
     public function enqueue(string $kind, int $file): int
     {
@@ -72,14 +72,14 @@ final class MediaQueue
 
     private function storeSubtitles(object $job, array $subtitles): void
     {
-        if ($job->kind !== 'transcribe') {
+        if (! in_array($job->kind, ['transcribe', 'translate'], true)) {
             return;
         }
         foreach ($subtitles as $subtitle) {
             $path = $this->outputPath($subtitle['path']);
             DB::table('media_subtitles')->updateOrInsert([
                 'library_file_id' => $job->library_file_id, 'language' => $subtitle['language'],
-                'format' => $subtitle['format'], 'source' => 'whisper',
+                'format' => $subtitle['format'], 'source' => $job->kind === 'transcribe' ? 'whisper' : 'translation',
             ], ['path' => $path, 'created_at' => now()]);
         }
     }

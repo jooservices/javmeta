@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 return [
+    'translate_model' => 'qwen2.5:7b',
+    'translate_batch_segments' => 20,
+    'ollama_timeout_sec' => 180,
     'whisper_model' => 'large-v3',
     'api_url' => 'http://127.0.0.1:8085',
     'output_folder' => storage_path('app/private/media/output'),

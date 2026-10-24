@@ -2,7 +2,7 @@ import { admin, send } from '../api.js';
 import { esc } from '../util.js';
 import { head, errorBox } from '../components.js';
 
-export const kinds = [['thumbnails', 'Ảnh preview'], ['scenes', 'Tách cảnh'], ['transcribe', 'Phụ đề']];
+export const kinds = [['thumbnails', 'Ảnh preview'], ['scenes', 'Tách cảnh'], ['transcribe', 'Phụ đề'], ['translate', 'Dịch EN / VI']];
 export const mediaButtons = id => kinds.map(([kind, label]) => `<button class="btn sm ghost" data-media-kind="${kind}" data-file="${Number(id)}">${label}</button>`).join('');
 export function mountMedia(root) {
   const handle = async e => {
