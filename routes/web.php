@@ -7,6 +7,8 @@ use App\Http\Controllers\Operations\DashboardController;
 use App\Http\Controllers\Operations\LoginController;
 use App\Http\Controllers\Ui\UiAdminController;
 use App\Http\Controllers\Ui\UiApiController;
+use App\Http\Controllers\FileController;
+use App\Http\Controllers\Ui\UiDownloadsController;
 use App\Http\Controllers\Ui\UiLibraryController;
 use App\Http\Controllers\Ui\UiMarksController;
 use App\Http\Controllers\Ui\UiSettingsController;
@@ -14,6 +16,8 @@ use App\Http\Controllers\Ui\UiShellController;
 use App\Http\Middleware\EnsureSuperAdministrator;
 
 Route::get('/', static fn() => redirect()->route('ui.index'));
+
+Route::get('/files/download', [FileController::class, 'download'])->middleware('signed')->name('files.download');
 
 Route::get('/login', [LoginController::class, 'show'])->name('login');
 Route::post('/login', [LoginController::class, 'store'])->middleware('throttle:6,1');
@@ -34,6 +38,13 @@ Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static funct
     Route::get('/ui-me/movies/{kind}', [UiMarksController::class, 'movies']);
     Route::get('/ui-me/feed', [UiMarksController::class, 'feed']);
     Route::post('/ui-me/feed/seen', [UiMarksController::class, 'feedSeen']);
+    Route::get('/ui-me/downloads/status', [UiDownloadsController::class, 'status']);
+    Route::get('/ui-me/downloads', [UiDownloadsController::class, 'index']);
+    Route::post('/ui-me/downloads', [UiDownloadsController::class, 'store']);
+    Route::post('/ui-me/downloads/{hash}/pause', [UiDownloadsController::class, 'pause'])->where('hash', '[A-Za-z0-9]+');
+    Route::post('/ui-me/downloads/{hash}/resume', [UiDownloadsController::class, 'resume'])->where('hash', '[A-Za-z0-9]+');
+    Route::delete('/ui-me/downloads/{hash}', [UiDownloadsController::class, 'destroy'])->where('hash', '[A-Za-z0-9]+');
+    Route::get('/ui-me/downloads/{hash}/links', [UiDownloadsController::class, 'links'])->where('hash', '[A-Za-z0-9]+');
     Route::get('/ui-me/library', [UiLibraryController::class, 'summary']);
     Route::get('/ui-me/library/codes', [UiLibraryController::class, 'codes']);
     Route::get('/ui-me/library/on-disk', [UiLibraryController::class, 'onDisk']);

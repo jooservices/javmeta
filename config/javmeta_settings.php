@@ -24,6 +24,8 @@ return [
         'backup' => 'Sao lưu',
         'follow_notifications' => 'Thông báo theo dõi (Telegram)',
         'library' => 'Thư viện trên đĩa',
+        'downloads' => 'Tải về (qBittorrent)',
+        'files' => 'Máy chủ tệp',
     ],
 
     'definitions' => [
@@ -84,6 +86,17 @@ return [
         'library.extensions' => ['group' => 'library', 'label' => 'Đuôi tệp video', 'description' => 'Cách nhau bằng dấu phẩy hoặc xuống dòng.', 'type' => 'string_list', 'config' => ['javmeta_library.extensions']],
         'library.scan_hour' => ['group' => 'library', 'label' => 'Giờ quét hằng ngày (0 đến 23)', 'description' => 'Theo múi giờ báo cáo. Có thể quét ngay bằng php artisan library:scan --force.', 'type' => 'int', 'config' => ['javmeta_library.scan_hour'], 'min' => 0, 'max' => 23],
         'library.hash_kilobytes' => ['group' => 'library', 'label' => 'Số KB đầu và cuối dùng để băm nhanh', 'description' => 'Mã băm nhanh = kích thước + phần đầu + phần cuối của tệp.', 'type' => 'int', 'config' => ['javmeta_library.hash_kilobytes'], 'min' => 1, 'max' => 65536],
+        'downloads.enabled' => ['group' => 'downloads', 'label' => 'Bật tải về', 'description' => 'TẮT cho tới khi chủ sở hữu duyệt văn bản quyết định (JOOXCR-223). Chỉ nhận magnet mà JavMeta đã lưu cho một phim, mỗi lần tải là một thao tác của chủ sở hữu.', 'type' => 'bool', 'config' => ['javmeta_downloads.enabled']],
+        'downloads.qbittorrent_url' => ['group' => 'downloads', 'label' => 'Địa chỉ qBittorrent Web UI', 'description' => 'Ví dụ http://192.168.2.10:8080 (mạng nội bộ).', 'type' => 'string', 'config' => ['javmeta_downloads.qbittorrent_url']],
+        'downloads.qbittorrent_username' => ['group' => 'downloads', 'label' => 'Tài khoản qBittorrent', 'description' => '', 'type' => 'string', 'config' => ['javmeta_downloads.qbittorrent_username']],
+        'downloads.qbittorrent_password' => ['group' => 'downloads', 'label' => 'Mật khẩu qBittorrent', 'description' => 'Mã hoá trong cơ sở dữ liệu, không hiển thị lại.', 'type' => 'secret', 'config' => ['javmeta_downloads.qbittorrent_password']],
+        'downloads.category' => ['group' => 'downloads', 'label' => 'Danh mục (category) trong qBittorrent', 'description' => 'Chỉ các torrent trong danh mục này được liệt kê và quản lý.', 'type' => 'string', 'config' => ['javmeta_downloads.category']],
+        'downloads.save_path' => ['group' => 'downloads', 'label' => 'Thư mục lưu', 'description' => 'Đường dẫn trên máy chạy qBittorrent; cũng là thư mục máy chủ tệp được phục vụ nếu máy JavMeta đọc được.', 'type' => 'string', 'config' => ['javmeta_downloads.save_path']],
+        'downloads.timeout' => ['group' => 'downloads', 'label' => 'Thời gian chờ qBittorrent (giây)', 'description' => '', 'type' => 'int', 'config' => ['javmeta_downloads.timeout'], 'min' => 1, 'max' => 120],
+        'files.enabled' => ['group' => 'files', 'label' => 'Bật máy chủ tệp', 'description' => 'TẮT cho tới khi chủ sở hữu duyệt (JOOXCR-223). Phục vụ tệp đã tải qua liên kết ký có thời hạn.', 'type' => 'bool', 'config' => ['javmeta_downloads.files_enabled']],
+        'files.root_folders' => ['group' => 'files', 'label' => 'Thư mục được phép phục vụ (mỗi dòng một đường dẫn)', 'description' => 'Tệp ngoài các thư mục này không bao giờ được phục vụ.', 'type' => 'string_list', 'config' => ['javmeta_downloads.root_folders']],
+        'files.link_ttl_minutes' => ['group' => 'files', 'label' => 'Liên kết hết hạn sau (phút)', 'description' => '', 'type' => 'int', 'config' => ['javmeta_downloads.link_ttl_minutes'], 'min' => 1, 'max' => 1440],
+        'files.allowed_networks' => ['group' => 'files', 'label' => 'Mạng được truy cập (CIDR, mỗi dòng một mạng)', 'description' => 'Chỉ địa chỉ trong các mạng này mở được liên kết. Mặc định là mạng nội bộ.', 'type' => 'string_list', 'config' => ['javmeta_downloads.allowed_networks']],
         'backup.stale_after_seconds' => ['group' => 'backup', 'label' => 'Bản sao lưu coi là cũ sau (giây)', 'description' => 'Dùng cho cảnh báo sao lưu hằng phút.', 'type' => 'int', 'config' => ['backup.stale_after_seconds'], 'min' => 3600, 'max' => 2592000],
     ],
 ];
