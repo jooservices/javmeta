@@ -602,7 +602,7 @@
             "name": "kind",
             "in": "path",
             "required": true,
-            "description": "genres, makers, series, labels or years",
+            "description": "genres, makers, series, labels, years, cups, blood_types or locations",
             "schema": {
               "type": "string"
             }

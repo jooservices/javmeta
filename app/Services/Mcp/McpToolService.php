@@ -456,9 +456,9 @@ final class McpToolService
     {
         return [
             'name' => 'get_catalog',
-            'description' => 'List genres, makers, series, labels or release years with the number of movies of each.',
+            'description' => 'List genres, makers, series, labels or release years with the number of movies of each, or performer cups, blood types or locations with the number of performers.',
             'inputSchema' => ['type' => 'object', 'properties' => [
-                'kind' => ['type' => 'string', 'enum' => ['genres', 'makers', 'series', 'labels', 'years']],
+                'kind' => ['type' => 'string', 'enum' => ['genres', 'makers', 'series', 'labels', 'years', 'cups', 'blood_types', 'locations']],
                 'q' => ['type' => 'string', 'description' => 'Text the name contains.'],
                 'sort' => ['type' => 'string', 'enum' => ['movie_count', 'name']],
                 'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 200],
