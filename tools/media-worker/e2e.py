@@ -29,3 +29,37 @@ for kind in ('thumbnails', 'scenes', 'transcribe'):
     except Exception:
         print('FAIL', kind, flush=True)
         raise
+
+# A loopback Ollama stub validates the real HTTP boundary without using a model.
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from jobs.translate import process as translate
+
+class Stub(BaseHTTPRequestHandler):
+    def do_POST(self):
+        request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        rows = json.loads(request['messages'][0]['content'].split('\n', 1)[1])
+        value = {'segments': [{'id': r['id'], 'text': 'Local translated cue'} for r in rows]}
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(json.dumps({'message': {'content': json.dumps(value)}}).encode())
+    def log_message(self, *args): pass
+
+server = HTTPServer(('127.0.0.1', 0), Stub)
+thread = threading.Thread(target=server.serve_forever, daemon=True)
+thread.start()
+try:
+    config.update(ollama_url=f'http://127.0.0.1:{server.server_port}', ollama_timeout_sec=5,
+                  translate_model='stub-local', translate_batch_segments=1)
+    job.update(id=2, kind='translate', subtitles=result['subtitles'])
+    translated = translate(job, config)
+    assert len(translated['subtitles']) == 4
+    assert {s['language'] for s in translated['subtitles']} == {'en', 'vi'}
+    print('PASS translate (local HTTP stub)', flush=True)
+except Exception:
+    print('FAIL translate', flush=True)
+    raise
+finally:
+    server.shutdown()
+    server.server_close()
+    thread.join()

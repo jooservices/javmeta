@@ -103,3 +103,5 @@ Cài đặt → Tìm kiếm includes **Làm ấm bộ nhớ đệm** (`perf.warm
 Cài đặt → Tìm kiếm exposes **Ngân sách tìm kiếm (mili giây)** (`search.budget_ms`). A smaller budget prioritizes keyword results when local models or vector services are slow. Full keyword performer pages skip performer vector lookup. The search response fields, authentication and UI states are unchanged. See [performance](../03-operations/performance.md) for measured limitations.
 
 The Library page offers per-file preview and scene extraction buttons. **Media** (`#/media`) lists queued jobs, indeterminate progress while running, errors and retries for failed jobs. Paging and a refresh button keep the queue bounded. All changes use the owner's session and CSRF token; worker credentials are never sent to the browser.
+
+Per-file Media actions include **Phụ đề** (local GPU Whisper) and **Dịch EN / VI** (local Ollama, after recognition). Missing prerequisites appear as job errors in the Media queue.

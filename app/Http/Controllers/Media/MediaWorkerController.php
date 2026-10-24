@@ -12,7 +12,7 @@ final class MediaWorkerController
 {
     public function config(): JsonResponse
     {
-        return response()->json(['data' => config('javmeta_media')]);
+        return response()->json(['data' => array_merge((array) config('javmeta_media'), ['ollama_url' => config('javmeta_ai.ollama_url')])]);
     }
 
     public function next(Request $request, MediaQueue $queue): JsonResponse
