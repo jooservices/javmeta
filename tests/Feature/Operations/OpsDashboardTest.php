@@ -54,7 +54,7 @@ final class OpsDashboardTest extends TestCase
         $this->assertGuest();
 
         $this->post('/login', ['email' => 'owner@example.test', 'password' => 'correct-horse-battery'])
-            ->assertRedirect(route('operations.index'));
+            ->assertRedirect(route('ui.index'));
         $this->assertAuthenticated();
     }
 

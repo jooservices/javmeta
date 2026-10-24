@@ -24,6 +24,7 @@ return [
         'backup' => 'Sao lưu',
         'ai' => 'AI (Ollama, embedding)',
         'follow_notifications' => 'Thông báo theo dõi (Telegram)',
+        'domains' => 'Tên miền',
         'library' => 'Thư viện trên đĩa',
         'downloads' => 'Tải về (qBittorrent)',
         'files' => 'Máy chủ tệp',
@@ -113,6 +114,8 @@ return [
         'files.root_folders' => ['group' => 'files', 'label' => 'Thư mục được phép phục vụ (mỗi dòng một đường dẫn)', 'description' => 'Tệp ngoài các thư mục này không bao giờ được phục vụ.', 'type' => 'string_list', 'config' => ['javmeta_downloads.root_folders']],
         'files.link_ttl_minutes' => ['group' => 'files', 'label' => 'Liên kết hết hạn sau (phút)', 'description' => '', 'type' => 'int', 'config' => ['javmeta_downloads.link_ttl_minutes'], 'min' => 1, 'max' => 1440],
         'files.allowed_networks' => ['group' => 'files', 'label' => 'Mạng được truy cập (CIDR, mỗi dòng một mạng)', 'description' => 'Chỉ địa chỉ trong các mạng này mở được liên kết. Mặc định là mạng nội bộ.', 'type' => 'string_list', 'config' => ['javmeta_downloads.allowed_networks']],
+        'domains.ui_host' => ['group' => 'domains', 'label' => 'Tên miền giao diện XCrawler', 'description' => 'Giao diện và API. Chỉ để ghi nhớ: HAProxy và Apache quyết định tên miền thật.', 'type' => 'string', 'config' => ['javmeta_domains.ui_host']],
+        'domains.command_center_host' => ['group' => 'domains', 'label' => 'Tên miền Command Center', 'description' => 'Trang vận hành (/ops). Đăng nhập ở tên miền này vào thẳng /ops; giao diện XCrawler trỏ nút Vận hành về đây. Để trống nếu không tách tên miền.', 'type' => 'string', 'config' => ['javmeta_domains.command_center_host']],
         'backup.stale_after_seconds' => ['group' => 'backup', 'label' => 'Bản sao lưu coi là cũ sau (giây)', 'description' => 'Dùng cho cảnh báo sao lưu hằng phút.', 'type' => 'int', 'config' => ['backup.stale_after_seconds'], 'min' => 3600, 'max' => 2592000],
     ],
 ];
