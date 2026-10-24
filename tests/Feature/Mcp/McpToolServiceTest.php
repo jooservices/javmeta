@@ -38,6 +38,10 @@ final class McpToolServiceTest extends TestCase
             'crawl_status',
             'system_status',
             'get_performer',
+            'get_catalog',
+            'suggest',
+            'get_related_movies',
+            'get_release_calendar',
         ], $names);
 
         $search = collect($definitions)->firstWhere('name', 'search');

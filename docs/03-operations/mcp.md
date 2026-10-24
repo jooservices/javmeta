@@ -15,6 +15,10 @@ All listed inputs are optional unless marked **required**.
 | `get_counts` | No inputs. |
 | `crawl_status` | No inputs. |
 | `system_status` | No inputs. |
+| `get_catalog` | `kind` (`genres`, `makers`, `series`, `labels`, `years`, **required**); `q`, `sort` (`movie_count`, `name`), `per_page` (1–200), `page`. |
+| `suggest` | `q` (string, at least two characters, **required**); `limit` (1–20). |
+| `get_related_movies` | `code` (string, **required**). |
+| `get_release_calendar` | `month` (`YYYY-MM`; default the current month). |
 | `get_performer` | `id` (numeric ID or UUID as a string, **required**). |
 
 ## Example calls
