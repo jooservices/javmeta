@@ -25,5 +25,6 @@ if (! app()->runningUnitTests()) {
     Schedule::command('crawler:recrawl-incomplete')->hourly()->withoutOverlapping();
     Schedule::command('search:backfill-embeddings')->hourly()->withoutOverlapping();
     Schedule::command('crawler:watchdog')->everyFiveMinutes();
+    Schedule::command('crawler:source-health')->dailyAt('04:00')->withoutOverlapping(120)->runInBackground();
     Schedule::command('javmeta:hourly-report')->hourly()->withoutOverlapping();
 }

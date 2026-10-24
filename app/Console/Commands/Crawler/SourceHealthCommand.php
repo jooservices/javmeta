@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Contracts\ReportChannel;
 use App\Models\Source;
 use App\Services\Crawler\CrawlerxClient;
 use App\Services\Health\SourceHealthChecker;
@@ -16,7 +17,7 @@ final class SourceHealthCommand extends Command
 
     protected $description = 'Check every enabled source live (one public page per kind, polite delays) and report WORKING, DEGRADED or BLOCKED with the reason.';
 
-    public function handle(CrawlerxClient $client): int
+    public function handle(CrawlerxClient $client, ReportChannel $channel): int
     {
         $delay = max(1, (int) $this->option('delay'));
         $checker = new SourceHealthChecker($client, static function (int $seconds): void {
@@ -39,6 +40,7 @@ final class SourceHealthCommand extends Command
 
         if (! $this->option('no-write')) {
             $this->write($report);
+            $this->recordHistory($report, $channel);
         }
 
         if ($this->option('json')) {
@@ -68,6 +70,39 @@ final class SourceHealthCommand extends Command
         }
 
         return $summary;
+    }
+
+    /**
+     * Append one line to the history and tell Telegram when a source is blocked now that was not at the previous check.
+     * The first check is only the baseline, so it never alerts.
+     *
+     * @param array{generated_at: string, summary: array<string, int>, rows: list<array<string, mixed>>} $report
+     */
+    private function recordHistory(array $report, ReportChannel $channel): void
+    {
+        $file = base_path('artifacts/reports/source-health-history.jsonl');
+        $blocked = array_values(array_unique(array_map(
+            static fn(array $row): string => (string) $row['source'],
+            array_filter($report['rows'], static fn(array $row): bool => $row['verdict'] === SourceHealthChecker::BLOCKED),
+        )));
+        sort($blocked);
+
+        $previous = null;
+        if (is_file($file)) {
+            $lines = array_filter(explode("\n", (string) file_get_contents($file)));
+            $last = $lines === [] ? null : json_decode((string) end($lines), true);
+            $previous = is_array($last) ? $last : null;
+        }
+
+        File::append($file, (string) json_encode(['generated_at' => $report['generated_at'], 'summary' => $report['summary'], 'blocked' => $blocked], JSON_UNESCAPED_SLASHES) . "\n");
+
+        if ($previous === null) {
+            return;
+        }
+        $new = array_values(array_diff($blocked, (array) ($previous['blocked'] ?? [])));
+        if ($new !== []) {
+            $channel->deliver('Source health', 'Newly blocked sources: ' . implode(', ', $new) . '. Blocked now: ' . implode(', ', $blocked) . '.');
+        }
     }
 
     /** @param array{generated_at: string, summary: array<string, int>, rows: list<array<string, mixed>>} $report */
