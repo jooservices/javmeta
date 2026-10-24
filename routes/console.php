@@ -30,6 +30,9 @@ if (! app()->runningUnitTests()) {
     Schedule::command('telegram:poll')->everyMinute()->withoutOverlapping();
     Schedule::command('library:scan')->hourly()->withoutOverlapping();
     Schedule::command('ai:warm')->everyFifteenMinutes()->withoutOverlapping();
+    Schedule::command('perf:warm')->everyMinute()->withoutOverlapping();
+    // A once-a-minute refresh alone leaves a 45-second hole in the 15-second status cache.
+    Schedule::command('perf:warm', ['--status-only'])->everyTenSeconds()->withoutOverlapping();
     Schedule::command('follows:notify')->everyFiveMinutes()->withoutOverlapping();
     Schedule::command('javmeta:hourly-report')->hourly()->withoutOverlapping();
 }

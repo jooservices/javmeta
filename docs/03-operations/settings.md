@@ -10,3 +10,7 @@ Every feature switch and operational value is stored in the database (the `joose
 - **API:** `GET /ui-admin/settings` and `PUT /ui-admin/settings` with `{"settings": {"queue.feed_pool_limit": 300}}`, behind the owner login. Invalid values answer 422 with a message per key.
 
 New features (Telegram follow notifications and bot, the library scanner) read their configuration only from here.
+
+## Performance warming
+
+`perf.warm_enabled` (default `true`, group Tìm kiếm) controls the scheduled `perf:warm` command. It appears automatically on Cài đặt and is applied from the database to `javmeta_perf.warm_enabled`. Turning it off stops proactive refreshes; request-driven caches still work. No environment variable is needed. See [performance](performance.md) for TTLs, subminute scheduling and verification limits.
