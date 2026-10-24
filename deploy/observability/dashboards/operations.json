@@ -353,6 +353,11 @@
           "title": "Crawl errors by source and code",
           "description": "Failed crawl fetches grouped by source and error code.",
           "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": "numbers",
+            "base_map": null,
+            "map_view": null,
             "table_filtering": true,
             "table_pagination": true,
             "table_pagination_rows_per_page": 20,
