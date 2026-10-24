@@ -34,3 +34,25 @@ export async function api(path, params = {}, opt = {}) {
 }
 
 export const pagination = body => (body.meta && body.meta.pagination) || {};
+
+/* Changes made by the owner (admin page): POST/DELETE to /ui-admin with the page's CSRF token. */
+export async function send(method, path, body) {
+  const token = document.querySelector('meta[name=csrf-token]')?.content || '';
+  let res;
+  try {
+    res = await fetch('/ui-admin/' + path, { method, credentials: 'same-origin', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token }, body: body ? JSON.stringify(body) : undefined });
+  } catch { throw new ApiError('Mất kết nối tới máy chủ. Thử lại sau ít giây.', 0, null); }
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(data.detail || data.message || data.title || ('Lỗi ' + res.status), res.status, data);
+  return data;
+}
+
+export async function admin(path) {
+  const res = await fetch('/ui-admin/' + path, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+  const type = res.headers.get('content-type') || '';
+  if (res.redirected || !type.includes('json')) { if (res.status === 401 || res.redirected) location.href = '/login'; throw new ApiError('Phiên đăng nhập đã hết hạn.', res.status, null); }
+  const data = await res.json();
+  if (!res.ok) throw new ApiError(data.detail || data.message || ('Lỗi ' + res.status), res.status, data);
+  return data;
+}

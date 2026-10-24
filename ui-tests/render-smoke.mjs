@@ -39,7 +39,8 @@ const route = url => {
   if (p.startsWith('performers/')) return { data: performer(1) };
   throw new Error('no sample for ' + p);
 };
-globalThis.fetch = async url => ({ ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => route(url) });
+const adminSample = u => u.includes('report/quality') ? { data: { movies: 100, performers: 50, movies_by_source: { javdb: 60 }, core_fields: { code: { filled: 100, percent: 100 }, maker: { filled: 80, percent: 80 } }, movies_with_8_of_11: { count: 70, percent: 70 }, completeness_tiers: { 1: 20, 2: 80 }, needs_review: 3 } } : { data: [{ id: 1, prefix: 'jvm_abc', label: 'Key <b>one</b>', status: 'active', abuse_rpm: 60, scopes: ['catalog'], created_at: '2026-10-24T00:00:00Z' }] };
+globalThis.fetch = async url => url.startsWith('/ui-admin/') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => adminSample(url) } : ({ ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => route(url) });
 
 const load = async f => (await import('../public/ui/js/' + f)).default;
 const out = {};
@@ -66,6 +67,8 @@ await run('facet-genre', await load('views/facet.js'), { params: { kind: 'genre'
 await run('facet-year', await load('views/facet.js'), { params: { kind: 'year', value: '2025' }, query: {} });
 const cal = await run('calendar', await load('views/calendar.js'), { params: {}, query: { month: '2026-10' } });
 assert.match(cal, /Lịch phát hành/); assert.match(cal, /AAA-001/);
+const adm = await run('admin', await load('views/admin.js'), { params: {}, query: {} });
+assert.match(adm, /Chất lượng dữ liệu/); assert.match(adm, /jvm_abc/); assert.ok(!adm.includes('<b>one</b>'), 'key labels are escaped');
 await run('settings', await load('views/settings.js'), { params: {}, query: {} });
 const cat = await run('catalog', await load('views/catalog.js'), { params: { kind: 'genres' }, query: {} });
 assert.match(cat, /Thể loại/);
