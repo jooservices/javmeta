@@ -126,7 +126,7 @@ final class SettingsService
                 continue;
             }
             $value = $this->default($key);
-            if ($value === null || ($definition['type'] === 'secret' && $value === '')) {
+            if ($value === null || $value === '') {
                 continue;
             }
             $this->store->set(self::GROUP . '.' . $key, $this->toStorage($definition, $value), $this->storageType($definition));

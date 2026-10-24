@@ -48,6 +48,7 @@ final class ScheduleTest extends TestCase
             'crawler:source-health' => '0 4 * * *',
             'crawler:sync-sources' => '*/15 * * * *',
             'crawler:watchdog' => '*/5 * * * *',
+            'follows:notify' => '*/5 * * * *',
             'javmeta:backup-status' => '* * * * *',
             'javmeta:hourly-report' => '0 * * * *',
             'obs:publish-metrics' => '* * * * *',
