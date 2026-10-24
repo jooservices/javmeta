@@ -42,6 +42,10 @@ return [
     'per_source_inflight' => max(1, (int) env('JAVMETA_PER_SOURCE_INFLIGHT', 4)),
 
     /** Jobs the feed pool may dispatch per run (every minute); the per-source in-flight cap and throttle keep each site polite. */
+    // Sources that need the browser services, and how many of their rows may be claimed at the same time (0 = no cap).
+    // Both are settings in the database (docs/03-operations/settings.md).
+    'browser_sources' => ['javlibrary', 'javbus', 'missav', 'jable', 'warashi', 'javdatabase'],
+    'browser_inflight' => 8,
     'feed_pool_limit' => max(1, (int) env('JAVMETA_FEED_POOL_LIMIT', 50)),
 
     /** Seconds of work a source may have queued at once; with its gap this gives its per-minute budget (floor(horizon / gap)). */
