@@ -1,42 +1,20 @@
-# XCrawler UI: approved concept A ("XCrawler Console")
+# XCrawler UI
 
-`concept-a.html` is the approved design (owner decision 2026-10-24), saved byte for byte from the Jira attachment
-`xcrawler-ui-concept-A-console.html` of JOOXCR-197. Open it in a browser. Its movies, performers and numbers are fake
-(a seeded generator); the real data comes from the JavMeta API. Sample B ("posters") was not chosen.
+[User guide (Tiếng Việt)](../user-guide/README.md) · [Developer guide](../developer-guide/README.md) · [Testing](../developer-guide/testing.md) · [Verified documentation differences](../developer-guide/verified-differences.md)
 
-## Look
-- Dark console by default, light theme optional; dense layout, compact density switch.
-- Tokens (dark): background `#0b0e11`, panels `#12161b` / `#181d23`, lines `#252c35`, text `#dde4ec`, muted `#8a96a4`,
-  accent teal `#4fd1c5`, ok `#5fd38d`, warn `#f0b429`, bad `#f06a6a`, info `#6ea8fe`. Light theme tokens are in the file.
-- Fonts: Geist (UI) and JetBrains Mono (numbers, codes). Vietnamese UI text.
-- Shell: left sidebar sitemap (208 px), top bar with the search box (omnibox, Ctrl/Cmd-K), live status pill, bell, theme and
-  help buttons; phone layout (under 820 px) uses a bottom tab bar.
+## Running application
 
-## Screens (views of the concept)
-home (Discover), search (natural language, parsed chips), movies (filter sidebar, grid or table, infinite scroll),
-movie (detail, scenes, torrents, related), actors and actor (bio facets, filmography), genres / tags / studios / series
-indexes, bio hub, facet detail (every genre, tag, studio, series, source, year and bio value is a page), calendar,
-stats, follows and notifications, collections (favourites, watch later, seen), crawl (per-source health), settings.
-Screens that belong to later epics (download queue, library of the 20 TB disk, chat bot, AI scenes) stay hidden for now.
+The UI is plain ES modules under `public/ui`, served at `/app` behind the owner login, with static files at `/ui/*`. Hash routes preserve filters and browser history. The allowlisted GET bridge `/ui-api/*` dispatches to `/api/v1/*` in-process; personal data uses `/ui-me/*`, administration/settings use `/ui-admin/*`, and writes use `send()` with CSRF. Browsers never hold an API key.
 
-## Rules to keep
-- Every value shown is a link to the list or page of that value.
-- Filters, sort and the open record are in the URL (shareable, back button works).
-- Omnibox groups suggestions (movies, performers, genres, studios, series) and keeps recent searches.
-- Keyboard: `/` or Ctrl/Cmd-K search, `?` help, arrows and Enter in lists.
-- Missing data shows "not known yet" (a waiting-for-crawl badge), never a blank.
+The current NAV exposes Discover, Tìm kiếm, Thống kê; Phim, Diễn viên, Hồ sơ diễn viên, Mới cập nhật, Thể loại, Maker, Series, Label, Năm, Lịch phát hành; Yêu thích, Xem sau, Đã xem, Theo dõi, Thư viện, Tải về; Crawl & nguồn, Vận hành (Command Center), Quản trị and Cài đặt. [The user index](../user-guide/README.md) links each topic and every settings group. Downloads and file serving default off, but the download page exists and explains the disabled state.
 
+The omnibox suggests movies, performers, makers and series, plus a full-search link. It does not keep recent searches. Search results separately include genre suggestions. Ctrl/Cmd-K or `/` focuses search; `t` toggles theme, `?` opens help, Esc closes it, and arrows/Enter choose omnibox suggestions. The `g …` shortcuts listed by the Settings view are not implemented. The top status pill refreshes every 30 seconds; the crawl table itself requires a reload.
 
-## The running UI (first version)
+## Historical design reference
 
-The UI is a single page of plain ES modules served from `public/ui` (no build step): `/app` (the page, owner session
-required) and `/ui/*` (static files). It reads the API through `/ui-api/<path>`, which runs `/api/v1/<path>` in the same
-process for the signed-in owner (GET only; paths movies, performers, meta, status, suggest, search), so the browser never
-holds an API key. Views: Discover, search, movies (filters, grid or table, infinite scroll), movie, performers,
-performer, facet pages (genre, maker, series, label, year), crawl status and settings. Routes use the hash
-(`#/movies?genre=Drama`), so every state is a shareable link.
+`concept-a.html` is the approved Concept A attachment from JOOXCR-197, with synthetic records and numbers. It is a visual reference, not a feature contract. Its proposed scenes, AI features and other mock interactions are not proof of implemented behavior. The running UI has dark/light/system themes and normal/compact density; use the existing responsive filter drawer on phones.
 
-Check the views without a browser: `scripts/docker/runtime node node ui-tests/render-smoke.mjs`.
+Render checks run through the shared Node runtime; see [tested commands](../developer-guide/testing.md).
 
 ## Search and filters
 
@@ -99,9 +77,9 @@ With zero results, the UI tests removal of up to three active conditions, then o
 result count. The `+N` count is the count after that one removal; these suggestions keep fixed page restrictions.
 
 “Lưu bộ lọc” opens an inline name form. “Bộ lọc đã lưu” applies a saved query through the URL; its × button deletes it.
-Saved searches are per owner and browser in `user_marks`, through authenticated `/ui-me/marks` with CSRF for changes.
-Saving the same name replaces the query for that browser, while another owner or the other browser keeps its own entry.
+Saved searches are per owner and list kind (movies or performers) in `user_marks`, through authenticated `/ui-me/marks` with CSRF for changes.
+Saving the same name replaces the query for that list kind, while another owner or the other list kind keeps its own entry.
 Names allow 1–80 characters; queries allow up to 1500; there are no browser-stored secrets or new environment settings.
 
-Verification: `scripts/docker/runtime node node ui-tests/render-smoke.mjs` includes sample facets/suggestions and parameter,
+Verification: `/home/joos/Workspaces/scripts/docker/runtime node node ui-tests/render-smoke.mjs` includes sample facets/suggestions and parameter,
 escaping, picker keyboard/debounce, request cancellation, cache and saved-search interaction assertions without site login.
