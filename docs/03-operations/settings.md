@@ -12,3 +12,5 @@ Every feature switch and operational value is stored in the database (the `joose
 New features (Telegram follow notifications and bot, the library scanner) read their configuration only from here.
 
 Media processing settings (`media.*`) are defined in `config/javmeta_media.php` and registered in `config/javmeta_settings.php`. They are database/UI settings, never environment variables. See [media.md](media.md) for queue limits and bootstrap credentials.
+
+Stream capture settings (`capture.*`) default in `config/javmeta_capture.php`. Capture is off until the owner enables it on the Settings page; duration, output size, manifest count/size and HTTP timeout limits are editable there. Enabling capture never disables the DRM/content policy checks.

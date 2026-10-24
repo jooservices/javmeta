@@ -48,6 +48,7 @@ Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static funct
     Route::get('/ui-me/player/{code}', [\App\Http\Controllers\Ui\UiPlayerController::class, 'show']);
     Route::get('/ui-me/media', [\App\Http\Controllers\Ui\UiMediaController::class, 'index']);
     Route::get('/ui-me/media/files', [\App\Http\Controllers\Ui\UiMediaController::class, 'files']);
+    Route::post('/ui-me/media/capture', [\App\Http\Controllers\Ui\UiMediaController::class, 'capture']);
     Route::post('/ui-me/media', [\App\Http\Controllers\Ui\UiMediaController::class, 'store']);
     Route::post('/ui-me/media/{id}/retry', [\App\Http\Controllers\Ui\UiMediaController::class, 'retry'])->whereNumber('id');
     Route::get('/ui-me/library', [UiLibraryController::class, 'summary']);

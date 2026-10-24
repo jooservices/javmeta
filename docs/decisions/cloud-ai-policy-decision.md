@@ -1,6 +1,6 @@
 # Decision: cloud AI policy (JOOXCR-230)
 
-Status: **PROPOSED, waiting for the owner's approval** (the owner approves by a comment on JOOXCR-230). Default and fallback: local Ollama.
+Status: **ADOPTED** by the owner in the JOOXCR-258 implementation instructions (2026-10-24). Capture stays off until explicitly enabled in Settings; media AI stays local.
 
 | AI step | Where it runs | Why |
 |---|---|---|

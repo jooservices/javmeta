@@ -28,9 +28,16 @@ return [
         'downloads' => 'Tải về (qBittorrent)',
         'files' => 'Máy chủ tệp',
         'media' => 'Xử lý media',
+        'capture' => 'Ghi luồng',
     ],
 
     'definitions' => [
+        'capture.enabled' => ['group' => 'capture', 'label' => 'Bật ghi luồng', 'description' => 'Mặc định TẮT. Chỉ bắt đầu từ thao tác rõ ràng của chủ sở hữu; luôn từ chối DRM.', 'type' => 'bool', 'config' => ['javmeta_capture.enabled']],
+        'capture.max_duration_sec' => ['group' => 'capture', 'label' => 'Thời lượng ghi tối đa (giây)', 'description' => 'Giới hạn một lần ghi.', 'type' => 'int', 'config' => ['javmeta_capture.max_duration_sec'], 'min' => 1, 'max' => 86400],
+        'capture.max_bytes' => ['group' => 'capture', 'label' => 'Dung lượng ghi tối đa (byte)', 'description' => 'Dừng trước khi đầy ổ đĩa.', 'type' => 'int', 'config' => ['javmeta_capture.max_bytes'], 'min' => 1048576, 'max' => 1099511627776],
+        'capture.max_playlists' => ['group' => 'capture', 'label' => 'Số playlist lồng nhau tối đa', 'description' => 'Từ chối vòng lặp và playlist quá lớn.', 'type' => 'int', 'config' => ['javmeta_capture.max_playlists'], 'min' => 1, 'max' => 100],
+        'capture.max_manifest_bytes' => ['group' => 'capture', 'label' => 'Dung lượng manifest tối đa (byte)', 'description' => 'Giới hạn trang HTML và playlist tải để kiểm tra.', 'type' => 'int', 'config' => ['javmeta_capture.max_manifest_bytes'], 'min' => 1024, 'max' => 16777216],
+        'capture.http_timeout_sec' => ['group' => 'capture', 'label' => 'Thời gian chờ HTTP khi ghi (giây)', 'description' => 'Không dùng cookie hoặc tài khoản để vượt bảo vệ.', 'type' => 'int', 'config' => ['javmeta_capture.http_timeout_sec'], 'min' => 1, 'max' => 120],
         'media.vision_model' => ['group' => 'media', 'label' => 'Mô hình mô tả cảnh', 'description' => 'Mô hình vision Ollama nội bộ; tuyệt đối không gửi ảnh ra cloud.', 'type' => 'string', 'config' => ['javmeta_media.vision_model']],
         'media.scenes_index' => ['group' => 'media', 'label' => 'Chỉ mục tìm cảnh Elasticsearch', 'description' => 'Chỉ mục được tạo khi có vector đầu tiên. Đổi tên cần lập chỉ mục lại.', 'type' => 'string', 'config' => ['javmeta_media.scenes_index']],
         'media.embedding_dimensions' => ['group' => 'media', 'label' => 'Số chiều vector cảnh', 'description' => 'Phải khớp dịch vụ embedder và mapping Elasticsearch.', 'type' => 'int', 'config' => ['javmeta_media.embedding_dimensions'], 'min' => 8, 'max' => 8192],

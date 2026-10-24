@@ -12,7 +12,7 @@ final class MediaWorkerController
 {
     public function config(): JsonResponse
     {
-        return response()->json(['data' => array_merge((array) config('javmeta_media'), ['ollama_url' => config('javmeta_ai.ollama_url')])]);
+        return response()->json(['data' => array_merge((array) config('javmeta_media'), ['ollama_url' => config('javmeta_ai.ollama_url'), 'capture' => config('javmeta_capture'), 'library_folders' => config('javmeta_library.folders')])]);
     }
 
     public function next(Request $request, MediaQueue $queue): JsonResponse
@@ -25,6 +25,8 @@ final class MediaWorkerController
     {
         $v = $request->validate([
             'claim_token' => 'required|uuid', 'result' => 'required|array',
+            'result.capture_path' => 'sometimes|string|max:4096',
+            'result.bytes' => 'sometimes|integer|min:1',
             'result.descriptions' => 'sometimes|array|max:10000',
             'result.descriptions.*.id' => 'required|integer|min:1',
             'result.descriptions.*.description' => 'required|string|max:2000',

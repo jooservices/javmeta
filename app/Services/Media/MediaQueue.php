@@ -18,6 +18,8 @@ final class MediaQueue
         $row = DB::table('library_files')->where('id', $file)->whereNull('missing_at')->first();
         abort_if($row === null, 422, 'Tệp không còn trong thư viện.');
 
+        app(MediaPolicy::class)->assertFile($row);
+
         return DB::transaction(function () use ($kind, $file): int {
             DB::table('media_worker_lock')->where('id', 1)->lockForUpdate()->first();
             $existing = DB::table('media_jobs')->where('library_file_id', $file)->where('kind', $kind)->whereIn('status', ['pending', 'running'])->value('id');
@@ -25,6 +27,17 @@ final class MediaQueue
                 'kind' => $kind, 'library_file_id' => $file, 'params' => '{}', 'status' => 'pending', 'created_at' => now(),
             ]);
         });
+    }
+
+    public function capture(string $url): int
+    {
+        abort_unless((bool) config('javmeta_capture.enabled'), 422, 'Ghi luồng đang tắt trong Cài đặt.');
+        $parts = parse_url($url);
+        abort_unless(is_array($parts) && in_array($parts['scheme'] ?? '', ['http', 'https'], true) && ! isset($parts['user']) && ! isset($parts['pass']), 422, 'Chỉ nhận URL HTTP(S) công khai, không có tài khoản.');
+        app(MediaPolicy::class)->assertText($url);
+        $id = (int) DB::table('media_jobs')->insertGetId(['kind' => 'capture', 'source_url' => $url, 'params' => '{}', 'status' => 'pending', 'created_at' => now()]);
+        \Illuminate\Support\Facades\Log::info('javmeta.capture_requested', ['job_id' => $id]);
+        return $id;
     }
 
     public function claim(string $worker): ?array
@@ -41,12 +54,29 @@ final class MediaQueue
             if ($job === null) {
                 return null;
             }
+            if ($job->kind === 'capture' && ! (bool) config('javmeta_capture.enabled')) {
+                DB::table('media_jobs')->where('id', $job->id)->update(['status' => 'failed', 'error' => 'Capture disabled in Settings.', 'finished_at' => now()]);
+                return null;
+            }
+            if ($job->library_file_id !== null) {
+                $file = DB::table('library_files')->where('id', $job->library_file_id)->first();
+                try {
+                    if ($file === null || $file->missing_at !== null) {
+                        throw ValidationException::withMessages(['media' => 'Library file is missing.']);
+                    }
+                    app(MediaPolicy::class)->assertFile($file);
+                } catch (ValidationException) {
+                    DB::table('media_jobs')->where('id', $job->id)->update(['status' => 'failed', 'error' => 'File missing or refused by content policy.', 'finished_at' => now()]);
+                    return null;
+                }
+            }
             $token = (string) Str::uuid();
             DB::table('media_jobs')->where('id', $job->id)->update(['status' => 'running', 'attempts' => $job->attempts + 1, 'locked_by' => $worker, 'claim_token' => $token, 'started_at' => now(), 'finished_at' => null]);
             $data = (array) DB::table('media_jobs')->where('id', $job->id)->first();
             $data['params'] = json_decode($data['params'], true);
             $data['scenes'] = DB::table('media_scenes')->where('library_file_id', $job->library_file_id)->orderBy('start_sec')->get()->map(static fn($row): array => (array) $row)->all();
             $data['subtitles'] = DB::table('media_subtitles')->where('library_file_id', $job->library_file_id)->get()->map(static fn($row): array => (array) $row)->all();
+            $data['folder'] = DB::table('library_files')->where('id', $job->library_file_id)->value('folder');
             $data['path'] = DB::table('library_files')->where('id', $job->library_file_id)->value('path');
             return $data;
         });
@@ -58,6 +88,10 @@ final class MediaQueue
             $job = DB::table('media_jobs')->where('id', $id)->lockForUpdate()->first();
             abort_unless($job !== null && $job->status === 'running' && hash_equals((string) $job->claim_token, $token), 409, 'Lượt xử lý đã hết hạn.');
             if ($error === null) {
+                if ($job->kind === 'capture') {
+                    abort_unless(isset($result['capture_path']), 422, 'Capture result missing.');
+                    $this->outputPath($result['capture_path']);
+                }
                 $this->storeScenes($job, $result['scenes'] ?? []);
                 $this->storeSubtitles($job, $result['subtitles'] ?? []);
                 if ($job->kind === 'describe') {
@@ -107,6 +141,7 @@ final class MediaQueue
             return;
         }
         $movie = DB::table('library_files')->where('id', $job->library_file_id)->value('movie_id');
+        DB::table('media_scenes')->where('library_file_id', $job->library_file_id)->whereNotIn('start_sec', array_column($scenes, 'start_sec'))->delete();
         foreach ($scenes as $scene) {
             $root = realpath((string) config('javmeta_media.output_folder'));
             $path = realpath($scene['thumb_path']);
@@ -114,7 +149,7 @@ final class MediaQueue
                 throw ValidationException::withMessages(['result.scenes' => 'Ảnh phải nằm trong thư mục output media.']);
             }
             DB::table('media_scenes')->updateOrInsert(['library_file_id' => $job->library_file_id, 'start_sec' => $scene['start_sec']], [
-                'movie_id' => $movie, 'end_sec' => $scene['end_sec'], 'thumb_path' => $path,
+                'movie_id' => $movie, 'end_sec' => $scene['end_sec'], 'thumb_path' => $path, 'description' => null, 'tags' => null, 'confidence' => null, 'embedding_indexed_at' => null,
             ]);
         }
     }

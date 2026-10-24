@@ -6,6 +6,8 @@ from pathlib import Path
 
 
 def run(args, config):
+    if 'ffmpeg' in args:
+        args = args[:-1] + ['-threads', str(int(config['ffmpeg_threads']))] + args[-1:]
     return subprocess.run(args, capture_output=True, text=True, check=True,
                           timeout=int(config['job_timeout_sec']))
 
