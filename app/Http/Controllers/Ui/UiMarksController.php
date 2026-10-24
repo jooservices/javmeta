@@ -22,6 +22,7 @@ final class UiMarksController
         'watch_later' => ['movie'],
         'seen' => ['movie'],
         'follow' => ['performer', 'maker', 'series'],
+        'saved_search' => ['movies', 'performers'],
     ];
 
     /** Which marks the signed-in owner has set (kind, subject, key), for the buttons on a page. */
@@ -44,7 +45,7 @@ final class UiMarksController
         $data = $request->validate([
             'kind' => ['required', Rule::in(array_keys(self::KINDS))],
             'subject' => ['required', 'string'],
-            'key' => ['required', 'string', 'max:300'],
+            'key' => ['required', 'string', $request->input('kind') === 'saved_search' ? 'max:2000' : 'max:300'],
             'on' => ['required', 'boolean'],
         ]);
         if (! in_array($data['subject'], self::KINDS[$data['kind']], true)) {
@@ -52,6 +53,34 @@ final class UiMarksController
         }
 
         $row = ['user_id' => $request->user()->id, 'kind' => $data['kind'], 'subject' => $data['subject'], 'key' => $data['key']];
+        if ($data['kind'] === 'saved_search') {
+            $search = json_decode($data['key'], true);
+            if (! is_array($search) || ! is_string($search['name'] ?? null) || trim($search['name']) === ''
+                || mb_strlen($search['name']) > 80 || ! is_string($search['query'] ?? null) || mb_strlen($search['query']) > 1500) {
+                return response()->json(['message' => 'A saved search requires a name (1–80 characters) and a query (up to 1500 characters).'], 422);
+            }
+
+            $search = ['name' => trim($search['name']), 'query' => $search['query']];
+            $row['key'] = json_encode($search, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            DB::transaction(static function () use ($row, $search, $data): void {
+                // Serialize saves for this owner so simultaneous edits cannot duplicate a name.
+                DB::table('users')->where('id', $row['user_id'])->lockForUpdate()->first(['id']);
+                $scope = ['user_id' => $row['user_id'], 'kind' => $row['kind'], 'subject' => $row['subject']];
+                $existing = DB::table('user_marks')->where($scope)->get(['id', 'key']);
+                foreach ($existing as $mark) {
+                    $stored = json_decode($mark->key, true);
+                    if (is_array($stored) && ($stored['name'] ?? null) === $search['name']
+                        && ($data['on'] || ($stored['query'] ?? null) === $search['query'])) {
+                        DB::table('user_marks')->where('id', $mark->id)->delete();
+                    }
+                }
+                if ($data['on']) {
+                    DB::table('user_marks')->insertOrIgnore([...$row, 'created_at' => now()]);
+                }
+            });
+
+            return response()->json(['data' => [...$row, 'on' => $data['on']]]);
+        }
         if ($data['on']) {
             DB::table('user_marks')->insertOrIgnore([...$row, 'created_at' => now()]);
         } else {
