@@ -87,11 +87,13 @@ async function omniDraw() {
   drop.hidden = false;
   drop.innerHTML = '<div class="og">Đang tìm…</div>';
   try {
-    const [m, p] = await Promise.all([api('movies', { q, per_page: 5 }), api('performers', { q, per_page: 5 })]);
+    const { data: sg } = await api('suggest', { q, limit: 5 });
     if ($('#omq').value.trim() !== q) return;
     OM.items = [
-      ...(m.data || []).map(x => ({ g: 'Phim', href: href.movie(x.code), label: `${x.code} · ${titleOf(x)}`, sub: x.maker || '' })),
-      ...(p.data || []).map(x => ({ g: 'Diễn viên', href: href.performer(x.id), label: performerName(x), sub: `#${x.id}`, p: x })),
+      ...(sg.movies || []).map(x => ({ g: 'Phim', href: href.movie(x.code), label: `${x.code} · ${x.title || ''}`, sub: x.maker || '' })),
+      ...(sg.performers || []).map(x => ({ g: 'Diễn viên', href: href.performer(x.id), label: x.name || `#${x.id}`, sub: `#${x.id}`, p: { id: x.id, name_romaji: x.name } })),
+      ...(sg.makers || []).map(x => ({ g: 'Maker', href: href.facet('maker', x.name), label: x.name, sub: `${fmt(x.movie_count)} phim` })),
+      ...(sg.series || []).map(x => ({ g: 'Series', href: href.facet('series', x.name), label: x.name, sub: `${fmt(x.movie_count)} phim` })),
       { g: 'Tìm kiếm', href: href.search(q), label: `Tìm “${q}” trong mọi thứ`, sub: 'Enter' },
     ];
     OM.i = 0;
