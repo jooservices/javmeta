@@ -23,6 +23,7 @@ import { toggleMark, loadDisk } from './marks.js';
 import library2 from './views/libraryPage.js';
 import downloads from './views/downloads.js';
 import media from './views/media.js';
+import player from './views/player.js';
 import { send } from './api.js';
 
 const ROUTES = [
@@ -41,6 +42,7 @@ const ROUTES = [
   [/^library$/, library2, 'library'],
   [/^downloads$/, downloads, 'downloads'],
   [/^media$/, media, 'media'],
+  [/^player\/(.+)$/, player, 'media', ['code']],
   [/^bio$/, bio, 'bio'],
   [/^stats$/, stats, 'stats'],
   [/^crawl$/, crawl, 'crawl'],
