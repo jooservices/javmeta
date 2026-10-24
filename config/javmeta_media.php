@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 return [
+    'whisper_model' => 'large-v3',
     'api_url' => 'http://127.0.0.1:8085',
     'output_folder' => storage_path('app/private/media/output'),
     'max_parallel' => 1,

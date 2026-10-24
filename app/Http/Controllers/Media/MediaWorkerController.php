@@ -25,6 +25,16 @@ final class MediaWorkerController
     {
         $v = $request->validate([
             'claim_token' => 'required|uuid', 'result' => 'required|array',
+            'result.language' => 'sometimes|string|max:20',
+            'result.segment_count' => 'sometimes|integer|min:0',
+            'result.transcript_path' => 'sometimes|string|max:4096',
+            'result.elapsed_sec' => 'sometimes|numeric|min:0',
+            'result.real_time_factor' => 'sometimes|numeric|min:0',
+            'result.subtitles' => 'sometimes|array|max:20',
+            'result.subtitles.*.language' => 'required|alpha_dash|max:20',
+            'result.subtitles.*.format' => 'required|in:srt,vtt',
+            'result.subtitles.*.path' => 'required|string|max:4096',
+            'result.subtitles.*.source' => 'required|in:whisper,translation',
             'result.duration' => 'sometimes|numeric|min:0',
             'result.thumbnails' => 'sometimes|array|max:10000',
             'result.thumbnails.*' => 'required|string|max:4096',
