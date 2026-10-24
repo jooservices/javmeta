@@ -3,8 +3,7 @@
 ## Public endpoint contract
 
 `tests/Feature/Api/PublicApiContractTest.php` exercises the public routes and the success and error behavior below.
-Except for `GET /api/health`, the routes require an active key in the `X-API-Key` header. Missing, invalid, and revoked
-keys return HTTP 401 with problem type `unauthorized`. Every protected route uses the key's requests-per-minute limit;
+The data routes in the table require an active key in the `X-API-Key` header. Health routes (`/api/health`, `/api/health/live`) and `/api/openapi.json` are public; `/api/v1/admin/*` instead requires `X-Owner-Token`. Missing, invalid, and revoked data keys return HTTP 401 with problem type `unauthorized`. Authenticated data/MCP calls use the key's requests-per-minute limit;
 an exceeded limit returns HTTP 429 with type `rate_limited` and a `Retry-After` header.
 
 Problem responses use `application/problem+json` and include `type`, `title`, `status`, and a human-readable `detail`.
@@ -76,3 +75,7 @@ empty array); keys are never omitted. Changes are additive: existing keys keep t
 ## OpenAPI
 
 The machine-readable contract is published at `/api/openapi.json` (source: `resources/openapi/javmeta.json`). A test fails when an API route is missing from it, so add a new route to the file in the same change.
+
+## Cookbook and extension workflow
+
+See the [API cookbook](../developer-guide/api-cookbook.md) for exercised curl examples across endpoint families, scope mapping, owner authentication, pagination, error variants and rate limits. See [extension checklists](../developer-guide/extending.md) before adding filters or routes. `resources/openapi/javmeta.json` remains the public specification; `OpenApiContractTest` compares API methods and paths in both directions.
