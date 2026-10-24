@@ -20,7 +20,12 @@ final class EmbedderProbe implements DependencyProbe
         $url = rtrim((string) config('elasticsearch.embedder_url', 'http://embedder:8000'), '/');
 
         try {
-            return Http::connectTimeout(1)->timeout(2)->get($url . '/healthz')->successful();
+            $seconds = app(\App\Services\Search\SearchBudget::class)->seconds(2);
+            if ($seconds <= 0) {
+                return false;
+            }
+
+            return Http::connectTimeout(min(1, $seconds))->timeout($seconds)->get($url . '/healthz')->successful();
         } catch (Throwable) {
             return false;
         }

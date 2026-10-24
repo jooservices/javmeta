@@ -33,7 +33,11 @@ final class EmbedderClient
         }
 
         try {
-            $response = Http::timeout(15)->post(
+            $seconds = app(\App\Services\Search\SearchBudget::class)->seconds(15);
+            if ($seconds <= 0) {
+                return null;
+            }
+            $response = Http::timeout($seconds)->connectTimeout($seconds)->post(
                 rtrim((string) config('elasticsearch.embedder_url', 'http://embedder:8000'), '/') . '/v1/embeddings',
                 [
                     'model' => $isQuery ? 'javmeta-query' : 'javmeta-passage',
