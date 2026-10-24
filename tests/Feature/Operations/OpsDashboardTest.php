@@ -24,7 +24,7 @@ final class OpsDashboardTest extends TestCase
 
     public function test_a_visitor_is_sent_to_the_login_page_and_the_root_redirects_to_the_dashboard(): void
     {
-        $this->get('/')->assertRedirect(route('operations.index'));
+        $this->get('/')->assertRedirect(route('ui.index'));
         $this->get('/ops')->assertRedirect(route('login'));
         $this->getJson('/ops/data')->assertUnauthorized();
     }

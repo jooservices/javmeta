@@ -13,6 +13,7 @@ use App\Http\Controllers\MovieBulkController;
 use App\Http\Controllers\MovieLookupController;
 use App\Http\Controllers\MovieSearchController;
 use App\Http\Controllers\PerformerController;
+use App\Http\Controllers\StatusController;
 use App\Http\Middleware\AuthenticateApiKey;
 use App\Http\Middleware\LogApiUsage;
 use App\Http\Middleware\OwnerAdminGuard;
@@ -51,6 +52,11 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
 
         Route::middleware([AuthenticateApiKey::class, LogApiUsage::class])->group(function (): void {
             Route::match(['get', 'post'], 'mcp', McpHttpController::class);
+        });
+
+        Route::middleware([AuthenticateApiKey::class, 'requires:postgres', LogApiUsage::class])->prefix('status')->group(function (): void {
+            Route::get('summary', [StatusController::class, 'summary']);
+            Route::get('sources', [StatusController::class, 'sources']);
         });
 
         Route::get('movies', [MovieSearchController::class, 'index'])

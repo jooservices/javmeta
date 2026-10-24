@@ -17,6 +17,11 @@ final readonly class AuthenticateApiKey
     /** @param Closure(Request): Response $next */
     public function handle(Request $request, Closure $next): Response
     {
+        // The signed-in owner's UI calls the API in-process through /ui-api (see UiApiController): no key needed there.
+        if ($request->attributes->get('javmeta.internal_ui') === true) {
+            return $next($request);
+        }
+
         $plain = $request->headers->get('X-API-Key', '');
         $apiKey = $this->apiKeyService->findActiveByPlaintext($plain);
 

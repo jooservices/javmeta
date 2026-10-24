@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="vi" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>XCrawler</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234fd1c5'/%3E%3Ctext x='16' y='22' font-size='18' text-anchor='middle' fill='%2304201e' font-family='monospace'%3EX%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/ui/app.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side" id="side"></aside>
+  <div class="main">
+    <header class="top">
+      <button class="ibtn menu" data-act="menu" aria-label="Mở menu"></button>
+      <div class="omni" id="omni">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="text" id="omq" placeholder="Tìm phim, diễn viên, mã phim, thể loại…" autocomplete="off" aria-label="Tìm kiếm">
+        <kbd>⌘K</kbd>
+        <div class="odrop" id="odrop" hidden></div>
+      </div>
+      <span class="pill-live"><span class="dot pulse"></span><span id="livetxt"></span></span>
+      <span class="sp"></span>
+      <button class="ibtn" data-act="theme" aria-label="Đổi giao diện sáng/tối" id="themebtn"></button>
+      <button class="ibtn" data-act="help" aria-label="Phím tắt"><b style="font:500 13px var(--mono)">?</b></button>
+    </header>
+    <main class="view" id="view"></main>
+  </div>
+</div>
+<nav class="bnav" id="bnav"></nav>
+<div id="drawer"></div>
+<div class="ov" id="ov"><div class="dlg" id="dlg"></div></div>
+<div class="toasts" id="toasts"></div>
+<script type="module" src="/ui/js/app.js"></script>
+</body>
+</html>
