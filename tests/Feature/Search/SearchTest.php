@@ -87,4 +87,15 @@ final class SearchTest extends TestCase
 
         $this->getJson('/api/v1/search?q=abc', ['X-API-Key' => $key])->assertStatus(403);
     }
+
+    public function test_an_over_specified_question_falls_back_to_the_filters_and_says_so(): void
+    {
+        Http::fake(['ollama.test:11434/*' => Http::response('down', 500)]);
+        $headers = ['X-API-Key' => app(ApiKeyService::class)->create('relax')->plaintext];
+
+        $r = $this->getJson('/api/v1/search?q=' . urlencode('Sample Maker 03 zzqqxx') . '&per_page=20', $headers)->assertOk();
+
+        $this->assertNotEmpty($r->json('data.movies'));
+        $this->assertSame('filters only', $r->json('data.interpretation.relaxed'));
+    }
 }

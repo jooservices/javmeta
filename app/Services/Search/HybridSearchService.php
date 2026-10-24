@@ -26,7 +26,7 @@ final class HybridSearchService
     ) {}
 
     /**
-     * @return array{movies: Collection<int, Movie>, performers: Collection<int, Performer>, interpretation: array{keywords: string, filters: array<string, mixed>, by: string}}
+     * @return array{movies: Collection<int, Movie>, performers: Collection<int, Performer>, interpretation: array<string, mixed>}
      */
     public function search(string $question, int $perPage = 12, bool $understand = true): array
     {
@@ -36,14 +36,15 @@ final class HybridSearchService
         $text = $interpretation['keywords'] !== '' ? $interpretation['keywords'] : ($filters === [] ? $question : '');
         $pool = min(60, max($perPage * 3, $perPage));
 
-        $keywordFilters = $filters + (mb_strlen($text) >= 2 ? ['q' => $text] : []);
-        $keyword = $keywordFilters === [] ? collect() : $this->movies->search($keywordFilters, mb_strlen($text) >= 2 ? 'relevance' : 'release_date', null, $pool)['items'];
+        $hasText = mb_strlen($text) >= 2;
+        $keyword = $this->keywordMovies($filters, $hasText ? $text : null, $pool, $interpretation);
         $semantic = mb_strlen($question) >= 2 ? $this->movies->semanticSearch($question, $pool)['items'] : collect();
         if ($filters !== []) {
             $semantic = $semantic->filter(fn(Movie $m): bool => $this->passes($m, $filters))->values();
         }
 
-        $performerKeyword = mb_strlen($question) >= 2 ? $this->performers->search(['q' => $question], 'name', null, $pool)['items'] : collect();
+        // Only the words left after the filters were read: the whole sentence makes the name search slow and finds nothing.
+        $performerKeyword = $hasText ? $this->performers->search(['q' => $text], 'name', null, $pool)['items'] : collect();
         $performerSemantic = mb_strlen($question) >= 2 ? $this->performerSearch->semanticSearch($question, $pool)['items'] : collect();
 
         return [
@@ -51,6 +52,38 @@ final class HybridSearchService
             'performers' => $this->fuse([$performerKeyword, $performerSemantic])->take(max(4, (int) ceil($perPage / 2)))->values(),
             'interpretation' => $interpretation,
         ];
+    }
+
+    /**
+     * Filters and words together first; when nothing matches, the filters alone, then the words alone, so a question that
+     * over-specifies still finds the closest movies. What was relaxed is reported in the interpretation.
+     *
+     * @param  array<string, mixed>  $filters
+     * @param  array{keywords: string, filters: array<string, mixed>, by: string}  $interpretation
+     * @return Collection<int, Movie>
+     */
+    private function keywordMovies(array $filters, ?string $text, int $pool, array &$interpretation): Collection
+    {
+        $attempts = [];
+        if ($filters !== [] || $text !== null) {
+            $attempts[] = ['both', $filters + ($text !== null ? ['q' => $text] : [])];
+        }
+        if ($filters !== [] && $text !== null) {
+            $attempts[] = ['filters only', $filters];
+            $attempts[] = ['words only', ['q' => $text]];
+        }
+        foreach ($attempts as [$label, $query]) {
+            $items = $this->movies->search($query, isset($query['q']) ? 'relevance' : 'release_date', null, $pool)['items'];
+            if ($items->isNotEmpty()) {
+                if ($label !== 'both') {
+                    $interpretation['relaxed'] = $label;
+                }
+
+                return $items;
+            }
+        }
+
+        return collect();
     }
 
     /**
