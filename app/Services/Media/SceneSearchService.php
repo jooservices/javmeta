@@ -65,7 +65,7 @@ final class SceneSearchService
         } catch (Throwable) {
             $ids = [];
         }
-        $query = DB::table('media_scenes AS s')->join('library_files AS f', 'f.id', '=', 's.library_file_id')->whereNull('f.missing_at');
+        $query = DB::table('media_scenes AS s')->join('library_files AS f', 'f.id', '=', 's.library_file_id')->whereNull('f.missing_at')->whereNotNull('s.description');
         if ($ids !== []) {
             $query->whereIn('s.id', $ids);
         } else {

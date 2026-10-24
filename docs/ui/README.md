@@ -109,3 +109,5 @@ Per-file Media actions include **Phụ đề** (local GPU Whisper) and **Dịch 
 **Mô tả cảnh** runs local vision after scene extraction. The search page shows **Cảnh** in both keyword and meaning modes, with thumbnail (when serving is enabled), movie, timestamp and a player deep link. Scene failures do not hide movie/performer results.
 
 **Phát** on an on-disk movie opens `#/player/:code`. It has native video controls, a file selector, original/EN/VI subtitle selection, scene seek buttons, explicit loading/playback errors and a layout that wraps at 375 px. A search scene deep link selects the file and start time. Reload renews signed links.
+
+The Media page has **Ghi luồng** with a URL field. It remains disabled until capture is enabled in Settings. Each submit creates one explicit owner job; DRM/encryption refusals appear in the queue. Finished captures expose a signed **Mở tệp đã ghi** link when file serving is enabled. Capture is never offered as an automatic or bulk library action.

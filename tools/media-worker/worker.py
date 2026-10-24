@@ -11,6 +11,8 @@ import time
 from pathlib import Path
 from urllib.request import Request, urlopen
 
+from jobs.errors import JobError
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -38,7 +40,10 @@ def execute(job, config):
         raise
     if process.returncode != 0:
         raise RuntimeError('Job process failed')
-    return json.loads(stdout)
+    value = json.loads(stdout)
+    if 'error_code' in value:
+        raise JobError(value['error_code'])
+    return value
 
 
 def step(credentials, worker):
@@ -49,6 +54,9 @@ def step(credentials, worker):
     body = {'claim_token': job['claim_token']}
     try:
         body['result'] = execute(job, config)
+    except JobError as error:
+        body['error'] = str(error)
+        request(credentials, f"jobs/{job['id']}/fail", body)
     except Exception:
         # Exception text may contain source URLs, credentials or transcript content.
         body['error'] = 'Media processing failed; check local runtime health and job settings.'

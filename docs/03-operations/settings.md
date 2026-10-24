@@ -24,3 +24,5 @@ New features (Telegram follow notifications and bot, the library scanner) read t
 `search.budget_ms` (default 300, range 25–1500, group Tìm kiếm) maps to `javmeta_search.budget_ms` through the database settings service. It limits optional HTTP work within one hybrid search. SQL and response serialization can exceed that budget. A timeout falls back to keyword results; the existing response keys remain unchanged. No environment variable is needed. See [performance](performance.md) for measurements and acceptance limits.
 
 Media processing settings (`media.*`) are defined in `config/javmeta_media.php` and registered in `config/javmeta_settings.php`. They are database/UI settings, never environment variables. See [media.md](media.md) for queue limits and bootstrap credentials.
+
+Stream capture settings (`capture.*`) default in `config/javmeta_capture.php`. Capture is off until the owner enables it on the Settings page; duration, output size, manifest count/size and HTTP timeout limits are editable there. Enabling capture never disables the DRM/content policy checks.

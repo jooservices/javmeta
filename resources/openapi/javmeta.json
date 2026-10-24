@@ -1829,7 +1829,18 @@
                     "maxLength": 4000
                   },
                   "result": {
-                    "type": "object"
+                    "type": "object",
+                    "description": "Worker output for the claimed job kind: scenes, subtitles, descriptions, or a captured MP4 in the configured media output folder.",
+                    "properties": {
+                      "capture_path": {
+                        "type": "string",
+                        "maxLength": 4096
+                      },
+                      "bytes": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    }
                   }
                 }
               }

@@ -6,6 +6,9 @@ namespace App\Console\Commands;
 
 use App\Services\Auth\ApiKeyService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
+use Throwable;
 
 final class MediaWorkerKeyCommand extends Command
 {
@@ -16,6 +19,11 @@ final class MediaWorkerKeyCommand extends Command
     {
         $path = storage_path('app/private/media/worker.key');
         if (is_file($path)) {
+            $existing = json_decode((string) file_get_contents($path), true);
+            if (! is_array($existing) || ! isset($existing['url'], $existing['key'])) {
+                $this->error('Existing worker credential file is invalid; repair it before starting the worker.');
+                return self::FAILURE;
+            }
             $this->info('Worker key already exists; left unchanged.');
             return self::SUCCESS;
         }
@@ -29,8 +37,17 @@ final class MediaWorkerKeyCommand extends Command
         }
         chmod($path, 0640);
         try {
-            $key = $keys->create('Local media worker', 120, ['media']);
-            fwrite($handle, json_encode(['url' => config('javmeta_media.api_url'), 'key' => $key->plaintext], JSON_THROW_ON_ERROR));
+            DB::transaction(static function () use ($keys, $handle): void {
+                $key = $keys->create('Local media worker', 120, ['media']);
+                $json = json_encode(['url' => config('javmeta_media.api_url'), 'key' => $key->plaintext], JSON_THROW_ON_ERROR);
+                if (fwrite($handle, $json) !== strlen($json) || ! fflush($handle)) {
+                    throw new RuntimeException('Cannot write credentials.');
+                }
+            });
+        } catch (Throwable) {
+            unlink($path);
+            $this->error('Worker credentials could not be saved. No key was retained.');
+            return self::FAILURE;
         } finally {
             fclose($handle);
         }

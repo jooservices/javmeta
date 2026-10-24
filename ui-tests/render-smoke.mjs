@@ -189,3 +189,12 @@ globalThis.fetch = async () => { throw new Error('Offline'); };
 assert.match((await playerView.render({ params: { code: 'GEN-001' } })).html, /Offline/);
 globalThis.fetch = normalFetch;
 globalThis.innerWidth = 1280;
+
+// Capture is visibly disabled until enabled in Settings, then exposes one explicit owner form.
+globalThis.fetch = async () => jsonResponse({ data: { data: [], next_page_url: null }, capture_enabled: false });
+assert.match((await mediaView.render({ query: {} })).html, /Ghi luồng đang tắt/);
+globalThis.fetch = async () => jsonResponse({ data: { data: [{ id: 8, kind: 'capture', status: 'done', attempts: 1, output_url: '/signed/capture' }], next_page_url: null }, capture_enabled: true });
+const captureHtml = (await mediaView.render({ query: {} })).html;
+assert.match(captureHtml, /data-capture/); assert.match(captureHtml, /Mở tệp đã ghi/);
+assert.ok(!captureHtml.includes('Tệp #undefined'));
+globalThis.fetch = normalFetch;
