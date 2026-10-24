@@ -32,6 +32,9 @@ return [
     ],
 
     'definitions' => [
+        'media.vision_model' => ['group' => 'media', 'label' => 'Mô hình mô tả cảnh', 'description' => 'Mô hình vision Ollama nội bộ; tuyệt đối không gửi ảnh ra cloud.', 'type' => 'string', 'config' => ['javmeta_media.vision_model']],
+        'media.scenes_index' => ['group' => 'media', 'label' => 'Chỉ mục tìm cảnh Elasticsearch', 'description' => 'Chỉ mục được tạo khi có vector đầu tiên. Đổi tên cần lập chỉ mục lại.', 'type' => 'string', 'config' => ['javmeta_media.scenes_index']],
+        'media.embedding_dimensions' => ['group' => 'media', 'label' => 'Số chiều vector cảnh', 'description' => 'Phải khớp dịch vụ embedder và mapping Elasticsearch.', 'type' => 'int', 'config' => ['javmeta_media.embedding_dimensions'], 'min' => 8, 'max' => 8192],
         'media.translate_model' => ['group' => 'media', 'label' => 'Mô hình dịch phụ đề', 'description' => 'Chỉ chạy mô hình Ollama cục bộ để dịch sang EN và VI.', 'type' => 'string', 'config' => ['javmeta_media.translate_model']],
         'media.translate_batch_segments' => ['group' => 'media', 'label' => 'Số câu phụ đề mỗi đợt dịch', 'description' => 'Giữ nguyên mốc thời gian và số thứ tự.', 'type' => 'int', 'config' => ['javmeta_media.translate_batch_segments'], 'min' => 1, 'max' => 100],
         'media.ollama_timeout_sec' => ['group' => 'media', 'label' => 'Thời gian chờ Ollama media (giây)', 'description' => 'Lỗi thì dừng; không dùng cloud.', 'type' => 'int', 'config' => ['javmeta_media.ollama_timeout_sec'], 'min' => 1, 'max' => 3600],

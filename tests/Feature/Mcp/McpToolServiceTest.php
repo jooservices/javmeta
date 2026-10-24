@@ -42,6 +42,7 @@ final class McpToolServiceTest extends TestCase
             'suggest',
             'get_related_movies',
             'get_release_calendar',
+            'search_scenes',
         ], $names);
 
         $search = collect($definitions)->firstWhere('name', 'search');

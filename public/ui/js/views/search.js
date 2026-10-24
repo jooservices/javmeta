@@ -11,11 +11,12 @@ export default {
     if (q.length < 2) {
       return { html: `<div class="wrap">${head('Tìm kiếm', 'từ khoá hoặc theo nghĩa')}<div class="hero">${form}${modeLinks}<div class="chips"><span class="dim">Ví dụ</span>${['Drama', 'Mankitsu', 'onsen', 'office'].map(r => a(href.search(r), esc(r), 'chip')).join('')}</div></div></div>`, mount: bind };
     }
-    let movies, people, sg = {}, hy;
+    let movies, people, sg = {}, hy, scenes = [], sceneError = null;
     try {
-      [hy, sg] = await Promise.all([
+      [hy, sg, scenes] = await Promise.all([
         api('search', { q, per_page: 18, ...(semantic ? {} : { understand: 0 }) }),
         api('suggest', { q, limit: 8 }).then(r => r.data || {}).catch(() => ({})),
+        q.length >= 3 ? api('scenes/search', { q, per_page: 12 }).then(r => r.data || []).catch(e => { sceneError = e; return []; }) : Promise.resolve([]),
       ]);
       movies = { data: hy.data.movies, meta: { pagination: { total: hy.data.movies.length } } };
       people = { data: hy.data.performers, meta: { pagination: { total: hy.data.performers.length } } };
@@ -30,7 +31,8 @@ export default {
     const html = `<div class="wrap">${head('Kết quả', `“${esc(q)}”`, modeLinks)}<div class="hero">${form}${understood}</div>${facets}
       <div class="panel"><div class="hd"><h2>Phim</h2><span class="chip mono">${fmt(mt)}</span><span class="sp"></span>${mt > 18 ? a(href.movies({ q }), 'Xem tất cả →', 'btn sm ghost') : ''}</div><div class="bd">${(movies.data || []).length ? `<div class="mgrid">${movies.data.map((m, i) => movieCard(m, i)).join('')}</div>` : emptyBox('Không có phim khớp', semantic ? 'Tìm theo nghĩa cần embedder; thử chế độ từ khoá.' : 'Thử từ khoá khác.')}</div></div>
       <div class="panel"><div class="hd"><h2>Diễn viên</h2><span class="chip mono">${fmt(pt)}</span><span class="sp"></span>${pt > 8 ? a(href.performers({ q }), 'Xem tất cả →', 'btn sm ghost') : ''}</div><div class="bd">${(people.data || []).length ? `<div class="agrid">${people.data.map((p, i) => performerCard(p, i)).join('')}</div>` : '<span class="muted">Không có diễn viên khớp.</span>'}</div></div></div>`;
-    return { html, mount: bind };
+    const sceneHtml = `<section class="panel"><div class="hd"><h2>Cảnh</h2><span class="chip">${scenes.length}</span></div><div class="bd">${sceneError ? errorBox(sceneError) : scenes.map(s => `<a class="row-i" href="#/player/${encodeURIComponent(s.movie_code || '')}?file=${s.library_file_id}&t=${Number(s.start_sec)}" style="overflow-wrap:anywhere">${s.thumb_url ? `<img src="${esc(s.thumb_url)}" alt="" loading="lazy" width="96">` : ''}<span>${esc(s.movie_code || 'Tệp #' + s.library_file_id)} · ${Math.floor(s.start_sec / 60)}:${String(Math.floor(s.start_sec % 60)).padStart(2, '0')}<br>${esc(s.description)}</span></a>`).join('') || 'Chưa có cảnh khớp. Hãy tách và mô tả cảnh trong Thư viện.'}</div></section>`;
+    return { html: html.replace(/<\/div>$/, sceneHtml + '</div>'), mount: bind };
   },
 };
 

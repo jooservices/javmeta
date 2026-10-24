@@ -14,7 +14,7 @@ use Symfony\Component\HttpFoundation\Response;
 final class UiApiController
 {
     /** Paths the UI may read (GET only). */
-    private const ALLOWED = '#^(movies|performers|meta|status|suggest|search)(/|$)#';
+    private const ALLOWED = '#^(movies|performers|meta|status|suggest|search|scenes)(/|$)#';
 
     public function __invoke(Request $request, string $path): Response
     {

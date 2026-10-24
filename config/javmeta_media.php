@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 return [
+    'vision_model' => 'qwen3-vl:8b',
+    'scenes_index' => 'javmeta_scenes',
+    'embedding_dimensions' => 384,
     'translate_model' => 'qwen2.5:7b',
     'translate_batch_segments' => 20,
     'ollama_timeout_sec' => 180,

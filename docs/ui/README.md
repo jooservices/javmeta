@@ -109,3 +109,5 @@ escaping, picker keyboard/debounce, request cancellation, cache and saved-search
 The Library page offers per-file preview and scene extraction buttons. **Media** (`#/media`) lists queued jobs, indeterminate progress while running, errors and retries for failed jobs. Paging and a refresh button keep the queue bounded. All changes use the owner's session and CSRF token; worker credentials are never sent to the browser.
 
 Per-file Media actions include **Phụ đề** (local GPU Whisper) and **Dịch EN / VI** (local Ollama, after recognition). Missing prerequisites appear as job errors in the Media queue.
+
+**Mô tả cảnh** runs local vision after scene extraction. The search page shows **Cảnh** in both keyword and meaning modes, with thumbnail (when serving is enabled), movie, timestamp and a player deep link. Scene failures do not hide movie/performer results.
