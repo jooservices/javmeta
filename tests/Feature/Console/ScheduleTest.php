@@ -52,6 +52,7 @@ final class ScheduleTest extends TestCase
             'javmeta:hourly-report' => '0 * * * *',
             'obs:publish-metrics' => '* * * * *',
             'search:backfill-embeddings' => '0 * * * *',
+            'staging:readiness' => '0 * * * *',
         ];
 
         $this->assertCount(count($expectedFrequencies) + 1, $events);
@@ -63,6 +64,7 @@ final class ScheduleTest extends TestCase
         $this->assertTrue($scheduled['crawler:recrawl-incomplete']->withoutOverlapping);
         $this->assertTrue($scheduled['javmeta:hourly-report']->withoutOverlapping);
         $this->assertTrue($scheduled['search:backfill-embeddings']->withoutOverlapping);
+        $this->assertTrue($scheduled['staging:readiness']->withoutOverlapping);
         foreach ($events as $event) {
             $this->assertFalse($event->onOneServer);
         }

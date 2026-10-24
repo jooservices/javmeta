@@ -31,6 +31,7 @@ Deploy a new version with `deploy/staging.sh` (it refuses a dirty clone, takes a
 
 ## Is it healthy?
 
+-  (also ): one PASS or FAIL per check with the cause and the first thing to do; exits non-zero on any FAIL. It runs every hour, keeps the last 30 runs in  and tells Telegram once when it turns bad. Limits are in .
 - `$A crawler:sources`: one row per source with the switch, the current gap and the last success.
 - `$A crawler:failures`: the latest failed jobs with their reason.
 - The Operations, Data quality and Crawl debug dashboards in OpenObserve (stream `javmeta_logs` and the metric streams); alerts go to Telegram.
