@@ -11,19 +11,23 @@ export default {
     if (q.length < 2) {
       return { html: `<div class="wrap">${head('Tìm kiếm', 'từ khoá hoặc theo nghĩa')}<div class="hero">${form}${modeLinks}<div class="chips"><span class="dim">Ví dụ</span>${['Drama', 'Mankitsu', 'onsen', 'office'].map(r => a(href.search(r), esc(r), 'chip')).join('')}</div></div></div>`, mount: bind };
     }
-    let movies, people, sg = {};
+    let movies, people, sg = {}, hy;
     try {
-      [movies, people, sg] = await Promise.all([
-        api('movies', { q, per_page: 18, ...(semantic ? { semantic: 1 } : {}) }),
-        api('performers', { q, per_page: 8 }),
+      [hy, sg] = await Promise.all([
+        api('search', { q, per_page: 18, ...(semantic ? {} : { understand: 0 }) }),
         api('suggest', { q, limit: 8 }).then(r => r.data || {}).catch(() => ({})),
       ]);
+      movies = { data: hy.data.movies, meta: { pagination: { total: hy.data.movies.length } } };
+      people = { data: hy.data.performers, meta: { pagination: { total: hy.data.performers.length } } };
     } catch (e) { return { html: `<div class="wrap">${head('Tìm kiếm', esc(q))}${errorBox(e)}</div>` }; }
+    const it = hy.data.interpretation || { filters: {}, keywords: '', by: 'none' };
+    const FILTER_LABEL = { maker: 'maker', series: 'series', genre: 'thể loại', actress: 'diễn viên', code: 'mã', label: 'label', released_from: 'từ ngày', released_to: 'đến ngày', runtime_min: 'dài hơn (phút)', runtime_max: 'ngắn hơn (phút)' };
+    const understood = semantic && (Object.keys(it.filters).length || it.keywords !== q) ? `<div class="chips" style="margin:6px 0"><span class="dim">Tôi hiểu là${it.by === 'ollama' ? ' (Ollama)' : ''}:</span>${Object.entries(it.filters).map(([k, v]) => `<span class="chip on">${esc(FILTER_LABEL[k] || k)}: <b>${esc(v)}</b></span>`).join('')}${it.keywords ? `<span class="chip">từ khoá: <b>${esc(it.keywords)}</b></span>` : ''}</div>` : '';
     const mt = pagination(movies).total ?? (movies.data || []).length;
     const pt = pagination(people).total ?? (people.data || []).length;
     const groups = [['Thể loại', 'genre', sg.genres], ['Maker', 'maker', sg.makers], ['Series', 'series', sg.series]].filter(g => (g[2] || []).length);
     const facets = groups.length ? `<div class="panel"><div class="hd"><h2>Danh mục khớp</h2></div><div class="bd">${groups.map(g => `<div class="chips" style="margin-bottom:6px"><span class="dim" style="width:70px">${g[0]}</span>${g[2].map(x => a(href.facet(g[1], x.name), `${esc(x.name)} <span class="mono dim">${fmt(x.movie_count)}</span>`, 'chip')).join('')}</div>`).join('')}</div></div>` : '';
-    const html = `<div class="wrap">${head('Kết quả', `“${esc(q)}”`, modeLinks)}<div class="hero">${form}</div>${facets}
+    const html = `<div class="wrap">${head('Kết quả', `“${esc(q)}”`, modeLinks)}<div class="hero">${form}${understood}</div>${facets}
       <div class="panel"><div class="hd"><h2>Phim</h2><span class="chip mono">${fmt(mt)}</span><span class="sp"></span>${mt > 18 ? a(href.movies({ q }), 'Xem tất cả →', 'btn sm ghost') : ''}</div><div class="bd">${(movies.data || []).length ? `<div class="mgrid">${movies.data.map((m, i) => movieCard(m, i)).join('')}</div>` : emptyBox('Không có phim khớp', semantic ? 'Tìm theo nghĩa cần embedder; thử chế độ từ khoá.' : 'Thử từ khoá khác.')}</div></div>
       <div class="panel"><div class="hd"><h2>Diễn viên</h2><span class="chip mono">${fmt(pt)}</span><span class="sp"></span>${pt > 8 ? a(href.performers({ q }), 'Xem tất cả →', 'btn sm ghost') : ''}</div><div class="bd">${(people.data || []).length ? `<div class="agrid">${people.data.map((p, i) => performerCard(p, i)).join('')}</div>` : '<span class="muted">Không có diễn viên khớp.</span>'}</div></div></div>`;
     return { html, mount: bind };

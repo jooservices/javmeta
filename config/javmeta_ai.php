@@ -11,5 +11,7 @@ return [
     'ollama_embed_model' => 'nomic-embed-text',
     'ollama_chat_model' => 'qwen2.5:7b',
     'ollama_timeout' => 30,
+    // Read the filters out of a typed question (rules always; the local Ollama model first when it answers).
+    'nl_enabled' => true,
     'cloud_enabled' => false,
 ];
