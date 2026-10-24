@@ -10,7 +10,7 @@ use Illuminate\Validation\ValidationException;
 
 final class MediaQueue
 {
-    public const KINDS = ['thumbnails', 'scenes'];
+    public const KINDS = ['thumbnails', 'scenes', 'transcribe'];
 
     public function enqueue(string $kind, int $file): int
     {
@@ -45,6 +45,7 @@ final class MediaQueue
             DB::table('media_jobs')->where('id', $job->id)->update(['status' => 'running', 'attempts' => $job->attempts + 1, 'locked_by' => $worker, 'claim_token' => $token, 'started_at' => now(), 'finished_at' => null]);
             $data = (array) DB::table('media_jobs')->where('id', $job->id)->first();
             $data['params'] = json_decode($data['params'], true);
+            $data['subtitles'] = DB::table('media_subtitles')->where('library_file_id', $job->library_file_id)->get()->map(static fn($row): array => (array) $row)->all();
             $data['path'] = DB::table('library_files')->where('id', $job->library_file_id)->value('path');
             return $data;
         });
@@ -57,6 +58,7 @@ final class MediaQueue
             abort_unless($job !== null && $job->status === 'running' && hash_equals((string) $job->claim_token, $token), 409, 'Lượt xử lý đã hết hạn.');
             if ($error === null) {
                 $this->storeScenes($job, $result['scenes'] ?? []);
+                $this->storeSubtitles($job, $result['subtitles'] ?? []);
             }
             $status = $error === null ? 'done' : ($job->attempts < (int) config('javmeta_media.max_attempts') ? 'pending' : 'failed');
             DB::table('media_jobs')->where('id', $id)->update(['status' => $status, 'result' => $result === null ? null : json_encode($result, JSON_THROW_ON_ERROR), 'error' => $error, 'claim_token' => null, 'finished_at' => $status === 'pending' ? null : now()]);
@@ -66,6 +68,30 @@ final class MediaQueue
     public function retry(int $id): void
     {
         abort_unless(DB::table('media_jobs')->where('id', $id)->where('status', 'failed')->update(['status' => 'pending', 'attempts' => 0, 'error' => null, 'finished_at' => null]) === 1, 409, 'Chỉ thử lại việc đã thất bại.');
+    }
+
+    private function storeSubtitles(object $job, array $subtitles): void
+    {
+        if ($job->kind !== 'transcribe') {
+            return;
+        }
+        foreach ($subtitles as $subtitle) {
+            $path = $this->outputPath($subtitle['path']);
+            DB::table('media_subtitles')->updateOrInsert([
+                'library_file_id' => $job->library_file_id, 'language' => $subtitle['language'],
+                'format' => $subtitle['format'], 'source' => 'whisper',
+            ], ['path' => $path, 'created_at' => now()]);
+        }
+    }
+
+    private function outputPath(string $path): string
+    {
+        $root = realpath((string) config('javmeta_media.output_folder'));
+        $real = realpath($path);
+        if ($root === false || $real === false || ! is_file($real) || ! str_starts_with($real, $root . '/')) {
+            throw ValidationException::withMessages(['result' => 'Tệp phải nằm trong thư mục output media.']);
+        }
+        return $real;
     }
 
     private function storeScenes(object $job, array $scenes): void

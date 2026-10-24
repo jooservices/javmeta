@@ -36,6 +36,7 @@ return [
 
         'search.budget_ms' => ['group' => 'search', 'label' => 'Ngân sách tìm kiếm (mili giây)', 'description' => 'Tổng thời gian dành cho HTTP tùy chọn trong một lượt tìm kiếm kết hợp. Hết thời gian thì trả kết quả từ khóa; không giới hạn truy vấn cơ sở dữ liệu.', 'type' => 'int', 'config' => ['javmeta_search.budget_ms'], 'min' => 25, 'max' => 1500],
 
+        'media.whisper_model' => ['group' => 'media', 'label' => 'Mô hình nhận dạng giọng nói', 'description' => 'Whisper chạy CUDA float16 trên GPU nội bộ; không chuyển sang cloud.', 'type' => 'string', 'config' => ['javmeta_media.whisper_model']],
         'media.api_url' => ['group' => 'media', 'label' => 'Địa chỉ JavMeta cho worker', 'description' => 'Địa chỉ nội bộ của API JavMeta.', 'type' => 'string', 'config' => ['javmeta_media.api_url']],
         'media.output_folder' => ['group' => 'media', 'label' => 'Thư mục output media', 'description' => 'Chỉ ghi ảnh và phụ đề tại đây; không ghi vào thư viện.', 'type' => 'string', 'config' => ['javmeta_media.output_folder']],
         'media.max_parallel' => ['group' => 'media', 'label' => 'Số việc media đồng thời', 'description' => 'Giới hạn chung cho mọi worker.', 'type' => 'int', 'config' => ['javmeta_media.max_parallel'], 'min' => 1, 'max' => 16],
