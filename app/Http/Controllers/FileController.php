@@ -31,6 +31,33 @@ final class FileController
         $observability->emitOps('file_served', ['file' => basename($path), 'ip_hash' => hash('sha256', (string) $request->ip())]);
         Log::info('javmeta.file_served', ['file' => basename($path)]);
 
-        return response()->file($path, str_ends_with(strtolower($path), '.vtt') ? ['Content-Type' => 'text/vtt; charset=UTF-8'] : []);
+        $type = match (strtolower(pathinfo($path, PATHINFO_EXTENSION))) {
+            'mp4', 'm4v' => 'video/mp4',
+            'mkv' => 'video/x-matroska',
+            'webm' => 'video/webm',
+            'mov' => 'video/quicktime',
+            'avi' => 'video/x-msvideo',
+            'ts' => 'video/mp2t',
+            'mp3' => 'audio/mpeg',
+            'm4a' => 'audio/mp4',
+            'flac' => 'audio/flac',
+            'ogg' => 'audio/ogg',
+            'wav' => 'audio/wav',
+            'srt' => 'application/x-subrip',
+            'vtt' => 'text/vtt; charset=UTF-8',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            default => 'application/octet-stream',
+        };
+        $response = response()->file($path, [
+            'Content-Type' => $type,
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "sandbox; default-src 'none'; media-src 'self'; img-src 'self'",
+        ]);
+        $response->setContentDisposition($type === 'application/octet-stream' ? 'attachment' : 'inline');
+
+        return $response;
     }
 }

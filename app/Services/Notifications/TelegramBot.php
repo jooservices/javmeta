@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Notifications;
 
+use App\Exceptions\InvalidFilterException;
 use App\Http\Controllers\SuggestController;
 use App\Services\Crawl\CrawlStatusService;
 use App\Services\Downloads\DownloadService;
@@ -11,6 +12,8 @@ use App\Services\Settings\SettingsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -46,17 +49,29 @@ final class TelegramBot
         }
 
         $handled = $ignored = 0;
-        $last = $offset;
         foreach ((array) $response->json('result', []) as $update) {
-            $last = max($last, (int) ($update['update_id'] ?? 0));
-            if ($this->handle((array) $update)) {
-                $handled++;
-            } else {
-                $ignored++;
+            $id = (int) ($update['update_id'] ?? 0);
+            if ($id <= $offset) {
+                continue;
             }
-        }
-        if ($last > $offset) {
-            DB::table('user_marks')->updateOrInsert(['user_id' => 0, 'kind' => self::OFFSET_KIND, 'subject' => 'telegram'], ['key' => (string) $last, 'created_at' => now()]);
+            try {
+                if ($this->handle((array) $update)) {
+                    $handled++;
+                } else {
+                    $ignored++;
+                }
+            } catch (InvalidFilterException) {
+                // Invalid input is permanent; never let it poison subsequent updates.
+                Log::warning('javmeta.telegram_invalid_update', ['update_id' => $id]);
+                $ignored++;
+            } catch (Throwable $error) {
+                // Transport and unexpected failures are retried; exception messages may contain the token.
+                Log::warning('javmeta.telegram_update_failed', ['update_id' => $id, 'exception' => $error::class]);
+
+                return ['handled' => $handled, 'ignored' => $ignored, 'skipped' => 'telegram update failed'];
+            }
+            DB::table('user_marks')->updateOrInsert(['user_id' => 0, 'kind' => self::OFFSET_KIND, 'subject' => 'telegram'], ['key' => (string) $id, 'created_at' => now()]);
+            $offset = $id;
         }
 
         return ['handled' => $handled, 'ignored' => $ignored, 'skipped' => null];
@@ -102,6 +117,9 @@ final class TelegramBot
 
     private function download(string $code): string
     {
+        if (mb_strlen($code) > 100) {
+            return 'Mã phim quá dài, tối đa 100 ký tự.';
+        }
         if (! $this->downloads->enabled()) {
             return 'Tải về đang tắt trong Cài đặt.';
         }
@@ -134,6 +152,12 @@ final class TelegramBot
         $parts = preg_split('/\s+/', $text, 2) ?: [$text];
         $command = strtolower(preg_replace('/@.*$/', '', $parts[0]) ?? '');
         $argument = trim($parts[1] ?? '');
+
+        $input = str_starts_with($text, '/') ? $argument : $text;
+        if (mb_strlen($input) > 100) {
+            return [$command === '/search' || ! str_starts_with($text, '/')
+                ? 'Câu hỏi quá dài, tối đa 100 ký tự.' : 'Tham số quá dài, tối đa 100 ký tự.', []];
+        }
 
         return match ($command) {
             '/start', '/help' => [$this->help(), []],
@@ -267,10 +291,9 @@ final class TelegramBot
         if ($buttons !== []) {
             $payload['reply_markup'] = ['inline_keyboard' => [$buttons]];
         }
-        try {
-            Http::timeout(max(1, (int) $this->settings->get('telegram.timeout')))->asJson()->post($this->url((string) $this->settings->get('telegram.bot_token'), 'sendMessage'), $payload);
-        } catch (Throwable) {
-            // The next poll answers again only for new updates; a lost reply is not retried.
+        $response = Http::timeout(max(1, (int) $this->settings->get('telegram.timeout')))->asJson()->post($this->url((string) $this->settings->get('telegram.bot_token'), 'sendMessage'), $payload);
+        if (! $response->successful() || $response->json('ok') !== true) {
+            throw new RuntimeException('Telegram send failed.');
         }
     }
 }
