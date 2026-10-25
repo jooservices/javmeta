@@ -98,7 +98,7 @@ final class DownloadService
             $savePath = rtrim((string) ($t['save_path'] ?? ''), '/\\');
         }
 
-        return array_values(array_map(static fn(array $f): string => $savePath . '/' . ltrim((string) ($f['name'] ?? ''), '/'), array_filter($this->client->files($hash), static fn($f): bool => is_array($f) && (float) ($f['progress'] ?? 0) >= 1.0)));
+        return array_values(array_map(static fn(array $f): string => $savePath . '/' . ltrim((string) ($f['name'] ?? ''), '/'), array_filter($this->client->files($hash), static fn(array $f): bool => (float) ($f['progress'] ?? 0) >= 1.0)));
     }
 
     private function assertEnabled(): void

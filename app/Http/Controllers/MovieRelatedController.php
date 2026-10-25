@@ -39,7 +39,7 @@ final class MovieRelatedController extends BaseApiController
     {
         $filters = [];
         $performer = $movie->performers()->orderBy('performers.id')->first();
-        $name = $performer?->name_romaji ?? $performer?->name_kanji;
+        $name = $performer->name_romaji ?? $performer->name_kanji ?? null;
         if (is_string($name) && $name !== '') {
             $filters[] = ['actress' => $name];
         }

@@ -55,6 +55,7 @@ final class FeedPoolCommand extends Command
 
             return max(1.0, $source instanceof Source ? $throttle->currentGap($source) : 5.0);
         };
+        /** @var array<string, int> $budgetUsed */
         $budgetUsed = [];
         $exhausted = static function () use (&$waiting, &$budgetUsed, $horizon, $gapOf): array {
             $slugs = [];

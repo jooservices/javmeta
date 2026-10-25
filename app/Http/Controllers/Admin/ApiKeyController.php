@@ -60,7 +60,7 @@ final class ApiKeyController extends BaseApiController
         ];
         $top = ApiUsageLog::query()->where('api_key_id', $id)->where('created_at', '>=', $since(168))
             ->selectRaw('endpoint, COUNT(*) AS calls')->groupBy('endpoint')->orderByDesc('calls')->limit(10)->get()
-            ->map(static fn($r): array => ['endpoint' => $r->endpoint, 'calls' => (int) $r->calls])->all();
+            ->map(static fn($r): array => ['endpoint' => $r->endpoint, 'calls' => (int) $r->getAttribute('calls')])->all();
 
         return $this->respondWithData(['last_24h' => $stat(24), 'last_7d' => $stat(168), 'top_endpoints' => $top]);
     }

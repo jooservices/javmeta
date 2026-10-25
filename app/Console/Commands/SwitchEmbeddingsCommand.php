@@ -11,6 +11,7 @@ use App\Services\Search\ElasticsearchHttpClient;
 use App\Services\Search\ElasticsearchIndexer;
 use App\Services\Settings\SettingsService;
 use Illuminate\Console\Command;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -62,7 +63,7 @@ final class SwitchEmbeddingsCommand extends Command
                     'mappings' => ['properties' => ['uuid' => ['type' => 'keyword'], $field => ['type' => 'dense_vector', 'dims' => $dim, 'index' => true, 'similarity' => 'cosine']]],
                 ], 30);
                 if (! $response->successful() && $response->status() !== 400) {
-                    throw new \RuntimeException("Could not create {$index}.");
+                    throw new RuntimeException("Could not create {$index}.");
                 }
             }
             config(['elasticsearch.embed_dim' => $dim, 'elasticsearch.movies_index' => $movies, 'elasticsearch.performers_index' => $performers]);

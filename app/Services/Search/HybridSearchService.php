@@ -38,13 +38,16 @@ final class HybridSearchService
 
         $hasText = mb_strlen($text) >= 2;
         $keyword = $this->keywordMovies($filters, $hasText ? $text : null, $pool, $interpretation);
+        /** @var Collection<int, Movie> $semantic */
         $semantic = mb_strlen($question) >= 2 ? $this->movies->semanticSearch($question, $pool)['items'] : collect();
         if ($filters !== []) {
             $semantic = $semantic->filter(fn(Movie $m): bool => $this->passes($m, $filters))->values();
         }
 
         // Only the words left after the filters were read: the whole sentence makes the name search slow and finds nothing.
+        /** @var Collection<int, Performer> $performerKeyword */
         $performerKeyword = $hasText ? $this->performers->search(['q' => $text], 'name', null, $pool)['items'] : collect();
+        /** @var Collection<int, Performer> $performerSemantic */
         $performerSemantic = mb_strlen($question) >= 2 ? $this->performerSearch->semanticSearch($question, $pool)['items'] : collect();
 
         return [
@@ -87,8 +90,10 @@ final class HybridSearchService
     }
 
     /**
-     * @param  list<Collection<int, \Illuminate\Database\Eloquent\Model>>  $lists
-     * @return Collection<int, \Illuminate\Database\Eloquent\Model>
+     * @template T of \Illuminate\Database\Eloquent\Model
+     *
+     * @param  list<Collection<int, T>>  $lists
+     * @return Collection<int, T>
      */
     private function fuse(array $lists): Collection
     {
@@ -122,7 +127,7 @@ final class HybridSearchService
             return false;
         }
         $released = $m->release_date;
-        $date = $released instanceof \DateTimeInterface ? $released->format('Y-m-d') : ($released === null ? null : substr((string) $released, 0, 10));
+        $date = $released === null ? null : substr((string) $released, 0, 10);
         if ((isset($f['released_from']) || isset($f['released_to'])) && ($date === null || (isset($f['released_from']) && $date < $f['released_from']) || (isset($f['released_to']) && $date > $f['released_to']))) {
             return false;
         }
