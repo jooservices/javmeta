@@ -63,6 +63,64 @@ backup_file=''
 pulled=0
 active_units_before=()
 migrate_started=0
+candidate_dir=''
+candidate_commit=''
+trap '[[ -z "${candidate_dir}" ]] || rm -rf -- "${candidate_dir}"' EXIT
+
+# Check the fetched release in isolation: the web server still serves APP_DIR.
+ui_gate() {
+  if [[ "${JAVMETA_SKIP_UI_SMOKE:-0}" == 1 ]]; then
+    log 'WARNING: JAVMETA_SKIP_UI_SMOKE=1 — UI render smoke gate BYPASSED.'
+    return 0
+  fi
+  log 'UI render smoke gate (before changing the running release).'
+  if (( dry_run == 1 )); then
+    log "DRY RUN: archive origin/develop into an isolated candidate; ${RUNTIME} node node ui-tests/render-smoke.mjs"
+    return 0
+  fi
+  candidate_dir="$(mktemp -d "${STATE_DIR}/ui-candidate.XXXXXX")"
+  git -C "${APP_DIR}" archive "${candidate_commit}" | tar -x -C "${candidate_dir}"
+  if ! (cd "${candidate_dir}" && "${RUNTIME}" node node ui-tests/render-smoke.mjs); then
+    log 'ERROR: UI render smoke failed; running release and services were not changed.'
+    return 1
+  fi
+}
+
+readiness_gate() {
+  if [[ "${JAVMETA_SKIP_READINESS:-0}" == 1 ]]; then
+    log 'WARNING: JAVMETA_SKIP_READINESS=1 — readiness gate BYPASSED.'
+    return 0
+  fi
+  log 'Readiness gate: wait up to 90 seconds for Horizon and the scheduler heartbeat, then require READY.'
+  if (( dry_run == 1 )); then
+    artisan staging:readiness
+    return 0
+  fi
+  local deadline=$((SECONDS + 90)) remaining output
+  while (( SECONDS < deadline )); do
+    remaining=$((deadline - SECONDS))
+    output="$(cd "${APP_DIR}" && timeout "${remaining}s" "${RUNTIME}" php@8.5 php artisan staging:readiness --no-record 2>&1)" || true
+    if grep -q '^\[PASS\] horizon:' <<< "${output}" && grep -q '^\[PASS\] scheduler:' <<< "${output}"; then
+      remaining=$((deadline - SECONDS))
+      if (( remaining > 0 )); then
+        if output="$(cd "${APP_DIR}" && timeout "${remaining}s" "${RUNTIME}" php@8.5 php artisan staging:readiness 2>&1)"; then
+          if grep -qx 'Staging is READY' <<< "${output}"; then
+            printf '%s\n' "${output}"
+            return 0
+          fi
+        fi
+      fi
+      break
+    fi
+    remaining=$((deadline - SECONDS))
+    (( remaining > 0 )) || break
+    (( remaining <= 5 )) || remaining=5
+    sleep "${remaining}"
+  done
+  printf '%s\n' "${output}"
+  log 'ERROR: staging is NOT READY; invoking the existing rollback to the previous commit. See this deploy log and staging-runbook.md (Failures and recovery).'
+  return 1
+}
 
 rollback() {
   local status=$?
@@ -125,6 +183,13 @@ main() {
   fi
 
   trap rollback ERR
+  run git -C "${APP_DIR}" fetch --prune origin
+  if (( dry_run == 0 )); then
+    candidate_commit="$(git -C "${APP_DIR}" rev-parse origin/develop)"
+  else
+    candidate_commit=origin/develop
+  fi
+  ui_gate
   # Quiesce only the JavMeta services that were active before deployment.
   for unit in "${UNITS[@]}"; do
     if systemctl --user is-active --quiet "$unit"; then
@@ -132,8 +197,8 @@ main() {
       run systemctl --user stop "$unit"
     fi
   done
-  run git -C "${APP_DIR}" fetch --prune origin
-  run git -C "${APP_DIR}" pull --ff-only origin develop
+  # Deploy exactly the candidate tested above, even if origin changes during the gate.
+  run git -C "${APP_DIR}" merge --ff-only "${candidate_commit}"
   pulled=1
   log "Now at: $(git -C "${APP_DIR}" rev-parse HEAD 2>/dev/null || printf 'unknown')"
 
@@ -142,6 +207,7 @@ main() {
   migrate_started=1
   artisan migrate --force
   migrate_started=0
+  artisan settings:import-env
 
   artisan es:setup
   # Shared CLI and web runtimes mount the same code at different absolute paths;
@@ -164,6 +230,7 @@ main() {
     artisan javmeta:smoke
   fi
 
+  readiness_gate
   trap - ERR
   log 'Deployment finished.'
 }
