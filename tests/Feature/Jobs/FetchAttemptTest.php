@@ -55,6 +55,43 @@ final class FetchAttemptTest extends TestCase
         self::assertStringNotContainsString('private', json_encode(DB::table('crawl_fetch_attempts')->get(), JSON_THROW_ON_ERROR));
     }
 
+    /** @return iterable<string, array{array<string, mixed>}> */
+    public static function malformedAttempts(): iterable
+    {
+        yield 'missing method' => [['method' => null]];
+        yield 'invalid method' => [['method' => []]];
+        yield 'invalid timestamp' => [['started_at' => 'invalid timestamp']];
+        yield 'invalid outcome' => [['outcome' => 'unexpected']];
+        yield 'invalid duration' => [['duration_ms' => 'invalid']];
+    }
+
+    /** @param array<string, mixed> $overrides */
+    #[DataProvider('malformedAttempts')]
+    public function test_malformed_diagnostics_do_not_change_failed_job_outcome(array $overrides): void
+    {
+        Source::factory()->create(['slug' => 'onejav']);
+        $row = CrawlQueue::factory()->create(['source_slug' => 'onejav', 'kind' => CrawlQueue::KIND_LISTING, 'status' => CrawlQueue::STATUS_CLAIMED]);
+        $attempt = array_replace(['method' => 'http', 'started_at' => now()->toIso8601String(), 'duration_ms' => 1, 'outcome' => 'error'], $overrides);
+        $result = CrawlerxFetchResult::failure('network', 'failure', attempts: [$attempt]);
+        $this->app->instance(CrawlerxClient::class, new FakeCrawlerxClient($result, $result));
+        FetchListingJob::dispatchSync($row->id);
+        $this->assertDatabaseCount('crawl_fetch_attempts', 0);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'error_code' => 'network']);
+    }
+
+    public function test_malformed_optional_fields_are_normalized_to_null(): void
+    {
+        Source::factory()->create(['slug' => 'onejav']);
+        $row = CrawlQueue::factory()->create(['source_slug' => 'onejav', 'kind' => CrawlQueue::KIND_LISTING, 'status' => CrawlQueue::STATUS_CLAIMED]);
+        $result = CrawlerxFetchResult::failure('network', 'failure', attempts: [
+            ['method' => 'http', 'started_at' => now()->toIso8601String(), 'duration_ms' => 1, 'outcome' => 'error', 'http_status' => [], 'cf_mitigated' => [], 'error' => [], 'error_code' => []],
+        ]);
+        $this->app->instance(CrawlerxClient::class, new FakeCrawlerxClient($result, $result));
+        FetchListingJob::dispatchSync($row->id);
+        $this->assertDatabaseCount('crawl_fetch_attempts', 1);
+        $this->assertDatabaseHas('crawl_fetch_attempts', ['http_status' => null, 'cf_mitigated' => null, 'error' => null, 'error_code' => null]);
+    }
+
     public function test_successful_listing_keeps_attempts_and_truncates_error_text(): void
     {
         Source::factory()->create(['slug' => 'onejav']);

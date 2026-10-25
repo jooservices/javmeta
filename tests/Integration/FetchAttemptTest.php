@@ -28,11 +28,13 @@ final class FetchAttemptTest extends TestCase
             $this->artisan('crawler:fetch-report sample')->expectsTable(['Method', 'Outcome', 'Count'], [['http', 'error', 1]])
                 ->expectsTable(['Error', 'Count'], [['challenge detected', 1]])->assertSuccessful();
             self::assertSame(403, DB::table('crawl_fetch_attempts')->value('http_status'));
+            $migration->down();
+            self::assertFalse(Schema::hasTable('crawl_fetch_attempts'));
+            $migration->up();
+            self::assertTrue(Schema::hasTable('crawl_fetch_attempts'));
         } finally {
+            // Direct migration checks must not leave an untracked table for later migrate:fresh tests.
             $migration->down();
         }
-        self::assertFalse(Schema::hasTable('crawl_fetch_attempts'));
-        $migration->up();
-        self::assertTrue(Schema::hasTable('crawl_fetch_attempts'));
     }
 }

@@ -163,3 +163,8 @@ than `observability.fetch_attempts_retention_days` (default 14), editable on
 Cài đặt / Giám sát. Indexes cover `(source_slug, created_at)` for reports and
 `created_at` for retention. The migration is reversible and creates an empty
 table; it does not scan or backfill the crawl queue.
+
+Diagnostic mapping/storage failures emit a warning containing only the exception
+class and queue ID; they do not interrupt normal crawl success/failure handling.
+Malformed required fields/outcomes are ignored, and invalid optional status/error
+fields become null. Raw exception messages are not logged by the recorder.
