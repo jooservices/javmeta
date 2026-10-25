@@ -101,3 +101,15 @@ Cài đặt → Tìm kiếm includes **Làm ấm bộ nhớ đệm** (`perf.warm
 ## Search performance setting
 
 Cài đặt → Tìm kiếm exposes **Ngân sách tìm kiếm (mili giây)** (`search.budget_ms`). A smaller budget prioritizes keyword results when local models or vector services are slow. Full keyword performer pages skip performer vector lookup. The search response fields, authentication and UI states are unchanged. See [performance](../03-operations/performance.md) for measured limitations.
+
+The Library page offers per-file preview and scene extraction buttons. **Media** (`#/media`) lists queued jobs, indeterminate progress while running, errors and retries for failed jobs. Paging and a refresh button keep the queue bounded. All changes use the owner's session and CSRF token; worker credentials are never sent to the browser.
+
+Per-file Media actions include **Phụ đề** (local GPU Whisper) and **Dịch EN / VI** (local Ollama, after recognition). Missing prerequisites appear as job errors in the Media queue.
+
+**Mô tả cảnh** runs local vision after scene extraction. The search page shows **Cảnh** in both keyword and meaning modes, with thumbnail (when serving is enabled), movie, timestamp and a player deep link. Scene failures do not hide movie/performer results.
+
+**Phát** on an on-disk movie opens `#/player/:code`. It has native video controls, a file selector, original/EN/VI subtitle selection, scene seek buttons, explicit loading/playback errors and a layout that wraps at 375 px. A search scene deep link selects the file and start time. Reload renews signed links.
+
+The Media page has **Ghi luồng** with a URL field. It remains disabled until capture is enabled in Settings. Each submit creates one explicit owner job; DRM/encryption refusals appear in the queue. Finished captures expose a signed **Mở tệp đã ghi** link when file serving is enabled. Capture is never offered as an automatic or bulk library action.
+
+Capture refuses internal-network and cloud-metadata destinations, including redirects and segment hosts. Library paths and scene descriptions containing dollar signs render literally. A rejected worker result appears through the normal failure/retry flow instead of occupying a running slot until its lease expires.

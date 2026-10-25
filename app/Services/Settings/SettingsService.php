@@ -102,6 +102,14 @@ final class SettingsService
     {
         $definition = $this->definitions()[$key] ?? throw new InvalidArgumentException("Unknown setting {$key}.");
         $clean = $this->validate($key, $definition, $value);
+        if (in_array($key, ['capture.max_duration_sec', 'media.job_timeout_sec', 'media.lease_seconds'], true)) {
+            $duration = $key === 'capture.max_duration_sec' ? $clean : $this->get('capture.max_duration_sec');
+            $timeout = $key === 'media.job_timeout_sec' ? $clean : $this->get('media.job_timeout_sec');
+            $lease = $key === 'media.lease_seconds' ? $clean : $this->get('media.lease_seconds');
+            if ($duration > min($timeout, $lease - 10)) {
+                throw new InvalidArgumentException("{$key}: capture duration must fit within min(media.job_timeout_sec, media.lease_seconds - 10).");
+            }
+        }
         $isSecret = $definition['type'] === 'secret';
 
         $this->captureDefaults();

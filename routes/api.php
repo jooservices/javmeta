@@ -80,3 +80,12 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
             ->middleware([AuthenticateApiKey::class, 'requires:postgres', LogApiUsage::class]);
     });
 });
+
+Route::prefix('v1/media')->middleware([AuthenticateApiKey::class, 'requires:postgres', LogApiUsage::class])->group(static function (): void {
+    Route::get('config', [\App\Http\Controllers\Media\MediaWorkerController::class, 'config']);
+    Route::get('jobs/next', [\App\Http\Controllers\Media\MediaWorkerController::class, 'next']);
+    Route::post('jobs/{id}/complete', [\App\Http\Controllers\Media\MediaWorkerController::class, 'complete'])->whereNumber('id');
+    Route::post('jobs/{id}/fail', [\App\Http\Controllers\Media\MediaWorkerController::class, 'fail'])->whereNumber('id');
+});
+
+Route::get('v1/scenes/search', \App\Http\Controllers\Media\SceneSearchController::class)->middleware([AuthenticateApiKey::class, 'requires:postgres', LogApiUsage::class]);

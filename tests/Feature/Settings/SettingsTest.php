@@ -67,6 +67,37 @@ final class SettingsTest extends TestCase
         $this->assertFalse(config('javmeta_alerts.enabled'));
     }
 
+    public function test_capture_duration_and_both_worker_deadlines_are_validated_before_saving(): void
+    {
+        $settings = app(SettingsService::class);
+        foreach ([['capture.max_duration_sec', 72001], ['capture.max_duration_sec', 7201], ['media.job_timeout_sec', 3599], ['media.lease_seconds', 3609]] as [$key, $value]) {
+            $before = $settings->get($key);
+            try {
+                $settings->set($key, $value);
+                $this->fail("{$key}={$value} should be refused");
+            } catch (\InvalidArgumentException) {
+                $this->assertSame($before, $settings->get($key));
+            }
+        }
+        $settings->set('media.lease_seconds', 72010);
+        $settings->set('media.job_timeout_sec', 72000);
+        $settings->set('capture.max_duration_sec', 72000);
+        $this->assertSame(72000, $settings->get('capture.max_duration_sec'));
+        foreach ([['media.job_timeout_sec', 71999], ['media.lease_seconds', 72009]] as [$key, $value]) {
+            $before = $settings->get($key);
+            try {
+                $settings->set($key, $value);
+                $this->fail("{$key}={$value} should be refused against saved capture duration");
+            } catch (\InvalidArgumentException) {
+                $this->assertSame($before, $settings->get($key));
+            }
+        }
+        $settings->set('capture.max_duration_sec', 10);
+        $settings->set('media.job_timeout_sec', 10);
+        $settings->set('media.lease_seconds', 60);
+        $this->assertSame(10, $settings->get('media.job_timeout_sec'));
+    }
+
     public function test_a_secret_is_stored_encrypted_and_never_returned(): void
     {
         $settings = app(SettingsService::class);

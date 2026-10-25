@@ -30,6 +30,7 @@ const route = url => {
   const p = u.pathname.replace('/ui-api/', '');
   if (p === 'movies/facets') return { data: { total: u.searchParams.get('q') === 'empty' ? 0 : 12, genres: [{ name: 'Drama', count: 12 }, { name: '<b>School</b>', count: 3 }], makers: [{ name: 'Maker One', count: 10 }], series: [{ name: 'Series One', count: 9 }], labels: [{ name: 'Label One', count: 8 }], years: [{ name: '2025', count: 7 }], sources: [{ name: 'javdb', count: 6 }], performers: [{ id: 92, name: 'Eimi <b>x</b>', count: 5 }] } };
   if (p === 'performers/facets') return { data: { total: 7, cups: [{ name: 'D', count: 5 }], blood_types: [{ name: 'O', count: 4 }], locations: [{ name: 'Tokyo', count: 3 }], sources: [{ name: 'javdb', count: 2 }], status: [{ name: 'active', count: 7 }], with_image: 6, with_bio: 4 } };
+  if (p === 'scenes/search') return { data: [{ movie_code: 'AAA-001', library_file_id: 1, start_sec: 12, description: '<b>red room</b>', thumb_url: null }] };
   if (p === 'status/summary') return { data: summary };
   if (p === 'status/sources') return { data: sources };
   if (p === 'movies') return { data: [movie('AAA-001'), movie('BBB-002', { title_en: '<script>alert(1)</script>' })], ...pg(2) };
@@ -48,7 +49,7 @@ const settingsSample = { data: { groups: { queue: 'Hàng đợi crawl', telegram
 const adminSample = u => u.includes('/ui-admin/settings') ? settingsSample :  u.includes('report/quality') ? { data: { movies: 100, performers: 50, movies_by_source: { javdb: 60 }, core_fields: { code: { filled: 100, percent: 100 }, maker: { filled: 80, percent: 80 } }, movies_with_8_of_11: { count: 70, percent: 70 }, completeness_tiers: { 1: 20, 2: 80 }, needs_review: 3 } } : { data: [{ id: 1, prefix: 'jvm_abc', label: 'Key <b>one</b>', status: 'active', abuse_rpm: 60, scopes: ['catalog'], created_at: '2026-10-24T00:00:00Z' }] };
 const libSample = u => u.endsWith('/library') ? { data: { files: 3, matched: 2, unmatched: 1, missing: 0, bytes: 5012, by_folder: [{ folder: '/media/<b>a</b>', files: 3, bytes: 5012 }], last_scan_at: '2026-10-24 03:00:00', configured: true } } : u.includes('/codes') ? { data: ['AAA-001'] } : u.includes('/on-disk') ? { data: [{ code: 'AAA-001', files: 1, bytes: 5000 }] } : { data: [{ path: '/media/a/x.mp4', size: 7, folder: '/media/a' }], meta: { total: 1, page: 1, per_page: 100 } };
 const dlSample = u => u.endsWith('/status') ? { data: { enabled: true, files_enabled: true } } : { data: { items: [{ hash: 'aa', name: 'Video <b>x</b>', movie_code: 'AAA-001', state: 'downloading', progress: 42.5, size: 1e9, speed: 2e6, eta: 600, completed: false }, { hash: 'bb', name: 'Done', movie_code: null, state: 'completed', progress: 100, size: 2e9, speed: 0, eta: null, completed: true }] } };
-globalThis.fetch = async url => url.startsWith('/ui-me/downloads') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => dlSample(url) } : url.startsWith('/ui-me/library') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => libSample(url) } : url.startsWith('/ui-me/') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => (url.includes('/marks') ? { data: [{ kind: 'favourite', subject: 'movie', key: 'AAA-001' }] } : { data: [movie('AAA-001')], meta: { follows: 2, new_since_last_visit: 1, total: 1 } }) } : url.startsWith('/ui-admin/') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => adminSample(url) } : ({ ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => route(url) });
+globalThis.fetch = async url => url.startsWith('/ui-me/media/files') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => ({ data: { data: [{ id: 1, code: 'AAA-001', path: '/generated/video.mp4' }] } }) } : url.startsWith('/ui-me/downloads') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => dlSample(url) } : url.startsWith('/ui-me/library') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => libSample(url) } : url.startsWith('/ui-me/') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => (url.includes('/marks') ? { data: [{ kind: 'favourite', subject: 'movie', key: 'AAA-001' }] } : { data: [movie('AAA-001')], meta: { follows: 2, new_since_last_visit: 1, total: 1 } }) } : url.startsWith('/ui-admin/') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => adminSample(url) } : ({ ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => route(url) });
 
 const load = async f => (await import('../public/ui/js/' + f)).default;
 const out = {};
@@ -144,3 +145,73 @@ for (const folder of ['user-guide', 'developer-guide']) {
 }
 console.log(`Documentation: ${guidePages} pages, ${menuLabels.length} menu labels and ${checkedLinks} links verified.`);
 console.log('UI render smoke: ' + Object.keys(out).length + ' views rendered, all assertions passed');
+
+// Media queue: escaped errors, empty and failure states, retry action, narrow viewport.
+const normalFetch = globalThis.fetch;
+const jsonResponse = data => ({ ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => data });
+const mediaView = await load('views/media.js');
+globalThis.innerWidth = 375;
+globalThis.fetch = async url => url.startsWith('/ui-me/media/files') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => ({ data: { data: [{ id: 1, code: 'AAA-001', path: '/generated/video.mp4' }] } }) } : url.startsWith('/ui-me/media') ? jsonResponse({ data: { data: [{ id: 1, kind: 'scenes', library_file_id: 7, status: 'failed', attempts: 3, error: '<script>bad</script>' }], next_page_url: null } }) : normalFetch(url);
+const mediaHtml = (await mediaView.render({ query: {} })).html;
+assert.match(mediaHtml, /data-media-retry="1"/);
+assert.match(mediaHtml, /&lt;script&gt;/);
+assert.ok(!mediaHtml.includes('<script>'));
+globalThis.fetch = async () => jsonResponse({ data: { data: [], next_page_url: null } });
+assert.match((await mediaView.render({ query: {} })).html, /Chưa có việc/);
+globalThis.fetch = async () => { throw new Error('Offline'); };
+assert.match((await mediaView.render({ query: {} })).html, /Offline/);
+globalThis.fetch = normalFetch;
+globalThis.innerWidth = 1280;
+
+assert.match(out.search, /<h2>Cảnh<\/h2>/);
+assert.match(out.search, /&lt;b&gt;red room&lt;\/b&gt;/);
+
+// Player behavior and rendered states use generated-media API fixtures.
+const playerModule = await import('../public/ui/js/views/player.js');
+const playerView = playerModule.default;
+const playerData = { enabled: true, url: '/signed/video', library_file_id: 1, files: [{ id: 1, name: '<b>video</b>.mp4' }], subtitles: [{ id: 1, language: 'en', source: 'whisper', url: '/signed/en.vtt' }, { id: 2, language: 'vi', source: 'translation', url: '/signed/vi.vtt' }], scenes: [{ start_sec: 12, description: '<b>scene</b>' }], error: null };
+globalThis.fetch = async () => jsonResponse({ data: playerData });
+globalThis.innerWidth = 375;
+const playerHtml = (await playerView.render({ params: { code: 'GEN-001' }, query: {} })).html;
+assert.match(playerHtml, /<video controls/); assert.match(playerHtml, /kind="subtitles"/);
+assert.match(playerHtml, /Tiếng Việt/); assert.match(playerHtml, /data-seek="12"/);
+assert.ok(!playerHtml.includes('<b>scene</b>'));
+const videoFake = { duration: 20, currentTime: 0, textTracks: [{ id: 'subtitle-1', mode: 'disabled' }, { id: 'subtitle-2', mode: 'disabled' }] };
+playerModule.seek(videoFake, 12); assert.equal(videoFake.currentTime, 12);
+playerModule.seek(videoFake, 99); assert.equal(videoFake.currentTime, 20);
+playerModule.selectTrack(videoFake, 'subtitle-2'); assert.equal(videoFake.textTracks[1].mode, 'showing'); assert.equal(videoFake.textTracks[0].mode, 'disabled');
+playerModule.selectTrack(videoFake, ''); assert.ok(videoFake.textTracks.every(t => t.mode === 'disabled'));
+globalThis.fetch = async () => jsonResponse({ data: { ...playerData, enabled: false } });
+assert.match((await playerView.render({ params: { code: 'GEN-001' } })).html, /Máy chủ tệp đang tắt/);
+globalThis.fetch = async () => jsonResponse({ data: { ...playerData, url: null, error: 'Missing' } });
+assert.match((await playerView.render({ params: { code: 'GEN-001' } })).html, /Không thể mở video/);
+globalThis.fetch = async () => { throw new Error('Offline'); };
+assert.match((await playerView.render({ params: { code: 'GEN-001' } })).html, /Offline/);
+globalThis.fetch = normalFetch;
+globalThis.innerWidth = 1280;
+
+// Capture is visibly disabled until enabled in Settings, then exposes one explicit owner form.
+globalThis.fetch = async () => jsonResponse({ data: { data: [], next_page_url: null }, capture_enabled: false });
+assert.match((await mediaView.render({ query: {} })).html, /Ghi luồng đang tắt/);
+globalThis.fetch = async () => jsonResponse({ data: { data: [{ id: 8, kind: 'capture', status: 'done', attempts: 1, output_url: '/signed/capture' }], next_page_url: null }, capture_enabled: true });
+const captureHtml = (await mediaView.render({ query: {} })).html;
+assert.match(captureHtml, /data-capture/); assert.match(captureHtml, /Mở tệp đã ghi/);
+assert.ok(!captureHtml.includes('Tệp #undefined'));
+globalThis.fetch = normalFetch;
+
+// Replacement metacharacters in API data must remain literal when appending panels.
+{
+  const previousFetch = globalThis.fetch;
+  const literal = '$& $$ $1';
+  globalThis.fetch = async url => {
+    if (url.startsWith('/ui-me/media/files')) return jsonResponse({ data: { data: [{ id: 1, code: null, path: '/generated/' + literal + '.mp4' }] } });
+    if (url.startsWith('/ui-api/scenes/search')) return jsonResponse({ data: [{ movie_code: 'AAA-001', library_file_id: 1, start_sec: 12, description: literal }] });
+    return previousFetch(url);
+  };
+  try {
+    const library = await (await load('views/libraryPage.js')).render({ params: {}, query: {} });
+    assert.ok(library.html.includes('/generated/$&amp; $$ $1.mp4'));
+    const search = await (await load('views/search.js')).render({ params: {}, query: { q: 'literal' } });
+    assert.ok(search.html.includes('$&amp; $$ $1'));
+  } finally { globalThis.fetch = previousFetch; }
+}

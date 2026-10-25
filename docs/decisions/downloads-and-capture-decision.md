@@ -1,6 +1,6 @@
 # Decision: downloads and stream capture (JOOXCR-223)
 
-Status: **PROPOSED, waiting for the owner's approval** (the owner approves by a comment on JOOXCR-223). Until then every feature below is built but switched off in the Settings page (`downloads.enabled`, `files.enabled`, `capture.enabled` are off).
+Status: **ADOPTED** by the owner in the JOOXCR-258 implementation instructions (2026-10-24). Capture stays off until explicitly enabled in Settings; media AI stays local.
 
 ## What may be downloaded or captured
 

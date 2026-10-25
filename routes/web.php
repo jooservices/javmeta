@@ -45,6 +45,12 @@ Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static funct
     Route::post('/ui-me/downloads/{hash}/resume', [UiDownloadsController::class, 'resume'])->where('hash', '[A-Za-z0-9]+');
     Route::delete('/ui-me/downloads/{hash}', [UiDownloadsController::class, 'destroy'])->where('hash', '[A-Za-z0-9]+');
     Route::get('/ui-me/downloads/{hash}/links', [UiDownloadsController::class, 'links'])->where('hash', '[A-Za-z0-9]+');
+    Route::get('/ui-me/player/{code}', [\App\Http\Controllers\Ui\UiPlayerController::class, 'show']);
+    Route::get('/ui-me/media', [\App\Http\Controllers\Ui\UiMediaController::class, 'index']);
+    Route::get('/ui-me/media/files', [\App\Http\Controllers\Ui\UiMediaController::class, 'files']);
+    Route::post('/ui-me/media/capture', [\App\Http\Controllers\Ui\UiMediaController::class, 'capture']);
+    Route::post('/ui-me/media', [\App\Http\Controllers\Ui\UiMediaController::class, 'store']);
+    Route::post('/ui-me/media/{id}/retry', [\App\Http\Controllers\Ui\UiMediaController::class, 'retry'])->whereNumber('id');
     Route::get('/ui-me/library', [UiLibraryController::class, 'summary']);
     Route::get('/ui-me/library/codes', [UiLibraryController::class, 'codes']);
     Route::get('/ui-me/library/on-disk', [UiLibraryController::class, 'onDisk']);

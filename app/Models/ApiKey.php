@@ -8,6 +8,7 @@ use Database\Factories\ApiKeyFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/** @property list<string>|null $scopes */
 class ApiKey extends Model
 {
     /** @use HasFactory<ApiKeyFactory> */
@@ -17,7 +18,7 @@ class ApiKey extends Model
     public const STATUS_REVOKED = 'revoked';
 
     /** movies: lookup, search, related, calendar; bulk: movies:bulk; performers; catalog: meta and suggest; status; mcp. */
-    public const SCOPES = ['movies', 'bulk', 'performers', 'catalog', 'status', 'mcp'];
+    public const SCOPES = ['movies', 'bulk', 'performers', 'catalog', 'status', 'mcp', 'media'];
 
     protected $table = 'api_keys';
     public $timestamps = false;

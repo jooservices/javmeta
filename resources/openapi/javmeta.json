@@ -3,7 +3,7 @@
   "info": {
     "title": "JavMeta API",
     "version": "1.0.0",
-    "description": "Movie and performer metadata crawled from many sources. Send the key in the X-API-Key header. A key may be limited to scopes: movies, bulk, performers, catalog, status, mcp."
+    "description": "Movie and performer metadata crawled from many sources. Send the key in the X-API-Key header. A key may be limited to scopes: movies, bulk, performers, catalog, status, mcp. The media scope is reserved for the local media worker."
   },
   "servers": [
     {
@@ -1714,6 +1714,240 @@
           },
           "429": {
             "description": "Rate limited"
+          }
+        }
+      }
+    },
+    "/api/v1/media/config": {
+      "get": {
+        "summary": "Read local worker settings",
+        "tags": [
+          "media"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Worker response"
+          },
+          "409": {
+            "description": "Expired claim"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        }
+      }
+    },
+    "/api/v1/media/jobs/next": {
+      "get": {
+        "summary": "Atomically claim a media job",
+        "tags": [
+          "media"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Worker response"
+          },
+          "409": {
+            "description": "Expired claim"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        },
+        "parameters": [
+          {
+            "name": "worker",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/media/jobs/{id}/complete": {
+      "post": {
+        "summary": "Complete a claimed media job",
+        "tags": [
+          "media"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Worker response"
+          },
+          "409": {
+            "description": "Expired claim"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "claim_token",
+                  "result"
+                ],
+                "properties": {
+                  "claim_token": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "error": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "result": {
+                    "type": "object",
+                    "description": "Worker output for the claimed job kind: scenes, subtitles, descriptions, or a captured MP4 in the configured media output folder.",
+                    "properties": {
+                      "capture_path": {
+                        "type": "string",
+                        "maxLength": 4096
+                      },
+                      "bytes": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/media/jobs/{id}/fail": {
+      "post": {
+        "summary": "Fail a claimed media job",
+        "tags": [
+          "media"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Worker response"
+          },
+          "409": {
+            "description": "Expired claim"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "claim_token",
+                  "error"
+                ],
+                "properties": {
+                  "claim_token": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "error": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "result": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/scenes/search": {
+      "get": {
+        "summary": "Search local scene descriptions by meaning with keyword fallback",
+        "tags": [
+          "scenes"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scenes: movie_code, library_file_id, start_sec, end_sec, signed thumb_url (null when files disabled), description and score"
+          },
+          "422": {
+            "description": "Invalid query"
           }
         }
       }

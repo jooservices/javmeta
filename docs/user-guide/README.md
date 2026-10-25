@@ -16,6 +16,7 @@ Dành cho chủ sở hữu. Mở `/app` và đăng nhập bằng tài khoản đ
 | Theo dõi | [Phim mới từ mục đang theo dõi](follows.md) |
 | Thư viện | [Tệp trên đĩa và dấu Trên máy](library.md) |
 | Tải về | [Tải qua qBittorrent — mặc định tắt](downloads.md) |
+| Media | [Xem trước, phụ đề, dịch, tìm cảnh, ghi luồng](media.md) |
 | Crawl & nguồn | [Tình trạng thu thập](crawl.md) |
 | Quản trị | [Khoá API và chất lượng dữ liệu](admin.md) |
 | Cài đặt | [Cách sửa và lưu](settings.md), [tra cứu mọi nhóm và từng mục](settings-reference.md) |
