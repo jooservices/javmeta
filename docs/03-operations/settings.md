@@ -14,3 +14,7 @@ New features (Telegram follow notifications and bot, the library scanner) read t
 ## User and developer references
 
 [Cài đặt user instructions](../user-guide/settings.md) explain saving and troubleshooting. [The complete reference](../user-guide/settings-reference.md) is generated from the definition labels/descriptions by `tools/docs/settings-reference.php`; `SettingsReferenceTest` fails on drift. The [developer checklist](../developer-guide/extending.md) covers validation, defaults, mapped config keys and secret handling; [testing](../developer-guide/testing.md) contains the exercised regeneration command. The generator never reads stored values.
+
+## Performance warming
+
+`perf.warm_enabled` (default `true`, group Tìm kiếm) controls the scheduled `perf:warm` command. It appears automatically on Cài đặt and is applied from the database to `javmeta_perf.warm_enabled`. Turning it off stops proactive refreshes; request-driven caches still work. No environment variable is needed. See [performance](performance.md) for TTLs, subminute scheduling and verification limits.

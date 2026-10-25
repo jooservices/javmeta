@@ -31,6 +31,7 @@ return [
     ],
 
     'definitions' => [
+        'perf.warm_enabled' => ['group' => 'search', 'label' => 'Làm ấm bộ nhớ đệm', 'description' => 'Tự làm mới trạng thái và bộ lọc toàn bộ danh mục theo lịch, giảm thời gian chờ khi bộ nhớ đệm hết hạn.', 'type' => 'bool', 'config' => ['javmeta_perf.warm_enabled']],
         'queue.workers_per_queue' => ['group' => 'queue', 'label' => 'Số worker mỗi hàng đợi', 'description' => 'Horizon chạy bấy nhiêu tiến trình cho mỗi hàng đợi.', 'type' => 'int', 'config' => ['javmeta_queues.workers_per_queue'], 'min' => 1, 'max' => 32, 'restart' => 'javmeta-horizon'],
         'queue.depth_limit' => ['group' => 'queue', 'label' => 'Ngưỡng hàng đợi đầy', 'description' => 'Trên số việc chờ này, kiểm tra sẵn sàng báo hàng đợi đầy.', 'type' => 'int', 'config' => ['javmeta_queues.depth_limit'], 'min' => 1, 'max' => 100000],
         'queue.per_source_inflight' => ['group' => 'queue', 'label' => 'Việc đồng thời mỗi nguồn', 'description' => 'Tối đa số việc của một nguồn được chạy cùng lúc.', 'type' => 'int', 'config' => ['javmeta_queues.per_source_inflight'], 'min' => 1, 'max' => 64],

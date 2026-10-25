@@ -236,6 +236,12 @@ Số nguyên; từ 1 đến 720. Mã mục: `readiness.max_backup_age_hours`.
 
 ## Tìm kiếm
 
+### Làm ấm bộ nhớ đệm
+
+Tự làm mới trạng thái và bộ lọc toàn bộ danh mục theo lịch, giảm thời gian chờ khi bộ nhớ đệm hết hạn.
+
+Bật/tắt. Mã mục: `perf.warm_enabled`.
+
 ### Bật tìm kiếm Elasticsearch
 
 Tắt thì chỉ dùng tìm kiếm trong cơ sở dữ liệu.

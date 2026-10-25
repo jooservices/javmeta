@@ -41,3 +41,18 @@ The new batch counts are restricted to returned IDs; count sorting retains the e
 **Pending QA:** no indexes were installed on staging. The isolated PostgreSQL provisioner failed persisting its metadata (`Invalid cross-device link`); its environment generator subsequently refused the worktree database. PostgreSQL index build/lock duration and after-index plans are therefore unmeasured. The migration uses transactional `CREATE INDEX IF NOT EXISTS`, without `CONCURRENTLY`; QA must measure the write-lock interval before deploying it. SQLite regression tests exercise equivalent B-tree definitions, idempotency, rollback and unchanged name order. End-to-end warm p95 and expired-cache cold timing remain unverified.
 
 To repeat the measurement, create a temporary key with a high `abuse_rpm`, call each endpoint with the `Host: jav.soulevil.com` header, and revoke the key.
+
+### JOOXCR-261: status and facets, 2026-10-25
+
+30 sequential direct service/repository calls per operation, one app bootstrap through the shared PHP 8.5 runtime on WSL. Real staging PostgreSQL was read-only; baseline catalog: 29,766 movies / 30,777 canonical performers; after: 29,799 / 30,810. Crawling continued during the samples. Every SELECT over 50 ms was logged, followed by EXPLAIN ANALYZE BUFFERS for distinct slow queries. These measurements exclude HTTP, authentication, bootstrap, serialization and shared Redis cache access; they measure recomputation on every call and do not replace the historical endpoint table above. After code was loaded from the worktree into the profiling process only; staging was not deployed.
+
+| Recomputed operation | Before p50 / p95 | After p50 / p95 | First before / after |
+|---|---|---|---|
+| `status/summary` data | 1,299.0 / 1,662.3 ms | 378.9 / 700.5 ms | 1,210.9 / 369.4 ms |
+| whole-catalog `movies/facets` | 522.4 / 870.8 ms | 343.5 / 861.1 ms | 1,016.1 / 844.8 ms |
+
+Status now aggregates 24-hour run totals in SQL instead of hydrating every run. Facets deduplicate movie/genre-label pairs before grouping and avoid redundant whole-catalog self-subqueries. Distinct movie counts are retained across source duplicates and shared genre labels. No schema changes are included in this area.
+
+`perf:warm` force-refreshes both existing cache keys every minute when `perf.warm_enabled` is true. An additional `perf:warm --status-only` event runs every ten seconds: a once-per-minute event alone would leave a 45-second hole in the existing 15-second status TTL. Facets keep their 60-second TTL; filtered facets remain on demand. Failed recomputation leaves the previous value intact until its original expiry and does not skip the other cache. Scheduler downtime, overlap or expiry can still expose a cold request.
+
+**Target assessment:** the observed first calls are under 1.5 s; recomputation p95 still exceeds 400 ms. No end-to-end warmed-cache result is claimed: the scheduler and changes have not been deployed. QA must repeat 30 HTTP requests, include a first request after expiry, and verify the subminute scheduler before accepting the target. Baseline `suggest?q=mi` was also profiled: p50 113.1 / p95 283.2 ms; no suggestion code was changed. Earlier direct runs yielded status p95 1,310.1 → 985.2 ms and facets 1,788.5 → 658.0 ms; the variation means these are observations rather than a controlled causal speedup.

@@ -19,6 +19,17 @@ final class CrawlStatusServiceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_runs_aggregate_keeps_zero_totals_and_excludes_old_runs(): void
+    {
+        $service = app(CrawlStatusService::class);
+        $this->assertSame(['runs' => 0, 'pages_fetched' => 0, 'movies_new' => 0, 'movies_updated' => 0, 'failures' => 0], $service->status()['runs_24h']);
+        $source = Source::factory()->create();
+        foreach ([now()->subHours(25), now()->subHour(), now()] as $started) {
+            CrawlRun::query()->create(['source_slug' => $source->slug, 'started_at' => $started, 'status' => 'completed', 'pages_fetched' => 3, 'movies_new' => 2, 'movies_updated' => 1, 'failures' => 4]);
+        }
+        $this->assertSame(['runs' => 2, 'pages_fetched' => 6, 'movies_new' => 4, 'movies_updated' => 2, 'failures' => 8], $service->status()['runs_24h']);
+    }
+
     public function test_status_reports_counts_queue_sources_workers_and_runs(): void
     {
         Carbon::setTestNow('2026-09-30 10:00:00');

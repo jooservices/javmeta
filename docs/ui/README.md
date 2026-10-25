@@ -93,3 +93,7 @@ removes the false “no page to check” DEGRADED verdict.
 ## Performer list performance
 
 Name and update-time lists batch movie counts for the returned page. Ordering, cursor fields and API response fields are unchanged. See [performance measurements](../03-operations/performance.md) for measured limits and pending PostgreSQL index verification.
+
+## Performance cache setting
+
+Cài đặt → Tìm kiếm includes **Làm ấm bộ nhớ đệm** (`perf.warm_enabled`). It controls background refresh of status and whole-catalog movie facets. Saving uses the existing authenticated settings flow. API fields and UI loading/error/empty states are unchanged. See [performance](../03-operations/performance.md) before interpreting benchmark numbers.

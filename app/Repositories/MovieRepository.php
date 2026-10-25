@@ -285,20 +285,25 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
         $query = $this->newQuery();
         $this->applyFilters($query, $filters, $q === '' ? null : $q);
         $ids = $query->toBase()->select('movies.id');
+        $movieRows = static fn() => $filters === [] ? DB::table('movies') : DB::table('movies')->whereIn('id', clone $ids);
 
         $count = static fn($rows): array => $rows->map(static fn($r): array => ['name' => (string) $r->name, 'count' => (int) $r->c])->all();
-        $byColumn = static fn(string $column) => $count(DB::table('movies')->whereIn('id', clone $ids)->whereNotNull($column)->where($column, '<>', '')->selectRaw($column . ' AS name, COUNT(*) AS c')->groupBy($column)->orderByDesc('c')->orderBy($column)->limit(15)->get());
+        // Hash distinct movie/label pairs before counting: COUNT(DISTINCT ...) sorts the full joined catalog.
+        $genrePairs = DB::table('movie_genres')->join('genres', 'genres.id', '=', 'movie_genres.genre_id')
+            ->when($filters !== [], static fn($rows) => $rows->whereIn('movie_genres.movie_id', clone $ids))
+            ->selectRaw('COALESCE(genres.label_raw, genres.label_normalized) AS name, movie_genres.movie_id')->distinct();
+        $byColumn = static fn(string $column) => $count($movieRows()->whereNotNull($column)->where($column, '<>', '')->selectRaw($column . ' AS name, COUNT(*) AS c')->groupBy($column)->orderByDesc('c')->orderBy($column)->limit(15)->get());
         $year = DB::getDriverName() === 'sqlite' ? "CAST(strftime('%Y', release_date) AS INTEGER)" : 'EXTRACT(YEAR FROM release_date)::int';
 
         return [
-            'total' => (int) DB::table('movies')->whereIn('id', clone $ids)->count(),
-            'genres' => $count(DB::table('movie_genres')->join('genres', 'genres.id', '=', 'movie_genres.genre_id')->whereIn('movie_genres.movie_id', clone $ids)->selectRaw('COALESCE(genres.label_raw, genres.label_normalized) AS name, COUNT(DISTINCT movie_genres.movie_id) AS c')->groupByRaw('COALESCE(genres.label_raw, genres.label_normalized)')->orderByDesc('c')->limit(20)->get()),
+            'total' => (int) $movieRows()->count(),
+            'genres' => $count(DB::query()->fromSub($genrePairs, 'genre_pairs')->selectRaw('name, COUNT(*) AS c')->groupBy('name')->orderByDesc('c')->limit(20)->get()),
             'makers' => $byColumn('maker'),
             'series' => $byColumn('series'),
             'labels' => $byColumn('label'),
-            'years' => $count(DB::table('movies')->whereIn('id', clone $ids)->whereNotNull('release_date')->selectRaw($year . ' AS name, COUNT(*) AS c')->groupByRaw($year)->orderByDesc('name')->limit(15)->get()),
-            'sources' => $count(DB::table('movie_codes')->whereIn('movie_id', clone $ids)->selectRaw('source_slug AS name, COUNT(DISTINCT movie_id) AS c')->groupBy('source_slug')->orderByDesc('c')->limit(15)->get()),
-            'performers' => DB::table('movie_performers')->join('performers', 'performers.id', '=', 'movie_performers.performer_id')->whereIn('movie_performers.movie_id', clone $ids)->whereNull('performers.canonical_performer_id')
+            'years' => $count($movieRows()->whereNotNull('release_date')->selectRaw($year . ' AS name, COUNT(*) AS c')->groupByRaw($year)->orderByDesc('name')->limit(15)->get()),
+            'sources' => $count(DB::table('movie_codes')->when($filters !== [], static fn($rows) => $rows->whereIn('movie_id', clone $ids))->selectRaw('source_slug AS name, COUNT(DISTINCT movie_id) AS c')->groupBy('source_slug')->orderByDesc('c')->limit(15)->get()),
+            'performers' => DB::table('movie_performers')->join('performers', 'performers.id', '=', 'movie_performers.performer_id')->when($filters !== [], static fn($rows) => $rows->whereIn('movie_performers.movie_id', clone $ids))->whereNull('performers.canonical_performer_id')
                 ->selectRaw("performers.id, COALESCE(performers.name_romaji, performers.name_kanji, performers.name_kana) AS name, COUNT(DISTINCT movie_performers.movie_id) AS c")->groupBy('performers.id', 'performers.name_romaji', 'performers.name_kanji', 'performers.name_kana')->orderByDesc('c')->limit(12)->get()
                 ->map(static fn($r): array => ['id' => (int) $r->id, 'name' => (string) $r->name, 'count' => (int) $r->c])->all(),
         ];
