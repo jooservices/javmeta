@@ -71,7 +71,7 @@ final class TelegramBot
         $message = (array) ($update['message'] ?? []);
         $chat = (string) ($message['chat']['id'] ?? '');
         $text = trim((string) ($message['text'] ?? ''));
-        if ($text === '' || $chat === '' || $chat !== (string) $this->settings->get('telegram.chat_id')) {
+        if ($text === '' || ! $this->authorized((array) ($message['chat'] ?? []), (array) ($message['from'] ?? []))) {
             return false;
         }
 
@@ -86,7 +86,7 @@ final class TelegramBot
     {
         $chat = (string) ($query['message']['chat']['id'] ?? '');
         $data = (string) ($query['data'] ?? '');
-        if ($chat === '' || $chat !== (string) $this->settings->get('telegram.chat_id') || ! str_starts_with($data, 'dl:')) {
+        if (! $this->authorized((array) ($query['message']['chat'] ?? []), (array) ($query['from'] ?? [])) || ! str_starts_with($data, 'dl:')) {
             return false;
         }
         $reply = $this->download(substr($data, 3));
@@ -98,6 +98,24 @@ final class TelegramBot
         $this->send($chat, $reply, []);
 
         return true;
+    }
+
+    /** @param array<string, mixed> $chat
+     * @param array<string, mixed> $sender
+     */
+    private function authorized(array $chat, array $sender): bool
+    {
+        $chatId = (string) ($chat['id'] ?? '');
+        if ($chatId === '' || $chatId !== (string) $this->settings->get('telegram.chat_id')) {
+            return false;
+        }
+        // Positive chat IDs identify private chats when an older update omits type.
+        if (($chat['type'] ?? null) === 'private' || (! isset($chat['type']) && (int) $chatId > 0)) {
+            return true;
+        }
+        $owner = $this->settings->get('telegram.owner_user_id');
+
+        return $owner !== null && (string) $owner === (string) ($sender['id'] ?? '');
     }
 
     private function download(string $code): string

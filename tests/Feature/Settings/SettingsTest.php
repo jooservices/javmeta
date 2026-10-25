@@ -5,11 +5,19 @@ declare(strict_types=1);
 namespace Tests\Feature\Settings;
 
 use App\Models\User;
+use PHPUnit\Framework\Attributes\DataProvider;
+use Monolog\Logger;
+use Monolog\Handler\TestHandler;
+use App\Logging\RedactUrlSecrets;
+use App\Observability\TelemetrySanitizer;
 use App\Services\Settings\SettingsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Testing\FakeConfigStore;
 use Tests\TestCase;
+use RuntimeException;
 
 final class SettingsTest extends TestCase
 {
@@ -147,5 +155,130 @@ final class SettingsTest extends TestCase
 
         $this->assertContains("telegram.bot_token", $settings->importDefaults());
         $this->assertSame("123:live", $this->store->get("settings.telegram.bot_token"));
+    }
+    public static function invalidUrls(): array
+    {
+        $cases = [];
+        foreach (['media.api_url', 'search.embedder_url', 'ai.ollama_url', 'downloads.qbittorrent_url', 'telegram.api_base'] as $key) {
+            foreach (['ftp://example.test', '//example.test', 'https:///missing', 'https://user:pass@example.test', 'https://user@example.test', 'https://example.test?token=hidden', 'https://example.test#secret', 'https://example.test?', 'https://example.test#', "https://example.test\n", 'https://example.test\\@other.test'] as $url) {
+                // Leading/trailing whitespace is normalized by the existing settings contract.
+                if (str_ends_with($url, "\n")) {
+                    $url = "https://exam\nple.test";
+                }
+                $cases[] = [$key, $url];
+            }
+        }
+        $cases[] = ['telegram.api_base', 'http://api.telegram.org'];
+        $cases[] = ['telegram.api_base', 'http://localhost.example.test'];
+        $cases[] = ['telegram.api_base', 'http://127.0.0.2'];
+
+        return $cases;
+    }
+
+    #[DataProvider('invalidUrls')]
+    public function test_invalid_base_urls_use_the_existing_validation_error(string $key, string $url): void
+    {
+        $this->actingAs(User::factory()->create(['role' => 'super_administrator']));
+        $this->putJson('/ui-admin/settings', ['settings' => [$key => $url]])->assertStatus(422)
+            ->assertJsonStructure(['data' => ['errors' => [$key]]]);
+        $this->assertNull($this->store->get('settings.' . $key));
+    }
+
+    public function test_valid_url_schemes_and_local_telegram_http_are_accepted(): void
+    {
+        $settings = app(SettingsService::class);
+        foreach (['media.api_url', 'search.embedder_url', 'ai.ollama_url', 'downloads.qbittorrent_url'] as $key) {
+            foreach (['http://192.168.2.10:8080/base', 'https://example.test/base/', ''] as $url) {
+                $settings->set($key, $url);
+                $this->assertSame($url, $settings->get($key));
+            }
+        }
+        foreach (['https://api.telegram.org', 'http://localhost:8080', 'http://127.0.0.1:8080'] as $url) {
+            $settings->set('telegram.api_base', $url);
+            $this->assertSame($url, $settings->get('telegram.api_base'));
+        }
+        $settings->set('telegram.owner_user_id', '123');
+        $this->assertSame(123, $settings->get('telegram.owner_user_id'));
+        $settings->set('telegram.owner_user_id', '');
+        $this->assertNull($settings->get('telegram.owner_user_id'));
+    }
+
+    public function test_invalid_saved_urls_are_ignored_without_exposing_them_and_can_be_repaired(): void
+    {
+        $settings = app(SettingsService::class);
+        $default = $settings->get('downloads.qbittorrent_url');
+        $settings->set('downloads.qbittorrent_url', 'http://valid.test');
+        $this->store->set('settings.downloads.qbittorrent_url', 'http://legacy:password@example.test/base?token=hidden');
+        $settings->apply();
+        $this->assertSame($default, config('javmeta_downloads.qbittorrent_url'));
+        $this->assertSame($default, $settings->get('downloads.qbittorrent_url'));
+        $this->actingAs(User::factory()->create(['role' => 'super_administrator']));
+        $page = $this->getJson('/ui-admin/settings')->assertOk();
+        $row = collect($page->json('data.settings'))->firstWhere('key', 'downloads.qbittorrent_url');
+        $this->assertSame($default, $row['value']);
+        $this->assertSame('default', $row['source']);
+        $this->assertNotEmpty($row['warning']);
+        $this->assertStringNotContainsString('legacy', $page->getContent());
+        $this->assertStringNotContainsString('hidden', $page->getContent());
+        $audit = $settings->set('downloads.qbittorrent_url', 'https://new.test');
+        $this->assertStringNotContainsString('password', json_encode($audit));
+        $this->assertStringNotContainsString('hidden', json_encode($audit));
+        $this->assertNull(collect($settings->all())->firstWhere('key', 'downloads.qbittorrent_url')['warning']);
+    }
+
+    public function test_url_credentials_are_redacted_from_audit_and_log_text_and_context(): void
+    {
+        $url = 'https://legacy:private-pass@example.test/base?access_token=private-query#private-fragment';
+        $sanitizer = app(TelemetrySanitizer::class);
+        $event = $sanitizer->sanitizeContext(['kind' => 'setting_changed', 'old' => $url]);
+        $this->assertSame('https://example.test/base', $event['old']);
+        $this->assertSame('Failed https://example.test/base', $sanitizer->sanitizeText('Failed ' . $url));
+        $handler = new TestHandler();
+        $monolog = new Logger('url-test', [$handler]);
+        $logger = new \Illuminate\Log\Logger($monolog);
+        (new RedactUrlSecrets())($logger);
+        $logger->error('Request {endpoint}', ['endpoint' => $url, 'nested' => ['address' => $url], 'exception' => new RuntimeException('Failed ' . $url)]);
+        $record = $handler->getRecords()[0];
+        $this->assertSame('https://example.test/base', $record->context['endpoint']);
+        $this->assertSame('https://example.test/base', $record->context['nested']['address']);
+        $this->assertStringNotContainsString('private-pass', $record->context['exception']);
+        $this->assertStringNotContainsString('private-query', $record->context['exception']);
+        $this->assertStringNotContainsString('private-fragment', $record->context['exception']);
+    }
+
+    public function test_repairing_a_legacy_url_emits_a_safe_setting_changed_event(): void
+    {
+        config(['openobserve.enabled' => true, 'openobserve.url' => 'http://openobserve.test', 'openobserve.org' => 'default', 'openobserve.stream_logs' => 'javmeta_logs']);
+        Http::fake(['openobserve.test/*' => Http::response([], 200)]);
+        $this->store->set('settings.downloads.qbittorrent_url', 'http://legacy:private-pass@example.test?token=private-query');
+        $this->actingAs(User::factory()->create(['role' => 'super_administrator']));
+        $this->putJson('/ui-admin/settings', ['settings' => ['downloads.qbittorrent_url' => 'https://repaired.test']])->assertOk();
+        Http::assertSent(static function ($request): bool {
+            $record = $request->data()[0] ?? [];
+
+            return ($record['kind'] ?? '') === 'setting_changed'
+                && ($record['new'] ?? '') === 'https://repaired.test'
+                && ! str_contains($request->body(), 'private-pass') && ! str_contains($request->body(), 'private-query');
+        });
+    }
+
+    public function test_configured_local_logger_redacts_urls_before_interpolating(): void
+    {
+        $path = storage_path('logs/url-redaction-test-' . uniqid() . '.log');
+        try {
+            config(['logging.channels.single.path' => $path]);
+            Log::forgetChannel('single');
+            $logger = Log::channel('single');
+            $logger->error('Failed {endpoint}', ['endpoint' => 'https://user:private-pass@example.test/api?token=private-query#fragment']);
+            $contents = file_get_contents($path);
+            $this->assertStringContainsString('https://example.test/api', $contents);
+            $this->assertStringNotContainsString('private-pass', $contents);
+            $this->assertStringNotContainsString('private-query', $contents);
+        } finally {
+            Log::forgetChannel('single');
+            if (is_file($path)) {
+                unlink($path);
+            }
+        }
     }
 }
