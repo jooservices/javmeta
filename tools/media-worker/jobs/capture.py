@@ -2,6 +2,7 @@
 import re
 import tempfile
 import xml.etree.ElementTree as ET
+from copy import deepcopy
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
@@ -108,6 +109,10 @@ def prepare_hls(text, url, directory, config, fetcher=fetch, state=None, mapper=
             variant = True
         lines.append(line)
     state['active'].remove(url)
+    # A local snapshot cannot refresh, so ffmpeg must see a finite playlist.
+    if any(line.strip().upper().startswith('#EXTINF:') for line in lines) and not any(
+            line.strip().upper() == '#EXT-X-ENDLIST' for line in lines):
+        lines.append('#EXT-X-ENDLIST')
     path.write_text('\n'.join(lines) + '\n')
     return path
 
@@ -119,6 +124,34 @@ def prepare_dash(text, url, directory, mapper=http_url):
         ET.register_namespace('', root.tag[1:].split('}', 1)[0])
     if root.tag.rsplit('}', 1)[-1] != 'MPD':
         raise ValueError('Invalid DASH manifest')
+    if root.attrib.get('type', 'static').lower() == 'dynamic':
+        raise ValueError('Dynamic DASH manifests are not supported')
+
+    def expand_templates(element, inherited=None):
+        own = next((child for child in element if child.tag.rsplit('}', 1)[-1] == 'SegmentTemplate'), None)
+        effective = deepcopy(inherited) if inherited is not None else None
+        if own is not None:
+            if effective is None:
+                effective = deepcopy(own)
+            else:
+                effective.attrib.update(own.attrib)
+                for child in own:
+                    for previous in list(effective):
+                        if previous.tag == child.tag:
+                            effective.remove(previous)
+                    effective.append(deepcopy(child))
+        if element.tag.rsplit('}', 1)[-1] == 'Representation' and effective is not None:
+            if own is not None:
+                element.remove(own)
+            element.append(effective)
+        elif own is not None and any(child.tag.rsplit('}', 1)[-1] == 'Representation' for child in element.iter()):
+            # Resolve inherited templates only after each representation's BaseURL is known.
+            element.remove(own)
+        for child in element:
+            expand_templates(child, effective)
+
+    expand_templates(root)
+
     def rewrite(element, inherited):
         tag = element.tag.rsplit('}', 1)[-1]
         if tag in ('Location', 'UTCTiming') or any('href' in key for key in element.attrib):

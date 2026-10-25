@@ -1,6 +1,7 @@
 import functools
 import subprocess
 import threading
+import xml.etree.ElementTree as ET
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -97,6 +98,8 @@ def test_generated_hls_capture_and_drm_refusal_with_real_ffmpeg(tmp_path, config
     subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc=size=160x120:rate=10',
                     '-t', '3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-threads', '1',
                     '-hls_time', '1', '-hls_list_size', '0', '-f', 'hls', str(source / 'index.m3u8')], check=True)
+    playlist = source / 'index.m3u8'
+    playlist.write_text(playlist.read_text().replace('#EXT-X-ENDLIST', ''))
     (source / 'drm.m3u8').write_text('#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI="key"\n')
     server = ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(QuietHandler, directory=str(source)))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -131,6 +134,14 @@ def test_generated_hls_capture_and_drm_refusal_with_real_ffmpeg(tmp_path, config
         assert not list(Path(config['output_folder']).glob('**/*.key'))
         subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=blue:s=160x120:d=2',
                         '-c:v', 'libx264', '-threads', '1', '-f', 'dash', str(source / 'plain.mpd')], check=True)
+        tree = ET.parse(source / 'plain.mpd')
+        for adaptation in tree.getroot().iter('{urn:mpeg:dash:schema:mpd:2011}AdaptationSet'):
+            representation = adaptation.find('{urn:mpeg:dash:schema:mpd:2011}Representation')
+            template = representation.find('{urn:mpeg:dash:schema:mpd:2011}SegmentTemplate')
+            representation.remove(template)
+            adaptation.append(template)
+            ET.SubElement(representation, '{urn:mpeg:dash:schema:mpd:2011}BaseURL').text = './'
+        tree.write(source / 'plain.mpd', encoding='utf-8', xml_declaration=True)
         try:
             dash = process({'id': 4, 'source_url': url + '/plain.mpd'}, config)
         except subprocess.CalledProcessError as error:
@@ -188,3 +199,57 @@ def test_discovered_playlist_still_refuses_drm(config, manifest):
         return (b'<video src="/stream.m3u8">' if url.endswith('/page') else manifest.encode()), url
     with pytest.raises(ValueError, match='DRM'):
         find_playlist('https://public.test/page', config, fake)
+
+
+@pytest.mark.parametrize('ended', [False, True])
+def test_hls_snapshot_is_finite_without_duplicate_endlist(tmp_path, config, ended):
+    text = '#EXTM3U\n#EXTINF:2,\nsegment.ts\n' + ('#EXT-X-ENDLIST\n' if ended else '')
+    path = prepare_hls(text, 'https://public.test/live.m3u8', tmp_path, config)
+    assert path.read_text().count('#EXT-X-ENDLIST') == 1
+    assert path.read_text().endswith('#EXT-X-ENDLIST\n')
+
+
+def test_hls_master_is_not_marked_as_a_media_snapshot(tmp_path, config):
+    def fake(url, config):
+        return b'#EXTM3U\n#EXTINF:2,\nsegment.ts', url
+    path = prepare_hls('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=100\nvariant.m3u8',
+                       'https://public.test/master.m3u8', tmp_path, config, fake)
+    assert '#EXT-X-ENDLIST' not in path.read_text()
+    assert (tmp_path / 'playlist-2.m3u8').read_text().endswith('#EXT-X-ENDLIST\n')
+
+
+@pytest.mark.parametrize('kind', ['dynamic', 'DYNAMIC'])
+def test_dynamic_dash_is_refused_before_writing(tmp_path, kind):
+    with pytest.raises(ValueError, match='Dynamic DASH'):
+        prepare_dash(f'<MPD type="{kind}"><Period/></MPD>', 'https://public.test/a.mpd', tmp_path)
+    assert not (tmp_path / 'manifest.mpd').exists()
+
+
+def test_dash_inherited_templates_use_each_representation_base_and_relay(tmp_path):
+    mapped = []
+    def mapper(url):
+        public_http.http_url(url)
+        mapped.append(url)
+        return url.replace('https://public.test/', 'http://127.0.0.1:12345/token/')
+    manifest = '<MPD type="static"><Period><AdaptationSet><SegmentTemplate media="seg-$Number$.m4s" initialization="init.mp4"><SegmentTimeline><S d="2"/></SegmentTimeline></SegmentTemplate><Representation id="low"><BaseURL>low/</BaseURL></Representation><Representation id="high"><BaseURL>high/</BaseURL><SegmentTemplate initialization="custom.mp4"/></Representation></AdaptationSet></Period></MPD>'
+    root = ET.parse(prepare_dash(manifest, 'https://public.test/a.mpd', tmp_path, mapper)).getroot()
+    for name, init in [('low', 'init.mp4'), ('high', 'custom.mp4')]:
+        template = root.find(f'.//Representation[@id="{name}"]/SegmentTemplate')
+        assert template.get('media') == f'http://127.0.0.1:12345/token/{name}/seg-$Number$.m4s'
+        assert template.get('initialization') == f'http://127.0.0.1:12345/token/{name}/{init}'
+        assert template.find('SegmentTimeline/S').get('d') == '2'
+        assert f'https://public.test/{name}/seg-$Number$.m4s' in mapped
+    assert root.find('.//AdaptationSet/SegmentTemplate') is None
+
+
+@pytest.mark.parametrize('reference', ['//private.test/seg.m4s', 'http://private.test/seg.m4s', 'file:///etc/passwd'])
+def test_dash_inherited_template_still_validates_absolute_references(tmp_path, monkeypatch, reference):
+    original = public_http.public_addresses
+    def addresses(host, port):
+        if host == 'private.test':
+            raise ValueError('Capture destination must be a public Internet address')
+        return original(host, port)
+    monkeypatch.setattr(public_http, 'public_addresses', addresses)
+    with pytest.raises(ValueError):
+        prepare_dash(f'<MPD><Period><AdaptationSet><SegmentTemplate media="{reference}"/><Representation><BaseURL>video/</BaseURL></Representation></AdaptationSet></Period></MPD>',
+                     'https://public.test/a.mpd', tmp_path)

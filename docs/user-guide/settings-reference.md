@@ -568,7 +568,7 @@ Văn bản. Mã mục: `media.api_url`.
 
 ### Thư mục output media
 
-Chỉ ghi ảnh và phụ đề tại đây; không ghi vào thư viện.
+Ghi ảnh, phụ đề và tệp MP4 đã ghi luồng tại đây; không ghi vào thư viện.
 
 Văn bản. Mã mục: `media.output_folder`.
 
@@ -632,7 +632,7 @@ Bật/tắt. Mã mục: `capture.enabled`.
 
 Giới hạn một lần ghi.
 
-Số nguyên; từ 1 đến 86400. Mã mục: `capture.max_duration_sec`.
+Số nguyên; từ 1 đến 72000. Mã mục: `capture.max_duration_sec`.
 
 ### Dung lượng ghi tối đa (byte)
 

@@ -8,7 +8,7 @@ Xử lý tệp phim trên máy: ảnh xem trước, tách cảnh, phụ đề, b
 
 ## Cách dùng
 
-Trong trang Thư viện, mỗi tệp có nút xem trước và tách cảnh. **Phụ đề** tạo phụ đề bằng nhận dạng giọng nói chạy trên GPU của máy; **Dịch EN / VI** dịch phụ đề bằng Ollama sau khi đã có phụ đề. Trang Media liệt kê các việc đang chờ, đang chạy, lỗi và thử lại. **Ghi luồng** nhận một địa chỉ luồng công khai; nút chỉ bật khi tính năng ghi luồng được bật trong Cài đặt, và luồng có DRM hoặc mã hoá bị từ chối. Tìm theo cảnh dùng mô tả cảnh được tạo cục bộ.
+Trong trang Thư viện, mỗi tệp có nút xem trước và tách cảnh. **Phụ đề** tạo phụ đề bằng nhận dạng giọng nói chạy trên GPU của máy; **Dịch EN / VI** dịch phụ đề bằng Ollama sau khi đã có phụ đề. Trang Media liệt kê các việc đang chờ, đang chạy, lỗi và thử lại. **Ghi luồng** nhận một địa chỉ luồng công khai; nút chỉ bật khi tính năng ghi luồng được bật trong Cài đặt, và luồng có DRM hoặc mã hoá bị từ chối, ngoại trừ AES-128 có khóa 16 byte tải công khai. DASH động chưa được hỗ trợ. Tìm theo cảnh dùng mô tả cảnh được tạo cục bộ.
 
 ## Nếu có vẻ sai
 
