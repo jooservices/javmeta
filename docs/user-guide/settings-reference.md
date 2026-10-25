@@ -515,3 +515,145 @@ Số nguyên; từ 1 đến 1440. Mã mục: `files.link_ttl_minutes`.
 Chỉ địa chỉ trong các mạng này mở được liên kết. Mặc định là mạng nội bộ.
 
 Danh sách văn bản. Mã mục: `files.allowed_networks`.
+
+## Xử lý media
+
+### Mô hình mô tả cảnh
+
+Mô hình vision Ollama nội bộ; tuyệt đối không gửi ảnh ra cloud.
+
+Văn bản. Mã mục: `media.vision_model`.
+
+### Chỉ mục tìm cảnh Elasticsearch
+
+Chỉ mục được tạo khi có vector đầu tiên. Đổi tên cần lập chỉ mục lại.
+
+Văn bản. Mã mục: `media.scenes_index`.
+
+### Số chiều vector cảnh
+
+Phải khớp dịch vụ embedder và mapping Elasticsearch.
+
+Số nguyên; từ 8 đến 8192. Mã mục: `media.embedding_dimensions`.
+
+### Mô hình dịch phụ đề
+
+Chỉ chạy mô hình Ollama cục bộ để dịch sang EN và VI.
+
+Văn bản. Mã mục: `media.translate_model`.
+
+### Số câu phụ đề mỗi đợt dịch
+
+Giữ nguyên mốc thời gian và số thứ tự.
+
+Số nguyên; từ 1 đến 100. Mã mục: `media.translate_batch_segments`.
+
+### Thời gian chờ Ollama media (giây)
+
+Lỗi thì dừng; không dùng cloud.
+
+Số nguyên; từ 1 đến 3600. Mã mục: `media.ollama_timeout_sec`.
+
+### Mô hình nhận dạng giọng nói
+
+Whisper chạy CUDA float16 trên GPU nội bộ; không chuyển sang cloud.
+
+Văn bản. Mã mục: `media.whisper_model`.
+
+### Địa chỉ JavMeta cho worker
+
+Địa chỉ nội bộ của API JavMeta.
+
+Văn bản. Mã mục: `media.api_url`.
+
+### Thư mục output media
+
+Chỉ ghi ảnh và phụ đề tại đây; không ghi vào thư viện.
+
+Văn bản. Mã mục: `media.output_folder`.
+
+### Số việc media đồng thời
+
+Giới hạn chung cho mọi worker.
+
+Số nguyên; từ 1 đến 16. Mã mục: `media.max_parallel`.
+
+### Số lần thử media tối đa
+
+Sau mức này cần chủ sở hữu bấm thử lại.
+
+Số nguyên; từ 1 đến 10. Mã mục: `media.max_attempts`.
+
+### Thời hạn lượt xử lý (giây)
+
+Phải lớn hơn thời gian tối đa một việc.
+
+Số nguyên; từ 60 đến 86400. Mã mục: `media.lease_seconds`.
+
+### Thời gian tối đa một việc media
+
+Dừng tiến trình quá hạn (giây).
+
+Số nguyên; từ 10 đến 72000. Mã mục: `media.job_timeout_sec`.
+
+### Nghỉ khi hàng đợi trống (giây)
+
+Worker đọc lại cấu hình mỗi lượt.
+
+Số nguyên; từ 1 đến 60. Mã mục: `media.poll_sec`.
+
+### Khoảng cách ảnh preview (giây)
+
+Lấy một ảnh sau mỗi khoảng này.
+
+Số nguyên; từ 1 đến 3600. Mã mục: `media.thumb_interval_sec`.
+
+### Ngưỡng chuyển cảnh
+
+Độ khác biệt hình ảnh để tách cảnh.
+
+Số thập phân; từ 0.01 đến 1. Mã mục: `media.scene_threshold`.
+
+### Số luồng ffmpeg
+
+Giới hạn CPU để giữ máy đáp ứng.
+
+Số nguyên; từ 1 đến 16. Mã mục: `media.ffmpeg_threads`.
+
+## Ghi luồng
+
+### Bật ghi luồng
+
+Mặc định TẮT. Chỉ bắt đầu từ thao tác rõ ràng của chủ sở hữu; luôn từ chối DRM.
+
+Bật/tắt. Mã mục: `capture.enabled`.
+
+### Thời lượng ghi tối đa (giây)
+
+Giới hạn một lần ghi.
+
+Số nguyên; từ 1 đến 86400. Mã mục: `capture.max_duration_sec`.
+
+### Dung lượng ghi tối đa (byte)
+
+Dừng trước khi đầy ổ đĩa.
+
+Số nguyên; từ 1048576 đến 1099511627776. Mã mục: `capture.max_bytes`.
+
+### Số playlist lồng nhau tối đa
+
+Từ chối vòng lặp và playlist quá lớn.
+
+Số nguyên; từ 1 đến 100. Mã mục: `capture.max_playlists`.
+
+### Dung lượng manifest tối đa (byte)
+
+Giới hạn trang HTML và playlist tải để kiểm tra.
+
+Số nguyên; từ 1024 đến 16777216. Mã mục: `capture.max_manifest_bytes`.
+
+### Thời gian chờ HTTP khi ghi (giây)
+
+Không dùng cookie hoặc tài khoản để vượt bảo vệ.
+
+Số nguyên; từ 1 đến 120. Mã mục: `capture.http_timeout_sec`.
