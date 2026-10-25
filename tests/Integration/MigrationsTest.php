@@ -28,8 +28,8 @@ final class MigrationsTest extends BaseTestCase
         self::assertTrue(Schema::hasTable('performer_name_keys'));
         self::assertTrue(Schema::hasTable('performer_name_grams'));
 
-        // The last eight migrations: identity event movie links, performer name grams and keys (JAVM-84), recrawl tracking (JAVM-82), canonical identity, queue start tracking (JAVM-81), performers.retired_date (JAVM-57), and failed reasons (JAVM-37).
-        self::assertSame(0, Artisan::call('migrate:rollback', ['--step' => 8, '--force' => true]), Artisan::output());
+        // The last sixteen migrations (the eight 2026-10-24 migrations on top of): identity event movie links, performer name grams and keys (JAVM-84), recrawl tracking (JAVM-82), canonical identity, queue start tracking (JAVM-81), performers.retired_date (JAVM-57), and failed reasons (JAVM-37).
+        self::assertSame(0, Artisan::call('migrate:rollback', ['--step' => 16, '--force' => true]), Artisan::output());
         self::assertFalse(Schema::hasColumn('movies', 'recrawl_attempts'));
         self::assertFalse(Schema::hasColumn('movies', 'recrawl_status'));
         self::assertFalse(Schema::hasColumn('crawl_queue', 'is_recrawl'));

@@ -28,6 +28,11 @@ final class SettingsServiceProvider extends ServiceProvider
             return;
         }
 
+        // Build steps such as package:discover boot the app before any key exists; the encrypted store cannot be built then.
+        if (empty(config('app.key'))) {
+            return;
+        }
+
         $this->app->booted(static fn() => app(SettingsService::class)->apply());
         Event::listen(JobProcessing::class, static fn() => app(SettingsService::class)->apply());
         Event::listen(CommandStarting::class, static fn() => app(SettingsService::class)->apply());

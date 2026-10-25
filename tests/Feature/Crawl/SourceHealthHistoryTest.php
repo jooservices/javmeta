@@ -25,7 +25,7 @@ final class SourceHealthHistoryTest extends TestCase
         File::delete($history);
 
         $sent = [];
-        $this->app->instance(ReportChannel::class, new class($sent) implements ReportChannel {
+        $this->app->instance(ReportChannel::class, new class ($sent) implements ReportChannel {
             /** @param list<string> $sent */
             public function __construct(public array &$sent) {}
 
