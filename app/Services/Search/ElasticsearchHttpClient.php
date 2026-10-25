@@ -137,7 +137,7 @@ final class ElasticsearchHttpClient
         if ($seconds <= 0) {
             throw new RuntimeException('Search HTTP budget exhausted.');
         }
-        $request = ($pending ?? Http::acceptJson())->acceptJson()->timeout($seconds)->connectTimeout($seconds);
+        $request = ($pending ?? Http::withOptions([]))->acceptJson()->timeout($seconds)->connectTimeout($seconds);
         if ($connectTimeout !== null) {
             $request = $request->connectTimeout($connectTimeout);
         }
