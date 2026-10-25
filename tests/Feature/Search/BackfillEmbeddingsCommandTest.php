@@ -127,8 +127,8 @@ final class BackfillEmbeddingsCommandTest extends TestCase
 
     public function test_metrics_omit_entities_skipped_when_the_limit_is_exhausted(): void
     {
-        Movie::factory()->create();
-        Performer::factory()->create();
+        Movie::factory()->create(['title_en' => fake()->sentence()]);
+        Performer::factory()->create(['name_romaji' => fake()->name()]);
         $this->configureSearchServices();
         $this->enableBackfillMetrics();
 
@@ -162,7 +162,7 @@ final class BackfillEmbeddingsCommandTest extends TestCase
 
     public function test_dry_run_counts_missing_vectors_without_health_checks_or_writes(): void
     {
-        Movie::factory()->create();
+        Movie::factory()->create(['title_en' => fake()->sentence()]);
         $this->configureSearchServices();
         Http::fake(function (ClientRequest $request) {
             if (str_ends_with($request->url(), '/_search')) {
@@ -186,8 +186,8 @@ final class BackfillEmbeddingsCommandTest extends TestCase
 
     public function test_command_stops_before_indexing_when_the_embedder_is_down_and_omits_unprocessed_entity_metrics(): void
     {
-        Movie::factory()->create();
-        Performer::factory()->create();
+        Movie::factory()->create(['title_en' => fake()->sentence()]);
+        Performer::factory()->create(['name_romaji' => fake()->name()]);
         $this->configureSearchServices();
         $this->enableBackfillMetrics();
         Http::fake(function (ClientRequest $request) {
@@ -219,7 +219,7 @@ final class BackfillEmbeddingsCommandTest extends TestCase
 
     public function test_command_fails_when_elasticsearch_cannot_compare_the_batch(): void
     {
-        Movie::factory()->create();
+        Movie::factory()->create(['title_en' => fake()->sentence()]);
         $this->configureSearchServices();
         Http::fake(static function (ClientRequest $request) {
             return str_ends_with($request->url(), '/_search')
