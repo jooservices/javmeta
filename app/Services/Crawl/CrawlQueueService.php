@@ -78,7 +78,7 @@ final class CrawlQueueService
     {
         $counts = [];
         foreach (CrawlQueue::query()->where('status', CrawlQueue::STATUS_CLAIMED)->select('source_slug', DB::raw('COUNT(*) AS total'))->groupBy('source_slug')->get() as $row) {
-            $counts[(string) $row->source_slug] = (int) $row->total;
+            $counts[(string) $row->source_slug] = (int) $row->getAttribute('total');
         }
 
         return $counts;

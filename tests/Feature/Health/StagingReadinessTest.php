@@ -51,7 +51,7 @@ final class StagingReadinessTest extends TestCase
         $history = storage_path('app/private/monitoring/readiness-history.jsonl');
         File::delete($history);
         $sent = [];
-        $this->app->instance(ReportChannel::class, new class($sent) implements ReportChannel {
+        $this->app->instance(ReportChannel::class, new class ($sent) implements ReportChannel {
             /** @param list<string> $sent */
             public function __construct(public array &$sent) {}
 

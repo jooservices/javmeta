@@ -47,7 +47,7 @@ final class CatalogController extends BaseApiController
         );
     }
 
-    /** @return array{items: list<array{name: string, movie_count: int}>, total: int} */
+    /** @return array{items: list<array<string, mixed>>, total: int} */
     private function load(string $kind, string $q, string $sort, int $perPage, int $page): array
     {
         if (isset(self::PERFORMER_KINDS[$kind])) {

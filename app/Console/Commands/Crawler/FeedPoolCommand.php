@@ -55,6 +55,7 @@ final class FeedPoolCommand extends Command
 
             return max(1.0, $source instanceof Source ? $throttle->currentGap($source) : 5.0);
         };
+        /** @var array<string, int> $budgetUsed */
         $budgetUsed = [];
         $exhausted = static function () use (&$waiting, &$budgetUsed, $horizon, $gapOf): array {
             $slugs = [];
@@ -104,14 +105,18 @@ final class FeedPoolCommand extends Command
                 $delay = (int) round($ahead * $gapOf($slug));
                 $budgetUsed[$slug] = ($budgetUsed[$slug] ?? 0) + 1;
 
-                match ($row->kind) {
-                    CrawlQueue::KIND_LISTING => FetchListingJob::dispatch($row->id, $traceparent, $workerId)->delay($delay),
-                    CrawlQueue::KIND_DETAIL => FetchDetailJob::dispatch($row->id, $traceparent, $workerId)->delay($delay),
-                    CrawlQueue::KIND_PERFORMER_LISTING => FetchPerformerListingJob::dispatch($row->id, $traceparent, $workerId)->delay($delay),
-                    CrawlQueue::KIND_PERFORMER_DETAIL => FetchPerformerDetailJob::dispatch($row->id, $traceparent, $workerId)->delay($delay),
-                    CrawlQueue::KIND_GALLERY => FetchGalleryJob::dispatch($row->id, $traceparent, $workerId)->delay($delay),
+                $pending = match ($row->kind) {
+                    CrawlQueue::KIND_LISTING => FetchListingJob::dispatch($row->id, $traceparent, $workerId),
+                    CrawlQueue::KIND_DETAIL => FetchDetailJob::dispatch($row->id, $traceparent, $workerId),
+                    CrawlQueue::KIND_PERFORMER_LISTING => FetchPerformerListingJob::dispatch($row->id, $traceparent, $workerId),
+                    CrawlQueue::KIND_PERFORMER_DETAIL => FetchPerformerDetailJob::dispatch($row->id, $traceparent, $workerId),
+                    CrawlQueue::KIND_GALLERY => FetchGalleryJob::dispatch($row->id, $traceparent, $workerId),
                     default => null,
                 };
+                // A zero delay would still park the job in the delayed set; only pace the rows that really wait.
+                if ($delay > 0) {
+                    $pending?->delay($delay);
+                }
 
                 $dispatched++;
             }

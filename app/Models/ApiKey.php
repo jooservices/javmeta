@@ -33,6 +33,7 @@ class ApiKey extends Model
     /** A key without scopes (null) may use everything. */
     public function allows(string $scope): bool
     {
+        /** @var list<string>|null $scopes */
         $scopes = $this->scopes;
 
         return $scopes === null || in_array($scope, $scopes, true);

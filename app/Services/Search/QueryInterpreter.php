@@ -82,7 +82,11 @@ final class QueryInterpreter
         // Names that exist in the catalog: longest first, so "Sample Maker 03" wins over "Sample".
         foreach (['maker' => 'makers', 'series' => 'series', 'genre' => 'genres'] as $field => $list) {
             foreach ($this->names($list) as $name) {
-                if (mb_strlen($name) >= 3 && ($pos = mb_stripos($rest, $name)) !== false && ! isset($filters[$field])) {
+                if (mb_strlen($name) < 3 || isset($filters[$field])) {
+                    continue;
+                }
+                $pos = mb_stripos($rest, $name);
+                if ($pos !== false) {
                     $filters[$field] = $name;
                     $rest = mb_substr($rest, 0, $pos) . ' ' . mb_substr($rest, $pos + mb_strlen($name));
                     break;
@@ -149,7 +153,8 @@ final class QueryInterpreter
         $words = preg_split('/\s+/u', trim($text)) ?: [];
         $candidates = [];
         for ($n = 3; $n >= 2; $n--) {
-            for ($i = 0; $i + $n <= count($words); $i++) {
+            $total = count($words);
+            for ($i = 0; $i + $n <= $total; $i++) {
                 $candidates[] = mb_strtolower(implode(' ', array_slice($words, $i, $n)));
             }
         }

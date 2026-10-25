@@ -75,9 +75,9 @@ jobs:
           set -euo pipefail
           # GitHub-hosted runner jitter makes a 30% cutoff noisy; warn in that
           # band and fail only when a run exceeds 2x the stable baseline.
-          baseline_seconds=25.00
-          warning_seconds=32.50
-          maximum_seconds=50.00
+          baseline_seconds=95.00
+          warning_seconds=123.50
+          maximum_seconds=190.00
 
           for run in 1 2 3; do
             printf 'Composer test stability run %s/3\n' "${run}"

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Search;
 
-use App\Models\Movie;
 use App\Services\Auth\ApiKeyService;
 use App\Services\Dataset\SampleDataset;
 use App\Services\Search\QueryInterpreter;

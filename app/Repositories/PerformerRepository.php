@@ -104,6 +104,8 @@ final class PerformerRepository extends EloquentRepository implements Repository
     /**
      * @param  Builder<Model>  $query
      * @param  array<string, mixed>  $filters
+     *
+     * @SuppressWarnings("PHPMD.ExcessiveMethodLength")
      */
     private function applyFilters(Builder $query, array $filters): void
     {

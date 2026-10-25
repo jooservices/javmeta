@@ -121,6 +121,8 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
 
     /**
      * @param  array<string, mixed>  $filters
+     *
+     * @SuppressWarnings("PHPMD.ExcessiveMethodLength")
      */
     private function applyFilters(Builder $query, array $filters, ?string $q): void
     {
