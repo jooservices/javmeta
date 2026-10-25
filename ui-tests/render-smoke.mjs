@@ -198,3 +198,20 @@ const captureHtml = (await mediaView.render({ query: {} })).html;
 assert.match(captureHtml, /data-capture/); assert.match(captureHtml, /Mở tệp đã ghi/);
 assert.ok(!captureHtml.includes('Tệp #undefined'));
 globalThis.fetch = normalFetch;
+
+// Replacement metacharacters in API data must remain literal when appending panels.
+{
+  const previousFetch = globalThis.fetch;
+  const literal = '$& $$ $1';
+  globalThis.fetch = async url => {
+    if (url.startsWith('/ui-me/media/files')) return jsonResponse({ data: { data: [{ id: 1, code: null, path: '/generated/' + literal + '.mp4' }] } });
+    if (url.startsWith('/ui-api/scenes/search')) return jsonResponse({ data: [{ movie_code: 'AAA-001', library_file_id: 1, start_sec: 12, description: literal }] });
+    return previousFetch(url);
+  };
+  try {
+    const library = await (await load('views/libraryPage.js')).render({ params: {}, query: {} });
+    assert.ok(library.html.includes('/generated/$&amp; $$ $1.mp4'));
+    const search = await (await load('views/search.js')).render({ params: {}, query: { q: 'literal' } });
+    assert.ok(search.html.includes('$&amp; $$ $1'));
+  } finally { globalThis.fetch = previousFetch; }
+}

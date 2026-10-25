@@ -36,8 +36,9 @@ def translate(segments, language, config, model_chat=chat):
         last_error = None
         for _ in range(2):
             try:
-                rows = model_chat(config, config['translate_model'], prompt).get('segments')
-                if not isinstance(rows, list) or [r.get('id') for r in rows] != [r['id'] for r in items]:
+                response = model_chat(config, config['translate_model'], prompt)
+                rows = response.get('segments') if isinstance(response, dict) else None
+                if not isinstance(rows, list) or any(not isinstance(r, dict) for r in rows) or [r.get('id') for r in rows] != [r['id'] for r in items]:
                     raise ValueError('Translation changed subtitle numbering')
                 if any(not isinstance(r.get('text'), str) or not r['text'].strip() for r in rows):
                     raise ValueError('Translation returned empty text')

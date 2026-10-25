@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 from urllib.parse import unquote
 
-PATTERN = re.compile(r'\b(underage|under[ -]?18|under[ -]?age|minors?|child(?:ren)?|schoolgirls?|loli(?:ta)?|shota)\b|未成年|児童|小学生|中学生|幼女', re.I)
+PATTERN = re.compile(r'(?<![A-Za-z0-9])(underage|under[ -]?18|under[ -]?age|minors?|child(?:ren)?|schoolgirls?|loli(?:ta)?|shota)(?![A-Za-z0-9])|未成年|児童|小学生|中学生|幼女', re.I)
 
 
 def assert_content(text):

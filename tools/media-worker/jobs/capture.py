@@ -4,37 +4,22 @@ import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
-from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from jobs.policy import assert_content
+from jobs.public_http import http_url, media_relay, open_public
 from jobs.video import ffmpeg, run
 
 DRM = re.compile(r'com\.apple\.streamingkeydelivery|widevine|playready|sample-aes|contentprotection|skd://', re.I)
 ATTR = re.compile(r'([A-Z0-9-]+)=("[^"]*"|[^,]*)', re.I)
 
 
-def http_url(url):
-    p = urlsplit(url)
-    if p.scheme not in ('http', 'https') or not p.hostname or p.username or p.password:
-        raise ValueError('Only anonymous HTTP(S) capture is supported')
-    return url
-
-
-class Redirect(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        http_url(newurl)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
 def fetch(url, config, max_bytes=None):
-    http_url(url)
-    req = Request(url, headers={'User-Agent': 'JavMeta-local-capture'})
-    with build_opener(ProxyHandler({}), Redirect()).open(req, timeout=int(config['capture']['http_timeout_sec'])) as response:
+    with open_public(url, int(config['capture']['http_timeout_sec'])) as (response, final):
         limit = int(max_bytes or config['capture']['max_manifest_bytes'])
         body = response.read(limit + 1)
         if len(body) > limit:
             raise ValueError('Capture manifest exceeds configured size limit')
-        return body, http_url(response.geturl())
+        return body, final
 
 
 def check_manifest(text):
@@ -46,8 +31,14 @@ def check_manifest(text):
 def find_playlist(url, config, fetcher=fetch):
     body, final = fetcher(http_url(url), config)
     text = body.decode('utf-8-sig')
-    check_manifest(text)
-    if text.lstrip().startswith('#EXTM3U') or '<MPD' in text or ':MPD' in text:
+    is_manifest = text.lstrip().startswith('#EXTM3U')
+    if not is_manifest:
+        try:
+            is_manifest = ET.fromstring(text).tag.rsplit('}', 1)[-1] == 'MPD'
+        except ET.ParseError:
+            pass
+    if is_manifest:
+        check_manifest(text)
         return text, final
     match = re.search(r'''(?:https?://[^\s"'<>]+|[^\s"'<>]+)\.(?:m3u8|mpd)(?:\?[^\s"'<>]*)?''', text.replace('\\/', '/'), re.I)
     if not match:
@@ -59,7 +50,7 @@ def find_playlist(url, config, fetcher=fetch):
     return text, final
 
 
-def prepare_hls(text, url, directory, config, fetcher=fetch, state=None):
+def prepare_hls(text, url, directory, config, fetcher=fetch, state=None, mapper=http_url):
     state = state if state is not None else {'count': 0, 'seen': {}, 'active': set()}
     if url in state['active']:
         raise ValueError('Cyclic HLS playlist refused')
@@ -96,17 +87,21 @@ def prepare_hls(text, url, directory, config, fetcher=fetch, state=None):
             line = re.sub(r'URI=(?:"[^"]*"|[^,]*)', f'URI="{keypath}"', line, flags=re.I)
         elif stripped.startswith('#') and 'URI=' in stripped.upper():
             def rewrite(m):
-                target = http_url(urljoin(url, m.group(1)))
+                target = http_url(urljoin(url, m.group(1).strip('"')))
                 if stripped.upper().startswith(('#EXT-X-MEDIA:', '#EXT-X-I-FRAME-STREAM-INF:')):
                     child, final = fetcher(target, config)
-                    target = str(prepare_hls(child.decode('utf-8-sig'), final, directory, config, fetcher, state))
+                    target = str(prepare_hls(child.decode('utf-8-sig'), final, directory, config, fetcher, state, mapper))
+                else:
+                    target = mapper(target)
                 return f'URI="{target}"'
-            line = re.sub(r'URI="([^"]*)"', rewrite, line, flags=re.I)
+            line = re.sub(r'URI=("[^"]*"|[^,\s]+)', rewrite, line, flags=re.I)
         elif stripped and not stripped.startswith('#'):
             target = http_url(urljoin(url, stripped))
             if variant or urlsplit(target).path.lower().endswith('.m3u8'):
                 child, final = fetcher(target, config)
-                target = str(prepare_hls(child.decode('utf-8-sig'), final, directory, config, fetcher, state))
+                target = str(prepare_hls(child.decode('utf-8-sig'), final, directory, config, fetcher, state, mapper))
+            else:
+                target = mapper(target)
             line = target
             variant = False
         if stripped.upper().startswith('#EXT-X-STREAM-INF:'):
@@ -117,7 +112,7 @@ def prepare_hls(text, url, directory, config, fetcher=fetch, state=None):
     return path
 
 
-def prepare_dash(text, url, directory):
+def prepare_dash(text, url, directory, mapper=http_url):
     check_manifest(text)
     root = ET.fromstring(text)
     if root.tag.startswith('{'):
@@ -147,6 +142,12 @@ def prepare_dash(text, url, directory):
         base = ET.Element(namespace + 'BaseURL')
         base.text = urljoin(url, '.')
         root.insert(0, base)
+    for element in root.iter():
+        if element.tag.rsplit('}', 1)[-1] == 'BaseURL':
+            element.text = mapper(element.text)
+        for key, value in element.attrib.items():
+            if key in ('media', 'initialization', 'sourceURL', 'index'):
+                element.set(key, mapper(value))
     path = Path(directory) / 'manifest.mpd'
     ET.ElementTree(root).write(path, encoding='utf-8', xml_declaration=True)
     return path
@@ -161,8 +162,8 @@ def process(job, config):
     out.mkdir(parents=True, exist_ok=True)
     destination = out / 'capture.mp4'
     # Decryption keys and vetted manifests are temporary, private and never logged.
-    with tempfile.TemporaryDirectory(prefix='capture-', dir=out) as private:
-        manifest = prepare_hls(text, url, private, config) if text.lstrip().startswith('#EXTM3U') else prepare_dash(text, url, private)
+    with tempfile.TemporaryDirectory(prefix='capture-', dir=out) as private, media_relay(config) as mapper:
+        manifest = prepare_hls(text, url, private, config, mapper=mapper) if text.lstrip().startswith('#EXTM3U') else prepare_dash(text, url, private, mapper)
         # HLS URLs need not have media extensions; every local key and remote URI was vetted above.
         options = ['-f', 'hls', '-allowed_extensions', 'ALL'] if text.lstrip().startswith('#EXTM3U') else ['-f', 'dash']
         run(ffmpeg(config) + options + ['-protocol_whitelist', 'file,http,https,tcp,tls,crypto', '-i', str(manifest),

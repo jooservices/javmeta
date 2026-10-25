@@ -9,6 +9,7 @@ import logging
 import socket
 import time
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from jobs.errors import JobError
@@ -62,7 +63,13 @@ def step(credentials, worker):
         body['error'] = 'Media processing failed; check local runtime health and job settings.'
         request(credentials, f"jobs/{job['id']}/fail", body)
     else:
-        request(credentials, f"jobs/{job['id']}/complete", body)
+        try:
+            request(credentials, f"jobs/{job['id']}/complete", body)
+        except HTTPError as error:
+            if error.code != 422:
+                raise
+            request(credentials, f"jobs/{job['id']}/fail",
+                    {'claim_token': body['claim_token'], 'error': str(JobError('failed'))})
     return 0
 
 

@@ -32,3 +32,25 @@ def test_worker_reports_result_with_claim_and_sanitizes_failures(monkeypatch):
 def test_invalid_lease_is_rejected_before_starting_process():
     with pytest.raises(ValueError, match='Lease'):
         worker.execute({}, {'job_timeout_sec': 5, 'lease_seconds': 5})
+
+
+@pytest.mark.parametrize('status', [422, 409, 500])
+def test_rejected_completion_fails_only_validation_errors(monkeypatch, status):
+    from urllib.error import HTTPError
+    calls = []
+    def request(credentials, path, body=None):
+        calls.append((path, body))
+        if path == 'config': return {}
+        if path.startswith('jobs/next'): return {'id': 5, 'claim_token': 'claim'}
+        if path.endswith('/complete'): raise HTTPError('private URL', status, 'private response', {}, None)
+    monkeypatch.setattr(worker, 'request', request)
+    monkeypatch.setattr(worker, 'execute', lambda *a: {'private': 'result'})
+    if status != 422:
+        with pytest.raises(HTTPError): worker.step({}, 'test')
+        assert calls[-1][0] == 'jobs/5/complete'
+    else:
+        assert worker.step({}, 'test') == 0
+        assert calls[-1][0] == 'jobs/5/fail'
+        assert calls[-1][1]['claim_token'] == 'claim'
+        assert 'private' not in str(calls[-1][1])
+        assert 'result' not in calls[-1][1]

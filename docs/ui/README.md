@@ -111,3 +111,5 @@ Per-file Media actions include **Phụ đề** (local GPU Whisper) and **Dịch 
 **Phát** on an on-disk movie opens `#/player/:code`. It has native video controls, a file selector, original/EN/VI subtitle selection, scene seek buttons, explicit loading/playback errors and a layout that wraps at 375 px. A search scene deep link selects the file and start time. Reload renews signed links.
 
 The Media page has **Ghi luồng** with a URL field. It remains disabled until capture is enabled in Settings. Each submit creates one explicit owner job; DRM/encryption refusals appear in the queue. Finished captures expose a signed **Mở tệp đã ghi** link when file serving is enabled. Capture is never offered as an automatic or bulk library action.
+
+Capture refuses internal-network and cloud-metadata destinations, including redirects and segment hosts. Library paths and scene descriptions containing dollar signs render literally. A rejected worker result appears through the normal failure/retry flow instead of occupying a running slot until its lease expires.

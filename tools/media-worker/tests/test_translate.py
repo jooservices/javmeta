@@ -62,3 +62,21 @@ def test_end_to_end_local_stub_writes_all_four_files(tmp_path):
         assert '00:00:00.250 --> 00:00:02.500' in (tmp_path / '9/subtitles.vi.vtt').read_text()
     finally:
         server.shutdown(); server.server_close(); thread.join()
+
+
+@pytest.mark.parametrize('bad', [{'segments': ['text']}, {'segments': [None]}, {'segments': [42]}, [], None])
+def test_nonobject_translation_rows_retry_and_can_recover(bad):
+    responses = iter([bad, {'segments': [{'id': 1, 'text': 'Hello'}]}])
+    cues = [{'start': 0, 'end': 1, 'text': 'original'}]
+    result = translate(cues, 'en', {'translate_batch_segments': 2, 'translate_model': 'local'}, lambda *a: next(responses))
+    assert result == [{'start': 0, 'end': 1, 'text': 'Hello'}]
+
+
+def test_nonobject_translation_rows_exhaust_both_attempts():
+    calls = []
+    def bad(*args):
+        calls.append(1)
+        return {'segments': ['bad']}
+    with pytest.raises(ValueError, match='invalid JSON cues'):
+        translate([{'start': 0, 'end': 1, 'text': 'original'}], 'en', {'translate_batch_segments': 2, 'translate_model': 'local'}, bad)
+    assert len(calls) == 2
