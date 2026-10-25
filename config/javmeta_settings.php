@@ -26,6 +26,7 @@ return [
         'follow_notifications' => 'Thông báo theo dõi (Telegram)',
         'domains' => 'Tên miền',
         'library' => 'Thư viện trên đĩa',
+        'dataset' => 'Dữ liệu mẫu',
         'downloads' => 'Tải về (qBittorrent)',
         'files' => 'Máy chủ tệp',
         'media' => 'Xử lý media',
@@ -33,6 +34,7 @@ return [
     ],
 
     'definitions' => [
+        'dataset.allowed_databases' => ['group' => 'dataset', 'label' => 'Cơ sở dữ liệu cho phép nạp dữ liệu mẫu', 'description' => 'Chỉ cho phép nạp và xóa dữ liệu mẫu trên các cơ sở dữ liệu này; ngoài kiểm thử luôn cần --force.', 'type' => 'string_list', 'config' => ['javmeta_dataset.allowed_databases']],
         'perf.warm_enabled' => ['group' => 'search', 'label' => 'Làm ấm bộ nhớ đệm', 'description' => 'Tự làm mới trạng thái và bộ lọc toàn bộ danh mục theo lịch, giảm thời gian chờ khi bộ nhớ đệm hết hạn.', 'type' => 'bool', 'config' => ['javmeta_perf.warm_enabled']],
 
         'search.budget_ms' => ['group' => 'search', 'label' => 'Ngân sách tìm kiếm (mili giây)', 'description' => 'Tổng thời gian dành cho HTTP tùy chọn trong một lượt tìm kiếm kết hợp. Hết thời gian thì trả kết quả từ khóa; không giới hạn truy vấn cơ sở dữ liệu.', 'type' => 'int', 'config' => ['javmeta_search.budget_ms'], 'min' => 25, 'max' => 1500],

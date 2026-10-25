@@ -76,3 +76,5 @@ MongoDB uses the Database Tools archive and gzip options documented by MongoDB
 [mongorestore](https://www.mongodb.com/docs/database-tools/mongorestore/)).
 Artifacts are encrypted with age recipients and decrypted only from an
 owner-provided identity ([age usage](https://github.com/FiloSottile/age)).
+
+Staging daily backups and quick deployment dumps share `retention.sh`. Retention validates a positive integer (up to nine digits), sorts timestamp-based names with NUL delimiters, and removes only verified direct children of the canonical backup root. Directory symlinks are excluded; whitespace, quotes and option-like names remain single paths. `tests/Shell/retention.test.sh` verifies both retention modes and the daily script using temporary data and a dump stub.

@@ -24,6 +24,11 @@ dry_run=0
 log() { printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*"; }
 die() { log "ERROR: $*" >&2; exit 1; }
 
+# shellcheck source=deploy/backup/retention.sh
+source "${SCRIPT_DIR}/retention.sh"
+validate_retention "${KEEP}" || die 'Invalid backup retention.'
+[[ -n "${BACKUP_ROOT}" && "${BACKUP_ROOT}" != / ]] || die 'Invalid backup root.'
+
 stamp="$(date -u '+%Y%m%dT%H%M%SZ')"
 dir="${BACKUP_ROOT}/daily/${stamp}"
 log "Backup of ${DATABASE} to ${dir}"
@@ -49,6 +54,5 @@ chmod 644 "${MANIFEST}.tmp"            # the web user reads it through the ACL o
 mv -f -- "${MANIFEST}.tmp" "${MANIFEST}"
 
 # retention: keep the newest $KEEP daily folders
-# shellcheck disable=SC2012
-ls -1dt "${BACKUP_ROOT}"/daily/*/ 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm -rf --
+prune_backups "${BACKUP_ROOT}/daily" "${KEEP}" directories
 log "Backup finished (${size} bytes)."

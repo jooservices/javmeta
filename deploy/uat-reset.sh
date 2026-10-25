@@ -22,6 +22,7 @@ die() { log "ERROR: $*" >&2; exit 1; }
 load_environment uat
 POSTGRES_DATABASE="${JAVMETA_DEPLOY_POSTGRES_DATABASE:-${POSTGRES_DATABASE_DEFAULT}}"
 APP_DIR="${JAVMETA_APP_DIR:-${APP_DIR_DEFAULT}}"
+UAT_APP_DIR="${APP_DIR_DEFAULT}"
 
 load_environment staging
 STAGING_DATABASE="${POSTGRES_DATABASE_DEFAULT}"
@@ -39,10 +40,17 @@ run() {
   "$@"
 }
 
-[[ -d "${APP_DIR}" ]] || { (( dry_run == 1 )) || die "${APP_DIR} does not exist: the UAT clone is not set up."; }
+# Even dry runs must prove the application targets; environment labels alone are not evidence.
+APP_DIR="$(cd -- "${APP_DIR}" && pwd -P)" || die 'Cannot enter the UAT app directory.'
+APPROVED_APP_DIR="$(cd -- "${UAT_APP_DIR}" && pwd -P)" || die 'The approved UAT clone is not set up.'
+[[ "${APP_DIR}" == "${APPROVED_APP_DIR}" ]] || die 'The app directory is not the approved UAT clone.'
+[[ "${APP_DIR}" != "$(realpath -m -- "${APP_DIR_DEFAULT}")" ]] || die 'The app directory is the staging clone.'
+verified="$(cd -- "${APP_DIR}" && "${RUNTIME}" php@8.5 php artisan ops:uat-targets --no-ansi)" \
+  || die 'Effective UAT target verification failed; no services have been stopped.'
+[[ "${verified}" == UAT_TARGETS_VERIFIED ]] || die 'Unexpected target verification response.'
 log "Resetting UAT: database ${POSTGRES_DATABASE}, app ${APP_DIR}."
 run systemctl --user stop javmeta-uat-scheduler.service javmeta-uat-horizon.service
-(cd "${APP_DIR}" 2>/dev/null || true; run "${RUNTIME}" php@8.5 php "${APP_DIR}/artisan" migrate:fresh --force)
-(cd "${APP_DIR}" 2>/dev/null || true; run "${RUNTIME}" php@8.5 php "${APP_DIR}/artisan" dataset:load sample --index)
+(cd -- "${APP_DIR}" && run "${RUNTIME}" php@8.5 php "${APP_DIR}/artisan" migrate:fresh --force)
+(cd -- "${APP_DIR}" && run "${RUNTIME}" php@8.5 php "${APP_DIR}/artisan" dataset:load sample --index --force)
 run systemctl --user start javmeta-uat-horizon.service javmeta-uat-scheduler.service
 log 'UAT is back to the sample dataset.'

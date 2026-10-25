@@ -135,4 +135,33 @@ final class LibraryTest extends TestCase
         $this->assertEqualsCanonicalizing(['SSIS-123', 'ABP-045'], $on);
         $this->assertSame(['NOT-001'], $off);
     }
+    public function test_directory_and_file_symlinks_outside_root_and_cycles_are_skipped(): void
+    {
+        mkdir($this->root . '/outside');
+        file_put_contents($this->root . '/outside/OUT-001.mp4', 'private');
+        symlink($this->root . '/outside', $this->root . '/a/outside');
+        symlink($this->root . '/a', $this->root . '/a/again');
+        symlink($this->root . '/outside/OUT-001.mp4', $this->root . '/a/OUT-001.mp4');
+        $result = app(LibraryScanner::class)->scan();
+        $this->assertSame(3, $result['seen']);
+        $this->assertSame([], $result['errors']);
+        $this->assertSame(0, DB::table('library_files')->where('path', 'like', '%OUT-001%')->count());
+        $this->assertSame(3, DB::table('library_files')->count());
+    }
+
+    public function test_unreadable_subtree_keeps_previously_seen_rows(): void
+    {
+        $scanner = app(LibraryScanner::class);
+        $scanner->scan();
+        chmod($this->root . '/a/deep', 0000);
+        clearstatcache();
+        try {
+            $result = $scanner->scan();
+            $this->assertNotEmpty($result['errors']);
+            $this->assertSame(0, $result['missing']);
+            $this->assertNull(DB::table('library_files')->where('path', 'like', '%abp045%')->value('missing_at'));
+        } finally {
+            chmod($this->root . '/a/deep', 0777);
+        }
+    }
 }
