@@ -244,6 +244,9 @@ final class SettingsTest extends TestCase
         $this->assertStringNotContainsString('private-pass', $record->context['exception']);
         $this->assertStringNotContainsString('private-query', $record->context['exception']);
         $this->assertStringNotContainsString('private-fragment', $record->context['exception']);
+        $safeException = new RuntimeException('Connection refused');
+        $logger->error('Request failed', ['exception' => $safeException]);
+        $this->assertSame($safeException, $handler->getRecords()[1]->context['exception'], 'ordinary exceptions retain structured logging metadata');
     }
 
     public function test_repairing_a_legacy_url_emits_a_safe_setting_changed_event(): void

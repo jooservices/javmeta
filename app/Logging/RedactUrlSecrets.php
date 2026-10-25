@@ -28,7 +28,10 @@ final class RedactUrlSecrets
     {
         foreach ($context as $key => $value) {
             if ($value instanceof Throwable) {
-                $value = (string) $value;
+                $original = (string) $value;
+                $clean = SettingUrl::redactText($original);
+                // Keep structured exception metadata unless it would expose URL credentials.
+                $value = $clean === $original ? $value : $clean;
             }
             $context[$key] = is_array($value) ? $this->context($value) : (is_string($value) ? SettingUrl::redactText($value) : $value);
         }
