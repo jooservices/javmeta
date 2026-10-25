@@ -11,6 +11,7 @@ use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Services\Crawl\PerformerDraftSink;
+use App\Services\Crawl\FetchAttemptRecorder;
 use App\Services\Crawl\SourceActivityRecorder;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawler\CrawlerxClient;
@@ -66,6 +67,7 @@ final class FetchPerformerDetailJob implements ShouldQueue
         }
 
         $result = $client->fetchPerformerDetail($row->source_slug, $row->url);
+        app(FetchAttemptRecorder::class)->record($row, $result);
         if (! $result->ok || $result->performer === null) {
             $this->onCrawlFailure($row, $source, $result, $activity, $throttle);
 

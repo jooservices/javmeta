@@ -140,3 +140,26 @@ stream: fetches per minute by source; per source the fetch count, success rate a
 code; the last 20 failed fetches with source, error code, HTTP status, method, page and message; the last 20 errors with
 exception class, message, file and line; crawl events by kind; new versus updated movies per minute; and the adaptive
 request gap per source (metric `javmeta_source_gap_seconds`).
+
+## Fetch attempts
+
+`crawl_fetch_attempts` stores one row per attempted request or visited skip from
+CrawlerX, for listing, detail, performer and gallery jobs. Successful requests
+are included. Older CrawlerX releases without `started_at`, `duration_ms` and
+`outcome` are accepted but do not create diagnostic rows. Deploy this consumer
+independently, then upgrade CrawlerX after its diagnostics release is available;
+no dependency bump or fallback selection change is included here.
+
+Rows contain the source, optional queue ID, SHA-256 URL hash, method, UTC start,
+duration, nullable HTTP status and `cf-mitigated`, outcome, error code and a
+500-character error. Raw URLs are redacted from error text. Queue IDs intentionally
+have no foreign key so diagnostics survive queue cleanup.
+
+Run `php artisan crawler:fetch-report onejav --hours=24` to see counts by method
+and outcome and the top five error texts (including skip reasons). The default
+window is 24 hours; an empty result is reported explicitly.
+`crawler:prune-fetch-attempts` runs daily and removes only rows strictly older
+than `observability.fetch_attempts_retention_days` (default 14), editable on
+Cài đặt / Giám sát. Indexes cover `(source_slug, created_at)` for reports and
+`created_at` for retention. The migration is reversible and creates an empty
+table; it does not scan or backfill the crawl queue.

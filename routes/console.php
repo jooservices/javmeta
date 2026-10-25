@@ -25,6 +25,7 @@ if (! app()->runningUnitTests()) {
     Schedule::command('crawler:recrawl-incomplete')->hourly()->withoutOverlapping();
     Schedule::command('search:backfill-embeddings')->hourly()->withoutOverlapping();
     Schedule::command('crawler:watchdog')->everyFiveMinutes();
+    Schedule::command('crawler:prune-fetch-attempts')->daily()->withoutOverlapping();
     Schedule::command('crawler:source-health')->dailyAt('04:00')->withoutOverlapping(120)->runInBackground();
     Schedule::command('staging:readiness')->hourly()->withoutOverlapping();
     Schedule::command('telegram:poll')->everyMinute()->withoutOverlapping();
