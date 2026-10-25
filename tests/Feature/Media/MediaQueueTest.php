@@ -123,5 +123,4 @@ final class MediaQueueTest extends TestCase
             rmdir($dir);
         }
     }
-
 }
