@@ -61,9 +61,12 @@ Status: Beta — v0.1.0-beta
 
 | What | Where |
 |---|---|
+| User guide (Vietnamese) | [Topics, menus, troubleshooting](docs/user-guide/README.md) |
+| Developer guide (English) | [Architecture, tests, extension checklists, API and MCP](docs/developer-guide/README.md) |
+| Settings reference (generated) | [Every group and setting](docs/user-guide/settings-reference.md) |
 | Web UI (owner login) | `/app`; how it works: [docs/ui/README.md](docs/ui/README.md) |
 | API contract (OpenAPI) | `/api/openapi.json`, source `resources/openapi/javmeta.json`; notes in [api-contract.md](docs/03-operations/api-contract.md) |
-| API keys, scopes, limits | the Admin page of the UI, `POST /api/v1/admin/keys` |
+| API keys, scopes, limits | Quản trị in the UI; [keys, scopes and tested curl examples](docs/developer-guide/api-cookbook.md) |
 | Run, stop and recover staging | [staging-runbook.md](docs/03-operations/staging-runbook.md) (`php artisan staging:readiness` is the one-command health answer) |
 | Staging and UAT, deploy, reset | [environments.md](docs/03-operations/environments.md) |
 | Backups and restore | [backup.md](docs/03-operations/backup.md) |
