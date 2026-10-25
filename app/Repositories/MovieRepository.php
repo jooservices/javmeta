@@ -325,7 +325,6 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
                     ->orWhere('display_code', 'like', $pattern)
                     ->orWhere('code_normalized', 'like', $pattern);
             }
-
         });
         // A UNION lets the full-text and performer branches use their indexes independently.
         $matching->union(self::movieIdsOfPerformers(self::performerIdsMatching($like, $pattern)));
