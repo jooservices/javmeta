@@ -37,12 +37,36 @@ final class ElasticsearchHttpClientTest extends TestCase
         $requests = Http::recorded()->map(static fn(array $recorded): ClientRequest => $recorded[0]);
         self::assertCount(5, $requests);
         foreach ($requests as $request) {
+            self::assertSame(['application/json'], $request->header('Accept'));
             self::assertTrue($request->hasHeader(
                 'Authorization',
                 'Basic ' . base64_encode('javmeta-test-user:javmeta-test-password'),
             ));
         }
 
+        self::assertSame(0, app(ElasticsearchRequestHealth::class)->failureCount());
+    }
+
+    public function test_pooled_requests_send_one_json_accept_header_and_authentication(): void
+    {
+        config()->set([
+            'elasticsearch.host' => 'http://elasticsearch.test',
+            'elasticsearch.api_key' => 'test-encoded-api-key',
+        ]);
+        Http::preventStrayRequests();
+        Http::fake(['elasticsearch.test/*' => Http::response(['hits' => ['hits' => []]], 200)]);
+
+        $responses = app(ElasticsearchHttpClient::class)->postPool([
+            'movies' => ['path' => '/movies/_search', 'body' => ['size' => 1]],
+            'performers' => ['path' => '/performers/_search', 'body' => ['size' => 1]],
+        ]);
+
+        self::assertSame(['movies', 'performers'], array_keys($responses));
+        Http::assertSentCount(2);
+        foreach (Http::recorded() as [$request]) {
+            self::assertSame(['application/json'], $request->header('Accept'));
+            self::assertTrue($request->hasHeader('Authorization', 'ApiKey test-encoded-api-key'));
+        }
         self::assertSame(0, app(ElasticsearchRequestHealth::class)->failureCount());
     }
 

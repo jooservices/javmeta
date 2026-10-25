@@ -242,6 +242,12 @@ Tự làm mới trạng thái và bộ lọc toàn bộ danh mục theo lịch, 
 
 Bật/tắt. Mã mục: `perf.warm_enabled`.
 
+### Ngân sách tìm kiếm (mili giây)
+
+Tổng thời gian dành cho HTTP tùy chọn trong một lượt tìm kiếm kết hợp. Hết thời gian thì trả kết quả từ khóa; không giới hạn truy vấn cơ sở dữ liệu.
+
+Số nguyên; từ 25 đến 1500. Mã mục: `search.budget_ms`.
+
 ### Bật tìm kiếm Elasticsearch
 
 Tắt thì chỉ dùng tìm kiếm trong cơ sở dữ liệu.
