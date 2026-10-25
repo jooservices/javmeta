@@ -28,8 +28,12 @@ final class MigrationsTest extends BaseTestCase
         self::assertTrue(Schema::hasTable('performer_name_keys'));
         self::assertTrue(Schema::hasTable('performer_name_grams'));
 
-        // The last sixteen migrations (the eight 2026-10-24 migrations on top of): identity event movie links, performer name grams and keys (JAVM-84), recrawl tracking (JAVM-82), canonical identity, queue start tracking (JAVM-81), performers.retired_date (JAVM-57), and failed reasons (JAVM-37).
-        self::assertSame(0, Artisan::call('migrate:rollback', ['--step' => 16, '--force' => true]), Artisan::output());
+        // Roll back every migration from the failed reasons backfill (JAVM-37) onwards: new migrations extend the range, so count the files.
+        $steps = count(array_filter(
+            scandir(database_path('migrations')) ?: [],
+            static fn(string $file): bool => str_ends_with($file, '.php') && $file >= '2026_10_16_000001_backfill_failed_reasons.php',
+        ));
+        self::assertSame(0, Artisan::call('migrate:rollback', ['--step' => $steps, '--force' => true]), Artisan::output());
         self::assertFalse(Schema::hasColumn('movies', 'recrawl_attempts'));
         self::assertFalse(Schema::hasColumn('movies', 'recrawl_status'));
         self::assertFalse(Schema::hasColumn('crawl_queue', 'is_recrawl'));
