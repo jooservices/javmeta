@@ -250,7 +250,8 @@ final class MovieSearchControllerTest extends TestCase
     public function test_cursor_pagination_no_duplicates_no_skips_ac43(): void
     {
         $movies = Movie::factory()->count(7)->create();
-        $codes = $movies->sortByDesc('release_date')->pluck('display_code')->all();
+        // Same order as the keyset: release_date DESC, then id DESC for movies that share a date.
+        $codes = $movies->sort(static fn($x, $y): int => [(string) $y->release_date, $y->id] <=> [(string) $x->release_date, $x->id])->pluck('display_code')->all();
 
         $pageCodes = [];
         $cursor = null;
