@@ -67,8 +67,11 @@ final class PerformerRepository extends EloquentRepository implements Repository
         $query = $this->newQuery()
             ->whereNull('canonical_performer_id')
             ->with('aliases')
-            ->with('sources')
-            ->withCount('movies');
+            ->with('sources');
+        // Counts affect ordering only for this sort; other lists count the selected page in one indexed batch.
+        if ($sort === 'linked_title_count') {
+            $query->withCount('movies');
+        }
         $this->applyFilters($query, $filters);
 
         $total = (clone $query)->count();
@@ -82,6 +85,13 @@ final class PerformerRepository extends EloquentRepository implements Repository
         $page = $query->limit($perPage + 1)->get();
         $hasMore = $page->count() > $perPage;
         $items = $hasMore ? $page->slice(0, $perPage)->values() : $page;
+        if ($sort !== 'linked_title_count' && $items->isNotEmpty()) {
+            $counts = DB::table('movie_performers')->whereIn('performer_id', $items->modelKeys())
+                ->selectRaw('performer_id, COUNT(*) AS total')->groupBy('performer_id')->pluck('total', 'performer_id');
+            foreach ($items as $performer) {
+                $performer->setAttribute('movies_count', (int) ($counts[$performer->id] ?? 0));
+            }
+        }
         $last = $items->last();
 
         return [
