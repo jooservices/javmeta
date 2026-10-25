@@ -44,6 +44,6 @@ final class SettingUrl
 
     public static function redactText(string $text): string
     {
-        return preg_replace_callback('~https?://[^\s<>"\']+~i', static fn(array $match): string => self::redact($match[0]), $text) ?? $text;
+        return preg_replace_callback('~https?://[^\s<>]+~i', static fn(array $match): string => self::redact($match[0]), $text) ?? $text;
     }
 }

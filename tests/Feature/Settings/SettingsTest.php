@@ -284,4 +284,18 @@ final class SettingsTest extends TestCase
             }
         }
     }
+
+    public function test_an_invalid_legacy_default_cannot_reintroduce_an_ignored_url(): void
+    {
+        $unsafe = 'http://legacy:private-pass@example.test?token=private-query';
+        config(['javmeta_downloads.qbittorrent_url' => $unsafe]);
+        $this->store->set('settings.downloads.qbittorrent_url', $unsafe);
+        $settings = app(SettingsService::class);
+        $settings->apply();
+        $this->assertSame('', $settings->get('downloads.qbittorrent_url'));
+        $this->assertSame('', config('javmeta_downloads.qbittorrent_url'));
+        $row = collect($settings->all())->firstWhere('key', 'downloads.qbittorrent_url');
+        $this->assertSame('', $row['value']);
+        $this->assertNotEmpty($row['warning']);
+    }
 }

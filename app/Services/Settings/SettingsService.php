@@ -198,7 +198,10 @@ final class SettingsService
     {
         $this->captureDefaults();
 
-        return self::$defaults[$key] ?? null;
+        $value = self::$defaults[$key] ?? null;
+
+        // A legacy default may contain the same unsafe URL as the ignored database value.
+        return $this->urlWarning($key, $this->definitions()[$key], $value) === null ? $value : '';
     }
 
     private function captureDefaults(): void

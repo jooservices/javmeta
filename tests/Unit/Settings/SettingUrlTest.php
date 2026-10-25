@@ -29,4 +29,10 @@ final class SettingUrlTest extends TestCase
     {
         self::assertSame('Failed https://first.test/path then http://second.test:8080/api', SettingUrl::redactText('Failed https://user:secret@first.test/path?token=sensitive then http://second.test:8080/api?password=sensitive'));
     }
+
+    public function test_quotes_inside_url_secrets_do_not_stop_redaction(): void
+    {
+        self::assertSame('Failed https://example.test/base', SettingUrl::redactText("Failed https://o'brien:private-pass@example.test/base?token='private-query'"));
+        self::assertSame('Failed https://example.test/base', SettingUrl::redactText('Failed https://example.test/base?token="private-query"'));
+    }
 }
