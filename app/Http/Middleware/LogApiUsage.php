@@ -71,14 +71,18 @@ final class LogApiUsage
             'created_at' => now(),
         ]);
 
-        $this->observability->emitApiUsage([
+        $fields = [
             'api_key_id' => $apiKey?->getKey(),
             'endpoint' => $endpoint,
             'method' => $request->method(),
             'status_code' => $statusCode,
             'response_ms' => $responseMs,
             'ip_hash' => $this->ipHash($request),
-        ]);
+        ];
+
+        app()->terminating(function () use ($fields): void {
+            $this->observability->emitApiUsage($fields);
+        });
     }
 
     private function ipHash(Request $request): string
