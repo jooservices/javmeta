@@ -6,9 +6,12 @@ namespace App\Services\Library;
 
 use App\Services\Settings\SettingsService;
 use App\Support\Code\NormalizedCode;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use RecursiveDirectoryIterator;
+use RecursiveCallbackFilterIterator;
+use RuntimeException;
 use RecursiveIteratorIterator;
 use SplFileInfo;
 
@@ -33,17 +36,38 @@ final class LibraryScanner
 
         $seen = [];
         foreach ($folders as $folder) {
-            if (! is_dir($folder) || ! is_readable($folder)) {
+            if (is_link($folder) || ! is_dir($folder) || ! is_readable($folder)) {
                 $result['errors'][] = "Folder not readable: {$folder}";
                 continue;
             }
-            $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($folder, RecursiveDirectoryIterator::SKIP_DOTS | RecursiveDirectoryIterator::FOLLOW_SYMLINKS), RecursiveIteratorIterator::LEAVES_ONLY, RecursiveIteratorIterator::CATCH_GET_CHILD);
-            foreach ($iterator as $file) {
-                /** @var SplFileInfo $file */
-                if (! $file->isFile() || ! in_array(strtolower($file->getExtension()), $extensions, true)) {
-                    continue;
+            try {
+                $iterator = new RecursiveIteratorIterator(new RecursiveCallbackFilterIterator(
+                    new RecursiveDirectoryIterator($folder, RecursiveDirectoryIterator::SKIP_DOTS),
+                    static function (SplFileInfo $entry): bool {
+                        // Directory and file links are both excluded, including cycles and links outside the root.
+                        if ($entry->isLink()) {
+                            return false;
+                        }
+                        if (! $entry->isReadable()) {
+                            throw new RuntimeException('Path not readable: ' . $entry->getPathname());
+                        }
+
+                        return true;
+                    },
+                ));
+                foreach ($iterator as $file) {
+                    /** @var SplFileInfo $file */
+                    if (! $file->isFile() || ! in_array(strtolower($file->getExtension()), $extensions, true)) {
+                        continue;
+                    }
+                    $seen[$this->record($folder, $file, $hashBytes, $startedAt, $result)] = true;
                 }
-                $seen[$this->record($folder, $file, $hashBytes, $startedAt, $result)] = true;
+            } catch (QueryException $exception) {
+                throw $exception;
+            } catch (RuntimeException $exception) {
+                // An incomplete traversal is not evidence of deletion anywhere under this root.
+                $result['errors'][] = $exception->getMessage();
+                continue;
             }
             // Under a folder that was read, whatever this run did not see is gone from the disk for now.
             $gone = array_values(array_filter(DB::table('library_files')->where('folder', $folder)->whereNull('missing_at')->pluck('id')->all(), static fn($id): bool => ! isset($seen[$id])));
@@ -113,11 +137,11 @@ final class LibraryScanner
         return [null, null];
     }
 
-    private function quickHash(string $path, int $size, int $bytes): ?string
+    private function quickHash(string $path, int $size, int $bytes): string
     {
         $handle = @fopen($path, 'rb');
         if ($handle === false) {
-            return null;
+            throw new RuntimeException('File not readable: ' . $path);
         }
         try {
             $head = (string) fread($handle, $bytes);

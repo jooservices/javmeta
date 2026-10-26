@@ -18,6 +18,8 @@ umask 022
 SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=deploy/environments.sh
 source "${SCRIPT_DIR}/environments.sh"
+# shellcheck source=deploy/backup/retention.sh
+source "${SCRIPT_DIR}/backup/retention.sh"
 
 target=staging
 case "${1:-}" in staging|uat) target="$1"; shift ;; esac
@@ -152,6 +154,8 @@ rollback() {
 }
 
 main() {
+  validate_retention "${BACKUP_KEEP}" || die 'Invalid backup retention.'
+  [[ -n "${STATE_DIR}" && "${STATE_DIR}" != / ]] || die 'Invalid state directory.'
   mkdir -p "${STATE_DIR}/backups"
   chmod 700 "${STATE_DIR}" "${STATE_DIR}/backups"
   log_file="${STATE_DIR}/${target}-$(date -u '+%Y%m%dT%H%M%SZ').log"
@@ -178,8 +182,7 @@ main() {
       'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -Fc -h 127.0.0.1 -U "$POSTGRES_USER" "$1"' sh "${POSTGRES_DATABASE}" > "${backup_file}"
     [[ -s "${backup_file}" ]] || die 'The quick backup is empty.'
     chmod 600 "${backup_file}"
-    # shellcheck disable=SC2012
-    ls -1t "${STATE_DIR}/backups/"*.dump 2>/dev/null | tail -n +$((BACKUP_KEEP + 1)) | xargs -r rm -f --
+    prune_backups "${STATE_DIR}/backups" "${BACKUP_KEEP}" dumps
   fi
 
   trap rollback ERR

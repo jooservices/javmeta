@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Auth\ApiKeyService;
 use App\Services\Library\LibraryScanner;
 use App\Services\Settings\SettingsService;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
@@ -105,6 +106,15 @@ final class LibraryTest extends TestCase
         $this->assertSame(3, $result['seen']);
     }
 
+    public function test_database_query_failures_abort_the_scan(): void
+    {
+        $failure = new QueryException('sqlite', 'select * from library_files', [], new \RuntimeException('simulated database failure'));
+        DB::shouldReceive('table')->once()->andThrow($failure);
+
+        $this->expectException(QueryException::class);
+        app(LibraryScanner::class)->scan();
+    }
+
     public function test_the_command_respects_the_switch_and_force(): void
     {
         app(SettingsService::class)->set('library.enabled', false);
@@ -134,5 +144,34 @@ final class LibraryTest extends TestCase
         $off = array_column($this->getJson('/api/v1/movies?on_disk=0&per_page=50', $headers)->assertOk()->json('data'), 'code');
         $this->assertEqualsCanonicalizing(['SSIS-123', 'ABP-045'], $on);
         $this->assertSame(['NOT-001'], $off);
+    }
+    public function test_directory_and_file_symlinks_outside_root_and_cycles_are_skipped(): void
+    {
+        mkdir($this->root . '/outside');
+        file_put_contents($this->root . '/outside/OUT-001.mp4', 'private');
+        symlink($this->root . '/outside', $this->root . '/a/outside');
+        symlink($this->root . '/a', $this->root . '/a/again');
+        symlink($this->root . '/outside/OUT-001.mp4', $this->root . '/a/OUT-001.mp4');
+        $result = app(LibraryScanner::class)->scan();
+        $this->assertSame(3, $result['seen']);
+        $this->assertSame([], $result['errors']);
+        $this->assertSame(0, DB::table('library_files')->where('path', 'like', '%OUT-001%')->count());
+        $this->assertSame(3, DB::table('library_files')->count());
+    }
+
+    public function test_unreadable_subtree_keeps_previously_seen_rows(): void
+    {
+        $scanner = app(LibraryScanner::class);
+        $scanner->scan();
+        chmod($this->root . '/a/deep', 0000);
+        clearstatcache();
+        try {
+            $result = $scanner->scan();
+            $this->assertNotEmpty($result['errors']);
+            $this->assertSame(0, $result['missing']);
+            $this->assertNull(DB::table('library_files')->where('path', 'like', '%abp045%')->value('missing_at'));
+        } finally {
+            chmod($this->root . '/a/deep', 0777);
+        }
     }
 }

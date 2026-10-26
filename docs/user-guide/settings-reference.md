@@ -458,6 +458,14 @@ Mã băm nhanh = kích thước + phần đầu + phần cuối của tệp.
 
 Số nguyên; từ 1 đến 65536. Mã mục: `library.hash_kilobytes`.
 
+## Dữ liệu mẫu
+
+### Cơ sở dữ liệu cho phép nạp dữ liệu mẫu
+
+Chỉ cho phép nạp và xóa dữ liệu mẫu trên các cơ sở dữ liệu này; ngoài kiểm thử luôn cần --force.
+
+Danh sách văn bản. Mã mục: `dataset.allowed_databases`.
+
 ## Tải về (qBittorrent)
 
 ### Bật tải về

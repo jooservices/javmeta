@@ -28,7 +28,7 @@ deploy/uat-reset.sh uat            # empties the UAT database, then loads the sa
 deploy/uat-reset.sh uat --dry-run  # prints what it would do
 ```
 
-The reset refuses any target but `uat`, and refuses when the UAT database name is the staging one or does not end with `_uat`. The sample dataset is described in `sample-dataset.md`.
+The reset refuses any target but `uat`, missing/unreachable app directories and overrides outside the canonical approved UAT clone. Before stopping services, even in dry-run mode, it asks that clone through the same PHP runtime to run the read-only `ops:uat-targets` check. The check requires effective environment `uat`, PostgreSQL driver/host/port/database `pgsql` / `postgres` / `5432` / `javmeta_uat`, Mongo database `javmeta_uat` in both the Laravel connection and archive configuration, and ES indices `javmeta_uat_movies` / `javmeta_uat_performers`. Resolved database URLs and cached configuration are checked, so staging configuration with UAT shell variables is refused before any side effect. Cached config is accepted only when these effective targets and its environment match. The dataset load uses `--force`; see `sample-dataset.md`.
 
 ## Roll back
 

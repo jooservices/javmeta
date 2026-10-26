@@ -114,6 +114,8 @@ The Media page has **Ghi luồng** with a URL field. It remains disabled until c
 
 Capture refuses internal-network and cloud-metadata destinations, including redirects and segment hosts. Library paths and scene descriptions containing dollar signs render literally. A rejected worker result appears through the normal failure/retry flow instead of occupying a running slot until its lease expires.
 
+Library scans skip file and directory symlinks, including links outside the configured root and directory loops. An unreadable subtree reports an error and prevents missing-file marking for that root during the incomplete scan. Settings → **Dữ liệu mẫu** exposes the database allow-list; dataset commands require `--force` outside testing and only modify explicitly owned sample rows.
+
 Settings warns when a legacy service base URL is invalid and uses the config default until the owner saves a valid HTTP(S) address without credentials, query or fragment. Telegram group commands and download buttons additionally require the configured **User ID chủ sở hữu Telegram**; private chats keep their chat-ID authorization. See [settings operations](../03-operations/settings.md).
 
 ## Fetch diagnostics retention

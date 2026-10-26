@@ -9,12 +9,14 @@ use App\Models\Performer;
 use App\Services\Search\ElasticsearchIndexer;
 use App\Support\Code\NormalizedCode;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Query\Builder;
+use RuntimeException;
 
 /**
  * A repeatable fake collection for tests and UAT: 520 movies, 210 performers, 30 genres, 20 makers, 10 series, with the
  * links between them and the awkward cases the screens must survive. Everything is generated (no scraped text, no
- * images, no real people) and every row is recognisable (movie codes SMP-nnnn, performer source "sample", genre
- * labels "sample-nn"), so the load is idempotent and the wipe removes exactly what the load created.
+ * images, no real people). Explicit ownership in sample_dataset_rows makes loading repeatable and limits wipe to
+ * owned parents and their dependent rows.
  */
 final class SampleDataset
 {
@@ -53,11 +55,11 @@ final class SampleDataset
     public function counts(): array
     {
         return [
-            'movies' => (int) DB::table('movies')->where('display_code', 'like', 'SMP-%')->count(),
-            'performers' => (int) DB::table('performers')->where('source_slug', self::SOURCE)->count(),
-            'genres' => (int) DB::table('genres')->where('label_normalized', 'like', 'sample-%')->count(),
-            'makers' => (int) DB::table('movies')->where('display_code', 'like', 'SMP-%')->distinct()->count('maker'),
-            'series' => (int) DB::table('movies')->where('display_code', 'like', 'SMP-%')->whereNotNull('series')->distinct()->count('series'),
+            'movies' => (int) $this->owned('movies', 'movie_id')->count(),
+            'performers' => (int) $this->owned('performers', 'performer_id')->count(),
+            'genres' => (int) $this->owned('genres', 'genre_id')->count(),
+            'makers' => (int) $this->owned('movies', 'movie_id')->distinct()->count('maker'),
+            'series' => (int) $this->owned('movies', 'movie_id')->whereNotNull('series')->distinct()->count('series'),
         ];
     }
 
@@ -65,9 +67,9 @@ final class SampleDataset
     public function wipe(): void
     {
         DB::transaction(function (): void {
-            $movieIds = DB::table('movies')->where('display_code', 'like', 'SMP-%')->pluck('id')->all();
-            $performerIds = DB::table('performers')->where('source_slug', self::SOURCE)->pluck('id')->all();
-            $genreIds = DB::table('genres')->where('label_normalized', 'like', 'sample-%')->pluck('id')->all();
+            $movieIds = $this->owned('movies', 'movie_id')->pluck('id')->all();
+            $performerIds = $this->owned('performers', 'performer_id')->pluck('id')->all();
+            $genreIds = $this->owned('genres', 'genre_id')->pluck('id')->all();
 
             foreach (array_chunk($movieIds, 500) as $chunk) {
                 DB::table('movie_genres')->whereIn('movie_id', $chunk)->delete();
@@ -93,7 +95,7 @@ final class SampleDataset
         for ($i = 1; $i <= self::GENRES; $i++) {
             $rows[] = ['label_normalized' => sprintf('sample-%02d', $i), 'label_raw' => sprintf('Sample Genre %02d', $i)];
         }
-        DB::table('genres')->upsert($rows, ['label_normalized'], ['label_raw']);
+        $this->saveOwned('genres', 'genre_id', $rows, ['label_normalized']);
     }
 
     private function loadPerformers(\DateTimeInterface $now): void
@@ -130,11 +132,9 @@ final class SampleDataset
             ];
             $rows[] = $row;
         }
-        foreach (array_chunk($rows, 100) as $chunk) {
-            DB::table('performers')->upsert($chunk, ['source_slug', 'external_id'], array_keys(array_diff_key($chunk[0], ['source_slug' => 1, 'external_id' => 1, 'uuid' => 1, 'first_seen_at' => 1])));
-        }
+        $this->saveOwned('performers', 'performer_id', $rows, ['source_slug', 'external_id']);
 
-        $ids = DB::table('performers')->where('source_slug', self::SOURCE)->pluck('id', 'external_id')->all();
+        $ids = $this->owned('performers', 'performer_id')->pluck('id', 'external_id')->all();
         $aliases = [];
         // One performer with several aliases, a few more with one.
         foreach (['Sample Alias One', 'Sample Alias Two', 'サンプル別名'] as $alias) {
@@ -189,13 +189,11 @@ final class SampleDataset
                 'crawled_at' => $now,
             ];
         }
-        foreach (array_chunk($rows, 100) as $chunk) {
-            DB::table('movies')->upsert($chunk, ['code_normalized'], array_keys(array_diff_key($chunk[0], ['code_normalized' => 1, 'uuid' => 1, 'first_seen_at' => 1])));
-        }
+        $this->saveOwned('movies', 'movie_id', $rows, ['code_normalized']);
 
-        $movies = DB::table('movies')->where('display_code', 'like', 'SMP-%')->pluck('id', 'display_code')->all();
-        $performers = DB::table('performers')->where('source_slug', self::SOURCE)->pluck('id', 'external_id')->all();
-        $genres = DB::table('genres')->where('label_normalized', 'like', 'sample-%')->pluck('id', 'label_normalized')->all();
+        $movies = $this->owned('movies', 'movie_id')->pluck('id', 'display_code')->all();
+        $performers = $this->owned('performers', 'performer_id')->pluck('id', 'external_id')->all();
+        $genres = $this->owned('genres', 'genre_id')->pluck('id', 'label_normalized')->all();
 
         $codes = $links = $movieGenres = $observations = [];
         for ($i = 1; $i <= self::MOVIES; $i++) {
@@ -239,18 +237,42 @@ final class SampleDataset
         }
 
         $indexed = 0;
-        Movie::query()->where('display_code', 'like', 'SMP-%')->with(['codes', 'performers', 'genres'])->chunkById(100, function ($movies) use (&$indexed): void {
+        Movie::query()->whereIn('id', DB::table('sample_dataset_rows')->select('movie_id')->whereNotNull('movie_id'))->with(['codes', 'performers', 'genres'])->chunkById(100, function ($movies) use (&$indexed): void {
             foreach ($movies as $movie) {
                 $indexed += $this->indexer->indexMovie($movie) ? 1 : 0;
             }
         });
-        Performer::query()->where('source_slug', self::SOURCE)->chunkById(100, function ($performers) use (&$indexed): void {
+        Performer::query()->whereIn('id', DB::table('sample_dataset_rows')->select('performer_id')->whereNotNull('performer_id'))->chunkById(100, function ($performers) use (&$indexed): void {
             foreach ($performers as $performer) {
                 $indexed += $this->indexer->indexPerformer($performer) ? 1 : 0;
             }
         });
 
         return $indexed;
+    }
+
+    private function owned(string $table, string $column): Builder
+    {
+        return DB::table($table)->whereIn('id', DB::table('sample_dataset_rows')->select($column)->whereNotNull($column));
+    }
+
+    /** @param list<array<string, mixed>> $rows @param list<string> $keys */
+    private function saveOwned(string $table, string $column, array $rows, array $keys): void
+    {
+        foreach ($rows as $row) {
+            $query = DB::table($table)->where(array_intersect_key($row, array_flip($keys)));
+            $id = $query->value('id');
+            if ($id === null) {
+                // A concurrent insert must fail its unique constraint, never become an upsert over real data.
+                $id = DB::table($table)->insertGetId($row);
+                DB::table('sample_dataset_rows')->insert([$column => $id]);
+                continue;
+            }
+            if (! DB::table('sample_dataset_rows')->where($column, $id)->exists()) {
+                throw new RuntimeException('Sample dataset collision with an unmarked ' . $table . ' row.');
+            }
+            $this->owned($table, $column)->where('id', $id)->update(array_diff_key($row, ['uuid' => 1, 'first_seen_at' => 1]));
+        }
     }
 
     private function uuid(string $kind, int $n): string

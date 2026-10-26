@@ -14,7 +14,7 @@ ORIGIN="${TEST_TMP}/origin.git"
 CALLS="${TEST_TMP}/calls.log"
 export HOME="${TEST_TMP}/home"
 mkdir -p "${HOME}" "${WS}/scripts/docker" "${TEST_TMP}/bin"
-export JAVMETA_DEPLOY_STATE_DIR="${TEST_TMP}/state"
+export JAVMETA_DEPLOY_STATE_DIR="${TEST_TMP}/state with spaces"
 export PATH="${TEST_TMP}/bin:${PATH}"
 export CALLS
 
@@ -125,8 +125,17 @@ grep -q 'uncommitted changes' "${TEST_TMP}/dirty.log" || fail_test 'dirty tree m
 git -C "${APP}" checkout -q -- file.txt
 
 # 4. A normal deployment pulls, migrates forward, sets up search, restarts and checks.
+# Quick-backup pruning keeps each filename intact and cannot touch a sibling.
+export JAVMETA_DEPLOY_BACKUP_KEEP=2
+mkdir -p "${JAVMETA_DEPLOY_STATE_DIR}/backups" "${TEST_TMP}/state"
+printf 'sentinel' > "${TEST_TMP}/state/sentinel"
+printf 'old' > "${JAVMETA_DEPLOY_STATE_DIR}/backups/javmeta-20000101 old.dump"
+printf 'newer' > "${JAVMETA_DEPLOY_STATE_DIR}/backups/javmeta-20000102 \"quoted\".dump"
 run_staging >"${TEST_TMP}/ok.log" 2>&1 || fail_test "deployment failed: $(tail -5 "${TEST_TMP}/ok.log")"
 [[ "$(git -C "${APP}" rev-parse HEAD)" == "${second}" ]] || fail_test 'the deployment did not pull the new commit.'
+[[ ! -e "${JAVMETA_DEPLOY_STATE_DIR}/backups/javmeta-20000101 old.dump" ]] || fail_test 'old quick backup survived.'
+[[ -f "${JAVMETA_DEPLOY_STATE_DIR}/backups/javmeta-20000102 \"quoted\".dump" ]] || fail_test 'newer quick backup was removed.'
+[[ "$(cat "${TEST_TMP}/state/sentinel")" == sentinel ]] || fail_test 'sibling sentinel was touched.'
 for step in 'pg_dump' 'composer install --no-dev' 'artisan migrate --force' 'artisan settings:import-env' 'artisan es:setup' 'artisan optimize' 'artisan javmeta:smoke' 'artisan staging:readiness'; do
   grep -q -- "${step}" "${CALLS}" || fail_test "step missing: ${step}"
 done

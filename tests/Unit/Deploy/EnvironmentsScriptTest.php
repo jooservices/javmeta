@@ -61,16 +61,20 @@ final class EnvironmentsScriptTest extends TestCase
         $this->assertStringContainsString('staging one', $out);
     }
 
-    public function test_the_uat_reset_dry_run_names_the_uat_database_and_the_sample_load(): void
+    public function test_the_uat_reset_refuses_a_missing_app_even_in_dry_run(): void
     {
         [$code, $out] = $this->sh('JAVMETA_APP_DIR=/nonexistent-uat bash deploy/uat-reset.sh uat --dry-run');
 
+        $this->assertNotSame(0, $code);
+        $this->assertStringContainsString('Cannot enter', $out);
+        $this->assertStringNotContainsString('migrate:fresh', $out);
+    }
+
+    public function test_the_uat_reset_checks_effective_targets_before_any_side_effect(): void
+    {
+        [$code, $out] = $this->sh('bash tests/Shell/uat-reset.test.sh');
         $this->assertSame(0, $code, $out);
-        $this->assertStringContainsString('javmeta_uat', $out);
-        $this->assertStringContainsString('migrate:fresh', $out);
-        $this->assertStringContainsString('dataset:load sample', $out);
-        $this->assertStringContainsString('javmeta-uat-horizon.service', $out);
-        $this->assertStringNotContainsString('javmeta-horizon.service', str_replace('javmeta-uat-horizon.service', '', $out));
+        $this->assertStringContainsString('PASS:', $out);
     }
 
     public function test_the_deploy_script_names_its_target_in_a_dry_run_help(): void
