@@ -6,6 +6,7 @@ namespace App\Services\Library;
 
 use App\Services\Settings\SettingsService;
 use App\Support\Code\NormalizedCode;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use RecursiveDirectoryIterator;
@@ -61,6 +62,8 @@ final class LibraryScanner
                     }
                     $seen[$this->record($folder, $file, $hashBytes, $startedAt, $result)] = true;
                 }
+            } catch (QueryException $exception) {
+                throw $exception;
             } catch (RuntimeException $exception) {
                 // An incomplete traversal is not evidence of deletion anywhere under this root.
                 $result['errors'][] = $exception->getMessage();

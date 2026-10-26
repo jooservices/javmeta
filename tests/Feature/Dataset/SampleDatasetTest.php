@@ -6,7 +6,9 @@ namespace Tests\Feature\Dataset;
 
 use App\Models\Movie;
 use App\Models\Performer;
+use App\Services\Dataset\DatasetGuard;
 use App\Services\Dataset\SampleDataset;
+use Illuminate\Database\ConnectionInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -76,6 +78,29 @@ final class SampleDatasetTest extends TestCase
         $this->assertSame(1, DB::table('movies')->count());
         $this->assertSame(0, DB::table('sample_dataset_rows')->count());
         $this->assertSame(0, DB::table('performers')->count());
+    }
+
+    public function test_non_sqlite_testing_database_still_uses_the_allow_list_without_force(): void
+    {
+        config(['javmeta_dataset.allowed_databases' => ['javmeta_test']]);
+        $connection = \Mockery::mock(ConnectionInterface::class);
+        $connection->shouldReceive('getDriverName')->once()->andReturn('pgsql');
+        $connection->shouldReceive('getDatabaseName')->once()->andReturn('javmeta_test');
+        DB::shouldReceive('connection')->once()->andReturn($connection);
+
+        app(DatasetGuard::class)->check(false);
+    }
+
+    public function test_non_sqlite_testing_database_is_refused_when_not_allow_listed(): void
+    {
+        config(['javmeta_dataset.allowed_databases' => ['javmeta_test']]);
+        $connection = \Mockery::mock(ConnectionInterface::class);
+        $connection->shouldReceive('getDriverName')->once()->andReturn('pgsql');
+        $connection->shouldReceive('getDatabaseName')->once()->andReturn('foreign_database');
+        DB::shouldReceive('connection')->once()->andReturn($connection);
+
+        $this->expectException(\RuntimeException::class);
+        app(DatasetGuard::class)->check(true);
     }
 
     public function test_both_commands_refuse_unapproved_effective_database_even_with_force(): void

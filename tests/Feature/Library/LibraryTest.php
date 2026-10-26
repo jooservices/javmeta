@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Auth\ApiKeyService;
 use App\Services\Library\LibraryScanner;
 use App\Services\Settings\SettingsService;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
@@ -103,6 +104,15 @@ final class LibraryTest extends TestCase
         $this->assertSame(2, $result['folders']);
         $this->assertCount(1, $result['errors']);
         $this->assertSame(3, $result['seen']);
+    }
+
+    public function test_database_query_failures_abort_the_scan(): void
+    {
+        $failure = new QueryException('sqlite', 'select * from library_files', [], new \RuntimeException('simulated database failure'));
+        DB::shouldReceive('table')->once()->andThrow($failure);
+
+        $this->expectException(QueryException::class);
+        app(LibraryScanner::class)->scan();
     }
 
     public function test_the_command_respects_the_switch_and_force(): void

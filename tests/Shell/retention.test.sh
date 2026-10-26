@@ -19,6 +19,17 @@ for bad in '' 0 -1 abc '1+1' 99999999999999999999; do
   if prune_backups "$backup/daily" "$bad" directories 2>/dev/null; then echo 'FAIL: invalid retention accepted'; exit 1; fi
 done
 [[ -d "$backup/daily/20260101 old" ]]
+mkdir -p "$tmp/bin"
+cat > "$tmp/bin/find" <<'STUB'
+#!/usr/bin/env bash
+exit 42
+STUB
+chmod +x "$tmp/bin/find"
+if PATH="$tmp/bin:$PATH" prune_backups "$backup/daily" 1 directories; then
+  echo 'FAIL: failed listing was treated as an empty backup set'
+  exit 1
+fi
+[[ -d "$backup/daily/20260101 old" ]] || { echo 'FAIL: failed listing deleted backup data'; exit 1; }
 if prune_backups '' 2 directories; then echo 'FAIL: empty root accepted'; exit 1; fi
 prune_backups "$backup/daily" 2 directories
 prune_backups "$backup/dumps" 2 dumps
