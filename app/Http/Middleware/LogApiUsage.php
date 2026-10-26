@@ -15,6 +15,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 final class LogApiUsage
 {
+    private const TERMINATION_FIELDS = 'javmeta.api_usage.fields';
+
     public function __construct(
         private readonly ObservabilityEmitter $observability,
     ) {}
@@ -80,9 +82,17 @@ final class LogApiUsage
             'ip_hash' => $this->ipHash($request),
         ];
 
-        app()->terminating(function () use ($fields): void {
+        $request->attributes->set(self::TERMINATION_FIELDS, $fields);
+    }
+
+    public function terminate(Request $request, Response $response): void
+    {
+        $fields = $request->attributes->get(self::TERMINATION_FIELDS);
+        $request->attributes->remove(self::TERMINATION_FIELDS);
+
+        if (is_array($fields)) {
             $this->observability->emitApiUsage($fields);
-        });
+        }
     }
 
     private function ipHash(Request $request): string

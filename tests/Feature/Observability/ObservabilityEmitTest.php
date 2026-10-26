@@ -63,6 +63,9 @@ final class ObservabilityEmitTest extends TestCase
         $this->getJson('/api/v1/auth/verify', [
             'X-API-Key' => $created->plaintext,
         ])->assertOk();
+        $this->getJson('/api/v1/auth/verify', [
+            'X-API-Key' => $created->plaintext,
+        ])->assertOk();
 
         $recorded = collect(Http::recorded())->map(fn($pair) => [
             'url' => $pair[0]->url(),
@@ -70,6 +73,14 @@ final class ObservabilityEmitTest extends TestCase
         ])->all();
 
         $this->assertNotEmpty($recorded, 'expected OpenObserve HTTP calls');
+
+        $apiUsageCount = collect($recorded)->filter(static function (array $item): bool {
+            $decoded = json_decode($item['body'], true);
+            $payload = is_array($decoded) && array_key_exists(0, $decoded) ? ($decoded[0] ?? []) : $decoded;
+
+            return is_array($payload) && ($payload['event'] ?? null) === 'api_usage';
+        })->count();
+        $this->assertSame(2, $apiUsageCount, 'each request should emit exactly one API usage event');
 
         $matched = false;
         foreach ($recorded as $item) {
