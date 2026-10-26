@@ -125,7 +125,7 @@ final class TelegramBotTest extends TestCase
         $chat = $type === 'private' ? 555 : -555;
         $settings->set('telegram.chat_id', (string) $chat);
         $settings->set('telegram.owner_user_id', $owner);
-        Http::fake();
+        Http::fake(['*' => Http::response(['ok' => true])]);
         $result = app(TelegramBot::class)->handle(['message' => ['chat' => ['id' => $chat, 'type' => $type], 'from' => ['id' => $sender], 'text' => '/follow maker OwnerOnly']]);
         $this->assertSame($allowed, $result);
         $this->assertSame($allowed, DB::table('user_marks')->where(['kind' => 'follow', 'key' => 'OwnerOnly'])->exists());
@@ -140,7 +140,7 @@ final class TelegramBotTest extends TestCase
         $settings->set('telegram.chat_id', (string) $chat);
         $settings->set('telegram.owner_user_id', $owner);
         $settings->set('downloads.enabled', false);
-        Http::fake();
+        Http::fake(['*' => Http::response(['ok' => true])]);
         $result = app(TelegramBot::class)->handle(['callback_query' => ['id' => 'callback-test', 'from' => ['id' => $sender], 'message' => ['chat' => ['id' => $chat, 'type' => $type], 'from' => ['id' => 42]], 'data' => 'dl:TEST-001']]);
         $this->assertSame($allowed, $result);
         $allowed ? Http::assertSentCount(2) : Http::assertNothingSent();
