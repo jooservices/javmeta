@@ -21,9 +21,15 @@ final readonly class CrawlerxFetchResult
         public ?string $errorMessage = null,
         public bool $retryable = false,
         public ?int $retryAfterSeconds = null,
-        /** @var list<array<string, mixed>> crawlerx fetch attempts (failures only in crawlerx 1.3) */
+        /** @var list<array<string, mixed>> CrawlerX fetch attempts; diagnostic fields are optional on older releases. */
         public array $attempts = [],
     ) {}
+
+    /** @param list<array<string, mixed>> $attempts */
+    public function withAttempts(array $attempts): self
+    {
+        return new self($this->ok, $this->list, $this->movie, $this->performer, $this->gallery, $this->errorCode, $this->errorMessage, $this->retryable, $this->retryAfterSeconds, $attempts);
+    }
 
     public static function success(CrawlListResultDto $list): self
     {

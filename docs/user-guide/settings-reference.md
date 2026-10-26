@@ -292,6 +292,12 @@ Văn bản. Mã mục: `search.performers_index`.
 
 ## Giám sát
 
+### Số ngày giữ lịch sử thử tải
+
+Tự động xóa các lần thử tải cũ sau số ngày này.
+
+Số nguyên. Mã mục: `observability.fetch_attempts_retention_days`.
+
 ### Gửi log và metric tới OpenObserve
 
 Tắt thì không ghi telemetry.

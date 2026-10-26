@@ -44,6 +44,7 @@ final class ScheduleTest extends TestCase
         $expectedFrequencies = [
             'ai:warm' => '*/15 * * * *',
             'crawler:feed-pool' => '* * * * *',
+            'crawler:prune-fetch-attempts' => '0 0 * * *',
             'crawler:reclaim' => '* * * * *',
             'crawler:recrawl-incomplete' => '0 * * * *',
             'crawler:seed' => '* * * * *',
@@ -67,6 +68,7 @@ final class ScheduleTest extends TestCase
         $this->assertSame('javmeta:scheduler-heartbeat', $heartbeatEvents[0]->description);
         $this->assertSame('* * * * *', $heartbeatEvents[0]->expression);
         $this->assertSame($expectedFrequencies, $actualFrequencies);
+        $this->assertTrue($scheduled['crawler:prune-fetch-attempts']->withoutOverlapping);
         $this->assertTrue($scheduled['crawler:feed-pool']->withoutOverlapping);
         $this->assertTrue($scheduled['crawler:recrawl-incomplete']->withoutOverlapping);
         $this->assertTrue($scheduled['javmeta:hourly-report']->withoutOverlapping);

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Notifications;
 
+use Illuminate\Http\Client\Factory;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Log;
 use App\Models\Movie;
 use App\Models\User;
 use App\Services\Notifications\TelegramBot;
@@ -43,9 +46,9 @@ final class TelegramBotTest extends TestCase
 
     private function say(string $text, string $chat = '555'): array
     {
-        Http::swap(new \Illuminate\Http\Client\Factory());
+        Http::swap(new Factory());
         Http::fake([
-            'api.telegram.test/*getUpdates*' => Http::response(['ok' => true, 'result' => [['update_id' => 10, 'message' => ['chat' => ['id' => (int) $chat], 'text' => $text]]]]),
+            'api.telegram.test/*getUpdates*' => Http::response(['ok' => true, 'result' => [['update_id' => max(10, 1 + (int) DB::table('user_marks')->where('kind', 'tg_offset')->value('key')), 'message' => ['chat' => ['id' => (int) $chat], 'text' => $text]]]]),
             'api.telegram.test/*sendMessage*' => Http::response(['ok' => true]),
         ]);
 
@@ -141,5 +144,65 @@ final class TelegramBotTest extends TestCase
         $result = app(TelegramBot::class)->handle(['callback_query' => ['id' => 'callback-test', 'from' => ['id' => $sender], 'message' => ['chat' => ['id' => $chat, 'type' => $type], 'from' => ['id' => 42]], 'data' => 'dl:TEST-001']]);
         $this->assertSame($allowed, $result);
         $allowed ? Http::assertSentCount(2) : Http::assertNothingSent();
+    }
+
+    public function test_poison_updates_do_not_block_following_updates(): void
+    {
+        foreach ([str_repeat('a', 101), '/search ' . str_repeat('a', 101), '/movie ' . str_repeat('a', 101), '/follow maker ' . str_repeat('a', 101)] as $index => $text) {
+            Http::swap(new Factory());
+            $first = 20 + $index * 2;
+            Http::fake([
+                '*getUpdates*' => Http::response(['ok' => true, 'result' => [
+                    ['update_id' => $first, 'message' => ['chat' => ['id' => 555], 'text' => $text]],
+                    ['update_id' => $first + 1, 'message' => ['chat' => ['id' => 555], 'text' => '/help']],
+                ]]),
+                '*sendMessage*' => Http::response(['ok' => true]),
+            ]);
+            $this->assertSame(2, app(TelegramBot::class)->poll()['handled']);
+            Http::assertSent(fn($r) => str_contains($r->url(), '/sendMessage') && str_contains($r['text'], '100 ký tự'));
+            $this->assertSame((string) ($first + 1), DB::table('user_marks')->where('kind', 'tg_offset')->value('key'));
+        }
+    }
+
+    public function test_send_failure_preserves_progress_and_restart_retries_only_the_failed_update(): void
+    {
+        $updates = [
+            ['update_id' => 30, 'message' => ['chat' => ['id' => 555], 'text' => '/help']],
+            ['update_id' => 31, 'message' => ['chat' => ['id' => 555], 'text' => '/help']],
+        ];
+        Http::fake([
+            '*getUpdates*' => Http::response(['ok' => true, 'result' => $updates]),
+            '*sendMessage*' => Http::sequence()->push(['ok' => true])->push(['ok' => false], 200),
+        ]);
+        $this->assertSame(1, app(TelegramBot::class)->poll()['handled']);
+        $this->assertSame('30', DB::table('user_marks')->where('kind', 'tg_offset')->value('key'));
+        Http::swap(new Factory());
+        Http::fake([
+            '*getUpdates*' => Http::response(['ok' => true, 'result' => $updates]),
+            '*sendMessage*' => Http::response(['ok' => true]),
+        ]);
+        $this->app->forgetInstance(TelegramBot::class);
+        $this->assertSame(1, app(TelegramBot::class)->poll()['handled']);
+        Http::assertSent(fn($r) => str_contains($r->url(), '/getUpdates') && $r['offset'] === 31);
+        Http::assertSentCount(2);
+        $this->assertSame('31', DB::table('user_marks')->where('kind', 'tg_offset')->value('key'));
+    }
+
+    public function test_transport_failure_never_acknowledges_the_failing_update_or_logs_the_token(): void
+    {
+        Log::spy();
+        Http::fake([
+            '*getUpdates*' => Http::response(['ok' => true, 'result' => [
+                ['update_id' => 50, 'message' => ['chat' => ['id' => 555], 'text' => '/help']],
+                ['update_id' => 51, 'message' => ['chat' => ['id' => 555], 'text' => '/help']],
+            ]]),
+            '*sendMessage*' => Http::failedConnection(),
+        ]);
+        $this->assertSame(['handled' => 0, 'ignored' => 0, 'skipped' => 'telegram update failed'], app(TelegramBot::class)->poll());
+        $this->assertDatabaseMissing('user_marks', ['kind' => 'tg_offset']);
+        Http::assertSentCount(2);
+        Log::shouldHaveReceived('warning')->once()->with('javmeta.telegram_update_failed', [
+            'update_id' => 50, 'exception' => ConnectionException::class,
+        ]);
     }
 }
