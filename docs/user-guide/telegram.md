@@ -28,4 +28,4 @@ Tên và mã ở đây chỉ là ví dụ; thay bằng giá trị trong kho củ
 
 ## Nếu có vẻ sai
 
-Kiểm tra đúng chat, token đã đặt, bot đã bật và tiến trình lịch đang chạy. Không thấy diễn viên thì dùng đúng tên, không dùng số ID trong lệnh follow. Không có thông báo có thể do giờ yên lặng, giới hạn ngày hoặc phim đã được báo. Tin trả lời bị mất do lỗi gửi không được tự gửi lại; thử hỏi lại. Khi tải chưa bật, bot trả “Tải về đang tắt trong Cài đặt.”
+Kiểm tra đúng chat, token đã đặt, bot đã bật và tiến trình lịch đang chạy. Không thấy diễn viên thì dùng đúng tên, không dùng số ID trong lệnh follow. Không có thông báo có thể do giờ yên lặng, giới hạn ngày hoặc phim đã được báo. Câu hỏi và tham số lệnh tối đa 100 ký tự; tin quá dài được báo lỗi và không chặn các tin sau. Khi gửi trả lời gặp lỗi kết nối, bot thử lại từ tin chưa xử lý trong lần kiểm tra tiếp theo; các tin đã xử lý được lưu tiến độ ngay. Khi tải chưa bật, bot trả “Tải về đang tắt trong Cài đặt.”

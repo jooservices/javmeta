@@ -115,3 +115,9 @@ The Media page has **Ghi luồng** with a URL field. It remains disabled until c
 Capture refuses internal-network and cloud-metadata destinations, including redirects and segment hosts. Library paths and scene descriptions containing dollar signs render literally. A rejected worker result appears through the normal failure/retry flow instead of occupying a running slot until its lease expires.
 
 Library scans skip file and directory symlinks, including links outside the configured root and directory loops. An unreadable subtree reports an error and prevents missing-file marking for that root during the incomplete scan. Settings → **Dữ liệu mẫu** exposes the database allow-list; dataset commands require `--force` outside testing and only modify explicitly owned sample rows.
+
+## Fetch diagnostics retention
+
+Cài đặt / Giám sát exposes **Số ngày giữ lịch sử thử tải** (default 14).
+The per-method report is an operator command, not a new UI screen; see
+[fetch attempts](../03-operations/telemetry.md#fetch-attempts).

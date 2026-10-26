@@ -40,20 +40,22 @@ final readonly class AuthenticateApiKey
         return $next($request);
     }
 
-    /** The scope a request needs, from the first path segment after /api/v1. */
+    /** Authorize the router's template, never the client-controlled encoded path. */
     private function scopeOf(Request $request): ?string
     {
-        $segment = explode('/', ltrim((string) preg_replace('#^/?api/v1/#', '', ltrim($request->path(), '/')), '/'))[0];
+        $uri = $request->route()?->uri();
 
-        return match (true) {
-            $segment === 'movies:bulk' => 'bulk',
-            $segment === 'movies', $segment === 'search', $segment === 'scenes' => 'movies',
-            $segment === 'performers' => 'performers',
-            $segment === 'meta', $segment === 'suggest' => 'catalog',
-            $segment === 'status' => 'status',
-            $segment === 'mcp' => 'mcp',
-            $segment === 'media' => 'media',
-            default => null,
+        return match ($uri) {
+            'api/v1/auth/verify' => null,
+            'api/v1/movies:bulk' => 'bulk',
+            'api/v1/movies', 'api/v1/movies/{code}', 'api/v1/movies/calendar',
+            'api/v1/movies/facets', 'api/v1/movies/{code}/related', 'api/v1/search', 'api/v1/scenes/search' => 'movies',
+            'api/v1/performers', 'api/v1/performers/{id}', 'api/v1/performers/facets' => 'performers',
+            'api/v1/meta/genres', 'api/v1/meta/catalog/{kind}', 'api/v1/suggest' => 'catalog',
+            'api/v1/status/summary', 'api/v1/status/sources' => 'status',
+            'api/v1/mcp' => 'mcp',
+            'api/v1/media/config', 'api/v1/media/jobs/next', 'api/v1/media/jobs/{id}/complete', 'api/v1/media/jobs/{id}/fail' => 'media',
+            default => throw new ForbiddenScopeException('undeclared'),
         };
     }
 }

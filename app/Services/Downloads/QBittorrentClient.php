@@ -74,14 +74,47 @@ class QBittorrentClient
         return (string) $this->settings->get('downloads.category');
     }
 
-    /** The 40 hex or 32 base32 characters of a magnet's btih, lower-cased. */
+    /** Return the first valid BTIH as qBittorrent's canonical 40-character hex hash. */
     public function hashOf(string $magnet): string
     {
-        if (preg_match('/xt=urn:btih:([A-Za-z0-9]{32,40})/i', $magnet, $m) !== 1) {
+        if (! str_starts_with($magnet, 'magnet:?')) {
             throw new RuntimeException('Not a magnet link.');
         }
+        $query = explode('#', substr($magnet, 8), 2)[0];
+        foreach (explode('&', $query) as $parameter) {
+            [$key, $value] = array_pad(explode('=', $parameter, 2), 2, '');
+            $value = rawurldecode($value);
+            if (rawurldecode($key) !== 'xt' || stripos($value, 'urn:btih:') !== 0) {
+                continue;
+            }
+            $hash = substr($value, 9);
+            if (preg_match('/^[a-f0-9]{40}$/iD', $hash) === 1) {
+                return strtolower($hash);
+            }
+            if (preg_match('/^[a-z2-7]{32}$/iD', $hash) === 1) {
+                return $this->decodeBase32(strtoupper($hash));
+            }
+        }
 
-        return strtolower($m[1]);
+        throw new RuntimeException('Not a magnet link.');
+    }
+
+    private function decodeBase32(string $hash): string
+    {
+        $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+        $buffer = $bits = 0;
+        $bytes = '';
+        foreach (str_split($hash) as $character) {
+            $buffer = ($buffer << 5) | (int) strpos($alphabet, $character);
+            $bits += 5;
+            if ($bits >= 8) {
+                $bits -= 8;
+                $bytes .= chr(($buffer >> $bits) & 255);
+                $buffer &= (1 << $bits) - 1;
+            }
+        }
+
+        return bin2hex($bytes);
     }
 
     private function action(string $path, string $hash): void
