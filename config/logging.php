@@ -7,8 +7,9 @@ use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
 use Monolog\Processor\PsrLogMessageProcessor;
 use App\Logging\CreateOpenObserveLogger;
+use App\Logging\RedactUrlSecrets;
 
-return [
+$config = [
 
     /*
     |--------------------------------------------------------------------------
@@ -139,3 +140,11 @@ return [
     ],
 
 ];
+
+// Apply to every sink, including the stack, before interpolating URL placeholders.
+foreach ($config['channels'] as &$channel) {
+    $channel['tap'][] = RedactUrlSecrets::class;
+}
+unset($channel);
+
+return $config;

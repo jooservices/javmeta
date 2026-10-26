@@ -27,6 +27,14 @@ Media processing settings (`media.*`) are defined in `config/javmeta_media.php` 
 
 Stream capture settings (`capture.*`) default in `config/javmeta_capture.php`. Capture is off until the owner enables it on the Settings page; duration, output size, manifest count/size and HTTP timeout limits are editable there. Enabling capture never disables the DRM/content policy checks.
 
+## Outbound base URLs and Telegram groups
+
+All service URL settings (`media.api_url`, `search.embedder_url`, `ai.ollama_url`, `downloads.qbittorrent_url`, `telegram.api_base`) require a host and an HTTP(S) scheme. Telegram requires HTTPS; HTTP is allowed only for the exact hosts `localhost` and `127.0.0.1` for local tests. Base URLs reject userinfo, query strings and fragments, including empty `?` or `#`. Empty URLs may disable optional integrations. Keep credentials in their dedicated secret fields. Private network qBittorrent addresses remain supported.
+
+A previously saved invalid URL is ignored during application boot and direct settings reads. A valid config default applies (otherwise the address stays empty), and the Settings page displays a warning without returning the unsafe value; save a valid address to clear it. URL credentials, queries and fragments are stripped from `setting_changed` events and URL text in local/remote logs.
+
+`telegram.owner_user_id` is a positive integer, empty by default. For group/supergroup chats both `telegram.chat_id` and the sender's user ID must match; an unset owner refuses all group commands and download callbacks. Callback authorization uses `callback_query.from.id`, not the sender of the bot's original message. Private chats retain chat-ID authorization and do not require this setting.
+
 `observability.fetch_attempts_retention_days` defaults to 14 in
 `config/javmeta_observability.php` and maps to
 `javmeta_observability.fetch_attempts_retention_days`. The daily

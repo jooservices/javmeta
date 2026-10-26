@@ -425,4 +425,18 @@ final class PerformerControllerTest extends TestCase
         $response->assertBadRequest()
             ->assertJsonPath('type', 'invalid_filter');
     }
+    public function test_count_sort_cursor_page_two_keeps_ties_and_zero_counts(): void
+    {
+        $performers = Performer::factory()->count(4)->create(['canonical_performer_id' => null]);
+        foreach ($performers->take(2) as $performer) {
+            MoviePerformer::factory()->create(['movie_id' => Movie::factory()->create()->id, 'performer_id' => $performer->id]);
+        }
+        $headers = ['X-API-Key' => $this->apiKey];
+        $first = $this->getJson('/api/v1/performers?sort=linked_title_count&per_page=1', $headers)->assertOk();
+        $cursor = $first->json('meta.pagination.next_cursor');
+        $second = $this->getJson('/api/v1/performers?sort=linked_title_count&per_page=1&cursor=' . urlencode($cursor), $headers)->assertOk();
+        $third = $this->getJson('/api/v1/performers?sort=linked_title_count&per_page=2&cursor=' . urlencode($second->json('meta.pagination.next_cursor')), $headers)->assertOk();
+        $this->assertSame([$performers[1]->id, $performers[0]->id, $performers[3]->id, $performers[2]->id], array_merge(array_column($first->json('data'), 'id'), array_column($second->json('data'), 'id'), array_column($third->json('data'), 'id')));
+        $third->assertJsonPath('meta.pagination.has_more', false)->assertJsonPath('meta.pagination.total', 4);
+    }
 }

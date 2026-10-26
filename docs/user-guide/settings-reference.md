@@ -182,6 +182,12 @@ Chat của chủ sở hữu; chỉ chat này được dùng bot.
 
 Văn bản. Mã mục: `telegram.chat_id`.
 
+### User ID chủ sở hữu Telegram
+
+Bắt buộc cho nhóm: chỉ người dùng này được gửi lệnh và bấm nút. Để trống cho chat riêng.
+
+Số nguyên. Mã mục: `telegram.owner_user_id`.
+
 ### Địa chỉ API Telegram
 
 Mặc định https://api.telegram.org.

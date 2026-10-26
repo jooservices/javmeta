@@ -94,6 +94,18 @@ const dlHtml = await run('downloads', await load('views/downloads.js'), { params
 assert.match(dlHtml, /Tải về/); assert.match(dlHtml, /42\.5%/); assert.match(dlHtml, /data-links/); assert.ok(!dlHtml.includes('<b>x</b>'), 'names are escaped');
 const st = await run('settings', await load('views/settings.js'), { params: {}, query: {} });
 assert.match(st, /Cấu hình hệ thống/); assert.match(st, /queue\.feed_pool_limit/); assert.ok(!st.includes('<b>x</b>'), 'labels are escaped'); assert.match(st, /đã đặt, nhập để thay/);
+settingsSample.data.settings.push({ key: 'telegram.owner_user_id', group: 'telegram', label: 'User ID chủ sở hữu Telegram', description: 'Để trống cho chat riêng.', type: 'int', min: 1, source: 'default', value: null });
+settingsSample.data.settings.push({ key: 'telegram.api_base', group: 'telegram', label: 'Địa chỉ API Telegram', description: 'HTTPS', type: 'string', source: 'default', value: 'https://api.telegram.org', warning: 'URL đã lưu không hợp lệ và đang được bỏ qua. <b>unsafe</b>' });
+const secureSettings = await run('secure-settings', await load('views/settings.js'), { params: {}, query: {} });
+assert.match(secureSettings, /telegram\.owner_user_id/);
+assert.match(secureSettings, /URL đã lưu không hợp lệ/);
+assert.match(secureSettings, /role="alert"/);
+assert.ok(!secureSettings.includes('<b>unsafe</b>'), 'URL warnings are escaped');
+assert.match(secureSettings, /value="https:\/\/api.telegram.org"/);
+settingsSample.data.settings.find(r => r.key === 'telegram.api_base').warning = null;
+const repairedSettings = await run('repaired-settings', await load('views/settings.js'), { params: {}, query: {} });
+assert.ok(!repairedSettings.includes('URL đã lưu không hợp lệ'), 'repaired URLs clear the warning');
+
 settingsSample.data.settings.push({ key: 'perf.warm_enabled', group: 'queue', label: 'Làm ấm bộ nhớ đệm', description: 'Tự làm mới trạng thái và bộ lọc.', type: 'bool', source: 'default', value: true });
 const perfSettings = await run('performance-settings', await load('views/settings.js'), { params: {}, query: {} });
 assert.match(perfSettings, /perf\.warm_enabled/); assert.match(perfSettings, /Làm ấm bộ nhớ đệm/);

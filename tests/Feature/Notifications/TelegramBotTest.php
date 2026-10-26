@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Http;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Testing\FakeConfigStore;
 use Tests\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 final class TelegramBotTest extends TestCase
 {
@@ -102,6 +103,47 @@ final class TelegramBotTest extends TestCase
 
         $this->assertSame('disabled', app(TelegramBot::class)->poll()['skipped']);
         Http::assertNothingSent();
+    }
+    public static function senders(): array
+    {
+        return [
+            'group refuses unset owner' => ['group', null, 42, false],
+            'group refuses stranger' => ['group', 42, 99, false],
+            'group refuses missing sender' => ['group', 42, null, false],
+            'group permits owner' => ['group', 42, 42, true],
+            'supergroup permits owner' => ['supergroup', 42, 42, true],
+            'supergroup refuses stranger' => ['supergroup', 42, 99, false],
+            'private keeps chat authorization' => ['private', null, 555, true],
+            'private does not require group owner' => ['private', 42, 555, true],
+        ];
+    }
+
+    #[DataProvider('senders')]
+    public function test_commands_require_the_owner_sender_in_groups(string $type, ?int $owner, ?int $sender, bool $allowed): void
+    {
+        $settings = app(SettingsService::class);
+        $chat = $type === 'private' ? 555 : -555;
+        $settings->set('telegram.chat_id', (string) $chat);
+        $settings->set('telegram.owner_user_id', $owner);
+        Http::fake(['*' => Http::response(['ok' => true])]);
+        $result = app(TelegramBot::class)->handle(['message' => ['chat' => ['id' => $chat, 'type' => $type], 'from' => ['id' => $sender], 'text' => '/follow maker OwnerOnly']]);
+        $this->assertSame($allowed, $result);
+        $this->assertSame($allowed, DB::table('user_marks')->where(['kind' => 'follow', 'key' => 'OwnerOnly'])->exists());
+        $allowed ? Http::assertSentCount(1) : Http::assertNothingSent();
+    }
+
+    #[DataProvider('senders')]
+    public function test_callbacks_require_the_callback_sender_in_groups(string $type, ?int $owner, ?int $sender, bool $allowed): void
+    {
+        $settings = app(SettingsService::class);
+        $chat = $type === 'private' ? 555 : -555;
+        $settings->set('telegram.chat_id', (string) $chat);
+        $settings->set('telegram.owner_user_id', $owner);
+        $settings->set('downloads.enabled', false);
+        Http::fake(['*' => Http::response(['ok' => true])]);
+        $result = app(TelegramBot::class)->handle(['callback_query' => ['id' => 'callback-test', 'from' => ['id' => $sender], 'message' => ['chat' => ['id' => $chat, 'type' => $type], 'from' => ['id' => 42]], 'data' => 'dl:TEST-001']]);
+        $this->assertSame($allowed, $result);
+        $allowed ? Http::assertSentCount(2) : Http::assertNothingSent();
     }
 
     public function test_poison_updates_do_not_block_following_updates(): void

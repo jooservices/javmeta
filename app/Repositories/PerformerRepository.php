@@ -70,7 +70,8 @@ final class PerformerRepository extends EloquentRepository implements Repository
             ->with('sources');
         // Counts affect ordering only for this sort; other lists count the selected page in one indexed batch.
         if ($sort === 'linked_title_count') {
-            $query->withCount('movies');
+            // A derived column is visible to WHERE on PostgreSQL; a SELECT alias is not.
+            $query->fromSub(Performer::query()->withCount('movies')->toBase(), 'performers');
         }
         $this->applyFilters($query, $filters);
 
