@@ -6,6 +6,7 @@ namespace App\Services\Crawler;
 
 use JOOservices\CrawlerX\CrawlerX;
 use JOOservices\CrawlerX\Dto\CrawlOptionsDto;
+use JOOservices\CrawlerX\Dto\FetchMetaDto;
 use JOOservices\CrawlerX\Dto\Entity\GalleryDto;
 use JOOservices\CrawlerX\Dto\Entity\MovieDto;
 use JOOservices\CrawlerX\Dto\Entity\PerformerDto;
@@ -133,7 +134,7 @@ class CrawlerxClient
                 return CrawlerxFetchResult::failure(self::ERROR_PARSE_FAILED, 'Item crawl returned a listing result.');
             }
 
-            return CrawlerxFetchResult::success($outcome->list);
+            return CrawlerxFetchResult::success($outcome->list)->withAttempts($this->attempts($outcome->list));
         }
 
         $item = $outcome->item;
@@ -141,12 +142,24 @@ class CrawlerxClient
             return CrawlerxFetchResult::failure(self::ERROR_PARSE_FAILED, 'Crawl returned neither a list nor an item.');
         }
 
-        return match ($type) {
+        $result = match ($type) {
             CrawlType::Detail => $this->movieFromItem($item->entityType, $item->meta),
             CrawlType::PerformerDetail => $this->performerFromItem($item->url, $item->entityType, $item->meta),
             CrawlType::Gallery => $this->galleryFromItem($item->entityType, $item->meta),
             default => CrawlerxFetchResult::failure(self::ERROR_PARSE_FAILED, 'Listing crawl returned an item result.'),
         };
+
+        return $result->withAttempts($this->attempts($item));
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function attempts(object $result): array
+    {
+        if (! property_exists($result, 'fetch') || ! $result->fetch instanceof FetchMetaDto) {
+            return [];
+        }
+
+        return $result->fetch->attempts;
     }
 
     /** @param array<string, mixed> $meta */

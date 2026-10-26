@@ -10,6 +10,7 @@ use App\Jobs\Middleware\TraceCrawlJob;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
+use App\Services\Crawl\FetchAttemptRecorder;
 use App\Services\Crawl\SourceActivityRecorder;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawler\CrawlerxClient;
@@ -65,6 +66,7 @@ final class FetchGalleryJob implements ShouldQueue
         }
 
         $result = $client->fetchGallery($row->source_slug, $row->url);
+        app(FetchAttemptRecorder::class)->record($row, $result);
         if (! $result->ok || $result->gallery === null) {
             $this->onCrawlFailure($row, $source, $result, $activity, $throttle);
 

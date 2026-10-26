@@ -11,6 +11,7 @@ use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Services\Crawl\CrawlQueueService;
+use App\Services\Crawl\FetchAttemptRecorder;
 use App\Services\Crawl\SourceActivityRecorder;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawler\CrawlerxClient;
@@ -61,6 +62,7 @@ final class FetchListingJob implements ShouldQueue
         }
 
         $result = $client->fetchListing($row->source_slug, $row->url);
+        app(FetchAttemptRecorder::class)->record($row, $result);
         if (! $result->ok || $result->list === null) {
             $this->onCrawlFailure($row, $source, $result, $activity, $throttle);
 

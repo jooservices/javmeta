@@ -14,6 +14,7 @@ use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Services\Crawl\SourceActivityRecorder;
 use App\Services\Crawl\CrawlQueueService;
+use App\Services\Crawl\FetchAttemptRecorder;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawl\MovieDraftSink;
 use App\Services\Crawler\CrawlerxClient;
@@ -72,6 +73,7 @@ final class FetchDetailJob implements ShouldQueue
         }
 
         $result = $client->fetchDetail($row->source_slug, $row->url);
+        app(FetchAttemptRecorder::class)->record($row, $result);
         if (! $result->ok || $result->movie === null) {
             $this->onCrawlFailure($row, $source, $result, $activity, $throttle);
 
