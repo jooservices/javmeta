@@ -49,7 +49,7 @@ final readonly class AuthenticateApiKey
             'api/v1/auth/verify' => null,
             'api/v1/movies:bulk' => 'bulk',
             'api/v1/movies', 'api/v1/movies/{code}', 'api/v1/movies/calendar',
-            'api/v1/movies/facets', 'api/v1/movies/{code}/related', 'api/v1/search', 'api/v1/scenes/search' => 'movies',
+            'api/v1/movies/facets', 'api/v1/movies/{code}/related', 'api/v1/search', 'api/v1/search/parse', 'api/v1/scenes/search' => 'movies',
             'api/v1/performers', 'api/v1/performers/{id}', 'api/v1/performers/facets' => 'performers',
             'api/v1/meta/genres', 'api/v1/meta/catalog/{kind}', 'api/v1/suggest' => 'catalog',
             'api/v1/status/summary', 'api/v1/status/sources' => 'status',

@@ -144,7 +144,8 @@
         ],
         "pre-package-uninstall": [
             "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
-        ]
+        ],
+        "test:nl": "@php artisan test tests/Nl/NaturalLanguageEvaluationTest.php"
     },
     "extra": {
         "laravel": {

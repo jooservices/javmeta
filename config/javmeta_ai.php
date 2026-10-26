@@ -17,5 +17,6 @@ return [
     'ollama_keep_alive' => '30m',
     // Read the filters out of a typed question (rules always; the local Ollama model first when it answers).
     'nl_enabled' => true,
+    'nl_cache_seconds' => 60,
     'cloud_enabled' => false,
 ];

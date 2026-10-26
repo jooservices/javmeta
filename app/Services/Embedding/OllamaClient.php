@@ -74,7 +74,7 @@ class OllamaClient
     }
 
     /** Ask the chat model for one JSON object (Ollama's structured output). @return array<string, mixed>|null */
-    public function json(string $system, string $user): ?array
+    public function json(string $system, string $user, ?array $schema = null): ?array
     {
         try {
             // A reading of a typed question must not hold the search: a cold model load takes seconds, so a short timeout lets
@@ -87,7 +87,7 @@ class OllamaClient
                 'model' => (string) config('javmeta_ai.ollama_chat_model'),
                 'keep_alive' => $this->keepAlive(),
                 'stream' => false,
-                'format' => 'json',
+                'format' => $schema ?? 'json',
                 'options' => ['temperature' => 0],
                 'messages' => [['role' => 'system', 'content' => $system], ['role' => 'user', 'content' => $user]],
             ]);
