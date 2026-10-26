@@ -386,7 +386,7 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
             return;
         }
 
-        if (DB::getDriverName() === 'pgsql') {
+        if ($sort === 'release_date' && DB::getDriverName() === 'pgsql') {
             // PostgreSQL orders NULLs first on plain DESC (matches its index).
             $this->applyNullsFirstCursor($query, $column, $lastSort, $lastId);
 

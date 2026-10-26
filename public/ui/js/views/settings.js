@@ -47,7 +47,7 @@ function systemPanels(sys) {
   sys.settings.forEach(r => { (byGroup[r.group] ||= []).push(r); });
   return `<div class="panel" style="grid-column:1/-1"><div class="hd"><h2>Cấu hình hệ thống</h2><span class="chip ok">lưu trong cơ sở dữ liệu</span></div><div class="bd muted">Mọi tính năng và cấu hình nằm ở đây, không đặt trong tệp env. Thay đổi có hiệu lực ngay, trừ mục có nhãn “khởi động lại”.</div></div>` +
     Object.entries(sys.groups).filter(([g]) => byGroup[g]).map(([g, title]) => `<div class="panel" style="grid-column:1/-1" data-group="${esc(g)}"><div class="hd"><h2>${esc(title)}</h2><span class="sp"></span><span class="muted" data-msg></span><button class="btn sm pri" data-save="${esc(g)}">Lưu</button></div>` +
-      byGroup[g].map(r => `<div class="row-i" style="align-items:flex-start;flex-wrap:wrap"><div class="grow" style="min-width:220px"><b>${esc(r.label)}</b> ${r.source === 'database' ? '<span class="chip ok">DB</span>' : '<span class="chip warn">mặc định</span>'}${r.restart ? ` <span class="chip">khởi động lại ${esc(r.restart)}</span>` : ''}<div class="muted">${esc(r.description)}</div></div><div>${input(r)}</div></div>`).join('') + '</div>').join('');
+      byGroup[g].map(r => `<div class="row-i" style="align-items:flex-start;flex-wrap:wrap"><div class="grow" style="min-width:220px"><b>${esc(r.label)}</b> ${r.source === 'database' ? '<span class="chip ok">DB</span>' : '<span class="chip warn">mặc định</span>'}${r.restart ? ` <span class="chip">khởi động lại ${esc(r.restart)}</span>` : ''}<div class="muted">${esc(r.description)}</div>${r.warning ? `<div class="err" role="alert">${esc(r.warning)}</div>` : ''}</div><div>${input(r)}</div></div>`).join('') + '</div>').join('');
 }
 
 function mountSystem(root) {

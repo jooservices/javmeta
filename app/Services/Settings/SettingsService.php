@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Settings;
 
 use InvalidArgumentException;
+use RuntimeException;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Support\ConfigType;
 use Throwable;
@@ -50,6 +51,9 @@ final class SettingsService
                 continue;
             }
             $value = $this->fromStorage($definition, $saved[$key]);
+            if ($this->urlWarning($key, $definition, $value) !== null) {
+                $value = $this->default($key);
+            }
             foreach ((array) $definition['config'] as $configKey) {
                 config([$configKey => $value]);
             }
@@ -75,6 +79,11 @@ final class SettingsService
             $isSecret = $definition['type'] === 'secret';
             $inDatabase = array_key_exists($key, $saved);
             $current = $inDatabase ? $this->fromStorage($definition, $saved[$key]) : $this->default($key);
+            $warning = $this->urlWarning($key, $definition, $current);
+            if ($warning !== null) {
+                $current = $this->default($key);
+                $inDatabase = false;
+            }
             $rows[] = [
                 'key' => $key,
                 'group' => $definition['group'],
@@ -87,6 +96,7 @@ final class SettingsService
                 'source' => $inDatabase ? 'database' : 'default',
                 'value' => $isSecret ? null : $current,
                 'is_set' => $isSecret ? (is_string($current) && $current !== '') : null,
+                'warning' => $warning,
             ];
         }
 
@@ -120,6 +130,11 @@ final class SettingsService
             config([$configKey => $clean]);
         }
 
+        if (isset($definition['url_schemes'])) {
+            $old = SettingUrl::redact((string) $old);
+            $clean = SettingUrl::redact((string) $clean);
+        }
+
         return ['key' => $key, 'old' => $isSecret ? null : $old, 'new' => $isSecret ? null : $clean, 'secret' => $isSecret];
     }
 
@@ -128,6 +143,7 @@ final class SettingsService
     {
         $this->captureDefaults();
         $saved = $this->store->group(self::GROUP);
+        $entries = [];
         $written = [];
         foreach ($this->definitions() as $key => $definition) {
             if (array_key_exists($key, $saved)) {
@@ -137,8 +153,31 @@ final class SettingsService
             if ($value === null || $value === '') {
                 continue;
             }
-            $this->store->set(self::GROUP . '.' . $key, $this->toStorage($definition, $value), $this->storageType($definition));
+            $entries[self::GROUP . '.' . $key] = [
+                'value' => $this->toStorage($definition, $value),
+                'type' => $this->storageType($definition),
+            ];
             $written[] = $key;
+        }
+
+        if ($entries === []) {
+            return [];
+        }
+
+        $attempted = [];
+        try {
+            foreach ($entries as $path => $entry) {
+                $attempted[] = $path;
+                $this->store->set($path, $entry['value'], $entry['type']);
+            }
+        } catch (Throwable $error) {
+            try {
+                $this->store->forgetMany($attempted);
+            } catch (Throwable) {
+                throw new RuntimeException('Settings import failed and its partial writes could not be removed; inspect the settings store before retrying.', previous: $error);
+            }
+
+            throw $error;
         }
 
         return $written;
@@ -160,14 +199,34 @@ final class SettingsService
             $saved = [];
         }
 
-        return array_key_exists($key, $saved) ? $this->fromStorage($definition, $saved[$key]) : $this->default($key);
+        $value = array_key_exists($key, $saved) ? $this->fromStorage($definition, $saved[$key]) : $this->default($key);
+
+        return $this->urlWarning($key, $definition, $value) === null ? $value : $this->default($key);
+    }
+
+    /** @param array<string, mixed> $definition */
+    private function urlWarning(string $key, array $definition, mixed $value): ?string
+    {
+        if (! isset($definition['url_schemes'])) {
+            return null;
+        }
+        try {
+            SettingUrl::validate($key, $definition, (string) $value);
+        } catch (InvalidArgumentException) {
+            return 'URL đã lưu không hợp lệ và đang được bỏ qua. Vui lòng lưu địa chỉ không chứa thông tin đăng nhập, truy vấn hoặc fragment.';
+        }
+
+        return null;
     }
 
     private function default(string $key): mixed
     {
         $this->captureDefaults();
 
-        return self::$defaults[$key] ?? null;
+        $value = self::$defaults[$key] ?? null;
+
+        // A legacy default may contain the same unsafe URL as the ignored database value.
+        return $this->urlWarning($key, $this->definitions()[$key], $value) === null ? $value : '';
     }
 
     private function captureDefaults(): void
@@ -201,6 +260,10 @@ final class SettingsService
     {
         $type = $definition['type'];
         $fail = static fn(string $why): never => throw new InvalidArgumentException("{$key}: {$why}");
+
+        if (($definition['nullable'] ?? false) && ($value === '' || $value === null)) {
+            return null;
+        }
 
         if ($type === 'bool') {
             $bool = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
@@ -262,6 +325,9 @@ final class SettingsService
         if (isset($definition['options']) && ! in_array($text, $definition['options'], true)) {
             $fail('must be one of ' . implode(', ', $definition['options']));
         }
+        if (isset($definition['url_schemes'])) {
+            SettingUrl::validate($key, $definition, $text);
+        }
 
         return $text;
     }
@@ -269,6 +335,9 @@ final class SettingsService
     /** @param array<string, mixed> $definition */
     private function toStorage(array $definition, mixed $value): mixed
     {
+        if ($definition['nullable'] ?? false) {
+            return $value === null ? '' : (string) $value;
+        }
         return match ($definition['type']) {
             'int_list' => implode(',', (array) $value),
             'string_list' => implode("\n", (array) $value),
@@ -279,6 +348,9 @@ final class SettingsService
     /** @param array<string, mixed> $definition */
     private function fromStorage(array $definition, mixed $stored): mixed
     {
+        if (($definition['nullable'] ?? false) && ($stored === null || $stored === '')) {
+            return null;
+        }
         return match ($definition['type']) {
             'int' => (int) $stored,
             'float' => (float) $stored,
@@ -292,6 +364,9 @@ final class SettingsService
     /** @param array<string, mixed> $definition */
     private function storageType(array $definition): string
     {
+        if ($definition['nullable'] ?? false) {
+            return ConfigType::String->value;
+        }
         return match ($definition['type']) {
             'int' => ConfigType::Int->value,
             'float' => ConfigType::Float->value,

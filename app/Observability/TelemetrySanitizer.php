@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Observability;
 
+use App\Services\Settings\SettingUrl;
+
 /**
  * Strips domain content and secrets before telemetry leave the process.
  */
@@ -109,7 +111,7 @@ final class TelemetrySanitizer
                 continue;
             }
             if (is_scalar($value) || $value === null) {
-                $clean[$key] = $value;
+                $clean[$key] = is_string($value) ? SettingUrl::redactText($value) : $value;
             }
         }
 
@@ -175,6 +177,8 @@ final class TelemetrySanitizer
         if ($text === null || $text === '') {
             return null;
         }
+
+        $text = SettingUrl::redactText($text);
 
         $masked = preg_replace(
             [
