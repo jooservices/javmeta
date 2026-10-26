@@ -42,10 +42,12 @@ final class NaturalLanguageEvaluationTest extends TestCase
 
         $matched = 0;
         $expectedCount = 0;
+        $ollamaCount = 0;
         $misses = [];
 
         foreach ($examples as $example) {
             $actual = app(QueryInterpreter::class)->interpret($example['q']);
+            $ollamaCount += $actual['by'] === 'ollama' ? 1 : 0;
             foreach ($example['expected'] as $field => $expected) {
                 $expectedCount++;
                 $value = $actual['filters'][$field] ?? null;
@@ -58,11 +60,12 @@ final class NaturalLanguageEvaluationTest extends TestCase
         }
 
         $accuracy = $expectedCount === 0 ? 0.0 : $matched / $expectedCount;
-        fwrite(STDOUT, sprintf("\nNatural-language evaluation: %d/%d expected filter values (%.1f%%) across %d questions.\n", $matched, $expectedCount, $accuracy * 100, count($examples)));
+        fwrite(STDOUT, sprintf("\nNatural-language evaluation: %d/%d expected filter values (%.1f%%) across %d questions (%d parsed with Ollama).\n", $matched, $expectedCount, $accuracy * 100, count($examples), $ollamaCount));
         foreach ($misses as $miss) {
             fwrite(STDOUT, $miss . "\n");
         }
 
+        $this->assertGreaterThan(0, $ollamaCount, 'The evaluation must include at least one answer from Ollama.');
         $this->assertGreaterThanOrEqual(0.80, $accuracy, 'The local Ollama parser must match at least 80% of expected filter values.');
     }
 

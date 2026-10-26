@@ -100,10 +100,10 @@ final class QueryInterpreter
 
         $filters = [...$filters, ...$this->releaseDateFilters($rest)];
 
-        if (preg_match('/(?:age|aged|ages|tuổi|年齢)\s*(?:between\s+|from\s+|từ\s*)?(\d{1,3})\s*(?:-|–|to|and|đến)\s*(\d{1,3})\s*(?:years?\s*old|tuổi|歳)?/iu', $rest, $m) === 1) {
+        if (preg_match('/(?:(?<![A-Za-z])(?:age|aged|ages)|tuổi|年齢)\s*(?:between\s+|from\s+|từ\s*)?(\d{1,3})\s*(?:-|–|to|and|đến)\s*(\d{1,3})\s*(?:years?\s*old|tuổi|歳)?/iu', $rest, $m) === 1) {
             $this->putRange($filters, 'age', (int) $m[1], (int) $m[2], 0, 120);
             $rest = $this->removeMatch($rest, $m[0]);
-        } elseif (preg_match('/(?:age|aged|tuổi|年齢)\s*(?:is\s*)?(\d{1,3})\s*(?:years?\s*old|tuổi|歳)?/iu', $rest, $m) === 1) {
+        } elseif (preg_match('/(?:(?<![A-Za-z])(?:age|aged)|tuổi|年齢)\s*(?:is\s*)?(\d{1,3})\s*(?:years?\s*old|tuổi|歳)?/iu', $rest, $m) === 1) {
             $this->putRange($filters, 'age', (int) $m[1], (int) $m[1], 0, 120);
             $rest = $this->removeMatch($rest, $m[0]);
         } elseif (preg_match('/(?:under|younger than|dưới)\s*(\d{1,3})\s*(?:years?\s*old|tuổi|歳)/iu', $rest, $m) === 1) {
@@ -166,13 +166,26 @@ final class QueryInterpreter
             $rest = str_ireplace($actress, ' ', $rest);
         }
 
-        $keywords = trim((string) preg_replace('/\s+/u', ' ', (string) preg_replace(
-            '/\b(?:movies?|films?|videos?|released|published|with|by|from|the|of|phim|của|và|năm|年|以降|映画|作品|女優|俳優|出演者|の)\b/iu',
-            ' ',
-            $rest,
-        )));
+        $keywords = $this->stripFillerTerms($rest);
 
         return ['keywords' => $keywords, 'filters' => $filters];
+    }
+
+    private function stripFillerTerms(string $text): string
+    {
+        $text = (string) preg_replace(
+            '/\b(?:movies?|films?|videos?|released|published|with|by|from|the|of|phim|của|và|năm)\b/iu',
+            ' ',
+            $text,
+        );
+        $text = (string) preg_replace('/(?<=\s)の(?=(?:映画|作品|女優|俳優|出演者))/u', ' ', $text);
+        $text = (string) preg_replace(
+            '/(?<![\p{L}\p{N}])(?:映画|作品|女優|俳優|出演者)(?=(?:を|は|が|の|に|で|$|[\s、。,.!?]))(?:を|は|が|の|に|で)?/u',
+            ' ',
+            $text,
+        );
+
+        return trim((string) preg_replace('/\s+/u', ' ', $text));
     }
 
     /** @return array<string, string> */
@@ -182,17 +195,17 @@ final class QueryInterpreter
         if (preg_match('/(?<!\d)((?:19|20)\d{2})\s*(?:-|–|to|đến)\s*((?:19|20)\d{2})(?:\s*年)?(?!\d)/iu', $rest, $m) === 1) {
             [$filters['released_from'], $filters['released_to']] = [$m[1] . '-01-01', $m[2] . '-12-31'];
             $rest = $this->removeMatch($rest, $m[0]);
-        } elseif (preg_match('/(?:after|since|từ|sau|以降)\s*((?:19|20)\d{2})(?:\s*年)?|(?<!\d)((?:19|20)\d{2})\s*年以降/u', $rest, $m) === 1) {
+        } elseif (preg_match('/(?:after|since|từ|sau|以降)\s*((?:19|20)\d{2})(?:\s*年)?|(?<!\d)((?:19|20)\d{2})\s*年以降/iu', $rest, $m) === 1) {
             $year = $m[1] !== '' ? $m[1] : $m[2];
             $filters['released_from'] = $year . '-01-01';
             $rest = $this->removeMatch($rest, $m[0]);
-        } elseif (preg_match('/(?:before|until|trước)\s*((?:19|20)\d{2})(?:\s*年)?|(?<!\d)((?:19|20)\d{2})\s*年以前/u', $rest, $m) === 1) {
+        } elseif (preg_match('/(?:before|until|trước)\s*((?:19|20)\d{2})(?:\s*年)?|(?<!\d)((?:19|20)\d{2})\s*年以前/iu', $rest, $m) === 1) {
             $year = $m[1] !== '' ? (int) $m[1] - 1 : (int) $m[2];
             if ($year >= 1950) {
                 $filters['released_to'] = $year . '-12-31';
                 $rest = $this->removeMatch($rest, $m[0]);
             }
-        } elseif (preg_match('/(?:released\s+(?:in\s+)?|năm\s+|year\s+|(?<![A-Za-z])in\s+)((?:19|20)\d{2})(?:\s*年)?|(?<!\d)((?:19|20)\d{2})\s*年/u', $rest, $m) === 1) {
+        } elseif (preg_match('/(?:released\s+(?:in\s+)?|năm\s+|year\s+|(?<![A-Za-z])in\s+)((?:19|20)\d{2})(?:\s*年)?|(?<!\d)((?:19|20)\d{2})\s*年/iu', $rest, $m) === 1) {
             $year = $m[1] !== '' ? $m[1] : $m[2];
             [$filters['released_from'], $filters['released_to']] = [$year . '-01-01', $year . '-12-31'];
             $rest = $this->removeMatch($rest, $m[0]);
@@ -234,7 +247,7 @@ final class QueryInterpreter
             }
 
             $candidate = trim((string) preg_replace('/^[\\p{P}\\p{Z}]+|[\\p{P}\\p{Z}]+$/u', '', trim($value)));
-            if (! $this->mentioned($candidate, $question)) {
+            if (! $this->mentioned($key, $candidate, $question)) {
                 $invalid = true;
                 continue;
             }
@@ -301,8 +314,12 @@ final class QueryInterpreter
         return ['keywords' => trim($keywords), 'filters' => $filters, 'invalid' => $invalid];
     }
 
-    private function mentioned(string $value, string $question): bool
+    private function mentioned(string $field, string $value, string $question): bool
     {
+        if (in_array($field, ['blood_type', 'cup'], true) && mb_strlen($value) <= 2) {
+            return preg_match('/(?<![A-Za-z0-9])' . preg_quote($value, '/') . '(?![A-Za-z0-9])/iu', $question) === 1;
+        }
+
         return mb_stripos($question, $value) !== false;
     }
 

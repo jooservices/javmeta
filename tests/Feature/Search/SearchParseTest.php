@@ -68,6 +68,58 @@ final class SearchParseTest extends TestCase
         $this->assertSame('Osaka', $basedIn['filters']['location']);
     }
 
+    public function test_rules_match_capitalized_years_preserve_japanese_titles_and_ignore_embedded_age(): void
+    {
+        Http::fake(['ollama.test:11434/*' => Http::response('down', 500)]);
+
+        $dates = [
+            'Movies Released in 2024' => ['released_from' => '2024-01-01', 'released_to' => '2024-12-31'],
+            'Since 2019' => ['released_from' => '2019-01-01'],
+            'Before 2020' => ['released_to' => '2019-12-31'],
+            'In 2024' => ['released_from' => '2024-01-01', 'released_to' => '2024-12-31'],
+        ];
+        foreach ($dates as $question => $expected) {
+            $filters = app(QueryInterpreter::class)->interpret($question)['filters'];
+            foreach ($expected as $field => $value) {
+                $this->assertSame($value, $filters[$field] ?? null, $question);
+            }
+        }
+
+        $this->assertArrayNotHasKey('age_min', app(QueryInterpreter::class)->interpret('image 2')['filters']);
+        $this->assertStringContainsString('サンプル作品', app(QueryInterpreter::class)->interpret('サンプル作品を探して')['keywords']);
+
+        $japaneseMovie = app(QueryInterpreter::class)->interpret('2024年の映画を探してください');
+        $this->assertSame('2024-01-01', $japaneseMovie['filters']['released_from'] ?? null);
+        $this->assertSame('探してください', $japaneseMovie['keywords']);
+    }
+
+    public function test_short_model_facets_require_standalone_ascii_mentions(): void
+    {
+        $cases = [
+            ['A型の女優の作品を探してください', 'blood_type', 'A'],
+            ['血液型AB型の女優の作品を探してください', 'blood_type', 'AB'],
+            ['カップGの女優の作品を探してください', 'cup', 'G'],
+        ];
+
+        $sequence = Http::fakeSequence('ollama.test:11434/api/chat');
+        foreach ($cases as [$question, $field, $value]) {
+            $response = ['keywords' => ''];
+            $response[$field] = $value;
+            $sequence->push(['message' => ['content' => json_encode($response)]]);
+        }
+        $sequence->push(['message' => ['content' => json_encode(['keywords' => '', 'blood_type' => 'A', 'cup' => 'G'])]]);
+
+        foreach ($cases as [$question, $field, $value]) {
+            $parsed = app(QueryInterpreter::class)->interpret($question);
+            $this->assertSame('ollama', $parsed['by'], $question);
+            $this->assertSame($value, $parsed['filters'][$field] ?? null, $question);
+        }
+
+        $parsed = app(QueryInterpreter::class)->interpret('Find movies about office night');
+        $this->assertArrayNotHasKey('blood_type', $parsed['filters']);
+        $this->assertArrayNotHasKey('cup', $parsed['filters']);
+    }
+
     public function test_parse_endpoint_validates_input_auth_and_scope(): void
     {
         $key = app(ApiKeyService::class)->create('natural-language-parse', 60, ['movies'])->plaintext;
