@@ -12,9 +12,9 @@ return new class extends Migration {
         'performers_name_romaji_lower_canonical_idx' => ['name_romaji', 'canonical_performer_id IS NULL'],
         'performers_name_kanji_lower_canonical_idx' => ['name_kanji', 'canonical_performer_id IS NULL'],
         'performers_name_kana_lower_canonical_idx' => ['name_kana', 'canonical_performer_id IS NULL'],
-        'performers_blood_type_lower_idx' => ['blood_type', "blood_type IS NOT NULL AND blood_type <> ''"],
-        'performers_location_lower_idx' => ['location', "location IS NOT NULL AND location <> ''"],
-        'performers_cup_lower_idx' => ['cup', "cup IS NOT NULL AND cup <> ''"],
+        'performers_blood_type_lower_idx' => ['blood_type', null],
+        'performers_location_lower_idx' => ['location', null],
+        'performers_cup_lower_idx' => ['cup', null],
     ];
 
     public function up(): void
@@ -24,7 +24,8 @@ return new class extends Migration {
         }
 
         foreach (self::INDEXES as $index => [$column, $predicate]) {
-            DB::statement("CREATE INDEX CONCURRENTLY IF NOT EXISTS {$index} ON performers (LOWER({$column})) WHERE {$predicate}");
+            $where = $predicate === null ? '' : " WHERE {$predicate}";
+            DB::statement("CREATE INDEX CONCURRENTLY IF NOT EXISTS {$index} ON performers (LOWER({$column})){$where}");
         }
     }
 
