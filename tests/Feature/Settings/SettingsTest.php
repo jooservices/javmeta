@@ -132,6 +132,39 @@ final class SettingsTest extends TestCase
         $this->assertSame(7, (int) $this->store->get('settings.queue.per_source_inflight'));
     }
 
+    public function test_import_env_removes_partial_writes_when_a_store_write_fails(): void
+    {
+        config([
+            'javmeta_settings.definitions' => [
+                'queue.first' => ['config' => ['test.settings.first'], 'type' => 'int'],
+                'queue.second' => ['config' => ['test.settings.second'], 'type' => 'int'],
+            ],
+            'test.settings.first' => 1,
+            'test.settings.second' => 2,
+        ]);
+        $this->store = new class extends FakeConfigStore {
+            public function set(string $path, mixed $value, ?string $type = null): void
+            {
+                parent::set($path, $value, $type);
+
+                if ($path === 'settings.queue.second') {
+                    throw new \RuntimeException('simulated store failure');
+                }
+            }
+        };
+        $this->app->instance(ConfigStore::class, $this->store);
+        $this->app->forgetInstance(SettingsService::class);
+
+        try {
+            app(SettingsService::class)->importDefaults();
+            $this->fail('A failed settings write should be rethrown.');
+        } catch (\RuntimeException $error) {
+            $this->assertSame('simulated store failure', $error->getMessage());
+        }
+
+        $this->assertSame([], $this->store->group('settings'));
+    }
+
     public function test_the_settings_page_api_needs_the_owner_and_saves_and_reports_errors(): void
     {
         $this->getJson('/ui-admin/settings')->assertStatus(401);

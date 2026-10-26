@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Settings;
 
 use InvalidArgumentException;
+use RuntimeException;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Support\ConfigType;
 use Throwable;
@@ -142,6 +143,7 @@ final class SettingsService
     {
         $this->captureDefaults();
         $saved = $this->store->group(self::GROUP);
+        $entries = [];
         $written = [];
         foreach ($this->definitions() as $key => $definition) {
             if (array_key_exists($key, $saved)) {
@@ -151,8 +153,31 @@ final class SettingsService
             if ($value === null || $value === '') {
                 continue;
             }
-            $this->store->set(self::GROUP . '.' . $key, $this->toStorage($definition, $value), $this->storageType($definition));
+            $entries[self::GROUP . '.' . $key] = [
+                'value' => $this->toStorage($definition, $value),
+                'type' => $this->storageType($definition),
+            ];
             $written[] = $key;
+        }
+
+        if ($entries === []) {
+            return [];
+        }
+
+        $attempted = [];
+        try {
+            foreach ($entries as $path => $entry) {
+                $attempted[] = $path;
+                $this->store->set($path, $entry['value'], $entry['type']);
+            }
+        } catch (Throwable $error) {
+            try {
+                $this->store->forgetMany($attempted);
+            } catch (Throwable) {
+                throw new RuntimeException('Settings import failed and its partial writes could not be removed; inspect the settings store before retrying.', previous: $error);
+            }
+
+            throw $error;
         }
 
         return $written;
