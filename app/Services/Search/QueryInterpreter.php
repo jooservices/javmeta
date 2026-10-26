@@ -98,24 +98,7 @@ final class QueryInterpreter
             $rest = $this->removeMatch($rest, $m[0]);
         }
 
-        if (preg_match('/(?<!\d)((?:19|20)\d{2})\s*(?:-|–|to|đến)\s*((?:19|20)\d{2})(?:\s*年)?(?!\d)/iu', $rest, $m) === 1) {
-            [$filters['released_from'], $filters['released_to']] = [$m[1] . '-01-01', $m[2] . '-12-31'];
-            $rest = $this->removeMatch($rest, $m[0]);
-        } elseif (preg_match('/(?:after|since|từ|sau|以降)\s*((?:19|20)\d{2})(?:\s*年)?|(?<!\d)((?:19|20)\d{2})\s*年以降/u', $rest, $m) === 1) {
-            $year = $m[1] !== '' ? $m[1] : $m[2];
-            $filters['released_from'] = $year . '-01-01';
-            $rest = $this->removeMatch($rest, $m[0]);
-        } elseif (preg_match('/(?:before|until|trước)\s*((?:19|20)\d{2})(?:\s*年)?|(?<!\d)((?:19|20)\d{2})\s*年以前/u', $rest, $m) === 1) {
-            $year = $m[1] !== '' ? (int) $m[1] - 1 : (int) $m[2];
-            if ($year >= 1950) {
-                $filters['released_to'] = $year . '-12-31';
-                $rest = $this->removeMatch($rest, $m[0]);
-            }
-        } elseif (preg_match('/(?:released\s+(?:in\s+)?|năm\s+|year\s+|(?<![A-Za-z])in\s+)((?:19|20)\d{2})(?:\s*年)?|(?<!\d)((?:19|20)\d{2})\s*年/u', $rest, $m) === 1) {
-            $year = $m[1] !== '' ? $m[1] : $m[2];
-            [$filters['released_from'], $filters['released_to']] = [$year . '-01-01', $year . '-12-31'];
-            $rest = $this->removeMatch($rest, $m[0]);
-        }
+        $filters = [...$filters, ...$this->releaseDateFilters($rest)];
 
         if (preg_match('/(?:age|aged|ages|tuổi|年齢)\s*(?:between\s+|from\s+|từ\s*)?(\d{1,3})\s*(?:-|–|to|and|đến)\s*(\d{1,3})\s*(?:years?\s*old|tuổi|歳)?/iu', $rest, $m) === 1) {
             $this->putRange($filters, 'age', (int) $m[1], (int) $m[2], 0, 120);
@@ -190,6 +173,32 @@ final class QueryInterpreter
         )));
 
         return ['keywords' => $keywords, 'filters' => $filters];
+    }
+
+    /** @return array<string, string> */
+    private function releaseDateFilters(string &$rest): array
+    {
+        $filters = [];
+        if (preg_match('/(?<!\d)((?:19|20)\d{2})\s*(?:-|–|to|đến)\s*((?:19|20)\d{2})(?:\s*年)?(?!\d)/iu', $rest, $m) === 1) {
+            [$filters['released_from'], $filters['released_to']] = [$m[1] . '-01-01', $m[2] . '-12-31'];
+            $rest = $this->removeMatch($rest, $m[0]);
+        } elseif (preg_match('/(?:after|since|từ|sau|以降)\s*((?:19|20)\d{2})(?:\s*年)?|(?<!\d)((?:19|20)\d{2})\s*年以降/u', $rest, $m) === 1) {
+            $year = $m[1] !== '' ? $m[1] : $m[2];
+            $filters['released_from'] = $year . '-01-01';
+            $rest = $this->removeMatch($rest, $m[0]);
+        } elseif (preg_match('/(?:before|until|trước)\s*((?:19|20)\d{2})(?:\s*年)?|(?<!\d)((?:19|20)\d{2})\s*年以前/u', $rest, $m) === 1) {
+            $year = $m[1] !== '' ? (int) $m[1] - 1 : (int) $m[2];
+            if ($year >= 1950) {
+                $filters['released_to'] = $year . '-12-31';
+                $rest = $this->removeMatch($rest, $m[0]);
+            }
+        } elseif (preg_match('/(?:released\s+(?:in\s+)?|năm\s+|year\s+|(?<![A-Za-z])in\s+)((?:19|20)\d{2})(?:\s*年)?|(?<!\d)((?:19|20)\d{2})\s*年/u', $rest, $m) === 1) {
+            $year = $m[1] !== '' ? $m[1] : $m[2];
+            [$filters['released_from'], $filters['released_to']] = [$year . '-01-01', $year . '-12-31'];
+            $rest = $this->removeMatch($rest, $m[0]);
+        }
+
+        return $filters;
     }
 
     /** @param array<string, mixed> $filters */
