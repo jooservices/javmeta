@@ -35,10 +35,34 @@ final class ApiKeyMiddlewareTest extends TestCase
             ->assertJsonMissingPath('data');
     }
 
+    public function test_active_api_key_lookup_returns_the_cached_model_without_a_database_read(): void
+    {
+        $service = app(ApiKeyService::class);
+        $created = $service->create(fake()->words(2, true));
+        Cache::shouldReceive('get')->once()->andReturn($created->model);
+        Cache::shouldReceive('put')->never();
+
+        $this->assertSame($created->model, $service->findActiveByPlaintext($created->plaintext));
+    }
+
+    public function test_cache_errors_fall_back_to_database_authentication(): void
+    {
+        $service = app(ApiKeyService::class);
+        $created = $service->create(fake()->words(2, true));
+        Cache::shouldReceive('get')->once()->andThrow(new RuntimeException('Redis unavailable'));
+        Cache::shouldReceive('put')->once();
+
+        $resolved = $service->findActiveByPlaintext($created->plaintext);
+
+        $this->assertNotNull($resolved);
+        $this->assertSame($created->model->getKey(), $resolved->getKey());
+    }
+
     public function test_revoked_api_key_returns_unauthorized_problem_without_data(): void
     {
         $service = app(ApiKeyService::class);
         $created = $service->create(fake()->words(2, true));
+        $service->findActiveByPlaintext($created->plaintext);
 
         $service->revoke((int) $created->model->getKey());
 
