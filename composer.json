@@ -14,7 +14,7 @@
         "php": "^8.5",
         "ext-redis": "^6.3",
         "jooservices/client": "^4.4.1",
-        "jooservices/crawlerx": "dev-develop#f896a4b4d2fbbcf74ba86384c8ad86f9901f335e as 1.4.3.x-dev",
+        "jooservices/crawlerx": "dev-develop as 1.4.3.x-dev",
         "jooservices/dto": "^3.0",
         "jooservices/exceptions": "^4.0",
         "jooservices/laravel-config": "^4.0",
