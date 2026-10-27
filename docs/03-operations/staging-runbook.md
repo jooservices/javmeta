@@ -37,8 +37,7 @@ Finally it waits up to 90 seconds for passing Horizon and scheduler heartbeat ch
 
 ## Is it healthy?
 
-- `$A staging:readiness` (also `--json`): one PASS or FAIL per check with the cause and the first thing to do; exits non-zero on any FAIL. It runs every hour, keeps the last 30 runs in `storage/app/private/monitoring/readiness-history.jsonl` and tells Telegram once when it turns bad. Limits are in `config/javmeta_readiness.php`.
--  (also ): one PASS or FAIL per check with the cause and the first thing to do; exits non-zero on any FAIL. It runs every hour, keeps the last 30 runs in  and tells Telegram once when it turns bad. Limits are in .
+- `$A staging:readiness` (also `--json`): one PASS or FAIL per check with the cause and the first thing to do; exits non-zero on any FAIL. It runs every hour, keeps the last 30 runs in `storage/app/private/monitoring/readiness-history.jsonl` and tells Telegram once when it turns bad. Readiness limits are in `config/javmeta_readiness.php`; the source fallback age is `JAVMETA_WATCHDOG_SOURCE_STALE_SECONDS`. Sources with a manifest `cycle_delay_seconds` become past due after that cycle plus one fresh-listing sweep.
 - `$A crawler:sources`: one row per source with the switch, the current gap and the last success.
 - `$A crawler:failures`: the latest failed jobs with their reason.
 - The Operations, Data quality and Crawl debug dashboards in OpenObserve (stream `javmeta_logs` and the metric streams); alerts go to Telegram.

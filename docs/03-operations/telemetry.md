@@ -77,7 +77,7 @@ when it clears.
 
 | Cause | Rule | Run by |
 | --- | --- | --- |
-| Dead source | Enabled source without success for `JAVMETA_WATCHDOG_SOURCE_STALE_SECONDS` | `crawler:watchdog` |
+| Dead source | Enabled source without success past `JAVMETA_WATCHDOG_SOURCE_STALE_SECONDS`; manifests with a `cycle_delay_seconds` get that cycle plus one fresh-listing sweep | `crawler:watchdog` |
 | Stalled crawl | Due pending work but no source success within `JAVMETA_WATCHDOG_CRAWL_STALL_SECONDS` | `crawler:watchdog` |
 | Stuck queue | Claimed items older than `JAVMETA_WATCHDOG_QUEUE_STUCK_SECONDS` | `crawler:watchdog` |
 | Old backup | Last backup older than `JAVMETA_BACKUP_STALE_AFTER_SECONDS` (26 hours) or missing | `javmeta:backup-status` |

@@ -10,6 +10,7 @@ use App\Models\Source;
 use App\Services\Alerts\AlertDispatcher;
 use App\Services\Alerts\OperationalAlertChecks;
 use App\Services\Crawl\WorkerHeartbeat;
+use App\Services\Health\SourceScheduleFreshness;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
@@ -24,7 +25,7 @@ final class WatchdogCommand extends Command
 
     protected $description = 'Check worker heartbeat and long-stale sources; alert via Telegram + activity log.';
 
-    public function handle(WorkerHeartbeat $heartbeat, AlertDispatcher $alerts, OperationalAlertChecks $checks): int
+    public function handle(WorkerHeartbeat $heartbeat, AlertDispatcher $alerts, OperationalAlertChecks $checks, SourceScheduleFreshness $sourceFreshness): int
     {
         if ($heartbeat->isStale()) {
             Event::dispatch(new WorkerHeartbeatStale([
@@ -37,20 +38,20 @@ final class WatchdogCommand extends Command
             $this->info('Worker heartbeat ok.');
         }
 
-        $staleSeconds = (int) config('javmeta_alerts.watchdog.source_stale_seconds', 86400);
-        $cutoff = now()->subSeconds($staleSeconds);
+        $defaultStaleSeconds = (int) config('javmeta_alerts.watchdog.source_stale_seconds', 86400);
+        $enabledSources = Source::query()->where('enabled', true)->get(['slug', 'last_success_at']);
+        $staleSources = $enabledSources
+            ->filter(fn(Source $source): bool => $sourceFreshness->isPastDue(
+                $source->last_success_at,
+                (string) $source->slug,
+                $defaultStaleSeconds,
+            ))
+            ->values();
 
-        $staleSources = Source::query()
-            ->where('enabled', true)
-            ->where(function ($query) use ($cutoff): void {
-                $query->whereNull('last_success_at')
-                    ->orWhere('last_success_at', '<', $cutoff);
-            })
-            ->pluck('slug');
-
-        foreach ($staleSources as $slug) {
-            Event::dispatch(new CrawlSourceUnhealthy((string) $slug, 'source_stale', [
-                'stale_seconds' => $staleSeconds,
+        foreach ($staleSources as $source) {
+            $slug = (string) $source->slug;
+            Event::dispatch(new CrawlSourceUnhealthy($slug, 'source_stale', [
+                'stale_seconds' => $sourceFreshness->maximumSuccessAgeSeconds($slug, $defaultStaleSeconds),
             ]));
             $this->warn("Source stale: {$slug}");
         }

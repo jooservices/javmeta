@@ -71,6 +71,19 @@ final class WatchdogAlertsTest extends TestCase
         $this->assertCount(3, $this->sent, 'recovery is sent once');
     }
 
+    public function test_manifest_cycle_prevents_false_stale_alert_until_the_source_is_past_due(): void
+    {
+        $source = Source::factory()->create(['slug' => 'eporner', 'last_success_at' => now()->subDays(3)]);
+
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+        $this->assertSame([], $this->sent);
+
+        $source->update(['last_success_at' => now()->subDays(32)]);
+        (new WorkerHeartbeat())->beat();
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+        $this->assertSame(['Source unhealthy: eporner'], $this->subjects());
+    }
+
     public function test_stalled_crawl_alerts_and_recovers(): void
     {
         $source = Source::factory()->create(['slug' => 'javbus', 'last_success_at' => now()->subHours(2)]);
