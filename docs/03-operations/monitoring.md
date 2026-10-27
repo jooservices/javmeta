@@ -347,9 +347,9 @@ point = {
     'resourceMetrics': [{
         'resource': {'attributes': [{'key': 'service.name', 'value': {'stringValue': 'javmeta-javm42-test'}}]},
         'scopeMetrics': [{'metrics': [{
-            'name': 'javmeta_source_last_success_age_seconds',
+            'name': 'javmeta_source_past_due',
             'gauge': {'dataPoints': [{
-                'asDouble': 90000,
+                'asDouble': 1,
                 'timeUnixNano': str(timestamp),
                 'attributes': [{'key': 'source_slug', 'value': {'stringValue': 'javmeta-javm42-failure-test'}}],
             }]},
@@ -370,16 +370,18 @@ print('Injection UTC', datetime.fromtimestamp(timestamp / 1e9, timezone.utc).iso
 PY
 ```
 
-Wait up to two minutes for `javmeta_source_stale` to fire. Confirm the alert
+Wait up to two minutes for `javmeta_source_stale` to fire. The injected `javmeta_source_past_due=1` sample represents the schedule-aware freshness decision. Confirm the alert
 and delivery in OpenObserve alert history and the dedicated Telegram test
 channel, then add the injection and fire UTC timestamps plus the delivery
 result to the task record. The injected sample stays inside `javmeta_it`; do
 not delete a stream that may contain other integration-test samples.
 
-## Live verification record (2026-10-16, shared OpenObserve org `javmeta_it`)
+## Historical live verification record (2026-10-16, shared OpenObserve org javmeta_it)
+
+This record predates the schedule-aware stale metric and the PostgreSQL capacity alert; use the current failure-injection steps above for a new verification.
 
 `JAVMETA_SEED_STREAMS=1 docker/ci/observability-import-shared --strict` published 68 metric points, imported 2 dashboards and
-5 of 6 alerts; `javmeta_source_failure_rate` stays pending until a crawl failure creates the
+5 of 6 historical alerts; `javmeta_source_failure_rate` stays pending until a crawl failure creates the
 `javmeta_crawl_run_failures_1h` stream (OpenObserve only accepts an alert for an existing stream; the importer reports it and a
 rerun completes it). Two further runs created nothing new and updated the same 2 dashboards and 5 alerts (idempotent).
 Failure injection: an OTLP point `javmeta_source_last_success_age_seconds{source_slug="qa-injected-source"} = 90000` is returned by the

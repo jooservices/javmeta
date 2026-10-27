@@ -1,0 +1,24 @@
+{
+  "name": "javmeta_postgres_connection_utilization_high",
+  "description": "PostgreSQL is using at least 85 percent of its configured connections.",
+  "enabled": true,
+  "is_real_time": false,
+  "stream_type": "metrics",
+  "stream_name": "javmeta_postgres_connection_utilization",
+  "query_condition": {
+    "type": "sql",
+    "sql": "SELECT _timestamp, value FROM \"javmeta_postgres_connection_utilization\" WHERE value >= 0.85"
+  },
+  "trigger_condition": {
+    "frequency_type": "minutes",
+    "frequency": 1,
+    "period": 5,
+    "operator": ">",
+    "threshold": 0,
+    "silence": 30
+  },
+  "pending_period_sec": 0,
+  "destinations": [
+    "javmeta_telegram"
+  ]
+}

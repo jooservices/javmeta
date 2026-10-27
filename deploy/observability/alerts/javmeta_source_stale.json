@@ -1,13 +1,13 @@
 {
   "name": "javmeta_source_stale",
-  "description": "A source has not completed a successful crawl within 24 hours.",
+  "description": "An enabled source exceeded its configured freshness window (manifest crawl cycle plus one scheduler sweep, or the global fallback).",
   "enabled": true,
   "is_real_time": false,
   "stream_type": "metrics",
-  "stream_name": "javmeta_source_last_success_age_seconds",
+  "stream_name": "javmeta_source_past_due",
   "query_condition": {
     "type": "sql",
-    "sql": "SELECT _timestamp, source_slug, value FROM \"javmeta_source_last_success_age_seconds\" WHERE source_slug IS NOT NULL AND value >= 86400"
+    "sql": "SELECT _timestamp, source_slug, value FROM \"javmeta_source_past_due\" WHERE source_slug IS NOT NULL AND value = 1"
   },
   "trigger_condition": {
     "frequency_type": "minutes",

@@ -87,6 +87,45 @@ final class StagingReadinessTest extends TestCase
         File::delete($history);
     }
 
+    public function test_ready_transition_sends_recovery_for_previous_failing_checks(): void
+    {
+        $history = storage_path('app/private/monitoring/readiness-history.jsonl');
+        File::ensureDirectoryExists(dirname($history));
+        File::put($history, json_encode([
+            'checked_at' => now()->subHour()->utc()->toIso8601String(),
+            'status' => 'fail',
+            'failing' => ['backup', 'scheduler'],
+        ], JSON_UNESCAPED_SLASHES) . "\n");
+
+        $sent = [];
+        $this->app->instance(ReportChannel::class, new class ($sent) implements ReportChannel {
+            /** @param list<array{string, string, array<string, mixed>}> $sent */
+            public function __construct(public array &$sent) {}
+
+            public function deliver(string $subject, string $body, array $context = []): bool
+            {
+                $this->sent[] = [$subject, $body, $context];
+
+                return true;
+            }
+        });
+
+        $service = $this->app->make(StagingReadiness::class);
+        (new \ReflectionMethod(StagingReadiness::class, 'record'))->invoke($service, [
+            'status' => 'pass',
+            'checked_at' => now()->utc()->toIso8601String(),
+            'checks' => [],
+        ]);
+
+        $this->assertCount(1, $sent);
+        $this->assertSame('Staging readiness recovered', $sent[0][0]);
+        $this->assertStringContainsString('backup, scheduler', $sent[0][1]);
+        $this->assertSame(2, $sent[0][2]['resolved_checks']);
+        $this->assertSame('resolved', $sent[0][2]['alert_state']);
+        $this->assertSame('info', $sent[0][2]['severity']);
+        File::delete($history);
+    }
+
     public function test_the_command_exits_non_zero_on_a_fail_and_prints_json(): void
     {
         $this->artisan('staging:readiness', ['--json' => true, '--no-record' => true])->assertFailed();

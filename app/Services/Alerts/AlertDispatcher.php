@@ -34,7 +34,7 @@ final class AlertDispatcher
         // recurrence can never lead to a recovery message without a prior alert.
         Cache::put($this->activeKey($debounceKey), 1, now()->addDays(7));
 
-        $this->notifier->notify($subject, $body, $context);
+        $this->notifier->notify($subject, $body, ['alert_state' => 'open', 'severity' => 'warning'] + $context);
 
         return true;
     }
@@ -54,7 +54,7 @@ final class AlertDispatcher
             return false;
         }
 
-        $this->notifier->notify($subject, $body, $context);
+        $this->notifier->notify($subject, $body, ['alert_state' => 'resolved', 'severity' => 'info'] + $context);
 
         return true;
     }

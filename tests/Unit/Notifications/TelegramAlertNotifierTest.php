@@ -68,7 +68,7 @@ final class TelegramAlertNotifierTest extends TestCase
         self::assertCount(1, $recorded);
         self::assertStringContainsString('/bottok/sendMessage', (string) $recorded[0]->request->getUri());
         $body = (string) $recorded[0]->request->getBody();
-        self::assertStringContainsString('[javmeta:testing] Circuit open', $body);
+        self::assertStringContainsString('[javmeta:testing] [ALERT][WARNING][OPEN] Circuit open', $body);
         self::assertStringContainsString('source_slug: javdb', $body);
         self::assertStringContainsString('"chat_id":"42"', $body);
     }

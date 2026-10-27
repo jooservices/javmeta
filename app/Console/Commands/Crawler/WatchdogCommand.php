@@ -80,6 +80,10 @@ final class WatchdogCommand extends Command
             $this->warn('Crawl queue is stuck.');
         }
 
+        if ($checks->checkPendingBacklog()) {
+            $this->warn('Pending crawl backlog is high.');
+        }
+
         return self::SUCCESS;
     }
 }

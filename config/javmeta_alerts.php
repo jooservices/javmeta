@@ -35,5 +35,6 @@ return [
         'source_stale_seconds' => (int) env('JAVMETA_WATCHDOG_SOURCE_STALE_SECONDS', 86400),
         'crawl_stall_seconds' => (int) env('JAVMETA_WATCHDOG_CRAWL_STALL_SECONDS', 1800),
         'queue_stuck_seconds' => (int) env('JAVMETA_WATCHDOG_QUEUE_STUCK_SECONDS', 1800),
+        'pending_queue_limit' => (int) env('JAVMETA_WATCHDOG_PENDING_QUEUE_LIMIT', 1000),
     ],
 ];

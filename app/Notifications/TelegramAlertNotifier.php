@@ -22,11 +22,20 @@ final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
 
     public function notify(string $subject, string $body, array $context = []): void
     {
-        $this->deliver($subject, $body, $context);
+        $this->deliver($subject, $body, ['alert_state' => 'open', 'severity' => 'warning'] + $context);
     }
 
     public function deliver(string $subject, string $body, array $context = []): bool
     {
+        if (isset($context['alert_state'])) {
+            $state = strtoupper((string) $context['alert_state']);
+            $severity = strtoupper((string) ($context['severity'] ?? 'warning'));
+            $state = in_array($state, ['OPEN', 'RESOLVED'], true) ? $state : 'OPEN';
+            $severity = in_array($severity, ['INFO', 'WARNING', 'CRITICAL'], true) ? $severity : 'WARNING';
+            unset($context['alert_state'], $context['severity']);
+            $subject = "[ALERT][{$severity}][{$state}] {$subject}";
+        }
+
         $token = $this->stringConfig('laravel-notifications.channels.telegram.bot_token')
             ?: $this->stringConfig('javmeta_alerts.telegram.bot_token');
         $chatId = $this->stringConfig('laravel-notifications.channels.telegram.chat_id')

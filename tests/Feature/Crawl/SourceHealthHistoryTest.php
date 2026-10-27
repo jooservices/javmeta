@@ -17,7 +17,7 @@ final class SourceHealthHistoryTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_history_grows_and_only_a_newly_blocked_source_alerts(): void
+    public function test_history_grows_and_source_block_and_recovery_transitions_alert(): void
     {
         config(['javmeta_sources.sources' => ['demo' => ['movie_listing_urls' => ['https://example.test/']]]]);
         Source::query()->create(['slug' => 'demo', 'name' => 'Demo', 'base_url' => 'https://example.test', 'enabled' => true, 'priority' => 1, 'gap_seconds_default' => 10, 'gap_seconds_min' => 5, 'gap_seconds_max' => 45, 'gap_seconds_current' => 10]);
@@ -57,7 +57,12 @@ final class SourceHealthHistoryTest extends TestCase
 
         Artisan::call('crawler:source-health', ['--delay' => 1]);
         $this->assertCount(1, $sent, 'a source that stays blocked does not alert again');
-        $this->assertCount(3, array_filter(explode("\n", (string) file_get_contents($history))));
+
+        $client::$blocked = false;
+        Artisan::call('crawler:source-health', ['--delay' => 1]);
+        $this->assertCount(2, $sent);
+        $this->assertStringContainsString('Recovered: demo', $sent[1]);
+        $this->assertCount(4, array_filter(explode("\n", (string) file_get_contents($history))));
         File::delete($history);
     }
 }

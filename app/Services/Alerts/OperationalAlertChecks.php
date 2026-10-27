@@ -16,6 +16,7 @@ final class OperationalAlertChecks
 {
     public const CRAWL_STALLED_KEY = 'crawl:stalled';
     public const QUEUE_STUCK_KEY = 'queue:stuck';
+    public const QUEUE_PENDING_BACKLOG_KEY = 'queue:pending_backlog';
 
     public function __construct(private readonly AlertDispatcher $alerts) {}
 
@@ -61,6 +62,44 @@ final class OperationalAlertChecks
             self::CRAWL_STALLED_KEY,
             'Crawl progress recovered',
             'The crawl is making progress again.',
+        );
+
+        return false;
+    }
+
+    /**
+     * Alert when a large number of pending rows are due now. Future retries do not count.
+     */
+    public function checkPendingBacklog(): bool
+    {
+        $limit = max(1, (int) config('javmeta_alerts.watchdog.pending_queue_limit', 1000));
+        $pending = CrawlQueue::query()
+            ->where('status', CrawlQueue::STATUS_PENDING)
+            ->where(function ($query): void {
+                $query->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', now());
+            });
+        $count = (clone $pending)->count();
+
+        if ($count >= $limit) {
+            $slugs = (clone $pending)->distinct()->orderBy('source_slug')->limit(20)->pluck('source_slug')->all();
+            $sourceSlugs = $slugs === [] ? 'unknown' : implode(', ', array_map('strval', $slugs));
+
+            $this->alerts->send(
+                debounceKey: self::QUEUE_PENDING_BACKLOG_KEY,
+                subject: 'Pending crawl backlog is high',
+                body: "{$count} due crawl item(s) are pending (alert limit {$limit}). Sources: {$sourceSlugs}.",
+                context: ['pending_due' => $count, 'pending_limit' => $limit, 'source_slugs' => $sourceSlugs],
+                debounceSeconds: $this->throttle(),
+            );
+
+            return true;
+        }
+
+        $this->alerts->resolve(
+            self::QUEUE_PENDING_BACKLOG_KEY,
+            'Pending crawl backlog recovered',
+            'The number of due pending crawl items is below the configured limit.',
+            ['pending_due' => $count, 'pending_limit' => $limit],
         );
 
         return false;
