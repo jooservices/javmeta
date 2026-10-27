@@ -75,6 +75,7 @@ final class OllamaProviderTest extends TestCase
         $this->assertSame([], app(OllamaClient::class)->json('sys', 'user'));
         $this->assertSame(3.0, $optionsSeen['timeout'] ?? null);
         $this->assertSame(3.0, $optionsSeen['connect_timeout'] ?? null);
+        $this->assertFalse($optionsSeen['allow_redirects'] ?? null);
     }
 
     public function test_the_check_command_reports_models_and_a_missing_one(): void

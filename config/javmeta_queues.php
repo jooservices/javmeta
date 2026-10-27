@@ -24,6 +24,11 @@ return [
 
     'search_queue' => $searchQueueName,
     'observability_queue' => $observabilityQueueName,
+    /** Percentage of API spans queued for OpenObserve; deterministic sampling uses the trace ID. */
+    'observability_sample_percent' => min(100, max(0, (int) env('JAVMETA_OBSERVABILITY_SAMPLE_PERCENT', 10))),
+
+    /** Maximum ready jobs buffered for the OpenObserve queue. */
+    'observability_depth_limit' => max(1, (int) env('JAVMETA_OBSERVABILITY_QUEUE_DEPTH_LIMIT', 1000)),
 
     /** Queues supervised by Horizon; search and observability are not crawl_queue kinds. */
     'horizon_names' => [...$workerQueueNames, $observabilityQueueName],

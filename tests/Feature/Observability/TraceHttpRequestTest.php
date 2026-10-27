@@ -20,6 +20,7 @@ final class TraceHttpRequestTest extends TestCase
     public function test_it_queues_spans_and_returns_trace_context_without_sending_http_inline(): void
     {
         config(['openobserve.enabled' => true]);
+        config(['queue.default' => 'redis', 'javmeta_queues.observability_sample_percent' => 100, 'javmeta_queues.observability_depth_limit' => 1000]);
         Http::fake();
         Queue::fake();
 
@@ -45,6 +46,7 @@ final class TraceHttpRequestTest extends TestCase
     public function test_disabled_observability_keeps_the_response_traceparent_without_queuing(): void
     {
         config(['openobserve.enabled' => false]);
+        config(['queue.default' => 'redis', 'javmeta_queues.observability_sample_percent' => 100]);
         Queue::fake();
 
         $request = Request::create('/api/v1/search/parse', 'POST');
@@ -54,9 +56,54 @@ final class TraceHttpRequestTest extends TestCase
         Queue::assertNotPushed(EmitObservabilitySpan::class);
     }
 
+    public function test_it_does_not_run_span_delivery_inline_on_the_sync_queue(): void
+    {
+        config(['openobserve.enabled' => true, 'queue.default' => 'sync', 'javmeta_queues.observability_sample_percent' => 100]);
+        Queue::fake();
+
+        $response = app(TraceHttpRequest::class)->handle(
+            Request::create('/api/v1/search/parse', 'POST'),
+            static fn() => new JsonResponse(['ok' => true]),
+        );
+
+        $this->assertSame(200, $response->getStatusCode());
+        Queue::assertNotPushed(EmitObservabilitySpan::class);
+        Http::assertNothingSent();
+    }
+
+    public function test_it_drops_sampled_spans_when_the_observability_queue_is_full(): void
+    {
+        config(['openobserve.enabled' => true, 'queue.default' => 'redis', 'javmeta_queues.observability_sample_percent' => 100, 'javmeta_queues.observability_depth_limit' => 1]);
+        Queue::fake();
+        EmitObservabilitySpan::dispatch(['name' => 'already queued']);
+
+        $response = app(TraceHttpRequest::class)->handle(
+            Request::create('/api/v1/search/parse', 'POST'),
+            static fn() => new JsonResponse(['ok' => true]),
+        );
+
+        $this->assertSame(200, $response->getStatusCode());
+        Queue::assertPushed(EmitObservabilitySpan::class, 1);
+    }
+
+    public function test_it_deterministically_samples_spans_before_checking_the_queue(): void
+    {
+        config(['openobserve.enabled' => true, 'queue.default' => 'redis', 'javmeta_queues.observability_sample_percent' => 0]);
+        Queue::fake();
+
+        $response = app(TraceHttpRequest::class)->handle(
+            Request::create('/api/v1/search/parse', 'POST'),
+            static fn() => new JsonResponse(['ok' => true]),
+        );
+
+        $this->assertSame(200, $response->getStatusCode());
+        Queue::assertNotPushed(EmitObservabilitySpan::class);
+    }
+
     public function test_queue_failure_does_not_fail_the_api_response(): void
     {
-        config(['openobserve.enabled' => true]);
+        config(['openobserve.enabled' => true, 'queue.default' => 'redis', 'javmeta_queues.observability_sample_percent' => 100]);
+        Queue::fake();
         $dispatcher = Mockery::mock(Dispatcher::class);
         $dispatcher->shouldReceive('dispatch')->once()->andThrow(new RuntimeException('queue unavailable'));
         $this->app->instance(Dispatcher::class, $dispatcher);

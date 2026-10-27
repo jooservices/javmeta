@@ -84,7 +84,7 @@ class OllamaClient
             if ($seconds <= 0) {
                 return null;
             }
-            $response = Http::timeout($seconds)->connectTimeout($seconds)->post($this->baseUrl() . '/api/chat', [
+            $response = Http::timeout($seconds)->connectTimeout($seconds)->withoutRedirecting()->post($this->baseUrl() . '/api/chat', [
                 'model' => (string) config('javmeta_ai.ollama_chat_model'),
                 'keep_alive' => $this->keepAlive(),
                 'stream' => false,

@@ -11,6 +11,7 @@ use App\Observability\TraceContext;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Support\Facades\Queue;
 use Throwable;
 
 final class TraceHttpRequest
@@ -35,7 +36,7 @@ final class TraceHttpRequest
 
         $apiKey = $request->attributes->get('api_key');
         try {
-            if ($this->client->enabled()) {
+            if ($this->client->enabled() && $this->shouldQueueSpan($traceId)) {
                 EmitObservabilitySpan::dispatch([
                     'name' => $request->method() . ' ' . '/' . ltrim($request->path(), '/'),
                     'trace_id' => $traceId,
@@ -59,5 +60,22 @@ final class TraceHttpRequest
         $response->headers->set('traceparent', TraceContext::formatTraceparent($traceId, $spanId));
 
         return $response;
+    }
+
+    private function shouldQueueSpan(string $traceId): bool
+    {
+        if (config('queue.default') === 'sync') {
+            return false;
+        }
+
+        $samplePercent = (int) config('javmeta_queues.observability_sample_percent', 10);
+        if ($samplePercent <= 0 || ($samplePercent < 100 && hexdec(substr($traceId, -2)) % 100 >= $samplePercent)) {
+            return false;
+        }
+
+        $queue = (string) config('javmeta_queues.observability_queue', 'observability');
+        $depthLimit = max(1, (int) config('javmeta_queues.observability_depth_limit', 1000));
+
+        return Queue::size($queue) < $depthLimit;
     }
 }
