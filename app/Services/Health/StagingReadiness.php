@@ -28,6 +28,8 @@ final class StagingReadiness
     ) {}
 
     /**
+     * Run deployment and crawler readiness checks and optionally persist state transitions.
+     *
      * @return array{status: string, checked_at: string, checks: list<array{name: string, status: string, message: string, action: ?string}>}
      */
     public function run(bool $record = true): array
@@ -148,10 +150,21 @@ final class StagingReadiness
         $lines[] = (string) json_encode(['checked_at' => $report['checked_at'], 'status' => $report['status'], 'failing' => $failing], JSON_UNESCAPED_SLASHES);
         File::put($file, implode("\n", array_slice($lines, -self::HISTORY_LIMIT)) . "\n");
 
-        // Tell Telegram once when the state turns bad or the set of failing checks changes, not on every run.
+        // Alert once when the state turns bad or its failing checks change, then explicitly announce recovery.
         if ($report['status'] === 'fail' && (! is_array($previous) || ($previous['failing'] ?? []) !== $failing)) {
             $first = array_values(array_filter($report['checks'], static fn(array $c): bool => $c['status'] === 'fail'))[0] ?? null;
-            $this->channel->deliver('Staging readiness', 'Staging is NOT ready. Failing: ' . implode(', ', $failing) . '. ' . ($first['message'] ?? '') . ' ' . ($first['action'] ?? ''));
+            $this->channel->deliver(
+                'Staging readiness',
+                'Staging is NOT ready. Failing: ' . implode(', ', $failing) . '. ' . ($first['message'] ?? '') . ' ' . ($first['action'] ?? ''),
+                ['alert_state' => 'open', 'severity' => 'warning'],
+            );
+        } elseif ($report['status'] === 'pass' && is_array($previous) && ($previous['status'] ?? null) === 'fail') {
+            $resolved = (array) ($previous['failing'] ?? []);
+            $this->channel->deliver(
+                'Staging readiness recovered',
+                'Staging is READY. Recovered checks: ' . ($resolved === [] ? 'previous failure' : implode(', ', $resolved)) . '.',
+                ['alert_state' => 'resolved', 'severity' => 'info', 'resolved_checks' => count($resolved), 'checked_at' => $report['checked_at']],
+            );
         }
     }
 }

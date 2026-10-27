@@ -16,6 +16,7 @@ use App\Observability\OpenObserveClient;
 use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Search\ElasticsearchHttpClient;
 use App\Services\Search\ElasticsearchRequestHealth;
+use App\Services\Health\SourceScheduleFreshness;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -30,11 +31,15 @@ final class PublishMetricsCommand extends Command
 
     protected $description = 'Publish javmeta ops and quality aggregate metrics to OpenObserve.';
 
+    /**
+     * Publish current operational, freshness, dependency, and capacity metrics.
+     */
     public function handle(
         OpenObserveClient $client,
         MongoArchiveWriteHealth $archiveWrites,
         ElasticsearchHttpClient $elasticsearch,
         ElasticsearchRequestHealth $elasticsearchHealth,
+        SourceScheduleFreshness $sourceFreshness,
     ): int {
         if (! $client->enabled()) {
             $this->components->info('OpenObserve disabled; skipping metrics publish.');
@@ -43,7 +48,7 @@ final class PublishMetricsCommand extends Command
         }
 
         $points = array_merge(
-            $this->sourceMetrics(),
+            $this->sourceMetrics($sourceFreshness),
             $this->queueMetrics(),
             $this->crawlEventMetrics(),
             $this->apiMetrics(),
@@ -51,6 +56,7 @@ final class PublishMetricsCommand extends Command
             $this->crawlRunMetrics(),
             $this->catalogMetrics(),
             $this->failedJobMetrics(),
+            $this->postgresCapacityMetrics(),
             [[
                 'name' => 'javmeta_mongo_archive_write_failures',
                 'value' => $archiveWrites->failureCount(),
@@ -69,11 +75,13 @@ final class PublishMetricsCommand extends Command
     }
 
     /**
+     * @param  SourceScheduleFreshness  $sourceFreshness  Schedule rules for each enabled source.
      * @return list<array{name: string, value: float|int, labels?: array<string, string>}>
      */
-    private function sourceMetrics(): array
+    private function sourceMetrics(SourceScheduleFreshness $sourceFreshness): array
     {
         $points = [];
+        $defaultStaleSeconds = (int) config('javmeta_alerts.watchdog.source_stale_seconds', 86400);
 
         foreach (Source::query()->get() as $source) {
             $labels = ['source_slug' => $source->slug];
@@ -88,6 +96,11 @@ final class PublishMetricsCommand extends Command
             $points[] = [
                 'name' => 'javmeta_source_last_success_age_seconds',
                 'value' => $age,
+                'labels' => $labels,
+            ];
+            $points[] = [
+                'name' => 'javmeta_source_past_due',
+                'value' => $source->enabled && $sourceFreshness->isPastDue($source->last_success_at, (string) $source->slug, $defaultStaleSeconds) ? 1 : 0,
                 'labels' => $labels,
             ];
         }
@@ -344,8 +357,27 @@ final class PublishMetricsCommand extends Command
     }
 
     /**
+     * Report client backend usage against PostgreSQL's configured connection limit.
+     *
      * @return list<array{name: string, value: float|int, labels?: array<string, string>}>
      */
+    private function postgresCapacityMetrics(): array
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return [];
+        }
+
+        $row = DB::selectOne("SELECT COUNT(*)::int AS used, current_setting('max_connections')::int AS maximum FROM pg_stat_activity WHERE backend_type = 'client backend'");
+        $used = max(0, (int) ($row->used ?? 0));
+        $maximum = max(1, (int) ($row->maximum ?? 1));
+
+        return [
+            ['name' => 'javmeta_postgres_connections_used', 'value' => $used],
+            ['name' => 'javmeta_postgres_connections_max', 'value' => $maximum],
+            ['name' => 'javmeta_postgres_connection_utilization', 'value' => $used / $maximum],
+        ];
+    }
+
     private function dependencyProbeMetrics(ElasticsearchHttpClient $elasticsearch): array
     {
         $points = [];

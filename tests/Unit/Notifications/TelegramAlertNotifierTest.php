@@ -68,9 +68,44 @@ final class TelegramAlertNotifierTest extends TestCase
         self::assertCount(1, $recorded);
         self::assertStringContainsString('/bottok/sendMessage', (string) $recorded[0]->request->getUri());
         $body = (string) $recorded[0]->request->getBody();
-        self::assertStringContainsString('[javmeta:testing] Circuit open', $body);
+        self::assertStringContainsString('[javmeta:testing] [ALERT][WARNING][OPEN] Circuit open', $body);
         self::assertStringContainsString('source_slug: javdb', $body);
         self::assertStringContainsString('"chat_id":"42"', $body);
+    }
+
+    /**
+     * A recovery keeps its resolved state and informational severity in the Telegram subject.
+     */
+    public function test_preserves_resolved_state_when_posting_a_recovery(): void
+    {
+        config([
+            'javmeta_alerts.telegram.bot_token' => 'tok',
+            'javmeta_alerts.telegram.chat_id' => '42',
+            'javmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
+            'laravel-notifications.channels.telegram.bot_token' => 'tok',
+            'laravel-notifications.channels.telegram.chat_id' => '42',
+            'laravel-notifications.channels.telegram.api_base' => 'https://api.telegram.org',
+        ]);
+
+        ClientBuilder::fake()->respond(
+            'POST',
+            '*',
+            (new TestResponseSequence())->push(TestResponse::json(['ok' => true])),
+        );
+
+        $client = ClientBuilder::create()
+            ->withBaseUri('https://api.telegram.org/')
+            ->build();
+
+        (new TelegramAlertNotifier($client))->notify(
+            'Source recovered',
+            'The source is healthy again.',
+            ['alert_state' => 'resolved', 'severity' => 'info'],
+        );
+
+        $recorded = ClientBuilder::recorded();
+        self::assertCount(1, $recorded);
+        self::assertStringContainsString('[javmeta:testing] [ALERT][INFO][RESOLVED] Source recovered', (string) $recorded[0]->request->getBody());
     }
 
     public function test_posts_telegram_message_when_bot_token_contains_colon(): void

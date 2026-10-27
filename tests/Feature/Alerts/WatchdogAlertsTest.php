@@ -124,6 +124,38 @@ final class WatchdogAlertsTest extends TestCase
         $this->assertSame(['Crawl queue is stuck', 'Crawl queue recovered'], $this->subjects());
     }
 
+    public function test_due_pending_backlog_alerts_and_recovers_below_the_configured_limit(): void
+    {
+        Source::factory()->create(['slug' => 'javdb', 'last_success_at' => now()]);
+        config(['javmeta_alerts.watchdog.pending_queue_limit' => 2]);
+        $dueOne = CrawlQueue::factory()->create([
+            'source_slug' => 'javdb',
+            'status' => CrawlQueue::STATUS_PENDING,
+            'next_attempt_at' => null,
+        ]);
+        $dueTwo = CrawlQueue::factory()->create([
+            'source_slug' => 'javdb',
+            'status' => CrawlQueue::STATUS_PENDING,
+            'next_attempt_at' => now()->subMinute(),
+        ]);
+        CrawlQueue::factory()->create([
+            'source_slug' => 'javdb',
+            'status' => CrawlQueue::STATUS_PENDING,
+            'next_attempt_at' => now()->addHour(),
+        ]);
+
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+        $this->assertSame(['Pending crawl backlog is high'], $this->subjects());
+        $this->assertSame(2, $this->sent[0][2]['pending_due']);
+        $this->assertSame('open', $this->sent[0][2]['alert_state']);
+
+        $dueTwo->update(['status' => CrawlQueue::STATUS_DONE]);
+        $this->artisan('crawler:watchdog')->assertSuccessful();
+        $this->assertSame(['Pending crawl backlog is high', 'Pending crawl backlog recovered'], $this->subjects());
+        $this->assertSame(1, $this->sent[1][2]['pending_due']);
+        $this->assertSame('resolved', $this->sent[1][2]['alert_state']);
+    }
+
     public function test_stale_worker_heartbeat_recovers(): void
     {
         Cache::forget(WorkerHeartbeat::CACHE_KEY);

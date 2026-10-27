@@ -47,6 +47,7 @@ final class ImportTest extends TestCase
                 ['alert_id' => 'claimed-age-id', 'name' => 'javmeta_queue_claimed_age_high'],
                 ['alert_id' => 'dependency-id', 'name' => 'javmeta_dependency_down'],
                 ['alert_id' => 'p95-id', 'name' => 'javmeta_api_p95_high'],
+                ['alert_id' => 'pg-connections-id', 'name' => 'javmeta_postgres_connection_utilization_high'],
             ]],
         ]);
         foreach ([
@@ -63,17 +64,18 @@ final class ImportTest extends TestCase
             ['PUT', '/api/v2/javmeta_it/alerts/claimed-age-id'],
             ['PUT', '/api/v2/javmeta_it/alerts/dependency-id'],
             ['PUT', '/api/v2/javmeta_it/alerts/p95-id'],
+            ['PUT', '/api/v2/javmeta_it/alerts/pg-connections-id'],
         ] as [$method, $path]) {
             $this->respond($method, $path, [[]]);
         }
         $this->respond('POST', '/api/javmeta_it/dashboards', [[], [], []]);
-        $this->respond('POST', '/api/v2/javmeta_it/alerts', array_fill(0, 6, []));
+        $this->respond('POST', '/api/v2/javmeta_it/alerts', array_fill(0, 7, []));
 
         $this->artisan('observability:import')
-            ->expectsOutputToContain('Imported 3 dashboards and 6 alerts')
+            ->expectsOutputToContain('Imported 3 dashboards and 7 alerts')
             ->assertSuccessful();
         $this->artisan('observability:import')
-            ->expectsOutputToContain('Imported 3 dashboards and 6 alerts')
+            ->expectsOutputToContain('Imported 3 dashboards and 7 alerts')
             ->assertSuccessful();
 
         $counts = [];
@@ -90,13 +92,14 @@ final class ImportTest extends TestCase
         self::assertSame(1, $counts['PUT /api/javmeta_it/dashboards/operations-id']);
         self::assertSame(1, $counts['PUT /api/javmeta_it/dashboards/quality-id']);
         self::assertSame(1, $counts['PUT /api/javmeta_it/dashboards/crawl-id']);
-        self::assertSame(6, $counts['POST /api/v2/javmeta_it/alerts']);
+        self::assertSame(7, $counts['POST /api/v2/javmeta_it/alerts']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/stale-id']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/error-rate-id']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/failure-rate-id']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/claimed-age-id']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/dependency-id']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/p95-id']);
+        self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/pg-connections-id']);
 
         $dashboardUpdate = collect(ClientBuilder::recorded())->first(
             static fn($record): bool => $record->request->getMethod() === 'PUT'
@@ -110,6 +113,9 @@ final class ImportTest extends TestCase
         self::assertSame('javmeta_telegram', $destination['name']);
         self::assertSame('https://api.telegram.org/botunit-test-token/sendMessage', $destination['url']);
         self::assertSame('javmeta_telegram', $destination['template']);
+        $template = $this->requestBody('POST', '/api/javmeta_it/alerts/templates');
+        $templateMessage = json_decode($template['body'], true, 512, JSON_THROW_ON_ERROR);
+        self::assertSame('[javmeta:testing] [ALERT][WARNING][OPEN] {alert_name} triggered for {stream_name}. {rows}', $templateMessage['text']);
 
         $dashboard = $this->requestBody('POST', '/api/javmeta_it/dashboards', 'JAVMETA Operations');
         self::assertSame('JAVMETA Operations', $dashboard['title']);
@@ -148,7 +154,7 @@ final class ImportTest extends TestCase
         $this->respond('PUT', '/api/javmeta_it/alerts/destinations/javmeta_telegram', [[], []]);
         $this->respond('POST', '/api/javmeta_it/dashboards', array_fill(0, 6, []));
         // Every alert creation answers 404 as OpenObserve does for a stream without data.
-        $this->respond('POST', '/api/v2/javmeta_it/alerts', array_fill(0, 12, ['code' => 404, 'message' => 'Stream not found']), 404);
+        $this->respond('POST', '/api/v2/javmeta_it/alerts', array_fill(0, 14, ['code' => 404, 'message' => 'Stream not found']), 404);
 
         $this->artisan('observability:import')
             ->expectsOutputToContain('Alerts pending until their metric stream receives data')
@@ -187,6 +193,26 @@ final class ImportTest extends TestCase
             self::assertContains($from[1], $streams, basename($path));
             self::assertSame($from[1], $alert['stream_name'] ?? null, basename($path));
         }
+    }
+
+    /**
+     * The PostgreSQL capacity alert reads the newest sample and holds for five full minutes.
+     */
+    public function test_postgres_utilization_alert_uses_current_sample_and_five_minute_hold(): void
+    {
+        $alert = json_decode(
+            (string) file_get_contents(base_path('deploy/observability/alerts/javmeta_postgres_connection_utilization_high.json')),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        $sql = $alert['query_condition']['sql'] ?? '';
+
+        self::assertStringContainsString('FROM (SELECT _timestamp, value FROM "javmeta_postgres_connection_utilization"', $sql);
+        self::assertStringContainsString('ORDER BY _timestamp DESC LIMIT 1) AS latest WHERE value >= 0.85', $sql);
+        self::assertSame(300, $alert['pending_period_sec'] ?? null);
+        self::assertSame(1, $alert['trigger_condition']['frequency'] ?? null);
+        self::assertSame(5, $alert['trigger_condition']['period'] ?? null);
     }
 
     public function test_it_fails_before_writing_when_telegram_credentials_are_missing(): void

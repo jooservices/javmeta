@@ -30,6 +30,11 @@ final class ObservabilityImporter
      *     destination_created: bool
      * }
      */
+    /**
+     * Import or update managed dashboards, alert definitions, and the Telegram destination.
+     *
+     * @return array<string, mixed>
+     */
     public function import(bool $dryRun = false): array
     {
         $dashboards = $this->loadDefinitions('dashboards');
@@ -47,7 +52,7 @@ final class ObservabilityImporter
         $telegram = $this->telegramConfiguration();
         $this->assertConfiguration($telegram);
 
-        $template = $this->telegramTemplate($telegram['chat_id']);
+        $template = $this->telegramTemplate($telegram['chat_id'], (string) config('app.env', 'unknown'));
         $destination = $this->telegramDestination($telegram);
         $templates = $this->resources($this->path('/alerts/templates'));
         $destinations = $this->resources($this->path('/alerts/destinations'));
@@ -214,7 +219,7 @@ final class ObservabilityImporter
     }
 
     /** @return array<string, mixed> */
-    private function telegramTemplate(string $chatId): array
+    private function telegramTemplate(string $chatId, string $environment): array
     {
         return [
             'name' => self::TELEGRAM_TEMPLATE_NAME,
@@ -222,7 +227,7 @@ final class ObservabilityImporter
             'type' => 'http',
             'body' => json_encode([
                 'chat_id' => $chatId,
-                'text' => '[javmeta] {alert_name} triggered for {stream_name}. {rows}',
+                'text' => '[javmeta:' . $environment . '] [ALERT][WARNING][OPEN] {alert_name} triggered for {stream_name}. {rows}',
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
         ];
     }

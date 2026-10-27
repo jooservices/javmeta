@@ -19,6 +19,7 @@ environment.
 | --- | --- | --- |
 | `javmeta_source_gap_seconds` | `source_slug` | Current configured source gap. |
 | `javmeta_source_last_success_age_seconds` | `source_slug` | Age in seconds since the source's last successful crawl; `-1` means no success is recorded. |
+| `javmeta_source_past_due` | `source_slug` | 1 when an enabled source exceeded its manifest cycle plus one scheduler sweep, or global fallback; otherwise 0. |
 | `javmeta_crawl_queue_depth` | `status` | Current queue rows by state. |
 | `javmeta_crawl_queue_claimed_age_seconds` | — | Age in seconds of the oldest claimed queue row; `-1` means none is claimed. |
 | `javmeta_crawl_queue_avg_attempts` | — | Average attempts for pending and failed queue rows. |
@@ -47,6 +48,9 @@ environment.
 | `javmeta_failed_jobs` | — | Failed queue jobs. |
 | `javmeta_failed_jobs_1h` | — | Queue jobs that failed in the previous hour. |
 | `javmeta_dep_up` | `dependency` | Availability of PostgreSQL, Elasticsearch, OpenObserve, and MongoDB (`1` up, `0` down). |
+| `javmeta_postgres_connections_used` | - | Active PostgreSQL sessions across the instance. |
+| `javmeta_postgres_connections_max` | - | Configured PostgreSQL max_connections. |
+| `javmeta_postgres_connection_utilization` | - | Active sessions divided by max_connections; alert threshold is 85% sustained for five minutes. |
 | `javmeta_mongo_archive_write_failures` | — | Cumulative count of failed Mongo archive writes since the cache counter was created. |
 | `javmeta_elasticsearch_request_failures` | — | Cumulative count of failed Elasticsearch requests since the cache counter was created. |
 | `javmeta_search_embedding_backfill_missing` | `entity` | Movie or performer documents found missing from Elasticsearch or without an embedding during the latest backfill run. |
@@ -70,16 +74,19 @@ counts stale queue claims returned to pending before a worker started them.
 ### Telegram alerts
 
 Telegram settings come from `NOTIFICATION_TELEGRAM_*`; with no token nothing is
-sent and nothing fails. Every message starts with `[javmeta:<environment>]` and
-names the source where one applies. Each cause alerts at most once per
-`JAVMETA_ALERT_THROTTLE_SECONDS` (default 3600) and one recovery message follows
-when it clears.
+sent and nothing fails. Operational alerts use
+`[javmeta:<environment>] [ALERT][<severity>][<OPEN|RESOLVED>]` and name the
+source where one applies. Each cause alerts at most once per
+`JAVMETA_ALERT_THROTTLE_SECONDS` (default 3600) and sends one recovery message
+when it clears. Follow messages and bot replies use product-specific templates.
+
 
 | Cause | Rule | Run by |
 | --- | --- | --- |
 | Dead source | Enabled source without success past `JAVMETA_WATCHDOG_SOURCE_STALE_SECONDS`; manifests with a `cycle_delay_seconds` get that cycle plus one fresh-listing sweep | `crawler:watchdog` |
 | Stalled crawl | Due pending work but no source success within `JAVMETA_WATCHDOG_CRAWL_STALL_SECONDS` | `crawler:watchdog` |
 | Stuck queue | Claimed items older than `JAVMETA_WATCHDOG_QUEUE_STUCK_SECONDS` | `crawler:watchdog` |
+| Due pending backlog | Due pending items reach `JAVMETA_WATCHDOG_PENDING_QUEUE_LIMIT` (default 1,000); a recovery message follows below the limit | `crawler:watchdog` |
 | Old backup | Last backup older than `JAVMETA_BACKUP_STALE_AFTER_SECONDS` (26 hours) or missing | `javmeta:backup-status` |
 
 `OPENOBSERVE_STREAM_METRICS` is retained in configuration for compatibility;

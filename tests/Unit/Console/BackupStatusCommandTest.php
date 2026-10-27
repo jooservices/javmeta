@@ -98,7 +98,7 @@ final class BackupStatusCommandTest extends TestCase
             ->with(
                 'Backup manifest missing',
                 'No successful database backup manifest is available.',
-                ['backup_age_seconds' => -1],
+                ['alert_state' => 'open', 'severity' => 'warning', 'backup_age_seconds' => -1],
             );
         $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
 
@@ -116,7 +116,7 @@ final class BackupStatusCommandTest extends TestCase
             ->with(
                 'Backup manifest missing',
                 'No successful database backup manifest is available.',
-                ['backup_age_seconds' => -1],
+                ['alert_state' => 'open', 'severity' => 'warning', 'backup_age_seconds' => -1],
             );
         $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
 

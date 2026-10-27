@@ -85,6 +85,53 @@ final class PublishMetricsCommandTest extends TestCase
             && str_contains($request->body(), CrawlEvent::KIND_QUEUE_RECLAIMED_WITHOUT_START));
     }
 
+    public function test_source_past_due_metric_respects_manifest_cycles_and_missing_success(): void
+    {
+        Source::factory()->create([
+            'slug' => 'eporner',
+            'gap_seconds_current' => 30,
+            'last_success_at' => now()->subDays(3),
+        ]);
+        Source::factory()->create([
+            'slug' => 'warashi',
+            'gap_seconds_current' => 30,
+            'last_success_at' => null,
+        ]);
+
+        config()->set([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.email' => 'root@javmeta.local',
+            'openobserve.password' => 'secret',
+            'openobserve.timeout' => 1,
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
+
+        $this->artisan('obs:publish-metrics')->assertSuccessful();
+
+        Http::assertSent(static function ($request): bool {
+            $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [];
+            $states = [];
+            foreach ($metrics as $metric) {
+                if (($metric['name'] ?? null) !== 'javmeta_source_past_due') {
+                    continue;
+                }
+                foreach ($metric['gauge']['dataPoints'] ?? [] as $point) {
+                    $attributes = [];
+                    foreach ($point['attributes'] ?? [] as $attribute) {
+                        $attributes[$attribute['key']] = $attribute['value']['stringValue'] ?? null;
+                    }
+                    if (isset($attributes['source_slug'])) {
+                        $states[$attributes['source_slug']] = (float) ($point['asDouble'] ?? -1);
+                    }
+                }
+            }
+
+            return ($states['eporner'] ?? null) === 0.0 && ($states['warashi'] ?? null) === 1.0;
+        });
+    }
+
     public function test_command_skips_when_disabled(): void
     {
         config()->set('openobserve.enabled', false);

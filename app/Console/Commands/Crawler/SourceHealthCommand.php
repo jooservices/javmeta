@@ -17,6 +17,9 @@ final class SourceHealthCommand extends Command
 
     protected $description = 'Check every enabled source live (one public page per kind, polite delays) and report WORKING, DEGRADED or BLOCKED with the reason.';
 
+    /**
+     * Check sources and persist transition history only for a complete all-source report.
+     */
     public function handle(CrawlerxClient $client, ReportChannel $channel): int
     {
         $delay = max(1, (int) $this->option('delay'));
@@ -38,7 +41,7 @@ final class SourceHealthCommand extends Command
 
         $report = ['generated_at' => now()->utc()->toIso8601String(), 'summary' => $this->summary($rows), 'rows' => $rows];
 
-        if (! $this->option('no-write')) {
+        if (! $this->option('no-write') && $only === '') {
             $this->write($report);
             $this->recordHistory($report, $channel);
         }
@@ -99,9 +102,35 @@ final class SourceHealthCommand extends Command
         if ($previous === null) {
             return;
         }
-        $new = array_values(array_diff($blocked, (array) ($previous['blocked'] ?? [])));
+        $previousBlocked = (array) ($previous['blocked'] ?? []);
+        $new = array_values(array_diff($blocked, $previousBlocked));
+        $recovered = array_values(array_diff($previousBlocked, $blocked));
         if ($new !== []) {
-            $channel->deliver('Source health', 'Newly blocked sources: ' . implode(', ', $new) . '. Blocked now: ' . implode(', ', $blocked) . '.');
+            $channel->deliver(
+                'Source health blocked',
+                'Newly blocked: ' . implode(', ', $new) . '. Blocked now: ' . ($blocked === [] ? 'none' : implode(', ', $blocked)) . '.',
+                [
+                    'alert_state' => 'open',
+                    'severity' => 'warning',
+                    'newly_blocked_count' => count($new),
+                    'recovered_count' => 0,
+                    'blocked_now_count' => count($blocked),
+                ],
+            );
+        }
+
+        if ($recovered !== []) {
+            $channel->deliver(
+                'Source health recovered',
+                'Recovered: ' . implode(', ', $recovered) . '. Blocked now: ' . ($blocked === [] ? 'none' : implode(', ', $blocked)) . '.',
+                [
+                    'alert_state' => 'resolved',
+                    'severity' => 'info',
+                    'newly_blocked_count' => 0,
+                    'recovered_count' => count($recovered),
+                    'blocked_now_count' => count($blocked),
+                ],
+            );
         }
     }
 
