@@ -14,6 +14,17 @@ STOP_GRACE="${JAVMETA_QUEUE_STOP_GRACE:-200}"
 PHP_BIN="${JAVMETA_PHP_BIN:-php}"
 
 IFS=',' read -r -a QUEUE_LIST <<< "${QUEUES}"
+has_observability_queue=0
+for configured_queue in "${QUEUE_LIST[@]}"; do
+  configured_queue="$(echo "${configured_queue}" | xargs)"
+  if [[ "${configured_queue}" == observability ]]; then
+    has_observability_queue=1
+    break
+  fi
+done
+if ((has_observability_queue == 0)); then
+  QUEUE_LIST+=(observability)
+fi
 
 worker_queues=()
 worker_slots=()

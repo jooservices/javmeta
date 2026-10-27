@@ -159,9 +159,19 @@ test_starts_one_worker_per_queue_slot() {
   reset_state
   export JAVMETA_QUEUE_NAMES=alpha,beta JAVMETA_WORKERS_PER_QUEUE=2 JAVMETA_QUEUE_TIMEOUT=180 FAKE_MODE=hold
   start_supervisor
-  wait_for_launches 4 5
+  wait_for_launches 6 5
   assert_eq 2 "$(awk -F'|' '$1 == "alpha" { count++ } END { print count + 0 }' "${FAKE_STATE}/launches")" 'alpha worker count'
   assert_eq 2 "$(awk -F'|' '$1 == "beta" { count++ } END { print count + 0 }' "${FAKE_STATE}/launches")" 'beta worker count'
+  assert_eq 2 "$(awk -F'|' '$1 == "observability" { count++ } END { print count + 0 }' "${FAKE_STATE}/launches")" 'observability worker count'
+  stop_supervisor
+}
+
+test_does_not_duplicate_explicit_observability_queue() {
+  reset_state
+  export JAVMETA_QUEUE_NAMES=alpha,observability JAVMETA_WORKERS_PER_QUEUE=1 FAKE_MODE=hold
+  start_supervisor
+  wait_for_launches 2 5
+  assert_eq 1 "$(awk -F'|' '$1 == "observability" { count++ } END { print count + 0 }' "${FAKE_STATE}/launches")" 'observability worker count'
   stop_supervisor
 }
 
@@ -190,11 +200,12 @@ test_restarts_only_failed_worker() {
   export JAVMETA_QUEUE_NAMES=alpha,beta JAVMETA_WORKERS_PER_QUEUE=1 FAKE_MODE=hold
   export FAKE_EXIT_QUEUE=alpha FAKE_EXIT_CODE=7
   start_supervisor
-  wait_for_launches 2 5
+  wait_for_launches 3 5
   beta_pid="$(awk -F'|' '$1 == "beta" { print $2; exit }' "${FAKE_STATE}/launches")"
-  wait_for_launches 3 7
+  wait_for_launches 4 7
   assert_eq 2 "$(awk -F'|' '$1 == "alpha" { count++ } END { print count + 0 }' "${FAKE_STATE}/launches")" 'failed worker restart count'
   assert_eq 1 "$(awk -F'|' '$1 == "beta" { count++ } END { print count + 0 }' "${FAKE_STATE}/launches")" 'healthy worker restart count'
+  assert_eq 1 "$(awk -F'|' '$1 == "observability" { count++ } END { print count + 0 }' "${FAKE_STATE}/launches")" 'observability worker restart count'
   current_beta_pid="$(awk -F'|' '$1 == "beta" { print $2; exit }' "${FAKE_STATE}/launches")"
   assert_eq "${beta_pid}" "${current_beta_pid}" 'healthy worker pid'
   stop_supervisor
@@ -217,15 +228,15 @@ test_sigterm_exits_zero() {
   reset_state
   export JAVMETA_QUEUE_NAMES=alpha,beta JAVMETA_WORKERS_PER_QUEUE=1 FAKE_MODE=hold
   start_supervisor
-  wait_for_launches 2 5
+  wait_for_launches 3 5
   stop_supervisor
 }
 
 test_sigterm_kills_term_ignoring_child() {
   reset_state
-  export JAVMETA_QUEUE_NAMES=alpha JAVMETA_WORKERS_PER_QUEUE=1 FAKE_MODE=ignore-term JAVMETA_QUEUE_STOP_GRACE=1
+  export JAVMETA_QUEUE_NAMES=alpha,observability JAVMETA_WORKERS_PER_QUEUE=1 FAKE_MODE=ignore-term JAVMETA_QUEUE_STOP_GRACE=1
   start_supervisor
-  wait_for_launches 1 5
+  wait_for_launches 2 5
   child_pid="$(awk -F'|' 'NR == 1 { print $2; exit }' "${FAKE_STATE}/launches")"
   stop_supervisor
   if kill -0 "${child_pid}" 2>/dev/null; then
@@ -236,6 +247,7 @@ test_sigterm_kills_term_ignoring_child() {
 }
 
 test_starts_one_worker_per_queue_slot
+test_does_not_duplicate_explicit_observability_queue
 test_passes_timeout_default_and_override
 test_restarts_only_failed_worker
 test_backoff_grows

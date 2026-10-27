@@ -5,12 +5,43 @@ declare(strict_types=1);
 namespace Tests\Unit\Observability;
 
 use App\Observability\ObservabilityEmitter;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
+use RuntimeException;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 final class ObservabilityEmitterTest extends TestCase
 {
+    public function test_api_usage_is_not_queued_when_openobserve_is_disabled(): void
+    {
+        config()->set('openobserve.enabled', false);
+        Queue::fake();
+
+        app(ObservabilityEmitter::class)->emitApiUsage(['api_key_id' => 1]);
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_api_usage_queue_failure_does_not_escape(): void
+    {
+        config()->set('openobserve.enabled', true);
+        Bus::shouldReceive('dispatch')->once()->andThrow(new RuntimeException('queue unavailable'));
+
+        $logger = \Mockery::mock();
+        $logger->shouldReceive('warning')->once()->with(
+            'API usage telemetry queue dispatch failed.',
+            ['exception' => RuntimeException::class],
+        );
+        Log::shouldReceive('channel')->once()->with('single')->andReturn($logger);
+
+        app(ObservabilityEmitter::class)->emitApiUsage(['api_key_id' => 1]);
+
+        $this->assertTrue(true);
+    }
+
     public function test_emit_fetch_sends_crawlerx_attempts_without_error_text(): void
     {
         config()->set([

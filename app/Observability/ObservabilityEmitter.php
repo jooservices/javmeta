@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Observability;
 
 use App\Jobs\EmitObservabilityLog;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Fail-open telemetry emission to OpenObserve.
@@ -34,10 +36,25 @@ final class ObservabilityEmitter
      */
     public function emitApiUsage(array $fields): void
     {
-        EmitObservabilityLog::dispatch($this->timestampedRecord([
-            'event' => 'api_usage',
-            ...$fields,
-        ]));
+        if (! $this->client->enabled()) {
+            return;
+        }
+
+        try {
+            EmitObservabilityLog::dispatch($this->timestampedRecord([
+                'event' => 'api_usage',
+                ...$fields,
+                'role' => (string) config('dependencies.role', 'api'),
+            ]));
+        } catch (Throwable $exception) {
+            try {
+                Log::channel('single')->warning('API usage telemetry queue dispatch failed.', [
+                    'exception' => $exception::class,
+                ]);
+            } catch (Throwable) {
+                // API termination must remain fail-open even if logging is unavailable.
+            }
+        }
     }
 
     /**
