@@ -208,7 +208,7 @@ final class SettingsService
     private function effectiveValue(string $key, array $definition, mixed $value): mixed
     {
         if ($key === 'ai.nl_timeout_seconds' && is_numeric($value)) {
-            // Older settings may exceed the new three-second latency budget.
+            // Persisted timeout settings must remain within the current request deadline.
             return min((int) ($definition['max'] ?? $value), max((int) ($definition['min'] ?? 1), (int) $value));
         }
 

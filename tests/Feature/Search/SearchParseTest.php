@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature\Search;
 
 use App\Services\Auth\ApiKeyService;
+use App\Services\Dependencies\Dependency;
+use App\Services\Dependencies\DependencyMonitor;
+use App\Services\Dependencies\DependencyProbe;
 use App\Services\Dataset\SampleDataset;
 use App\Services\Search\QueryInterpreter;
 use Illuminate\Support\Facades\Cache;
@@ -140,6 +143,28 @@ final class SearchParseTest extends TestCase
         $this->postJson('/api/v1/search/parse', ['q' => 'movies about the office at night'], ['X-API-Key' => $key])->assertOk();
 
         Http::assertSentCount(1);
+    }
+
+    public function test_cached_parse_does_not_require_postgres_but_cache_miss_does(): void
+    {
+        Http::fake(['ollama.test:11434/*' => Http::response('down', 500)]);
+        $key = app(ApiKeyService::class)->create('natural-language-parse', 60, ['movies'])->plaintext;
+        $question = 'movies about an office at night';
+
+        $this->postJson('/api/v1/search/parse', ['q' => $question], ['X-API-Key' => $key])->assertOk();
+
+        $unavailable = new DependencyMonitor([
+            Dependency::Postgres->value => new class implements DependencyProbe {
+                public function probe(): bool
+                {
+                    return false;
+                }
+            },
+        ]);
+        $this->app->instance(DependencyMonitor::class, $unavailable);
+
+        $this->postJson('/api/v1/search/parse', ['q' => $question], ['X-API-Key' => $key])->assertOk();
+        $this->postJson('/api/v1/search/parse', ['q' => 'movies about a rainy evening'], ['X-API-Key' => $key])->assertStatus(503);
     }
 
     public function test_model_values_not_in_the_question_or_catalog_are_dropped(): void

@@ -36,10 +36,6 @@ final class ObservabilityEmitter
      */
     public function emitApiUsage(array $fields): void
     {
-        if (! $this->client->enabled()) {
-            return;
-        }
-
         try {
             EmitObservabilityLog::dispatch($this->timestampedRecord([
                 'event' => 'api_usage',
@@ -48,7 +44,7 @@ final class ObservabilityEmitter
             ]));
         } catch (Throwable $exception) {
             try {
-                Log::channel('single')->warning('API usage telemetry queue dispatch failed.', [
+                Log::channel('single')->warning('API usage job dispatch failed.', [
                     'exception' => $exception::class,
                 ]);
             } catch (Throwable) {

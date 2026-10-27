@@ -11,8 +11,8 @@ return [
     'ollama_embed_model' => 'nomic-embed-text',
     'ollama_chat_model' => 'qwen2.5:7b',
     'ollama_timeout' => 30,
-    // Reading a typed question waits at most this long; the rules answer when the model is still loading.
-    'nl_timeout_seconds' => 3,
+    // A request accepts a model answer for at most two seconds; the rules remain the fallback.
+    'nl_timeout_seconds' => 2,
     // How long Ollama keeps a model in memory after use; ai:warm reloads it before it expires.
     'ollama_keep_alive' => '30m',
     // Read the filters out of a typed question (rules always; the local Ollama model first when it answers).
