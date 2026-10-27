@@ -13,7 +13,8 @@ use Throwable;
  */
 class OllamaClient
 {
-    private const MAX_NL_TIMEOUT_SECONDS = 3;
+    private const NL_TIMEOUT_MAX_SECONDS = 2;
+
     public function baseUrl(): string
     {
         return rtrim((string) config('javmeta_ai.ollama_url', 'http://127.0.0.1:11434'), '/');
@@ -80,7 +81,8 @@ class OllamaClient
         try {
             // A reading of a typed question must not hold the search: a cold model load takes seconds, so a short timeout lets
             // the rules answer this time while the model loads for the next question.
-            $seconds = app(\App\Services\Search\SearchBudget::class)->seconds(min(self::MAX_NL_TIMEOUT_SECONDS, max(1, (int) config('javmeta_ai.nl_timeout_seconds', self::MAX_NL_TIMEOUT_SECONDS))));
+            $configuredSeconds = max(1, (int) config('javmeta_ai.nl_timeout_seconds', self::NL_TIMEOUT_MAX_SECONDS));
+            $seconds = app(\App\Services\Search\SearchBudget::class)->seconds(min(self::NL_TIMEOUT_MAX_SECONDS, $configuredSeconds));
             if ($seconds <= 0) {
                 return null;
             }

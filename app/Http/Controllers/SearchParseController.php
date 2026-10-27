@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\DependencyUnavailableException;
 use App\Http\Requests\SearchParseRequest;
+use App\Services\Dependencies\Dependency;
+use App\Services\Dependencies\DependencyMonitor;
 use App\Services\Search\QueryInterpreter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
@@ -12,13 +15,17 @@ use JOOservices\LaravelController\Http\Controllers\BaseApiController;
 
 final class SearchParseController extends BaseApiController
 {
-    public function __invoke(SearchParseRequest $request, QueryInterpreter $interpreter): JsonResponse
+    public function __invoke(SearchParseRequest $request, QueryInterpreter $interpreter, DependencyMonitor $dependencies): JsonResponse
     {
         $question = trim((string) $request->validated('q'));
         $cacheKey = 'javmeta:search:parse:' . hash('sha256', mb_strtolower($question));
         $ttl = max(0, (int) config('javmeta_ai.nl_cache_seconds', 60));
 
-        $data = Cache::remember($cacheKey, $ttl, function () use ($interpreter, $question): array {
+        $data = Cache::remember($cacheKey, $ttl, function () use ($interpreter, $question, $dependencies): array {
+            if (! $dependencies->isAvailable(Dependency::Postgres)) {
+                throw new DependencyUnavailableException(Dependency::Postgres);
+            }
+
             $parsed = $interpreter->interpret($question);
 
             return [

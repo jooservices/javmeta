@@ -358,9 +358,9 @@ Số nguyên; từ 1 đến 300. Mã mục: `ai.ollama_timeout`.
 
 ### Chờ Ollama đọc câu hỏi tối đa (giây)
 
-Tối đa 3 giây; quá thời gian thì dùng luật cơ bản để giữ thời gian phản hồi của tìm kiếm.
+Giới hạn cứng hai giây cho bước hiểu câu hỏi; quá hạn thì dùng luật cơ bản.
 
-Số nguyên; từ 1 đến 3. Mã mục: `ai.nl_timeout_seconds`.
+Số nguyên; từ 1 đến 2. Mã mục: `ai.nl_timeout_seconds`.
 
 ### Giữ model trong bộ nhớ (ví dụ 30m)
 
