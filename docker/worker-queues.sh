@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# One process per Laravel crawl queue name (1 worker / queue on this instance).
+# One process per Laravel queue name (1 worker / queue on this instance).
 set -euo pipefail
 
 CONNECTION="${QUEUE_CONNECTION:-redis}"
-QUEUES="${JAVMETA_QUEUE_NAMES:-listing,detail,performer_listing,performer_detail,gallery,search}"
+QUEUES="${JAVMETA_QUEUE_NAMES:-listing,detail,performer_listing,performer_detail,gallery,search,observability}"
 SLEEP="${JAVMETA_QUEUE_SLEEP:-3}"
 TRIES="${JAVMETA_QUEUE_TRIES:-3}"
 MAX_TIME="${JAVMETA_QUEUE_MAX_TIME:-3600}"

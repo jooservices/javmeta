@@ -13,11 +13,9 @@ $crawlQueueNames = [
 ];
 $searchQueueName = 'search';
 $workerQueueNames = [...array_values($crawlQueueNames), $searchQueueName];
+$observabilityQueueName = 'observability';
 
-/**
- * Laravel queue names for crawl jobs (1:1 with crawl_queue.kind).
- * Each worker instance runs one process per name.
- */
+/** Laravel queue names used by the feed pool and Horizon supervisors. */
 return [
     'names' => $crawlQueueNames,
 
@@ -25,9 +23,10 @@ return [
     'feed_pool_names' => $workerQueueNames,
 
     'search_queue' => $searchQueueName,
+    'observability_queue' => $observabilityQueueName,
 
-    /** Queues supervised by Horizon; search is not backed by a crawl_queue kind. */
-    'horizon_names' => $workerQueueNames,
+    /** Queues supervised by Horizon; search and observability are not crawl_queue kinds. */
+    'horizon_names' => [...$workerQueueNames, $observabilityQueueName],
 
     /** Workers per queue name on each instance (POC: 1). */
     'workers_per_queue' => max(1, (int) env('JAVMETA_WORKERS_PER_QUEUE', 1)),

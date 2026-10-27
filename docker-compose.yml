@@ -37,7 +37,7 @@ x-app-environment: &app-environment
   REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
   REDIS_PORT: ${REDIS_PORT:-16382}
   JAVMETA_WORKERS_PER_QUEUE: ${JAVMETA_WORKERS_PER_QUEUE:-1}
-  JAVMETA_QUEUE_NAMES: ${JAVMETA_QUEUE_NAMES:-listing,detail,performer_listing,performer_detail,gallery,search}
+  JAVMETA_QUEUE_NAMES: ${JAVMETA_QUEUE_NAMES:-listing,detail,performer_listing,performer_detail,gallery,search,observability}
   OPENOBSERVE_ENABLED: ${OPENOBSERVE_ENABLED:-true}
   OPENOBSERVE_URL: ${OPENOBSERVE_URL:-http://openobserve:5080}
   OPENOBSERVE_ORG: ${OPENOBSERVE_ORG:-default}

@@ -11,7 +11,7 @@ $supervisors = [];
 $waits = [];
 
 foreach ($queueNames as $queueName) {
-    $supervisorName = 'crawler-' . $queueName;
+    $supervisorName = $queueName === 'observability' ? 'api-observability' : 'crawler-' . $queueName;
     $supervisors[$supervisorName] = [
         'connection' => 'redis',
         'queue' => [$queueName],
