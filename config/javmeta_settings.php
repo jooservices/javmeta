@@ -102,7 +102,7 @@ return [
         'report.timezone' => ['group' => 'report', 'label' => 'Múi giờ báo cáo', 'description' => 'Ví dụ Asia/Ho_Chi_Minh.', 'type' => 'string', 'config' => ['javmeta_alerts.hourly_report.timezone']],
 
         'readiness.max_newest_movie_age_minutes' => ['group' => 'readiness', 'label' => 'Phim mới nhất không cũ quá (phút)', 'description' => 'Cũ hơn mức này nghĩa là crawl không chạy.', 'type' => 'int', 'config' => ['javmeta_readiness.max_newest_movie_age_minutes'], 'min' => 1, 'max' => 10080],
-        'readiness.max_dead_sources' => ['group' => 'readiness', 'label' => 'Số nguồn chết tối đa', 'description' => 'Nguồn bật mà 24 giờ không thành công; quá số này thì báo lỗi.', 'type' => 'int', 'config' => ['javmeta_readiness.max_dead_sources'], 'min' => 0, 'max' => 100],
+        'readiness.max_dead_sources' => ['group' => 'readiness', 'label' => 'Số nguồn chết tối đa', 'description' => 'Số nguồn bật đã quá hạn theo chu kỳ trong manifest hoặc ngưỡng mặc định; vượt số này thì báo lỗi.', 'type' => 'int', 'config' => ['javmeta_readiness.max_dead_sources'], 'min' => 0, 'max' => 100],
         'readiness.max_backup_age_hours' => ['group' => 'readiness', 'label' => 'Bản sao lưu không cũ quá (giờ)', 'description' => 'Cũ hơn mức này thì báo lỗi.', 'type' => 'int', 'config' => ['javmeta_readiness.max_backup_age_hours'], 'min' => 1, 'max' => 720],
 
         'search.enabled' => ['group' => 'search', 'label' => 'Bật tìm kiếm Elasticsearch', 'description' => 'Tắt thì chỉ dùng tìm kiếm trong cơ sở dữ liệu.', 'type' => 'bool', 'config' => ['elasticsearch.enabled']],

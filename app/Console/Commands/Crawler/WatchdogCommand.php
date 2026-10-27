@@ -58,7 +58,7 @@ final class WatchdogCommand extends Command
 
         // Resolve every source that was stale on the previous run but is not any more:
         // recovered, disabled or deleted.
-        $current = $staleSources->map(static fn($slug): string => (string) $slug)->values()->all();
+        $current = $staleSources->map(static fn(Source $source): string => (string) $source->slug)->values()->all();
         $previous = (array) Cache::get(self::STALE_SOURCES_CACHE_KEY, []);
 
         foreach (array_diff($previous, $current) as $slug) {
