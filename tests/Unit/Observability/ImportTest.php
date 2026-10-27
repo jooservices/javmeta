@@ -168,6 +168,8 @@ final class ImportTest extends TestCase
         $cacheRatioQuery = $searchPanels->get('search-parse-cache-hit-ratio')['queries'][0]['query'];
         self::assertStringContainsString("parse_cache_status = 'hit'", $cacheRatioQuery);
         self::assertStringContainsString('sum(CASE WHEN parse_cache_status', $cacheRatioQuery);
+        $backendQuery = $searchPanels->get('search-parse-backend-count')['queries'][0]['query'];
+        self::assertStringContainsString("parse_outcome = 'success'", $backendQuery);
 
         $searchAlert = $this->requestBody('POST', '/api/v2/javmeta_it/alerts', 'javmeta_search_parse_degraded');
         self::assertSame('logs', $searchAlert['stream_type']);

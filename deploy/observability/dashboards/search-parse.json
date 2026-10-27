@@ -167,7 +167,7 @@
           "queryType": "sql",
           "queries": [
             {
-              "query": "SELECT parse_backend AS \"x_axis_1\", count(*) AS \"y_axis_1\" FROM \"javmeta_logs\" WHERE event = 'api_usage' AND endpoint = '/api/v1/search/parse' GROUP BY x_axis_1 ORDER BY y_axis_1 DESC",
+              "query": "SELECT parse_backend AS \"x_axis_1\", count(*) AS \"y_axis_1\" FROM \"javmeta_logs\" WHERE event = 'api_usage' AND endpoint = '/api/v1/search/parse' AND parse_outcome = 'success' GROUP BY x_axis_1 ORDER BY y_axis_1 DESC",
               "vrlFunctionQuery": "",
               "customQuery": true,
               "fields": {
