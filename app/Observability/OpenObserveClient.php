@@ -65,7 +65,9 @@ final class OpenObserveClient
                     '_timestamp' => (int) ((float) ($record['_timestamp'] ?? (microtime(true) * 1_000_000))),
                     'service' => (string) config('openobserve.service_name'),
                     'environment' => (string) config('app.env', 'production'),
-                    'role' => (string) ($record['role'] ?? config('dependencies.role', 'api')),
+                    'role' => (string) (($record['event'] ?? null) === 'api_usage'
+                        ? ($record['role'] ?? config('dependencies.role', 'api'))
+                        : config('dependencies.role', 'api')),
                 ],
             );
         }
