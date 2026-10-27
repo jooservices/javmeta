@@ -50,7 +50,7 @@ final class SettingsService
             if (! array_key_exists($key, $saved)) {
                 continue;
             }
-            $value = $this->fromStorage($definition, $saved[$key]);
+            $value = $this->effectiveValue($key, $definition, $this->fromStorage($definition, $saved[$key]));
             if ($this->urlWarning($key, $definition, $value) !== null) {
                 $value = $this->default($key);
             }
@@ -78,7 +78,7 @@ final class SettingsService
         foreach ($this->definitions() as $key => $definition) {
             $isSecret = $definition['type'] === 'secret';
             $inDatabase = array_key_exists($key, $saved);
-            $current = $inDatabase ? $this->fromStorage($definition, $saved[$key]) : $this->default($key);
+            $current = $this->effectiveValue($key, $definition, $inDatabase ? $this->fromStorage($definition, $saved[$key]) : $this->default($key));
             $warning = $this->urlWarning($key, $definition, $current);
             if ($warning !== null) {
                 $current = $this->default($key);
@@ -199,9 +199,20 @@ final class SettingsService
             $saved = [];
         }
 
-        $value = array_key_exists($key, $saved) ? $this->fromStorage($definition, $saved[$key]) : $this->default($key);
+        $value = $this->effectiveValue($key, $definition, array_key_exists($key, $saved) ? $this->fromStorage($definition, $saved[$key]) : $this->default($key));
 
         return $this->urlWarning($key, $definition, $value) === null ? $value : $this->default($key);
+    }
+
+    /** @param array<string, mixed> $definition */
+    private function effectiveValue(string $key, array $definition, mixed $value): mixed
+    {
+        if ($key === 'ai.nl_timeout_seconds' && is_numeric($value)) {
+            // Older settings may exceed the new three-second latency budget.
+            return min((int) ($definition['max'] ?? $value), max((int) ($definition['min'] ?? 1), (int) $value));
+        }
+
+        return $value;
     }
 
     /** @param array<string, mixed> $definition */

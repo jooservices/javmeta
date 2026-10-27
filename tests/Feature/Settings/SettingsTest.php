@@ -57,6 +57,20 @@ final class SettingsTest extends TestCase
         $this->assertSame(300, config('javmeta_queues.feed_pool_limit'));
     }
 
+    public function test_legacy_natural_language_timeout_is_clamped_to_the_current_latency_budget(): void
+    {
+        $this->store->set('settings.ai.nl_timeout_seconds', 60);
+        $settings = app(SettingsService::class);
+
+        $settings->apply();
+
+        $this->assertSame(3, config('javmeta_ai.nl_timeout_seconds'));
+        $row = collect($settings->all())->firstWhere('key', 'ai.nl_timeout_seconds');
+        $this->assertSame(3, $row['value']);
+        $this->assertSame(3, $row['max']);
+        $this->assertSame('database', $row['source']);
+    }
+
     public function test_values_are_validated(): void
     {
         $settings = app(SettingsService::class);

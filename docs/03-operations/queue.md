@@ -48,6 +48,10 @@ Shared integration tests use the Workspaces Redis account on the project's own d
 
 ## Backpressure
 
+API span telemetry uses deterministic sampling based on the trace ID (10% by default) and is enqueued only when the configured observability queue backlog is below JAVMETA_OBSERVABILITY_QUEUE_DEPTH_LIMIT (1000 by default). Spans are skipped when the queue is full or QUEUE_CONNECTION=sync, keeping OpenObserve delivery out of synchronous API requests and bounding telemetry backlog.
+
+Set JAVMETA_OBSERVABILITY_SAMPLE_PERCENT to adjust sampling from 0 to 100. Set JAVMETA_OBSERVABILITY_QUEUE_DEPTH_LIMIT to bound ready observability jobs.
+
 `JAVMETA_QUEUE_DEPTH_LIMIT` is the maximum ready Laravel-job backlog per crawl queue. Before claiming rows, `crawler:feed-pool` compares each queue's ready depth to that limit. A full queue emits the `pool_gated` ops event and leaves its crawl rows pending. When the queue drains, later feed-pool runs claim up to `depth_limit - ready_depth`, bounded by `--limit`.
 
 The depth check covers ready jobs. Reserved and delayed Redis jobs do not count toward this buffer. A Redis depth-query failure stops the feed-pool command before it claims rows.

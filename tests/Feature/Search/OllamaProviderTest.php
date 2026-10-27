@@ -60,6 +60,24 @@ final class OllamaProviderTest extends TestCase
         $this->assertNull($ollama->json('s', 'u'));
     }
 
+    public function test_natural_language_chat_timeout_is_capped_at_three_seconds(): void
+    {
+        config(['javmeta_ai.nl_timeout_seconds' => 60]);
+        $optionsSeen = null;
+        Http::fake([
+            'ollama.test:11434/api/chat' => static function ($request, array $options) use (&$optionsSeen) {
+                $optionsSeen = $options;
+
+                return Http::response(['message' => ['content' => '{}']]);
+            },
+        ]);
+
+        $this->assertSame([], app(OllamaClient::class)->json('sys', 'user'));
+        $this->assertSame(3.0, $optionsSeen['timeout'] ?? null);
+        $this->assertSame(3.0, $optionsSeen['connect_timeout'] ?? null);
+        $this->assertFalse($optionsSeen['allow_redirects'] ?? null);
+    }
+
     public function test_the_check_command_reports_models_and_a_missing_one(): void
     {
         config(['javmeta_ai.embedding_provider' => 'ollama']);
