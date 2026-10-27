@@ -7,7 +7,7 @@
   "stream_name": "javmeta_logs",
   "query_condition": {
     "type": "sql",
-    "sql": "SELECT parse_cache_status, count(*) AS violations FROM \"javmeta_logs\" WHERE event = 'api_usage' AND endpoint = '/api/v1/search/parse' AND ((parse_cache_status = 'miss' AND parse_duration_ms > 4000) OR (parse_cache_status = 'hit' AND parse_duration_ms > 100) OR (parse_cache_status = 'miss' AND ollama_chat_outcome IN ('http_error', 'timeout', 'transport_error', 'client_error', 'invalid_json', 'budget_exhausted'))) GROUP BY parse_cache_status HAVING count(*) >= 3"
+    "sql": "SELECT count(*) AS violations FROM \"javmeta_logs\" WHERE event = 'api_usage' AND endpoint = '/api/v1/search/parse' AND ((parse_cache_status = 'miss' AND parse_duration_ms > 4000) OR (parse_cache_status = 'hit' AND parse_duration_ms > 100) OR (parse_cache_status = 'miss' AND ollama_chat_outcome IN ('http_error', 'timeout', 'transport_error', 'client_error', 'invalid_json', 'budget_exhausted'))) HAVING count(*) >= 3"
   },
   "trigger_condition": {
     "frequency_type": "minutes",

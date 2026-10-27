@@ -92,9 +92,9 @@ deploy/observability/dashboards/search-parse.json is imported by
 php artisan observability:import. It shows request rate, cache hit ratio, p95 parse latency
 split by cache status, parser backend distribution, Ollama outcomes and p95
 latency, and bounded fallback reasons. The
-javmeta_search_parse_degraded alert requires at least three slow or failed
-uncached requests within its five-minute evaluation window, so one-off errors
-and empty or low-volume windows do not notify.
+javmeta_search_parse_degraded alert requires at least three slow parse requests
+(cached or uncached) or failed Ollama calls within its five-minute evaluation
+window, so one-off errors and empty or low-volume windows do not notify.
 
 ### Telegram alerts
 

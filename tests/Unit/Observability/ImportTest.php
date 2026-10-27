@@ -174,6 +174,7 @@ final class ImportTest extends TestCase
         self::assertSame('javmeta_logs', $searchAlert['stream_name']);
         self::assertStringContainsString('parse_duration_ms', $searchAlert['query_condition']['sql']);
         self::assertStringContainsString('HAVING count(*) >= 3', $searchAlert['query_condition']['sql']);
+        self::assertStringNotContainsString('GROUP BY parse_cache_status', $searchAlert['query_condition']['sql']);
     }
 
     public function test_alerts_for_streams_that_do_not_exist_yet_are_reported_pending_and_strict_fails(): void
