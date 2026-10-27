@@ -1,0 +1,24 @@
+{
+  "name": "javmeta_search_parse_degraded",
+  "description": "At least three natural-language parse requests within five minutes exceed a latency target or fail during Ollama chat.",
+  "enabled": true,
+  "is_real_time": false,
+  "stream_type": "logs",
+  "stream_name": "javmeta_logs",
+  "query_condition": {
+    "type": "sql",
+    "sql": "SELECT count(*) AS violations FROM \"javmeta_logs\" WHERE event = 'api_usage' AND endpoint = '/api/v1/search/parse' AND ((parse_cache_status = 'miss' AND parse_duration_ms > 4000) OR (parse_cache_status = 'hit' AND parse_duration_ms > 100) OR (parse_cache_status = 'miss' AND ollama_chat_outcome IN ('http_error', 'timeout', 'transport_error', 'client_error', 'invalid_json', 'budget_exhausted'))) HAVING count(*) >= 3"
+  },
+  "trigger_condition": {
+    "frequency_type": "minutes",
+    "frequency": 1,
+    "period": 5,
+    "operator": ">",
+    "threshold": 0,
+    "silence": 60
+  },
+  "pending_period_sec": 0,
+  "destinations": [
+    "javmeta_telegram"
+  ]
+}

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Search;
 
+use App\Jobs\EmitObservabilityLog;
 use App\Services\Auth\ApiKeyService;
 use App\Services\Dependencies\Dependency;
 use App\Services\Dependencies\DependencyMonitor;
@@ -13,6 +14,7 @@ use App\Services\Search\QueryInterpreter;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 final class SearchParseTest extends TestCase
@@ -181,5 +183,72 @@ final class SearchParseTest extends TestCase
         $this->assertArrayNotHasKey('maker', $response->json('data.filters'));
         $this->assertArrayNotHasKey('genre', $response->json('data.filters'));
         $this->assertStringContainsString('unknown words', $response->json('data.keywords'));
+    }
+    public function test_parse_telemetry_tracks_cache_and_backend_without_logging_question_or_model_output(): void
+    {
+        $question = 'Find movies about MODEL_OUTPUT_SECRET_7c8de981 QUERY_SECRET_27b14a9b';
+        $modelOutput = 'MODEL_OUTPUT_SECRET_7c8de981';
+        Http::fake([
+            'ollama.test:11434/api/chat' => Http::response([
+                'message' => ['content' => json_encode(['keywords' => $modelOutput], JSON_THROW_ON_ERROR)],
+            ]),
+        ]);
+        Queue::fake();
+        $key = app(ApiKeyService::class)->create('safe-parse-telemetry', 60, ['movies'])->plaintext;
+        $authorization = 'Bearer AUTH_SECRET_06ac4d';
+        $cookie = 'SESSION_SECRET_53fd30';
+        $headers = ['X-API-Key' => $key, 'Authorization' => $authorization, 'Cookie' => 'session=' . $cookie];
+
+        $first = $this->postJson('/api/v1/search/parse', ['q' => $question], $headers)->assertOk();
+        $second = $this->postJson('/api/v1/search/parse', ['q' => $question], $headers)->assertOk();
+
+        $this->assertSame(['keywords', 'filters', 'explanations', 'by'], array_keys($first->json('data')));
+        $this->assertSame($first->json('data'), $second->json('data'));
+        $jobs = collect(Queue::pushed(EmitObservabilityLog::class))
+            ->filter(static fn(EmitObservabilityLog $job): bool => ($job->record['endpoint'] ?? null) === '/api/v1/search/parse')
+            ->values();
+        $this->assertCount(2, $jobs);
+
+        $miss = $jobs->first(static fn(EmitObservabilityLog $job): bool => ($job->record['parse_cache_status'] ?? null) === 'miss');
+        $hit = $jobs->first(static fn(EmitObservabilityLog $job): bool => ($job->record['parse_cache_status'] ?? null) === 'hit');
+        $this->assertNotNull($miss);
+        $this->assertNotNull($hit);
+        $this->assertSame('ollama', $miss->record['parse_backend']);
+        $this->assertSame('success', $miss->record['ollama_chat_outcome']);
+        $this->assertIsInt($miss->record['parse_duration_ms']);
+        $this->assertIsInt($miss->record['ollama_chat_duration_ms']);
+        $this->assertSame('cache_hit', $hit->record['ollama_chat_outcome']);
+        $this->assertArrayNotHasKey('ollama_chat_duration_ms', $hit->record);
+
+        $records = json_encode($jobs->map(static fn(EmitObservabilityLog $job): array => $job->record)->all(), JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString($question, $records);
+        $this->assertStringNotContainsString($modelOutput, $records);
+        $this->assertStringNotContainsString('QUERY_SECRET_27b14a9b', $records);
+        $this->assertStringNotContainsString($authorization, $records);
+        $this->assertStringNotContainsString($cookie, $records);
+        $this->assertStringNotContainsString($key, $records);
+        $this->assertStringNotContainsString('Read a movie and performer catalog question', $records);
+        Http::assertSentCount(1);
+    }
+
+    public function test_parse_telemetry_records_bounded_ollama_failure_reason_and_status(): void
+    {
+        Http::fake(['ollama.test:11434/api/chat' => Http::response('PRIVATE_ERROR_BODY', 503)]);
+        Queue::fake();
+        $key = app(ApiKeyService::class)->create('safe-parse-fallback', 60, ['movies'])->plaintext;
+
+        $response = $this->postJson('/api/v1/search/parse', [
+            'q' => 'Find a movie with QUERY_SECRET_failure_marker',
+        ], ['X-API-Key' => $key])->assertOk();
+
+        $this->assertSame('rules', $response->json('data.by'));
+        $job = collect(Queue::pushed(EmitObservabilityLog::class))
+            ->first(static fn(EmitObservabilityLog $job): bool => ($job->record['endpoint'] ?? null) === '/api/v1/search/parse');
+        $this->assertNotNull($job);
+        $this->assertSame('ollama_http_error', $job->record['parse_fallback_reason']);
+        $this->assertSame('http_error', $job->record['ollama_chat_outcome']);
+        $this->assertSame(503, $job->record['ollama_chat_http_status']);
+        $this->assertStringNotContainsString('QUERY_SECRET_failure_marker', json_encode($job->record, JSON_THROW_ON_ERROR));
+        $this->assertStringNotContainsString('PRIVATE_ERROR_BODY', json_encode($job->record, JSON_THROW_ON_ERROR));
     }
 }

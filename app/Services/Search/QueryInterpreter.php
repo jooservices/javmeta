@@ -44,25 +44,56 @@ final class QueryInterpreter
     /** @return array{keywords: string, filters: array<string, mixed>, by: string} */
     public function interpret(string $question): array
     {
+        return $this->interpretWithTelemetry($question)['result'];
+    }
+
+    /**
+     * @return array{
+     *     result: array{keywords: string, filters: array<string, mixed>, by: string},
+     *     telemetry: array{backend: string, fallback_reason: string|null, ollama_chat_outcome: string, ollama_chat_duration_ms: int|null, ollama_chat_http_status: int|null}
+     * }
+     */
+    public function interpretWithTelemetry(string $question): array
+    {
         $question = trim($question);
         $rules = $this->rules($question);
         $by = 'rules';
         $filters = $rules['filters'];
         $keywords = $rules['keywords'];
+        $telemetry = [
+            'backend' => 'rules',
+            'fallback_reason' => null,
+            'ollama_chat_outcome' => 'not_attempted',
+            'ollama_chat_duration_ms' => null,
+            'ollama_chat_http_status' => null,
+        ];
 
         if ((bool) config('javmeta_ai.nl_enabled', true) && $this->shouldUseOllama($question)) {
-            $model = $this->ollama->json(self::SYSTEM, $question, self::SCHEMA);
-            if (is_array($model)) {
-                $read = $this->fromModel($model, $question);
+            $chat = $this->ollama->jsonWithTelemetry(self::SYSTEM, $question, self::SCHEMA);
+            $telemetry['ollama_chat_outcome'] = $chat['outcome'];
+            $telemetry['ollama_chat_duration_ms'] = $chat['duration_ms'];
+            $telemetry['ollama_chat_http_status'] = $chat['http_status'];
+
+            if (is_array($chat['data'])) {
+                $read = $this->fromModel($chat['data'], $question);
                 if ($read['filters'] !== [] || $read['keywords'] !== '') {
                     $by = 'ollama';
                     $filters = [...$rules['filters'], ...$read['filters']];
                     $keywords = $read['keywords'] !== '' ? $read['keywords'] : $rules['keywords'];
+                } else {
+                    $telemetry['fallback_reason'] = 'ollama_output_rejected';
                 }
+            } else {
+                $telemetry['fallback_reason'] = 'ollama_' . $chat['outcome'];
             }
         }
 
-        return ['keywords' => trim($keywords), 'filters' => $filters, 'by' => $by];
+        $telemetry['backend'] = $by;
+
+        return [
+            'result' => ['keywords' => trim($keywords), 'filters' => $filters, 'by' => $by],
+            'telemetry' => $telemetry,
+        ];
     }
 
     private function shouldUseOllama(string $question): bool
