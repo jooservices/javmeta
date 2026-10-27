@@ -152,7 +152,7 @@ Số nguyên; từ 30 đến 86400. Mã mục: `alerts.heartbeat_stale_seconds`.
 
 ### Nguồn không thành công quá (giây) thì cảnh báo
 
-Watchdog: nguồn đang bật mà không có kết quả.
+Ngưỡng mặc định; nguồn có chu kỳ trong manifest được cộng thêm một lượt quét mới.
 
 Số nguyên; từ 60 đến 2592000. Mã mục: `alerts.source_stale_seconds`.
 
@@ -230,7 +230,7 @@ Số nguyên; từ 1 đến 10080. Mã mục: `readiness.max_newest_movie_age_mi
 
 ### Số nguồn chết tối đa
 
-Nguồn bật mà 24 giờ không thành công; quá số này thì báo lỗi.
+Số nguồn bật đã quá hạn theo chu kỳ trong manifest hoặc ngưỡng mặc định; vượt số này thì báo lỗi.
 
 Số nguyên; từ 0 đến 100. Mã mục: `readiness.max_dead_sources`.
 

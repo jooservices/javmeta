@@ -6,6 +6,7 @@ namespace Tests\Feature\Health;
 
 use App\Contracts\ReportChannel;
 use App\Models\Movie;
+use App\Models\Source;
 use App\Services\Health\StagingReadiness;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
@@ -44,6 +45,19 @@ final class StagingReadinessTest extends TestCase
 
         Movie::query()->update(['first_seen_at' => now()->subHours(3)]);
         $this->assertSame('fail', $this->byName()['newest_movie']['status']);
+    }
+
+    public function test_source_freshness_respects_manifest_cycle_and_keeps_never_succeeded_sources_past_due(): void
+    {
+        Source::factory()->create(['slug' => 'eporner', 'last_success_at' => now()->subDays(3)]);
+        Source::factory()->create(['slug' => 'warashi', 'last_success_at' => null]);
+
+        $sources = $this->byName()['sources'];
+
+        $this->assertSame('warn', $sources['status']);
+        $this->assertStringContainsString('1/2 enabled sources are current or not yet due', $sources['message']);
+        $this->assertStringContainsString('past due: warashi', $sources['message']);
+        $this->assertStringContainsString('Not yet due under configured cycle: eporner', $sources['message']);
     }
 
     public function test_a_failing_run_is_stored_and_alerts_once_until_the_failures_change(): void

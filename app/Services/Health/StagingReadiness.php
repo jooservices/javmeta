@@ -24,6 +24,7 @@ final class StagingReadiness
         private readonly DeploymentSmokeCheck $smoke,
         private readonly CrawlStatusService $crawlStatus,
         private readonly ReportChannel $channel,
+        private readonly SourceScheduleFreshness $sourceFreshness,
     ) {}
 
     /**
@@ -79,16 +80,27 @@ final class StagingReadiness
             : $this->row('stuck_jobs', 'fail', "{$stuck} jobs are stuck in claimed.", 'Run `php artisan crawler:reclaim`; if it repeats, restart javmeta-horizon.');
 
         $enabled = array_values(array_filter((array) ($status['sources'] ?? []), static fn(array $s): bool => (bool) $s['enabled']));
-        $cutoff = time() - 86400;
-        $dead = array_values(array_map(
-            static fn(array $s): string => (string) $s['slug'],
-            array_filter($enabled, static fn(array $s): bool => empty($s['last_success_at']) || strtotime((string) $s['last_success_at']) < $cutoff),
-        ));
+        $defaultStaleSeconds = (int) config('javmeta_alerts.watchdog.source_stale_seconds', 86400);
+        $dead = [];
+        $notYetDue = [];
+        foreach ($enabled as $source) {
+            $slug = (string) $source['slug'];
+            $lastSuccessAt = is_string($source['last_success_at'] ?? null) ? $source['last_success_at'] : null;
+            $lastSuccessTimestamp = $lastSuccessAt === null ? false : strtotime($lastSuccessAt);
+            if ($lastSuccessTimestamp === false || $this->sourceFreshness->isPastDue($lastSuccessAt, $slug, $defaultStaleSeconds)) {
+                $dead[] = $slug;
+            } elseif ($lastSuccessTimestamp < time() - $defaultStaleSeconds) {
+                $notYetDue[] = $slug;
+            }
+        }
+
         $maxDead = (int) config('javmeta_readiness.max_dead_sources', 3);
         $list = $dead === [] ? 'none' : implode(', ', $dead);
+        $scheduleNote = $notYetDue === [] ? '' : ' Not yet due under configured cycle: ' . implode(', ', $notYetDue) . '.';
+        $summary = count($enabled) - count($dead) . '/' . count($enabled) . " enabled sources are current or not yet due; past due: {$list}." . $scheduleNote;
         $rows[] = count($dead) <= $maxDead
-            ? $this->row('sources', $dead === [] ? 'pass' : 'warn', count($enabled) - count($dead) . '/' . count($enabled) . " enabled sources succeeded in the last 24 hours; without success: {$list}.")
-            : $this->row('sources', 'fail', count($dead) . " enabled sources had no success in 24 hours (limit {$maxDead}): {$list}.", 'Run `php artisan crawler:failures` and open a CrawlerX ticket per source.');
+            ? $this->row('sources', $dead === [] ? 'pass' : 'warn', $summary)
+            : $this->row('sources', 'fail', count($dead) . " enabled sources are past due (limit {$maxDead}): {$list}." . $scheduleNote, 'Run `php artisan crawler:failures` and open a CrawlerX ticket per source.');
 
         return $rows;
     }
