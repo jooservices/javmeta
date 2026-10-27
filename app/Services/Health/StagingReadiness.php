@@ -28,6 +28,8 @@ final class StagingReadiness
     ) {}
 
     /**
+     * Run deployment and crawler readiness checks and optionally persist state transitions.
+     *
      * @return array{status: string, checked_at: string, checks: list<array{name: string, status: string, message: string, action: ?string}>}
      */
     public function run(bool $record = true): array

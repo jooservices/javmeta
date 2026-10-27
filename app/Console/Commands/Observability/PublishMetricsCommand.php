@@ -31,6 +31,9 @@ final class PublishMetricsCommand extends Command
 
     protected $description = 'Publish javmeta ops and quality aggregate metrics to OpenObserve.';
 
+    /**
+     * Publish current operational, freshness, dependency, and capacity metrics.
+     */
     public function handle(
         OpenObserveClient $client,
         MongoArchiveWriteHealth $archiveWrites,
@@ -72,6 +75,7 @@ final class PublishMetricsCommand extends Command
     }
 
     /**
+     * @param  SourceScheduleFreshness  $sourceFreshness  Schedule rules for each enabled source.
      * @return list<array{name: string, value: float|int, labels?: array<string, string>}>
      */
     private function sourceMetrics(SourceScheduleFreshness $sourceFreshness): array
@@ -353,6 +357,8 @@ final class PublishMetricsCommand extends Command
     }
 
     /**
+     * Report client backend usage against PostgreSQL's configured connection limit.
+     *
      * @return list<array{name: string, value: float|int, labels?: array<string, string>}>
      */
     private function postgresCapacityMetrics(): array
@@ -361,7 +367,7 @@ final class PublishMetricsCommand extends Command
             return [];
         }
 
-        $row = DB::selectOne("SELECT COUNT(*)::int AS used, current_setting('max_connections')::int AS maximum FROM pg_stat_activity");
+        $row = DB::selectOne("SELECT COUNT(*)::int AS used, current_setting('max_connections')::int AS maximum FROM pg_stat_activity WHERE backend_type = 'client backend'");
         $used = max(0, (int) ($row->used ?? 0));
         $maximum = max(1, (int) ($row->maximum ?? 1));
 

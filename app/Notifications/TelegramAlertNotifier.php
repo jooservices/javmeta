@@ -20,11 +20,21 @@ final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
 {
     public function __construct(private readonly ?HttpClient $httpClient = null) {}
 
+    /**
+     * Send an alert, defaulting to an open warning while preserving explicit caller state.
+     *
+     * @param  array<string, mixed>  $context
+     */
     public function notify(string $subject, string $body, array $context = []): void
     {
-        $this->deliver($subject, $body, ['alert_state' => 'open', 'severity' => 'warning'] + $context);
+        $this->deliver($subject, $body, $context + ['alert_state' => 'open', 'severity' => 'warning']);
     }
 
+    /**
+     * Render alert metadata and deliver the Telegram message.
+     *
+     * @param  array<string, mixed>  $context
+     */
     public function deliver(string $subject, string $body, array $context = []): bool
     {
         if (isset($context['alert_state'])) {

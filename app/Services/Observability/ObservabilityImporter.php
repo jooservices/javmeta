@@ -30,6 +30,11 @@ final class ObservabilityImporter
      *     destination_created: bool
      * }
      */
+    /**
+     * Import or update managed dashboards, alert definitions, and the Telegram destination.
+     *
+     * @return array<string, mixed>
+     */
     public function import(bool $dryRun = false): array
     {
         $dashboards = $this->loadDefinitions('dashboards');

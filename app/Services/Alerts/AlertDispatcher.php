@@ -15,6 +15,8 @@ final class AlertDispatcher
     public function __construct(private readonly AlertNotifier $notifier) {}
 
     /**
+     * Debounce and send an open warning, recording the active cause for a future recovery.
+     *
      * @param  array<string, mixed>  $context
      */
     public function send(string $debounceKey, string $subject, string $body, array $context = [], ?int $debounceSeconds = null): bool

@@ -25,6 +25,9 @@ final class WatchdogCommand extends Command
 
     protected $description = 'Check worker heartbeat and long-stale sources; alert via Telegram + activity log.';
 
+    /**
+     * Check worker, source, crawl-progress, and due-queue health, sending alerts on transitions.
+     */
     public function handle(WorkerHeartbeat $heartbeat, AlertDispatcher $alerts, OperationalAlertChecks $checks, SourceScheduleFreshness $sourceFreshness): int
     {
         if ($heartbeat->isStale()) {

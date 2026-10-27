@@ -7,7 +7,7 @@
   "stream_name": "javmeta_postgres_connection_utilization",
   "query_condition": {
     "type": "sql",
-    "sql": "SELECT _timestamp, value FROM \"javmeta_postgres_connection_utilization\" WHERE value >= 0.85"
+    "sql": "SELECT _timestamp, value FROM (SELECT _timestamp, value FROM \"javmeta_postgres_connection_utilization\" ORDER BY _timestamp DESC LIMIT 1) AS latest WHERE value >= 0.85"
   },
   "trigger_condition": {
     "frequency_type": "minutes",
@@ -17,7 +17,7 @@
     "threshold": 0,
     "silence": 30
   },
-  "pending_period_sec": 0,
+  "pending_period_sec": 300,
   "destinations": [
     "javmeta_telegram"
   ]

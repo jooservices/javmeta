@@ -195,6 +195,26 @@ final class ImportTest extends TestCase
         }
     }
 
+    /**
+     * The PostgreSQL capacity alert reads the newest sample and holds for five full minutes.
+     */
+    public function test_postgres_utilization_alert_uses_current_sample_and_five_minute_hold(): void
+    {
+        $alert = json_decode(
+            (string) file_get_contents(base_path('deploy/observability/alerts/javmeta_postgres_connection_utilization_high.json')),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        $sql = $alert['query_condition']['sql'] ?? '';
+
+        self::assertStringContainsString('FROM (SELECT _timestamp, value FROM "javmeta_postgres_connection_utilization"', $sql);
+        self::assertStringContainsString('ORDER BY _timestamp DESC LIMIT 1) AS latest WHERE value >= 0.85', $sql);
+        self::assertSame(300, $alert['pending_period_sec'] ?? null);
+        self::assertSame(1, $alert['trigger_condition']['frequency'] ?? null);
+        self::assertSame(5, $alert['trigger_condition']['period'] ?? null);
+    }
+
     public function test_it_fails_before_writing_when_telegram_credentials_are_missing(): void
     {
         $this->configureImporter();

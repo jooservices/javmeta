@@ -70,6 +70,9 @@ final class OperationalAlertChecks
     /**
      * Alert when a large number of pending rows are due now. Future retries do not count.
      */
+    /**
+     * Alert on due pending work at its configured limit and resolve once it falls below the limit.
+     */
     public function checkPendingBacklog(): bool
     {
         $limit = max(1, (int) config('javmeta_alerts.watchdog.pending_queue_limit', 1000));
