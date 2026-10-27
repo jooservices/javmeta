@@ -60,7 +60,7 @@ final class OllamaProviderTest extends TestCase
         $this->assertNull($ollama->json('s', 'u'));
     }
 
-    public function test_natural_language_chat_timeout_is_capped_at_three_seconds(): void
+    public function test_natural_language_chat_timeout_is_capped_at_two_seconds_and_does_not_follow_redirects(): void
     {
         config(['javmeta_ai.nl_timeout_seconds' => 60]);
         $optionsSeen = null;
@@ -73,8 +73,8 @@ final class OllamaProviderTest extends TestCase
         ]);
 
         $this->assertSame([], app(OllamaClient::class)->json('sys', 'user'));
-        $this->assertSame(3.0, $optionsSeen['timeout'] ?? null);
-        $this->assertSame(3.0, $optionsSeen['connect_timeout'] ?? null);
+        $this->assertSame(2.0, $optionsSeen['timeout'] ?? null);
+        $this->assertSame(2.0, $optionsSeen['connect_timeout'] ?? null);
         $this->assertFalse($optionsSeen['allow_redirects'] ?? null);
     }
 

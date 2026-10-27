@@ -66,8 +66,9 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
             Route::get('meta/catalog/{kind}', [CatalogController::class, 'index']);
             Route::get('suggest', [SuggestController::class, 'index']);
             Route::get('search', [SearchController::class, 'index']);
-            Route::post('search/parse', SearchParseController::class);
         });
+        Route::middleware([AuthenticateApiKey::class, LogApiUsage::class])
+            ->post('search/parse', SearchParseController::class);
 
         Route::middleware([AuthenticateApiKey::class, LogApiUsage::class])->group(function (): void {
             Route::match(['get', 'post'], 'mcp', McpHttpController::class);

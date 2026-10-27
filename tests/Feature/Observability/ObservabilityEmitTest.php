@@ -90,7 +90,7 @@ final class ObservabilityEmitTest extends TestCase
             static fn(EmitObservabilityLog $job, ?string $queue): bool => $queue === 'observability',
         );
         $this->assertCount(2, $jobs);
-        $this->assertSame(2, ApiUsageLog::query()->where('api_key_id', $created->model->getKey())->count());
+        $this->assertSame(0, ApiUsageLog::query()->where('api_key_id', $created->model->getKey())->count());
 
         config()->set('dependencies.role', 'worker');
         foreach ($jobs as $job) {
@@ -101,6 +101,8 @@ final class ObservabilityEmitTest extends TestCase
             $this->assertStringNotContainsString($created->plaintext, json_encode($job->record, JSON_THROW_ON_ERROR));
             $job->handle(app(OpenObserveClient::class));
         }
+
+        $this->assertSame(2, ApiUsageLog::query()->where('api_key_id', $created->model->getKey())->count());
 
         $recorded = collect(Http::recorded())->map(fn($pair) => [
             'url' => $pair[0]->url(),
@@ -140,5 +142,22 @@ final class ObservabilityEmitTest extends TestCase
         }
 
         $this->assertTrue($matched, 'api_usage payload missing; recorded=' . json_encode($recorded));
+    }
+
+    public function test_api_usage_is_persisted_when_openobserve_is_disabled(): void
+    {
+        config()->set('openobserve.enabled', false);
+        Queue::fake();
+        $created = app(ApiKeyService::class)->create('usage-without-openobserve');
+
+        $this->getJson('/api/v1/auth/verify', ['X-API-Key' => $created->plaintext])->assertOk();
+
+        $this->assertSame(0, ApiUsageLog::query()->where('api_key_id', $created->model->getKey())->count());
+        Queue::assertPushedTimes(EmitObservabilityLog::class, 1);
+        $jobs = Queue::pushed(EmitObservabilityLog::class);
+        $jobs[0]->handle(app(OpenObserveClient::class));
+
+        $this->assertSame(1, ApiUsageLog::query()->where('api_key_id', $created->model->getKey())->count());
+        Http::assertNothingSent();
     }
 }

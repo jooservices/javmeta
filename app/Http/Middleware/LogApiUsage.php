@@ -6,7 +6,6 @@ namespace App\Http\Middleware;
 
 use App\Exceptions\RateLimitedException;
 use App\Models\ApiKey;
-use App\Models\ApiUsageLog;
 use App\Observability\ObservabilityEmitter;
 use Closure;
 use Illuminate\Http\Request;
@@ -62,16 +61,6 @@ final class LogApiUsage
         $endpoint = '/' . ltrim($request->path(), '/');
         $responseMs = (int) round((hrtime(true) - $startedAt) / 1_000_000);
         $statusCode = $response->getStatusCode();
-
-        ApiUsageLog::query()->create([
-            'api_key_id' => $apiKey?->getKey(),
-            'endpoint' => $endpoint,
-            'method' => $request->method(),
-            'status_code' => $statusCode,
-            'response_ms' => $responseMs,
-            'ip_hash' => $this->ipHash($request),
-            'created_at' => now(),
-        ]);
 
         $fields = [
             'api_key_id' => $apiKey?->getKey(),
