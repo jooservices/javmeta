@@ -133,6 +133,8 @@ final class FetchDetailJobTest extends TestCase
 
         $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_BLOCKED, 'Blocked by site.'));
 
+        $this->travelTo(now());
+
         FetchDetailJob::dispatch($row->id);
 
         self::assertSame([], $sink->drafts);

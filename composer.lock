@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "74de5ee449216ce7fcc7a7592738c8e4",
+    "content-hash": "84380c8decd2adcb83508fb7f50346cc",
     "packages": [
         {
             "name": "brick/math",
@@ -1181,16 +1181,16 @@
         },
         {
             "name": "jooservices/crawlerx",
-            "version": "v1.4.3",
+            "version": "dev-develop",
             "source": {
                 "type": "git",
                 "url": "https://github.com/jooservices/crawlerx.git",
-                "reference": "2b75e464e25d2acc4f0cdd76652f0265e4fa61dd"
+                "reference": "f896a4b4d2fbbcf74ba86384c8ad86f9901f335e"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/jooservices/crawlerx/zipball/2b75e464e25d2acc4f0cdd76652f0265e4fa61dd",
-                "reference": "2b75e464e25d2acc4f0cdd76652f0265e4fa61dd",
+                "url": "https://api.github.com/repos/jooservices/crawlerx/zipball/f896a4b4d2fbbcf74ba86384c8ad86f9901f335e",
+                "reference": "f896a4b4d2fbbcf74ba86384c8ad86f9901f335e",
                 "shasum": ""
             },
             "require": {
@@ -1218,6 +1218,7 @@
                 "phpunit/phpunit": "^13.0",
                 "squizlabs/php_codesniffer": "^3.12 || ^4.0"
             },
+            "default-branch": true,
             "type": "library",
             "autoload": {
                 "psr-4": {
@@ -1231,9 +1232,9 @@
             "description": "URL-driven crawl and parse library for JAV catalog sites.",
             "support": {
                 "issues": "https://github.com/jooservices/crawlerx/issues",
-                "source": "https://github.com/jooservices/crawlerx/tree/v1.4.3"
+                "source": "https://github.com/jooservices/crawlerx/tree/develop"
             },
-            "time": "2026-10-25T17:59:21+00:00"
+            "time": "2026-10-26T22:38:03+00:00"
         },
         {
             "name": "jooservices/dto",
@@ -12720,9 +12721,18 @@
             "time": "2025-12-08T11:19:18+00:00"
         }
     ],
-    "aliases": [],
+    "aliases": [
+        {
+            "package": "jooservices/crawlerx",
+            "version": "dev-develop",
+            "alias": "1.4.3.x-dev",
+            "alias_normalized": "1.4.3.9999999-dev"
+        }
+    ],
     "minimum-stability": "stable",
-    "stability-flags": {},
+    "stability-flags": {
+        "jooservices/crawlerx": 20
+    },
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
