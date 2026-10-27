@@ -71,6 +71,31 @@ counts stale queue claims returned to pending before a worker started them.
 | HTTP and crawl spans | OTLP `/api/{org}/v1/traces` | `TraceHttpRequest` and `TraceCrawlJob`. |
 | Watchdog notifications | Application alert events, not a separate metric stream | `WatchdogCommand` dispatches `WorkerHeartbeatStale` and `CrawlSourceUnhealthy`; listeners use `AlertDispatcher` for Telegram/activity-log fan-out. |
 
+### Natural-language search parse
+
+The api_usage record for endpoint /api/v1/search/parse is emitted through the
+existing asynchronous observability queue. Parse events add only bounded
+fields: parse_outcome, parse_cache_status, parse_backend,
+parse_fallback_reason, parse_duration_ms, ollama_chat_outcome,
+ollama_chat_duration_ms, and the Ollama HTTP status when available. The
+Ollama outcome is one of not_attempted, success, http_error, timeout,
+transport_error, client_error, invalid_json, budget_exhausted, or cache_hit.
+
+The parser event never includes the question, prompt, model output, request or
+response body, credentials, cookies, or raw exception text. Cache-hit events
+have no Ollama duration because that request did not call Ollama. Existing
+javmeta_api_p95_ms_by_endpoint_1m measures the whole endpoint across cache
+states; the parse dashboard derives cache-specific percentiles from safe
+javmeta_logs events.
+
+deploy/observability/dashboards/search-parse.json is imported by
+php artisan observability:import. It shows request rate, cache hit ratio, p95 parse latency
+split by cache status, parser backend distribution, Ollama outcomes and p95
+latency, and bounded fallback reasons. The
+javmeta_search_parse_degraded alert requires at least three slow or failed
+uncached requests within its five-minute evaluation window, so one-off errors
+and empty or low-volume windows do not notify.
+
 ### Telegram alerts
 
 Telegram settings come from `NOTIFICATION_TELEGRAM_*`; with no token nothing is

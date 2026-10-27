@@ -36,6 +36,7 @@ final class ImportTest extends TestCase
                 ['dashboard_id' => 'operations-id', 'title' => 'JAVMETA Operations', 'hash' => 'operations-hash', 'folder_id' => 'default'],
                 ['dashboard_id' => 'quality-id', 'title' => 'JAVMETA Data Quality', 'hash' => 'quality-hash', 'folder_id' => 'default'],
                 ['dashboard_id' => 'crawl-id', 'title' => 'JAVMETA Crawl debug', 'hash' => 'crawl-hash', 'folder_id' => 'default'],
+                ['dashboard_id' => 'search-parse-id', 'title' => 'JAVMETA Search parse', 'hash' => 'search-parse-hash', 'folder_id' => 'default'],
             ]],
         ]);
         $this->respond('GET', '/api/v2/javmeta_it/alerts', [
@@ -48,6 +49,7 @@ final class ImportTest extends TestCase
                 ['alert_id' => 'dependency-id', 'name' => 'javmeta_dependency_down'],
                 ['alert_id' => 'p95-id', 'name' => 'javmeta_api_p95_high'],
                 ['alert_id' => 'pg-connections-id', 'name' => 'javmeta_postgres_connection_utilization_high'],
+                ['alert_id' => 'search-parse-alert-id', 'name' => 'javmeta_search_parse_degraded'],
             ]],
         ]);
         foreach ([
@@ -58,6 +60,7 @@ final class ImportTest extends TestCase
             ['PUT', '/api/javmeta_it/dashboards/operations-id'],
             ['PUT', '/api/javmeta_it/dashboards/quality-id'],
             ['PUT', '/api/javmeta_it/dashboards/crawl-id'],
+            ['PUT', '/api/javmeta_it/dashboards/search-parse-id'],
             ['PUT', '/api/v2/javmeta_it/alerts/stale-id'],
             ['PUT', '/api/v2/javmeta_it/alerts/error-rate-id'],
             ['PUT', '/api/v2/javmeta_it/alerts/failure-rate-id'],
@@ -65,17 +68,18 @@ final class ImportTest extends TestCase
             ['PUT', '/api/v2/javmeta_it/alerts/dependency-id'],
             ['PUT', '/api/v2/javmeta_it/alerts/p95-id'],
             ['PUT', '/api/v2/javmeta_it/alerts/pg-connections-id'],
+            ['PUT', '/api/v2/javmeta_it/alerts/search-parse-alert-id'],
         ] as [$method, $path]) {
             $this->respond($method, $path, [[]]);
         }
-        $this->respond('POST', '/api/javmeta_it/dashboards', [[], [], []]);
-        $this->respond('POST', '/api/v2/javmeta_it/alerts', array_fill(0, 7, []));
+        $this->respond('POST', '/api/javmeta_it/dashboards', [[], [], [], []]);
+        $this->respond('POST', '/api/v2/javmeta_it/alerts', array_fill(0, 8, []));
 
         $this->artisan('observability:import')
-            ->expectsOutputToContain('Imported 3 dashboards and 7 alerts')
+            ->expectsOutputToContain('Imported 4 dashboards and 8 alerts')
             ->assertSuccessful();
         $this->artisan('observability:import')
-            ->expectsOutputToContain('Imported 3 dashboards and 7 alerts')
+            ->expectsOutputToContain('Imported 4 dashboards and 8 alerts')
             ->assertSuccessful();
 
         $counts = [];
@@ -88,11 +92,12 @@ final class ImportTest extends TestCase
         self::assertSame(1, $counts['PUT /api/javmeta_it/alerts/templates/javmeta_telegram']);
         self::assertSame(1, $counts['POST /api/javmeta_it/alerts/destinations']);
         self::assertSame(1, $counts['PUT /api/javmeta_it/alerts/destinations/javmeta_telegram']);
-        self::assertSame(3, $counts['POST /api/javmeta_it/dashboards']);
+        self::assertSame(4, $counts['POST /api/javmeta_it/dashboards']);
         self::assertSame(1, $counts['PUT /api/javmeta_it/dashboards/operations-id']);
         self::assertSame(1, $counts['PUT /api/javmeta_it/dashboards/quality-id']);
         self::assertSame(1, $counts['PUT /api/javmeta_it/dashboards/crawl-id']);
-        self::assertSame(7, $counts['POST /api/v2/javmeta_it/alerts']);
+        self::assertSame(1, $counts['PUT /api/javmeta_it/dashboards/search-parse-id']);
+        self::assertSame(8, $counts['POST /api/v2/javmeta_it/alerts']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/stale-id']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/error-rate-id']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/failure-rate-id']);
@@ -100,6 +105,7 @@ final class ImportTest extends TestCase
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/dependency-id']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/p95-id']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/pg-connections-id']);
+        self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/search-parse-alert-id']);
 
         $dashboardUpdate = collect(ClientBuilder::recorded())->first(
             static fn($record): bool => $record->request->getMethod() === 'PUT'
@@ -141,6 +147,33 @@ final class ImportTest extends TestCase
         $rateQuery = $panels->get('javmeta-crawl-rate-by-source')['queries'][0];
         self::assertSame('javmeta_crawl_run_pages_fetched_1h', $rateQuery['fields']['stream']);
         self::assertStringContainsString('source_slug', $rateQuery['query']);
+
+        $searchDashboard = $this->requestBody('POST', '/api/javmeta_it/dashboards', 'JAVMETA Search parse');
+        $searchPanels = collect($searchDashboard['tabs'][0]['panels'] ?? [])->keyBy('id');
+        foreach ([
+            'search-parse-request-rate',
+            'search-parse-cache-hit-ratio',
+            'search-parse-p95-by-cache',
+            'search-parse-backend-count',
+            'search-parse-ollama-outcomes',
+            'search-parse-ollama-p95',
+            'search-parse-fallback-reasons',
+        ] as $panelId) {
+            self::assertTrue($searchPanels->has($panelId), "Expected search parse dashboard panel {$panelId}.");
+            self::assertSame('javmeta_logs', $searchPanels->get($panelId)['queries'][0]['fields']['stream']);
+            self::assertSame('logs', $searchPanels->get($panelId)['queries'][0]['fields']['stream_type']);
+            self::assertStringContainsString("endpoint = '/api/v1/search/parse'", $searchPanels->get($panelId)['queries'][0]['query']);
+        }
+
+        $cacheRatioQuery = $searchPanels->get('search-parse-cache-hit-ratio')['queries'][0]['query'];
+        self::assertStringContainsString("parse_cache_status = 'hit'", $cacheRatioQuery);
+        self::assertStringContainsString('sum(CASE WHEN parse_cache_status', $cacheRatioQuery);
+
+        $searchAlert = $this->requestBody('POST', '/api/v2/javmeta_it/alerts', 'javmeta_search_parse_degraded');
+        self::assertSame('logs', $searchAlert['stream_type']);
+        self::assertSame('javmeta_logs', $searchAlert['stream_name']);
+        self::assertStringContainsString('parse_duration_ms', $searchAlert['query_condition']['sql']);
+        self::assertStringContainsString('HAVING count(*) >= 3', $searchAlert['query_condition']['sql']);
     }
 
     public function test_alerts_for_streams_that_do_not_exist_yet_are_reported_pending_and_strict_fails(): void
@@ -152,9 +185,9 @@ final class ImportTest extends TestCase
         $this->respond('GET', '/api/v2/javmeta_it/alerts', [['list' => []], ['list' => []]]);
         $this->respond('PUT', '/api/javmeta_it/alerts/templates/javmeta_telegram', [[], []]);
         $this->respond('PUT', '/api/javmeta_it/alerts/destinations/javmeta_telegram', [[], []]);
-        $this->respond('POST', '/api/javmeta_it/dashboards', array_fill(0, 6, []));
+        $this->respond('POST', '/api/javmeta_it/dashboards', array_fill(0, 8, []));
         // Every alert creation answers 404 as OpenObserve does for a stream without data.
-        $this->respond('POST', '/api/v2/javmeta_it/alerts', array_fill(0, 14, ['code' => 404, 'message' => 'Stream not found']), 404);
+        $this->respond('POST', '/api/v2/javmeta_it/alerts', array_fill(0, 16, ['code' => 404, 'message' => 'Stream not found']), 404);
 
         $this->artisan('observability:import')
             ->expectsOutputToContain('Alerts pending until their metric stream receives data')
@@ -175,7 +208,7 @@ final class ImportTest extends TestCase
         self::assertSame([], ClientBuilder::recorded());
     }
 
-    public function test_every_alert_sql_uses_a_metric_stream_from_the_telemetry_catalogue(): void
+    public function test_every_alert_sql_uses_a_configured_telemetry_stream(): void
     {
         $catalogue = file_get_contents(base_path('docs/03-operations/telemetry.md'));
         self::assertIsString($catalogue);
@@ -190,7 +223,11 @@ final class ImportTest extends TestCase
             self::assertMatchesRegularExpression('/^\s*SELECT\b/i', $sql, basename($path));
             self::assertMatchesRegularExpression('/\bFROM\s+"([a-z0-9_]+)"/i', $sql, basename($path));
             preg_match('/\bFROM\s+"([a-z0-9_]+)"/i', $sql, $from);
-            self::assertContains($from[1], $streams, basename($path));
+            if (($alert['stream_type'] ?? null) === 'logs') {
+                self::assertSame('javmeta_logs', $from[1], basename($path));
+            } else {
+                self::assertContains($from[1], $streams, basename($path));
+            }
             self::assertSame($from[1], $alert['stream_name'] ?? null, basename($path));
         }
     }
@@ -260,7 +297,7 @@ final class ImportTest extends TestCase
         foreach (ClientBuilder::recorded() as $record) {
             if ($record->request->getMethod() === $method && $record->request->getUri()->getPath() === $path) {
                 $body = json_decode((string) $record->request->getBody(), true, 512, JSON_THROW_ON_ERROR);
-                if ($title === null || ($body['title'] ?? null) === $title) {
+                if ($title === null || ($body['title'] ?? $body['name'] ?? null) === $title) {
                     return $body;
                 }
             }

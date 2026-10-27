@@ -70,8 +70,69 @@ final class LogApiUsage
             'response_ms' => $responseMs,
             'ip_hash' => $this->ipHash($request),
         ];
+        if ($endpoint === '/api/v1/search/parse') {
+            $fields = [...$fields, ...$this->searchParseTelemetryFields($request)];
+        }
 
         $request->attributes->set(self::TERMINATION_FIELDS, $fields);
+    }
+
+    /** @return array<string, scalar|null> */
+    private function searchParseTelemetryFields(Request $request): array
+    {
+        $telemetry = $request->attributes->get('javmeta.search_parse.telemetry');
+        if (! is_array($telemetry)) {
+            return [];
+        }
+
+        $fields = [];
+        $enums = [
+            'parse_outcome' => ['success', 'failed'],
+            'parse_cache_status' => ['hit', 'miss'],
+            'parse_backend' => ['ollama', 'rules', 'none'],
+            'parse_fallback_reason' => [
+                'dependency_unavailable',
+                'operation_failed',
+                'ollama_http_error',
+                'ollama_timeout',
+                'ollama_transport_error',
+                'ollama_client_error',
+                'ollama_invalid_json',
+                'ollama_budget_exhausted',
+                'ollama_output_rejected',
+            ],
+            'ollama_chat_outcome' => [
+                'not_attempted',
+                'success',
+                'http_error',
+                'timeout',
+                'transport_error',
+                'client_error',
+                'invalid_json',
+                'budget_exhausted',
+                'cache_hit',
+            ],
+        ];
+        foreach ($enums as $field => $allowed) {
+            $value = $telemetry[$field] ?? null;
+            if (is_string($value) && in_array($value, $allowed, true)) {
+                $fields[$field] = $value;
+            }
+        }
+
+        foreach (['parse_duration_ms', 'ollama_chat_duration_ms'] as $field) {
+            $value = $telemetry[$field] ?? null;
+            if (is_int($value) && $value >= 0 && $value <= 3_600_000) {
+                $fields[$field] = $value;
+            }
+        }
+
+        $status = $telemetry['ollama_chat_http_status'] ?? null;
+        if (is_int($status) && $status >= 100 && $status <= 599) {
+            $fields['ollama_chat_http_status'] = $status;
+        }
+
+        return $fields;
     }
 
     public function terminate(Request $request, Response $response): void
