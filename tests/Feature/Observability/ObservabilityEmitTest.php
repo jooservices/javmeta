@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Observability;
 
+use App\Jobs\EmitObservabilityLog;
+use App\Models\ApiUsageLog;
 use App\Models\CrawlEvent;
 use App\Observability\ObservabilityEmitter;
+use App\Observability\OpenObserveClient;
 use App\Services\Auth\ApiKeyService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 final class ObservabilityEmitTest extends TestCase
@@ -27,6 +31,7 @@ final class ObservabilityEmitTest extends TestCase
             'openobserve.password' => 'secret',
             'openobserve.timeout' => 1,
             'openobserve.trace_sample_rate' => 1.0,
+            'dependencies.role' => 'api',
         ]);
         Http::fake([
             'openobserve.test/*' => Http::response(['code' => 200], 200),
@@ -59,6 +64,7 @@ final class ObservabilityEmitTest extends TestCase
     public function test_api_usage_emit_includes_safe_fields(): void
     {
         $created = app(ApiKeyService::class)->create(fake()->words(2, true));
+        Queue::fake();
 
         $this->getJson('/api/v1/auth/verify', [
             'X-API-Key' => $created->plaintext,
@@ -66,6 +72,35 @@ final class ObservabilityEmitTest extends TestCase
         $this->getJson('/api/v1/auth/verify', [
             'X-API-Key' => $created->plaintext,
         ])->assertOk();
+        $inlineApiUsageCount = collect(Http::recorded())
+            ->filter(static fn(array $pair): bool => str_contains($pair[0]->url(), 'openobserve.test'))
+            ->map(static fn(array $pair): mixed => json_decode($pair[0]->body(), true))
+            ->filter(static fn(mixed $payload): bool => is_array($payload))
+            ->map(static fn(array $payload): mixed => array_key_exists(0, $payload)
+                ? ($payload[0]['event'] ?? null)
+                : ($payload['event'] ?? null))
+            ->filter(static fn(mixed $event): bool => $event === 'api_usage')
+            ->count();
+        $this->assertSame(0, $inlineApiUsageCount, 'API usage telemetry must not be sent inline.');
+
+        Queue::assertPushedTimes(EmitObservabilityLog::class, 2);
+        Queue::assertPushedOn('observability', EmitObservabilityLog::class);
+        $jobs = Queue::pushed(
+            EmitObservabilityLog::class,
+            static fn(EmitObservabilityLog $job, ?string $queue): bool => $queue === 'observability',
+        );
+        $this->assertCount(2, $jobs);
+        $this->assertSame(2, ApiUsageLog::query()->where('api_key_id', $created->model->getKey())->count());
+
+        config()->set('dependencies.role', 'worker');
+        foreach ($jobs as $job) {
+            $this->assertSame('api_usage', $job->record['event'] ?? null);
+            $this->assertSame('/api/v1/auth/verify', $job->record['endpoint'] ?? null);
+            $this->assertSame('api', $job->record['role'] ?? null);
+            $this->assertSame((int) $created->model->getKey(), (int) ($job->record['api_key_id'] ?? 0));
+            $this->assertStringNotContainsString($created->plaintext, json_encode($job->record, JSON_THROW_ON_ERROR));
+            $job->handle(app(OpenObserveClient::class));
+        }
 
         $recorded = collect(Http::recorded())->map(fn($pair) => [
             'url' => $pair[0]->url(),
@@ -95,6 +130,7 @@ final class ObservabilityEmitTest extends TestCase
             if (
                 ($payload['event'] ?? null) === 'api_usage'
                 && ($payload['endpoint'] ?? null) === '/api/v1/auth/verify'
+                && ($payload['role'] ?? null) === 'api'
                 && (int) ($payload['api_key_id'] ?? 0) === (int) $created->model->getKey()
                 && ! str_contains($item['body'], $created->plaintext)
             ) {

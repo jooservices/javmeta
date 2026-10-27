@@ -25,7 +25,7 @@ final class EmitObservabilityLog implements ShouldQueue
      */
     public function __construct(public readonly array $record)
     {
-        $this->onQueue('default');
+        $this->onQueue((string) config('javmeta_queues.observability_queue', 'observability'));
     }
 
     public function handle(OpenObserveClient $client): void

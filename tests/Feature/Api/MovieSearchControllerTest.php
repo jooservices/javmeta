@@ -363,7 +363,7 @@ final class MovieSearchControllerTest extends TestCase
             ->assertJsonPath('meta.pagination.sort', 'release_date');
 
         $codes = collect($response->json('data'))->pluck('code')->all();
-        $expected = $movies->sortByDesc('release_date')->pluck('display_code')->all();
+        $expected = $movies->sort(static fn($x, $y): int => [(string) $y->release_date, $y->id] <=> [(string) $x->release_date, $x->id])->pluck('display_code')->all();
         $this->assertSame($expected, $codes);
     }
 

@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace App\Observability;
 
+use App\Jobs\EmitObservabilityLog;
+use Illuminate\Support\Facades\Log;
+use Throwable;
+
 /**
- * Sync fail-open ingest to OpenObserve (no queue — workers do not drain `default`).
+ * Fail-open telemetry emission to OpenObserve.
  */
 final class ObservabilityEmitter
 {
@@ -32,10 +36,25 @@ final class ObservabilityEmitter
      */
     public function emitApiUsage(array $fields): void
     {
-        $this->emit([
-            'event' => 'api_usage',
-            ...$this->sanitizer->sanitizeContext($fields),
-        ]);
+        if (! $this->client->enabled()) {
+            return;
+        }
+
+        try {
+            EmitObservabilityLog::dispatch($this->timestampedRecord([
+                'event' => 'api_usage',
+                ...$fields,
+                'role' => (string) config('dependencies.role', 'api'),
+            ]));
+        } catch (Throwable $exception) {
+            try {
+                Log::channel('single')->warning('API usage telemetry queue dispatch failed.', [
+                    'exception' => $exception::class,
+                ]);
+            } catch (Throwable) {
+                // API termination must remain fail-open even if logging is unavailable.
+            }
+        }
     }
 
     /**
@@ -119,10 +138,19 @@ final class ObservabilityEmitter
      */
     private function emit(array $record): void
     {
-        $this->client->ingestLogs([[
+        $this->client->ingestLogs([$this->timestampedRecord($record)]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
+     * @return array<string, mixed>
+     */
+    private function timestampedRecord(array $record): array
+    {
+        return [
             '_timestamp' => (int) (microtime(true) * 1_000_000),
             ...$this->sanitizer->sanitizeContext($record),
-        ]]);
+        ];
     }
 
     /**
