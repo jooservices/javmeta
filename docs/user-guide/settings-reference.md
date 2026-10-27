@@ -152,7 +152,7 @@ Số nguyên; từ 30 đến 86400. Mã mục: `alerts.heartbeat_stale_seconds`.
 
 ### Nguồn không thành công quá (giây) thì cảnh báo
 
-Watchdog: ngưỡng mặc định cho nguồn đang bật. Nếu manifest khai báo `cycle_delay_seconds`, ngưỡng dùng chu kỳ đó cộng thêm một lượt quét danh sách mới.
+Ngưỡng mặc định; nguồn có chu kỳ trong manifest được cộng thêm một lượt quét mới.
 
 Số nguyên; từ 60 đến 2592000. Mã mục: `alerts.source_stale_seconds`.
 
