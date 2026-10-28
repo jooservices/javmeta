@@ -27,7 +27,9 @@ final class McpRequestHandler
             return false;
         }
 
-        return $this->apiKeys->findActiveByPlaintext($plain) !== null;
+        $apiKey = $this->apiKeys->findActiveByPlaintext($plain);
+
+        return $apiKey !== null && $apiKey->allows('mcp');
     }
 
     /**
