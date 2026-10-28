@@ -2,7 +2,7 @@
 
 [Guide index](README.md) · [Canonical tool/input table](../03-operations/mcp.md)
 
-HTTP JSON-RPC is `POST /api/v1/mcp`, authenticated with `X-API-Key`. Use a key restricted to `mcp` when only MCP is needed. The scope grants access to the tool server; REST family scopes are not rechecked for individual tools. The stdio entry point is `mcp:serve`; it reads the active client key from `JAVMETA_MCP_API_KEY` as a transport credential. This is not a feature setting. In this baseline the stdio handler validates that the key is active but does not check its `mcp` scope; HTTP middleware enforces that scope.
+HTTP JSON-RPC is `POST /api/v1/mcp`, authenticated with `X-API-Key`. Both HTTP and stdio require an active key that allows the `mcp` scope; an unrestricted key also works. Use a key restricted to `mcp` when only MCP is needed. The scope grants access to the tool server; REST family scopes are not rechecked for individual tools. The stdio entry point is `mcp:serve`; it reads the client key from `JAVMETA_MCP_API_KEY` as a transport credential, checks that the key is active and allows `mcp` at startup and before each tool call, and does not treat it as a feature setting.
 
 The [tested cookbook](api-cookbook.md) includes real curl examples for `tools/list`, `lookup_movies`, `get_movie` and `search` with `entity: all`. Replace the fixture movie code and query with records in your own development database. `initialize` and `notifications/initialized` are also supported and covered by `McpHttpEndpointTest`.
 
