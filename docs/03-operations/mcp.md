@@ -1,6 +1,6 @@
 # MCP guide
 
-JAVMeta exposes its tools over JSON-RPC 2.0 at `POST /api/v1/mcp`. Send an active API key in the `X-API-Key` header. The stdio server instead requires `JAVMETA_MCP_API_KEY` to contain an active key. A tool call returns JSON in `result.content[0].text`; invalid tool arguments set `result.isError` to `true` and include an error code and message.
+JAVMeta exposes its tools over JSON-RPC 2.0 at `POST /api/v1/mcp`. Send an active API key that allows the `mcp` scope in the `X-API-Key` header; unrestricted keys also work. The stdio server applies the same scope check to the active key in `JAVMETA_MCP_API_KEY`. A tool call returns JSON in `result.content[0].text`; invalid tool arguments set `result.isError` to `true` and include an error code and message.
 
 ## Tools and inputs
 

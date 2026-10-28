@@ -12,7 +12,7 @@ use Throwable;
 /**
  * Streamable-HTTP MCP endpoint (JSON-RPC 2.0 over HTTP).
  * POST /api/v1/mcp → request/response; GET → SSE stream (advertised endpoint + keep-alive).
- * Auth: any active API key via `X-API-Key` header (AuthenticateApiKey middleware).
+ * Auth: an active API key allowed to use the `mcp` scope via `X-API-Key` (AuthenticateApiKey middleware).
  */
 final class McpHttpController
 {

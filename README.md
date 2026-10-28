@@ -131,7 +131,7 @@ curl -s -H "X-Api-Key: jvm_..." "http://localhost:8080/api/v1/movies/STARS-456"
 curl -s -H "X-Api-Key: jvm_..." "http://localhost:8080/api/v1/movies?q=STARS"
 ```
 
-MCP (stdio for AI clients) — set `JAVMETA_MCP_API_KEY` to an **active** `jvm_…` key first:
+MCP (stdio for AI clients) — set `JAVMETA_MCP_API_KEY` to an **active** `jvm_…` key that allows the `mcp` scope first (an unrestricted key also works):
 
 ```bash
 docker compose --profile mcp run --rm mcp
@@ -185,7 +185,7 @@ curl -s -H "X-Api-Key: $JAVMETA_MCP_API_KEY" \
   http://localhost:8080/api/v1/mcp
 ```
 
-- Endpoint: `POST /api/v1/mcp` (JSON-RPC 2.0); `GET` returns an SSE stream. Any active API key (`X-Api-Key` header) works.
+- Endpoint: `POST /api/v1/mcp` (JSON-RPC 2.0); `GET` returns an SSE stream. Use an active API key that allows the `mcp` scope (`X-Api-Key` header); unrestricted keys also work.
 - AI clients connect to `https://<host>/api/v1/mcp` via the CF tunnel (port 8080) — no local process needed.
 - See [docs/03-operations/mcp.md](docs/03-operations/mcp.md) for every tool input and an example call for each tool.
 

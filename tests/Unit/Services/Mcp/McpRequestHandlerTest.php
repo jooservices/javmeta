@@ -7,10 +7,13 @@ namespace Tests\Unit\Services\Mcp;
 use App\Services\Auth\ApiKeyService;
 use App\Services\Mcp\McpRequestHandler;
 use App\Services\Mcp\McpToolService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 final class McpRequestHandlerTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_it_returns_invalid_request_when_method_is_not_a_string(): void
     {
         $response = app(McpRequestHandler::class)->handle(['id' => 7, 'method' => ['initialize']]);
@@ -65,6 +68,37 @@ final class McpRequestHandlerTest extends TestCase
 
         self::assertTrue($response['result']['isError']);
         self::assertSame('{"error":"unauthorized"}', $response['result']['content'][0]['text']);
+    }
+
+    public function test_stdio_rejects_a_scoped_key_without_the_mcp_scope(): void
+    {
+        $key = app(ApiKeyService::class)->create('stdio-movies-only', 60, ['movies']);
+        config()->set('javmeta_auth.mcp_api_key', $key->plaintext);
+
+        self::assertFalse(app(McpRequestHandler::class)->isAuthorized());
+
+        $response = app(McpRequestHandler::class)->handle([
+            'id' => 13,
+            'method' => 'tools/call',
+            'params' => ['name' => 'get_counts'],
+        ]);
+
+        self::assertTrue($response['result']['isError']);
+        self::assertSame('{"error":"unauthorized"}', $response['result']['content'][0]['text']);
+    }
+
+    public function test_stdio_accepts_mcp_scoped_and_unrestricted_keys(): void
+    {
+        $service = app(ApiKeyService::class);
+        $mcpKey = $service->create('stdio-mcp-only', 60, ['mcp']);
+        config()->set('javmeta_auth.mcp_api_key', $mcpKey->plaintext);
+
+        self::assertTrue(app(McpRequestHandler::class)->isAuthorized());
+
+        $unrestrictedKey = $service->create('stdio-unrestricted');
+        config()->set('javmeta_auth.mcp_api_key', $unrestrictedKey->plaintext);
+
+        self::assertTrue(app(McpRequestHandler::class)->isAuthorized());
     }
 
     public function test_it_wraps_invalid_tool_arguments_as_a_clear_tool_error(): void
