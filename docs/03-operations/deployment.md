@@ -455,3 +455,13 @@ forwarded headers of the proxy, so redirects and cookies use https. Login attemp
 backups under the state directory are private (0600). Do not `chmod` the `.env` file: it carries an ACL entry for the web
 user (`user:www-data:r--`) and a plain `chmod 600` sets the ACL mask to nothing, which makes every request fail with HTTP 500.
 Restore it with `setfacl -m m::r .env`. A full crawl queue is reported by the smoke check as a warning, not a failure.
+
+## Native XCrawler node
+
+The independent production node uses the operator-only [production kit](../../deploy/production/README.md).
+It provisions `xcrawler` namespaces, provides native Ubuntu/nginx/FPM/systemd files, and deploys only
+annotated release tags reachable from `origin/master` through `deploy/production.sh` (dry-run by default).
+The script verifies a fresh backup and requires restore-rehearsal attestation before migrations;
+a failure restores the old symlink/services without automatically reversing schema changes.
+No production hosts were contacted while preparing this kit; see its verification limits and bootstrap
+Settings checklist. Staging's names and Docker/runtime deployment path remain unchanged.

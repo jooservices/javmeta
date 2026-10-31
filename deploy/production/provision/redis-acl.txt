@@ -1,0 +1,3 @@
+# ACL SETUSER arguments; password hash is supplied separately by redis-acl.sh.
+# KEYS/SCAN enumerate names globally: restrict network access; ACLs protect values, not names.
+reset on ~xcrawler:* &xcrawler:* +@read +@write +@connection +@transaction +@scripting +@pubsub -@dangerous +keys +scan -flushall -flushdb -config -debug

@@ -1,0 +1,27 @@
+[Unit]
+Description=XCrawler scheduler
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/var/www/xcrawler/current/artisan
+
+[Service]
+Type=simple
+User=xcrawler
+Group=xcrawler
+WorkingDirectory=/var/www/xcrawler/current
+Environment=HOME=/var/www/xcrawler/shared
+Environment=HF_HUB_DISABLE_TELEMETRY=1
+ExecStart=/usr/bin/php8.5 artisan schedule:work
+Restart=always
+RestartSec=15
+TimeoutStopSec=240
+KillSignal=SIGTERM
+KillMode=mixed
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/www/xcrawler/shared/storage
+
+[Install]
+WantedBy=multi-user.target

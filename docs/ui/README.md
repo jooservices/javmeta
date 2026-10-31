@@ -123,3 +123,7 @@ Settings warns when a legacy service base URL is invalid and uses the config def
 Cài đặt / Giám sát exposes **Số ngày giữ lịch sử thử tải** (default 14).
 The per-method report is an operator command, not a new UI screen; see
 [fetch attempts](../03-operations/telemetry.md#fetch-attempts).
+
+Native XCrawler production has independent host/index settings. See the
+[production operator runbook](../../deploy/production/README.md)
+for the Settings-page checklist; restarting Horizon on that node uses `xcrawler-horizon`.

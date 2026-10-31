@@ -11,6 +11,8 @@ RUN apt-get update \
         libssl-dev \
         pkg-config \
         jq \
+        postgresql-client \
+        redis-tools \
         shellcheck \
         unzip \
     && { for attempt in 1 2 3; do pecl install mongodb-2.5.5 pcov-1.0.12 && break; [ "$attempt" -lt 3 ] || exit 1; sleep 5; done; } \
