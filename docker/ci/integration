@@ -7,8 +7,16 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 compose=(docker compose --file "${root}/docker/ci/compose.integration.yml")
 
-export JAVMETA_CI_UID="$(id -u)" JAVMETA_CI_GID="$(id -g)"
+JAVMETA_CI_UID="$(id -u)"
+JAVMETA_CI_GID="$(id -g)"
+export JAVMETA_CI_UID JAVMETA_CI_GID
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-javmeta-integration}"
+# Authenticated Elasticsearch is required to prove the production API-key restrictions.
+export JAVMETA_CI_ES_SECURITY=true JAVMETA_PRODUCTION_PROVISIONING=1
+JAVMETA_CI_ES_PASSWORD="$(openssl rand -hex 24)"
+export JAVMETA_CI_ES_PASSWORD
+JAVMETA_CI_XCRAWLER_MONGO_PASSWORD="$(openssl rand -hex 24)"
+export JAVMETA_CI_XCRAWLER_MONGO_PASSWORD
 signal_id="$$"
 signal_dir="$(mktemp -d "${TMPDIR:-/tmp}/javmeta-integration-outage.XXXXXX")"
 export JAVMETA_INTEGRATION_SIGNAL_DIR="$signal_dir"
@@ -34,6 +42,8 @@ for attempt in 1 2 3; do
   sleep 20
 done
 "${compose[@]}" up --detach --wait postgres mongo elasticsearch
+"${compose[@]}" exec --no-TTY mongo mongosh --quiet --file /tmp/xcrawler-mongodb.js
+"${compose[@]}" exec --no-TTY mongo mongosh --quiet --file /tmp/xcrawler-mongodb.js
 "${compose[@]}" up --detach openobserve
 "${compose[@]}" run --rm gate vendor/bin/phpunit --configuration phpunit.integration.xml "$@"
 
