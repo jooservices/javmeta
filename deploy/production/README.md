@@ -13,7 +13,7 @@ ROOT=/var/www/xcrawler
 gh repo clone jooservices/javmeta "$SOURCE" -- --branch develop
 ```
 
-Have VM administrator credentials, a tested backup/restore procedure, the Elasticsearch issuing CA, DNS control and the existing gatekeeper HTTPS frontend/certificate layout. Never pass passwords in command arguments or enable `set -x`. Firewall data ports to `192.168.10.20` and administrator addresses only; allow node HTTP/80 only from gatekeeper `192.168.10.4` and exporter/9100 only from Prometheus `192.168.10.10`. Do not flush shared Redis. Decide backup destination/retention, restore-rehearsal target, initial owner, Telegram bot/chat and the Sentry team. The deploy command needs narrow `sudo` rights installed by the node script; it runs as `xcrawler`, never root.
+Have VM administrator credentials, a tested backup/restore procedure, the Elasticsearch issuing CA, DNS control and the existing gatekeeper HTTPS frontend/certificate layout. Never pass passwords in command arguments or enable `set -x`. Firewall data ports to `192.168.10.20` and administrator addresses only; allow node HTTP/80 only from gatekeeper `192.168.10.4` and exporter/9100 only from Prometheus `192.168.10.10`. Do not flush shared Redis. Review the 14-day local backup retention, arrange an approved encrypted off-node copy, select an empty restore-rehearsal database, and decide the initial owner, Telegram bot/chat and Sentry team. The deploy command needs narrow `sudo` rights installed by the node script; it runs as `xcrawler`, never root.
 
 ## 2. Provision data VMs — operator with administrator credentials
 
@@ -64,7 +64,7 @@ sudo chown -R xcrawler:xcrawler "$SOURCE"
 sudo -u xcrawler -H editor "$ROOT/shared/.env"
 ```
 
-The installer is re-runnable, preserves `.env`, creates the service user, PHP 8.5 CLI/FPM (Ondrej PPA), Composer with installer checksum, Node 24 LTS (NodeSource), PG18 client, nginx and native Python venv. PHP includes MongoDB, Redis, pgsql and pcntl. Review repository signing keys and package availability for the chosen LTS before running. It installs and enables units but does not start application units until a release exists. Python dependencies come from `embedder/requirements.production.txt`; the venv and model cache live under `shared/`. Before releases changing those requirements, update the venv under maintenance and retain a copy for rollback. No Playwright browser install is needed for the remote fetch service.
+The installer is re-runnable, preserves `.env`, creates the service user, PHP 8.5 CLI/FPM (Ondrej PPA), Composer with installer checksum, Node 24 LTS (NodeSource), PG18 client, nginx and native Python venv. PHP includes MongoDB, Redis, pgsql and pcntl. Review repository signing keys and package availability for the chosen LTS before running. It installs the backup service/timer and enables the timer; the timer waits for a release before its service can run. Application units do not start until a release exists. Python dependencies come from `embedder/requirements.production.txt`; the venv and model cache live under `shared/`. Before releases changing those requirements, update the venv under maintenance and retain a copy for rollback. No Playwright browser install is needed for the remote fetch service.
 
 Fill every empty secret needed by the selected integrations in the private env file using [env.production.example](env.production.example). Generate `APP_KEY` privately before first boot; keep the same value across releases and backups (encrypted Settings rely on it). Provision it through the approved secret manager without printing it. `CRAWLERX_PLAYWRIGHT_SCRIPT` uses `$ROOT/current/vendor/jooservices/crawlerx/scripts/playwright-fetch.mjs`; adjust it if the release root differs. Do not copy staging `.env` or Mongo settings.
 
@@ -74,18 +74,16 @@ The node exporter installation is `apt-get install -y prometheus-node-exporter` 
 
 ## 4. Deploy — operator invokes `deploy/production.sh`
 
-Take a fresh **custom-format** dump of database `xcrawler` using PG18 `pg_dump -Fc` authenticated as its owner, restore it into an isolated operator-approved rehearsal database, and confirm restored tables/data. Set `XCRAWLER_BACKUP_FILE` to that dump (nonempty, less than 60 minutes old), and `XCRAWLER_BACKUP_RESTORE_VERIFIED=1` only after that rehearsal. The script checks freshness and `pg_restore --list`; the flag is the operator's attestation of a real restore, not an automatic restore proof. Backup and protect MongoDB too: Settings and secrets are there.
+Before each apply, run the node backup job and restore the PostgreSQL dump into an isolated, empty rehearsal database. The daily timer normally creates the backup at 02:00 UTC; for deployment, run it manually to meet the deploy script's 60-minute freshness check. `xcrawler` needs `CREATEDB` to create the rehearsal database; otherwise the DBA must create an empty one owned by `xcrawler` first. The restore test retains the target for inspection and never drops it. Set `XCRAWLER_BACKUP_FILE` to the dump from the new manifest and set `XCRAWLER_BACKUP_RESTORE_VERIFIED=1` only after the rehearsal succeeds. The deploy script checks freshness and `pg_restore --list`; the flag is the operator's attestation of a real restore. MongoDB is backed up only when `mongodump` is already installed; see the native backup section for its status and limitations.
 
 ```bash
-sudo -u xcrawler install -d -m 0700 "$ROOT/shared/backups"
-BACKUP="$ROOT/shared/backups/xcrawler-$(date -u +%Y%m%dT%H%M%SZ).dump"
-sudo -u xcrawler pg_dump -h 192.168.10.12 -U xcrawler -d xcrawler --password -Fc -f "$BACKUP"
-# DBA: restore into an already created, EMPTY rehearsal database; never the app database.
-read -r -p 'Rehearsal host: ' REHEARSAL_HOST
-read -r -p 'Rehearsal admin user: ' REHEARSAL_USER
-read -r -p 'Empty rehearsal database: ' REHEARSAL_DB
-test "$REHEARSAL_DB" != xcrawler
-sudo -u xcrawler pg_restore --exit-on-error --no-owner --password -h "$REHEARSAL_HOST" -U "$REHEARSAL_USER" -d "$REHEARSAL_DB" "$BACKUP"
+sudo -u xcrawler -H "$ROOT/current/deploy/production/backup/xcrawler-backup.sh" \
+  --env-file "$ROOT/shared/.env"
+BACKUP="$(jq -er .postgres_dump "$ROOT/shared/storage/app/private/backups/latest.json")"
+test -s "$BACKUP"
+# DBA: create this empty rehearsal database owned by xcrawler when that role lacks CREATEDB.
+sudo -u xcrawler -H "$ROOT/current/deploy/production/backup/xcrawler-restore-test.sh" \
+  --env-file "$ROOT/shared/.env" --database xcrawler_restore_rehearsal
 # Inspect restored schema and representative application rows before attesting.
 sudo -u xcrawler -H "$SOURCE/deploy/production.sh"  # dry-run, cached refs only
 sudo -u xcrawler -H env XCRAWLER_BACKUP_FILE="$BACKUP" XCRAWLER_BACKUP_RESTORE_VERIFIED=1 \
@@ -98,7 +96,7 @@ Dry-run is the default and changes no files/services. Apply installs no-dev auth
 
 An empty installation cannot pass readiness until owner, API keys, alert channel, sources, movie ingestion and backup manifest exist. **For the first bootstrap only**, keep public traffic disabled and explicitly set `JAVMETA_SKIP_READINESS=1` on the apply invocation (logs BYPASSED), then complete bootstrap below before allowing traffic. `JAVMETA_SKIP_UI_SMOKE=1` is the same emergency-only convention as staging; never use it routinely. No bypass skips backup validation or migrations. For normal deploys both gates must pass.
 
-From `current`, as `xcrawler`, run `php artisan operations:make-super-admin <owner-email>` and deliver its generated one-time password directly to a private secret-manager input (the existing command prints it; do not record the terminal); never use local/testing seeded credentials in production. Create scoped API keys in Quản trị. Run `php artisan crawler:sync-sources`, configure only approved sources, then `php artisan crawler:seed --limit=20`. Store the real backup result timestamp at `shared/storage/app/private/backups/latest.json` using the existing backup manifest format (`created_at` UTC), only after a successful backup. Schedule native PG/Mongo backups through the operator's backup system; staging's Docker backup scripts do not run on this node.
+From `current`, as `xcrawler`, run `php artisan operations:make-super-admin <owner-email>` and deliver its generated one-time password directly to a private secret-manager input (the existing command prints it; do not record the terminal); never use local/testing seeded credentials in production. Create scoped API keys in Quản trị. Run `php artisan crawler:sync-sources`, configure only approved sources, then `php artisan crawler:seed --limit=20`. The native backup timer publishes the UTC `created_at` manifest consumed by readiness; staging's Docker backup scripts do not run on this node.
 
 ### Set in the Settings page (exact registry keys)
 
@@ -167,3 +165,30 @@ Package references: [NodeSource Node 24 repository](https://github.com/nodesourc
 ## Needs owner approval before install
 
 No additional node software is introduced by this follow-up. If `gh` is unavailable, use the explicit warned CI bypass only after operator verification; installing it or any other missing software requires owner approval.
+
+## Native node backups
+
+The node installer registers `xcrawler-backup.timer` (02:00 UTC, up to 30 minutes random delay, persistent catch-up). It runs as `xcrawler`, using the current release and shared env; it does not install backup tools. For an existing node, the operator can install only the two unit files from `node/`, run `systemctl daemon-reload` and `systemctl enable --now xcrawler-backup.timer`; do not rerun package provisioning just to enable backups.
+
+`backup/xcrawler-backup.sh --env-file "$ROOT/shared/.env"` reads Laravel dotenv syntax without executing it. `BACKUP_DIR` defaults to `backups` alongside the env file; `BACKUP_KEEP` defaults to 14 distinct UTC days (positive integer, maximum 9999). Flags `--backup-dir`, `--keep`, `--manifest` override these inputs. No host/database/branch is embedded in script logic. Set `DB_SSLMODE=require` or stronger; credentials are passed to PostgreSQL only through its environment. Tool error text is suppressed to avoid leaking connection secrets. No `jq`, `age` or `mongosh` is needed.
+
+Backups live in private mode-0700 `shared/backups/xcrawler-backup-<day>-<unique>/` bundles. Each contains a verified custom-format PostgreSQL dump and manifest. A lock serializes backup/restore rehearsal. Temporary files and incomplete runs are never selected for restore. Only script-named bundle directories are eligible for retention; unrelated files, symlinks and neighbouring directories are preserved. Dump and readiness manifest publication use rename on their destination filesystem. A failed backup exits nonzero and retains the last successful manifest. Failures are logged to the unit journal; `ExecStopPost` runs `javmeta:backup-status --lenient`, whose existing stale/missing alerts continue to use `backup.stale_after_seconds`. A failed run does not reset backup freshness; alert delivery still requires the application's configured channel.
+
+The manifest is published to `JAVMETA_BACKUP_MANIFEST` (default `storage/app/private/backups/latest.json` alongside the shared env). Keep that path at the shared storage location above so both `staging:readiness` and `javmeta:backup-status` read the same file; the former has a fixed storage path. A fresh `created_at` is written only after PostgreSQL dump verification and any available MongoDB dump succeed. MongoDB is explicitly `skipped (mongodump missing)` when unavailable, with a loud warning: a passing backup freshness check does **not** mean MongoDB is protected. If available, `mongodump` gets its URI through a private temporary YAML config, not argv. Elasticsearch is excluded because it is derived (`php artisan es:setup --reindex`). These dumps are not encrypted: restrict filesystem access and use the owner's approved encrypted off-node backup destination.
+
+### Restore and rehearsal
+
+Run only as an approved operator. The rehearsal target must be named `<app-database>_restore_<purpose>` (for example, `xcrawler_restore_rehearsal`). It creates the target database if absent, refuses other database names and any target containing user relations/functions, and never drops a database. The app role needs CREATE DATABASE permission for an absent target; otherwise have the DBA create an empty rehearsal database owned by the app role first.
+
+```bash
+sudo -u xcrawler "$ROOT/current/deploy/production/backup/xcrawler-restore-test.sh" \
+  --env-file "$ROOT/shared/.env" --database xcrawler_restore_rehearsal
+```
+
+The script verifies the latest completed dump, restores with `--exit-on-error --no-owner --no-privileges`, compares table count with the archive listing and each COPY table's restored row count with the dump's actual COPY records (the TOC alone has no row counts). The target is retained for inspection even on failure; the DBA handles cleanup. Use only trusted backup archives: a PostgreSQL restore executes SQL. For incident recovery, stop ingress/workers, rehearse first, then have the DBA restore the selected verified dump using `pg_restore --exit-on-error --no-owner --no-privileges --dbname=<approved-empty-recovery-db> <bundle>/postgres.dump`, with connection/password supplied privately through the libpq environment. Switch the application to the recovered database only under the owner's incident approval. Keep `APP_KEY` available from the secret manager for encrypted MongoDB Settings; restore MongoDB separately with approved tools.
+
+### Needs owner approval
+
+- Install `mongodb-database-tools` on the node to enable `mongodump`/`mongorestore`. Until approved, MongoDB (including Settings/secrets) is skipped and is not protected by this job. No new software was installed for this task.
+- Arrange VM-level backups and restore rehearsals for PostgreSQL and MongoDB data VMs. The node's logical backup does not replace those backups; retain an off-node copy and a secret-manager recovery procedure.
+- Operator verification of unit startup, real TLS/authentication, storage capacity and restore permissions remains required. Development tests use stubs/disposable test data; no `192.168.10.x` system was accessed.

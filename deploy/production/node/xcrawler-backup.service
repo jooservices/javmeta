@@ -1,0 +1,22 @@
+[Unit]
+Description=XCrawler verified database backup
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/var/www/xcrawler/current/vendor/autoload.php
+
+[Service]
+Type=oneshot
+User=xcrawler
+Group=xcrawler
+WorkingDirectory=/var/www/xcrawler/current
+Environment=BACKUP_ENV_FILE=/var/www/xcrawler/shared/.env
+ExecStart=/var/www/xcrawler/current/deploy/production/backup/xcrawler-backup.sh
+# Publish the existing stale/missing-manifest alert even if backup failed.
+ExecStopPost=/usr/bin/php8.5 artisan javmeta:backup-status --lenient
+TimeoutStartSec=6h
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+StandardOutput=journal
+StandardError=journal

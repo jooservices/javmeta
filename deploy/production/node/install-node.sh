@@ -62,6 +62,9 @@ if [[ ! -L /etc/nginx/sites-enabled/xcrawler || "$(readlink /etc/nginx/sites-ena
   ln -sfn /etc/nginx/sites-available/xcrawler /etc/nginx/sites-enabled/xcrawler
   configuration_changed=1
 fi
+install_if_changed "$root/deploy/production/node/xcrawler-backup.service" /etc/systemd/system/xcrawler-backup.service 0644
+install_if_changed "$root/deploy/production/node/xcrawler-backup.timer" /etc/systemd/system/xcrawler-backup.timer 0644
+install -d -o xcrawler -g xcrawler -m 0700 /var/www/xcrawler/shared/backups
 for service in horizon scheduler embedder; do
   install_if_changed "$root/deploy/production/node/xcrawler-$service.service" "/etc/systemd/system/xcrawler-$service.service" 0644
 done
@@ -88,3 +91,5 @@ else
   systemctl start nginx php8.5-fpm
 fi
 systemctl start prometheus-node-exporter
+# Timer can be enabled before the first release; the service condition skips absent code.
+systemctl enable --now xcrawler-backup.timer

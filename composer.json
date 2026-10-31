@@ -104,9 +104,10 @@
             "bash tests/Shell/sentry-release.test.sh",
             "bash tests/Shell/staging.test.sh",
             "bash tests/Shell/production.test.sh",
+            "bash tests/Shell/production-backup.test.sh",
             "bash tests/Shell/uat-reset.test.sh",
             "bash tests/Shell/retention.test.sh",
-            "if command -v shellcheck >/dev/null 2>&1; then shellcheck -x deploy/production.sh deploy/production/provision/*.sh deploy/production/node/install-node.sh tests/Shell/production.test.sh deploy/backup/*.sh tests/Shell/backup.test.sh deploy/staging.sh deploy/uat-reset.sh tests/Shell/staging.test.sh tests/Shell/uat-reset.test.sh tests/Shell/retention.test.sh; elif [ \"${CI:-}\" = true ]; then echo 'shellcheck is required in CI' >&2; exit 1; else echo 'shellcheck not installed here; it runs in GitHub CI'; fi"
+            "if command -v shellcheck >/dev/null 2>&1; then shellcheck -x deploy/production.sh deploy/production/provision/*.sh deploy/production/backup/*.sh deploy/production/node/install-node.sh tests/Shell/production.test.sh tests/Shell/production-backup.test.sh deploy/backup/*.sh tests/Shell/backup.test.sh deploy/staging.sh deploy/uat-reset.sh tests/Shell/staging.test.sh tests/Shell/uat-reset.test.sh tests/Shell/retention.test.sh; elif [ \"${CI:-}\" = true ]; then echo 'shellcheck is required in CI' >&2; exit 1; else echo 'shellcheck not installed here; it runs in GitHub CI'; fi"
         ],
         "test:e2e": [
             "@php -r \"is_dir('.tmp') || mkdir('.tmp', 0700);\"",

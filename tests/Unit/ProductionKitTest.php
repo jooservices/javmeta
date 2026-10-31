@@ -33,7 +33,7 @@ final class ProductionKitTest extends TestCase
         $root = dirname(__DIR__, 2);
         $installer = (string) file_get_contents($root . '/deploy/production/node/install-node.sh');
         preg_match_all('/"\$root\/([^"\n]+)"/', $installer, $matches);
-        self::assertCount(5, $matches[1]);
+        self::assertCount(7, $matches[1]);
         foreach ($matches[1] as $path) {
             foreach (['horizon', 'scheduler', 'embedder'] as $service) {
                 self::assertFileExists($root . '/' . str_replace('$service', $service, $path));
