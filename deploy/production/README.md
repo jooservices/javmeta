@@ -4,14 +4,13 @@ Only an operator with approved administrator access runs the commands below. Thi
 
 ## 1. Prerequisites — operator
 
-Choose an approved, released **annotated** `vX.Y.Z` tag on `origin/master` after green release CI. Put the repository on the node at `/opt/xcrawler-source`, owned by `xcrawler` after installation; authenticate Git as the approved deployment identity. The source clone is separate from immutable releases. Define these operator variables (choose the real approved tag):
+Production deploys directly from `origin/develop` after green CI for the exact commit. Staging and production both run `develop`; the production node is `192.168.10.20`. Stop crawling on staging at cutover to avoid double crawling. There is no master release or version tag prerequisite. Put the source clone at `/opt/xcrawler-source`, owned by `xcrawler` after installation, separate from immutable deployment directories.
 
 ```bash
 SOURCE=/opt/xcrawler-source
 ROOT=/var/www/xcrawler
-read -r -p 'Approved annotated release tag: ' TAG
 # From an operator-owned parent directory, with GitHub CLI authenticated:
-gh repo clone jooservices/javmeta "$SOURCE" -- --branch master
+gh repo clone jooservices/javmeta "$SOURCE" -- --branch develop
 ```
 
 Have VM administrator credentials, a tested backup/restore procedure, the Elasticsearch issuing CA, DNS control and the existing gatekeeper HTTPS frontend/certificate layout. Never pass passwords in command arguments or enable `set -x`. Firewall data ports to `192.168.10.20` and administrator addresses only; allow node HTTP/80 only from gatekeeper `192.168.10.4` and exporter/9100 only from Prometheus `192.168.10.10`. Do not flush shared Redis. Decide backup destination/retention, restore-rehearsal target, initial owner, Telegram bot/chat and the Sentry team. The deploy command needs narrow `sudo` rights installed by the node script; it runs as `xcrawler`, never root.
@@ -32,7 +31,7 @@ unset XCRAWLER_PASSWORD XCRAWLER_RO_PASSWORD
 
 The application role owns `xcrawler`; run all migrations as `xcrawler` so its default privileges cover future tables/sequences. `xcrawler_ro` has SELECT, not writes, including if a client disables its read-only transaction default. `pg_trgm` is the only extension declared by current migrations. Re-running reconciles role passwords/grants, without dropping objects. Existing objects created by another owner must be explicitly reviewed/transferred by the DBA; this script does not seize unrelated objects. Configure `pg_hba.conf` for these roles and this database only.
 
-**Mongo (`192.168.10.13:27017`)** — run `mongosh --host 127.0.0.1 --username <admin-user> --authenticationDatabase admin provision/mongodb.js`; mongosh prompts for the admin password and the script prompts for the new user's password (or accepts `XCRAWLER_MONGO_PASSWORD`). It creates/updates `xcrawler` with readWrite only on database `xcrawler`. Fill the private `MONGO_URI` as `mongodb://xcrawler:<percent-encoded-password>@192.168.10.13:27017/xcrawler?authSource=xcrawler`, adding TLS options required by the VM; never commit that URI.
+**Mongo (`192.168.10.13:27017`)** — user `xcrawler` already exists, authenticating against database `xcrawler` with readWrite on `xcrawler`. Fill the private `MONGO_URI` with the percent-encoded password and any VM-required TLS options. The template uses the keys read by `config/database.php`; username/password/authSource belong in the URI, not separate unused environment keys. The administrator-only `provision/mongodb.js` is for explicitly approved credential reconciliation; it is not required for normal deployment.
 
 **Redis (`192.168.10.14:6379`)** — authenticate as admin without argv secrets:
 
@@ -71,7 +70,7 @@ On the **gatekeeper**, merge [haproxy/xcrawler.cfg](haproxy/xcrawler.cfg) into i
 
 The node exporter installation is `apt-get install -y prometheus-node-exporter` (included in installer). Add `192.168.10.20:9100` to Prometheus on `.10`, firewall it to that source, and verify the `up` metric.
 
-## 4. First deploy — operator invokes `deploy/production.sh`
+## 4. Deploy — operator invokes `deploy/production.sh`
 
 Take a fresh **custom-format** dump of database `xcrawler` using PG18 `pg_dump -Fc` authenticated as its owner, restore it into an isolated operator-approved rehearsal database, and confirm restored tables/data. Set `XCRAWLER_BACKUP_FILE` to that dump (nonempty, less than 60 minutes old), and `XCRAWLER_BACKUP_RESTORE_VERIFIED=1` only after that rehearsal. The script checks freshness and `pg_restore --list`; the flag is the operator's attestation of a real restore, not an automatic restore proof. Backup and protect MongoDB too: Settings and secrets are there.
 
@@ -86,12 +85,14 @@ read -r -p 'Empty rehearsal database: ' REHEARSAL_DB
 test "$REHEARSAL_DB" != xcrawler
 sudo -u xcrawler pg_restore --exit-on-error --no-owner --password -h "$REHEARSAL_HOST" -U "$REHEARSAL_USER" -d "$REHEARSAL_DB" "$BACKUP"
 # Inspect restored schema and representative application rows before attesting.
-sudo -u xcrawler -H "$SOURCE/deploy/production.sh" "$TAG"  # dry-run, cached refs only
+sudo -u xcrawler -H "$SOURCE/deploy/production.sh"  # dry-run, cached refs only
 sudo -u xcrawler -H env XCRAWLER_BACKUP_FILE="$BACKUP" XCRAWLER_BACKUP_RESTORE_VERIFIED=1 \
-  "$SOURCE/deploy/production.sh" "$TAG" --apply
+  "$SOURCE/deploy/production.sh" --apply
 ```
 
-Before a dry run on a newly cloned source, fetch the approved tag and `master` as its owner: `git fetch origin master --tags`. Both modes verify the published stable GitHub release with `gh` (read-only). Apply fetches the exact tag plus `origin/master`, rejects dirty source/branches/lightweight tags/tags outside master, installs no-dev authoritative dependencies in `releases/<tag>`, links shared storage/env, runs UI smoke, stops queue/scheduler, migrates **forward**, imports missing settings, clears non-cache bootstrap files, atomically swaps `current`, restarts FPM/embedder/Horizon then scheduler, and waits at most 90 seconds for `staging:readiness`. It never merges or creates a tag. Separate source Git authentication from the application role/credentials.
+Before a dry run, refresh the cached branch as its owner: `git fetch origin +refs/heads/develop:refs/remotes/origin/develop`. Default deployment ref is `origin/develop`; optionally pass `--ref <full-commit-sha>` to select an ancestor of `origin/develop`. Other refs and dirty source trees are refused. Apply refreshes `origin/develop` before validating ancestry. Both modes check exact-commit GitHub statuses and check runs: pending, failed or absent CI results block deployment. If `gh` is missing or offline, the script prints a warning and requires an explicit `--skip-ci-check`; this bypass also prints a warning and needs operator judgement.
+
+Dry-run is the default and changes no files/services. Apply installs no-dev authoritative dependencies in `releases/<UTC timestamp>-<sha7>`, links shared storage/env, runs UI smoke, stops queue/scheduler, migrates **forward**, imports missing settings, clears non-cache bootstrap files, atomically swaps `current`, restarts FPM/embedder/Horizon then scheduler, and waits at most 90 seconds for `staging:readiness`. Separate source Git authentication from application credentials.
 
 An empty installation cannot pass readiness until owner, API keys, alert channel, sources, movie ingestion and backup manifest exist. **For the first bootstrap only**, keep public traffic disabled and explicitly set `JAVMETA_SKIP_READINESS=1` on the apply invocation (logs BYPASSED), then complete bootstrap below before allowing traffic. `JAVMETA_SKIP_UI_SMOKE=1` is the same emergency-only convention as staging; never use it routinely. No bypass skips backup validation or migrations. For normal deploys both gates must pass.
 
@@ -137,19 +138,19 @@ Require `Staging is READY` (the existing command wording is retained). Check UI 
 
 On failure, the deploy script automatically restores the previous symlink and restarts units. On a failed first deploy it removes `current` and stops app units. It **never** rolls the database back automatically. Migrations must be reviewed for old-code compatibility; if incompatible, stop ingress and have the DBA restore the rehearsed PG/Mongo backups under incident approval.
 
-For a later operator-approved code rollback, choose an already verified tag; with ingress paused, run:
+For a later operator-approved code rollback, choose an already verified deployment directory; with ingress paused, run:
 
 ```bash
-read -r -p 'Previous verified release tag: ' PREVIOUS_TAG
-test -d "$ROOT/releases/$PREVIOUS_TAG"
+read -r -p 'Previous verified directory (UTC timestamp-sha7): ' PREVIOUS_RELEASE
+test -d "$ROOT/releases/$PREVIOUS_RELEASE"
 sudo systemctl stop xcrawler-scheduler xcrawler-horizon
-sudo -u xcrawler ln -s "$ROOT/releases/$PREVIOUS_TAG" "$ROOT/.rollback"
+sudo -u xcrawler ln -s "$ROOT/releases/$PREVIOUS_RELEASE" "$ROOT/.rollback"
 sudo -u xcrawler mv -Tf "$ROOT/.rollback" "$ROOT/current"
 sudo systemctl restart php8.5-fpm xcrawler-embedder xcrawler-horizon xcrawler-scheduler
 cd "$ROOT/current" && sudo -u xcrawler php8.5 artisan staging:readiness
 ```
 
- Keep the previous venv when requirements change. Retain failed release directories for investigation; remove only the known failed tag directory before retrying it. Never reset a served release or automatically delete old releases/shared storage.
+ Keep the previous venv when requirements change. Retain failed release directories for investigation; remove only the known failed deployment directory before retrying it. Never reset a served release or automatically delete old releases/shared storage.
 
 ## Verification scope
 
@@ -160,3 +161,7 @@ CI commands: `bash tests/Shell/production.test.sh`; `COMPOSE_PROJECT_NAME=javmet
 Native apt/PPA availability on the chosen Ubuntu release, nginx/FPM/systemd startup, the model download, real VM authentication/TLS, OpenObserve/Sentry UI steps, DNS/ACME/HAProxy routing, firewall policy, backup scheduling/restore and LAN throughput need operator verification. No production VM or `192.168.10.x` host was contacted for this task. `docs/03-operations/domains.md` is absent on this base; the existing user reference is `docs/user-guide/domains.md` and defaults are in `config/javmeta_domains.php`. The HAProxy snippet follows those host roles; it is not a copy of an observed live gatekeeper configuration.
 
 Package references: [NodeSource Node 24 repository](https://github.com/nodesource/distributions/blob/master/scripts/deb/setup_24.x), [PostgreSQL psql](https://www.postgresql.org/docs/current/app-psql.html), [Elastic API-key role intersection](https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-security-create-api-key). Operator must review package sources before installation.
+
+## Needs owner approval before install
+
+No additional node software is introduced by this follow-up. If `gh` is unavailable, use the explicit warned CI bypass only after operator verification; installing it or any other missing software requires owner approval.

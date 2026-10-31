@@ -1,27 +1,56 @@
 #!/usr/bin/env bash
-# Operator-only native deployment of an annotated release on master. Default: dry run.
-# Usage: deploy/production.sh v1.2.3 [--apply]
+# Operator-only native deployment of a commit from develop. Default: dry run.
+# Usage: deploy/production.sh [--ref <sha>] [--apply] [--skip-ci-check]
 set -Eeuo pipefail
 umask 022
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 base="${XCRAWLER_ROOT:-/var/www/xcrawler}"
-tag="${1:-}"
+ref=origin/develop
+explicit_ref=0
 apply=0
-case "${2:-}" in '') ;; --apply) apply=1 ;; *) echo 'Usage: production.sh vX.Y.Z [--apply]' >&2; exit 2 ;; esac
-[[ $# -le 2 && "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'An annotated vX.Y.Z release tag is required.' >&2; exit 1; }
+skip_ci=0
 die() { echo "ERROR: $*" >&2; exit 1; }
+while (( $# )); do
+  case "$1" in
+    --ref) [[ $# -ge 2 && "$2" =~ ^[0-9a-fA-F]{40}$ ]] || die '--ref requires a full commit SHA.'; ref="$2"; explicit_ref=1; shift 2 ;;
+    --apply) apply=1; shift ;;
+    --skip-ci-check) skip_ci=1; shift ;;
+    *) die 'Usage: production.sh [--ref <sha>] [--apply] [--skip-ci-check]' ;;
+  esac
+done
 systemctl() { sudo -n /usr/bin/systemctl "$@"; }
 [[ -z "$(git -C "$root" status --porcelain)" ]] || die 'Refusing a dirty tree.'
 run() { if (( apply )); then "$@"; else printf 'DRY RUN:'; printf ' %q' "$@"; printf '\n'; fi; }
-# Dry runs use cached refs and change no files or services. Apply fetches only the required refs.
-run git -C "$root" fetch origin "+refs/heads/master:refs/remotes/origin/master" "refs/tags/$tag:refs/tags/$tag"
-[[ "$(git -C "$root" cat-file -t "refs/tags/$tag" 2>/dev/null)" == tag ]] || die 'Refusing a branch, lightweight tag or missing tag.'
-commit="$(git -C "$root" rev-parse "refs/tags/$tag^{commit}")"
-git -C "$root" merge-base --is-ancestor "$commit" origin/master || die 'Tag is not on origin/master.'
-release_metadata="$(gh release view "$tag" --repo jooservices/javmeta --json isDraft,isPrerelease,tagName)" || die 'No published GitHub release for this tag.'
-jq -e --arg tag "$tag" '.tagName == $tag and .isDraft == false and .isPrerelease == false' <<< "$release_metadata" >/dev/null || die 'A published stable release is required.'
+# Dry runs use cached refs and change no files or services.
+run git -C "$root" fetch origin "+refs/heads/develop:refs/remotes/origin/develop"
+commit="$(git -C "$root" rev-parse --verify "$ref^{commit}")" || die 'Commit is unavailable.'
+if (( explicit_ref )); then
+  [[ "${commit,,}" == "${ref,,}" ]] || die 'Ref must identify a commit.'
+fi
+git -C "$root" merge-base --is-ancestor "$commit" origin/develop || die 'Commit is not an ancestor of origin/develop.'
+if (( skip_ci )); then
+  echo 'WARNING: --skip-ci-check — exact-commit CI gate BYPASSED.' >&2
+elif command -v gh >/dev/null 2>&1; then
+  # Actions use check runs; legacy integrations may still publish commit statuses.
+  if ! statuses="$(gh api "repos/jooservices/javmeta/commits/$commit/status" --jq '[.total_count, .state] | @tsv')" ||
+     ! checks="$(gh api --paginate "repos/jooservices/javmeta/commits/$commit/check-runs?per_page=100" --jq '.check_runs[] | [.status, .conclusion] | @tsv')"; then
+    die 'WARNING: CI unavailable/offline; explicitly pass --skip-ci-check to proceed.'
+  fi
+  read -r status_count status_state <<< "$statuses"
+  [[ "$status_count" =~ ^[0-9]+$ ]] || die 'Invalid CI status response.'
+  if (( status_count > 0 )); then
+    [[ "$status_state" == success ]] || die 'Commit CI status is not green.'
+  fi
+  [[ "$status_count" != 0 || -n "$checks" ]] || die 'Commit has no CI results.'
+  while IFS=$'\t' read -r state conclusion; do
+    [[ -z "$state" ]] && continue
+    [[ "$state" == completed && "$conclusion" =~ ^(success|neutral|skipped)$ ]] || die 'Commit check runs are not green.'
+  done <<< "$checks"
+else
+  die 'WARNING: gh is missing; explicitly pass --skip-ci-check to proceed.'
+fi
 
-release="$base/releases/$tag"
+release="$base/releases/$(date -u +%Y%m%dT%H%M%SZ)-${commit:0:7}"
 previous="$(readlink -f "$base/current" 2>/dev/null || true)"
 [[ "$base" == /* && "$base" != / ]] || die 'Invalid release root.'
 [[ ! -e "$release" && ! -L "$release" ]] || die 'Release directory already exists; releases are immutable.'
@@ -116,4 +145,4 @@ else
   [[ "$ready" == 1 ]] || { printf '%s\n' "$output" >&2; echo 'Readiness failed.' >&2; false; }
 fi
 trap - ERR INT TERM
-echo "Deployed $tag ($commit)."
+echo "Deployed $commit into $release."
