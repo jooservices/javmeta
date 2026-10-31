@@ -4,6 +4,7 @@ set -euo pipefail
 set +x
 umask 077
 : "${ELASTICSEARCH_HOST:?Set the HTTPS Elasticsearch URL}"
+[[ "$ELASTICSEARCH_HOST" == https://* ]] || { echo 'ELASTICSEARCH_HOST must use https://.' >&2; exit 1; }
 : "${ES_ADMIN_USER:?Set the administrator username}"
 : "${ES_KEY_FILE:?Set a private absolute file path outside the checkout}"
 [[ "$ES_KEY_FILE" == /* && ! -L "$ES_KEY_FILE" ]] || { echo 'Invalid private key file path.' >&2; exit 1; }

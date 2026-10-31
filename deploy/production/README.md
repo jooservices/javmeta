@@ -31,6 +31,8 @@ unset XCRAWLER_PASSWORD XCRAWLER_RO_PASSWORD
 
 The application role owns `xcrawler`; run all migrations as `xcrawler` so its default privileges cover future tables/sequences. `xcrawler_ro` has SELECT, not writes, including if a client disables its read-only transaction default. `pg_trgm` is the only extension declared by current migrations. Re-running reconciles role passwords/grants, without dropping objects. Existing objects created by another owner must be explicitly reviewed/transferred by the DBA; this script does not seize unrelated objects. Configure `pg_hba.conf` for these roles and this database only.
 
+The production PostgreSQL template sets `DB_SSLMODE=require` (read by `config/database.php`): connections fail rather than falling back to plaintext. This encrypts transport; it does not authenticate the server certificate.
+
 **Mongo (`192.168.10.13:27017`)** — user `xcrawler` already exists, authenticating against database `xcrawler` with readWrite on `xcrawler`. Fill the private `MONGO_URI` with the percent-encoded password and any VM-required TLS options. The template uses the keys read by `config/database.php`; username/password/authSource belong in the URI, not separate unused environment keys. The administrator-only `provision/mongodb.js` is for explicitly approved credential reconciliation; it is not required for normal deployment.
 
 **Redis (`192.168.10.14:6379`)** — authenticate as admin without argv secrets:
@@ -90,7 +92,7 @@ sudo -u xcrawler -H env XCRAWLER_BACKUP_FILE="$BACKUP" XCRAWLER_BACKUP_RESTORE_V
   "$SOURCE/deploy/production.sh" --apply
 ```
 
-Before a dry run, refresh the cached branch as its owner: `git fetch origin +refs/heads/develop:refs/remotes/origin/develop`. Default deployment ref is `origin/develop`; optionally pass `--ref <full-commit-sha>` to select an ancestor of `origin/develop`. Other refs and dirty source trees are refused. Apply refreshes `origin/develop` before validating ancestry. Both modes check exact-commit GitHub statuses and check runs: pending, failed or absent CI results block deployment. If `gh` is missing or offline, the script prints a warning and requires an explicit `--skip-ci-check`; this bypass also prints a warning and needs operator judgement.
+Before a dry run, refresh the cached branch as its owner: `git fetch origin +refs/heads/develop:refs/remotes/origin/develop`. Default deployment ref is `origin/develop`; optionally pass `--ref <full-commit-sha>` to select an ancestor of `origin/develop`. Other refs and dirty source trees are refused. Apply refreshes `origin/develop` before validating ancestry. Both modes check exact-commit GitHub statuses and check runs. All five CI jobs (`Lint and test`, `Integration (Postgres, Mongo, Elasticsearch, OpenObserve)`, `E2E journeys (isolated services)`, `Secrets scan`, `Build app image`) must be present, completed and successful; unrelated checks cannot satisfy this gate. Pending, failed or absent CI results block deployment. If `gh` is missing or offline, the script prints a warning and requires an explicit `--skip-ci-check`; this bypass also prints a warning and needs operator judgement.
 
 Dry-run is the default and changes no files/services. Apply installs no-dev authoritative dependencies in `releases/<UTC timestamp>-<sha7>`, links shared storage/env, runs UI smoke, stops queue/scheduler, migrates **forward**, imports missing settings, clears non-cache bootstrap files, atomically swaps `current`, restarts FPM/embedder/Horizon then scheduler, and waits at most 90 seconds for `staging:readiness`. Separate source Git authentication from application credentials.
 
@@ -154,7 +156,7 @@ cd "$ROOT/current" && sudo -u xcrawler php8.5 artisan staging:readiness
 
 ## Verification scope
 
-CI commands: `bash tests/Shell/production.test.sh`; `COMPOSE_PROJECT_NAME=javmeta-int-jooxcr-278 ./docker/ci/integration --filter ProductionProvisioningTest`. The latter applies PG provisioning twice, proves current/future SELECT and denied writes, applies Redis ACL twice and runs the unchanged `RedisQueueTest` under the production user/prefix, and provisions ES security/mappings twice then indexes/searches using the scoped API key, including denied unrelated-index/security access. Use only disposable CI service data for these tests.
+CI commands: `bash tests/Shell/production.test.sh`; `COMPOSE_PROJECT_NAME=javmeta-int-jooxcr-278 ./docker/ci/integration --filter ProductionProvisioningTest`. The latter applies PG provisioning twice, proves current/future SELECT and denied writes, applies Redis ACL twice and runs the unchanged `RedisQueueTest` under the production user/prefix, and provisions ES security/mappings twice then indexes/searches using the scoped API key, including denied unrelated-index/security access. Use only disposable CI service data for these tests. The ES harness serves HTTP: a test-only curl adapter maps the HTTPS provisioning URL to that disposable endpoint, so this proves provisioning and authorization, not TLS negotiation. Shell regression tests separately prove that the production script rejects HTTP before any request.
 
 ### Verified only by reading
 

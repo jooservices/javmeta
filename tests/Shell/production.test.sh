@@ -22,8 +22,15 @@ if [[ "${0##*/}" == gh ]]; then
   [[ "${FAIL_STEP:-}" != offline ]] || exit 1
   if [[ "$*" == *check-runs* ]]; then
     [[ "${FAIL_STEP:-}" != empty ]] || exit 0
-    if [[ "${FAIL_STEP:-}" == pending ]]; then printf 'in_progress\t\n'; exit 0; fi
-    if [[ "${FAIL_STEP:-}" == checks ]]; then printf 'completed\tfailure\n'; else printf 'completed\tsuccess\n'; fi
+    if [[ "${FAIL_STEP:-}" == unrelated ]]; then printf 'commitlint\tcompleted\tsuccess\n'; exit 0; fi
+    for name in 'Lint and test' 'Integration (Postgres, Mongo, Elasticsearch, OpenObserve)' 'E2E journeys (isolated services)' 'Secrets scan' 'Build app image'; do
+      [[ "${FAIL_STEP:-}" != missing || "$name" != 'Secrets scan' ]] || continue
+      state=completed; conclusion=success
+      if [[ "$name" == 'Lint and test' ]]; then
+        case "${FAIL_STEP:-}" in pending) state=in_progress ;; checks) conclusion=failure ;; skipped) conclusion=skipped ;; neutral) conclusion=neutral ;; esac
+      fi
+      printf '%s\t%s\t%s\n' "$name" "$state" "$conclusion"
+    done
   elif [[ "${FAIL_STEP:-}" == ci ]]; then printf '1\tfailure\n'; else printf '0\tpending\n'; fi
 fi
 if [[ "${0##*/}" == pg_restore ]]; then printf ';     dbname: xcrawler\n'; fi
@@ -64,10 +71,11 @@ if bash "$script" --ref "$outside" > "$test_dir/log" 2>&1; then fail 'accepted c
 printf dirty > "$test_dir/repo/dirty"
 if bash "$script" > "$test_dir/log" 2>&1; then fail 'accepted dirty tree'; fi
 rm "$test_dir/repo/dirty"
-for failure in ci checks pending offline empty; do
+for failure in ci checks pending offline empty unrelated missing skipped neutral; do
   if FAIL_STEP="$failure" bash "$script" > "$test_dir/log" 2>&1; then fail "accepted $failure CI"; fi
 done
 # Hide gh discovery without changing the availability of the other system tools.
+# shellcheck disable=SC2329 # Exported for the child bash process.
 command() {
   if [[ "$*" == '-v gh' ]]; then return 1; fi
   builtin command "$@"
@@ -115,4 +123,22 @@ rm -rf "$XCRAWLER_ROOT"/releases/*-"${commit:0:7}"
 bash "$script" --apply > "$test_dir/log" 2>&1
 [[ "$(readlink "$XCRAWLER_ROOT/current")" == "$XCRAWLER_ROOT"/releases/*-"${commit:0:7}" ]] || fail 'release not activated'
 grep -q 'staging:readiness' "$CALLS" || fail 'readiness not checked'
-echo 'OK (19 production deployment scenarios)'
+# Plain HTTP must fail before even invoking curl or prompting for credentials.
+cat > "$test_dir/bin/curl" <<'STUB'
+#!/usr/bin/env bash
+printf 'curl\n' >> "$CALLS"
+exit 99
+STUB
+chmod +x "$test_dir/bin/curl"
+rm "$CALLS"
+if ELASTICSEARCH_HOST=http://example.invalid ES_ADMIN_USER=proof ES_ADMIN_PASSWORD=proof ES_KEY_FILE="$test_dir/../../../production-test-key-$$" bash "$source_root/deploy/production/provision/elasticsearch.sh" > "$test_dir/log" 2>&1; then
+  fail 'accepted plaintext Elasticsearch'
+fi
+grep -q 'must use https://' "$test_dir/log" || fail 'missing HTTPS failure'
+[[ ! -e "$CALLS" && ! -e "$test_dir/key" ]] || fail 'HTTP rejection made a request or key file'
+# HTTPS passes validation and reaches the stub transport (which intentionally fails).
+if ELASTICSEARCH_HOST=https://example.invalid ES_ADMIN_USER=proof ES_ADMIN_PASSWORD=proof ES_KEY_FILE="$test_dir/../../../production-test-key-$$" bash "$source_root/deploy/production/provision/elasticsearch.sh" > "$test_dir/log" 2>&1; then
+  fail 'ignored transport failure'
+fi
+grep -qx curl "$CALLS" || fail 'HTTPS did not reach transport'
+echo 'OK (25 production deployment/provisioning scenarios)'

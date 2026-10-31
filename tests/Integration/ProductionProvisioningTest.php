@@ -158,7 +158,10 @@ final class ProductionProvisioningTest extends IntegrationTestCase
         foreach (['xcrawler_movies', 'xcrawler_performers', 'xcrawler_scenes'] as $index) {
             $admin->delete($host . '/' . $index);
         }
+        $transport = $this->elasticsearchTestTransport();
         $environment = [
+            'PATH' => $transport . ':' . getenv('PATH'),
+            'ELASTICSEARCH_HOST' => 'https://elasticsearch:9200',
             'ES_ADMIN_USER' => (string) config('elasticsearch.username'),
             'ES_ADMIN_PASSWORD' => (string) config('elasticsearch.password'),
             'ES_KEY_FILE' => $keyFile,
@@ -204,7 +207,33 @@ final class ProductionProvisioningTest extends IntegrationTestCase
         } finally {
             $admin->post($host . '/_security/api_key/_invalidate', ['name' => 'xcrawler']);
             @unlink($keyFile);
+            unlink($transport . '/curl');
+            rmdir($transport);
         }
+    }
+
+    private function elasticsearchTestTransport(): string
+    {
+        // The disposable harness serves HTTP. Adapt only the test transport; the production
+        // entry point still requires HTTPS, and all API-key/mapping assertions hit real ES.
+        $transport = sys_get_temp_dir() . '/xcrawler-transport-' . bin2hex(random_bytes(8));
+        self::assertTrue(mkdir($transport, 0700));
+        $lookup = new Process(['sh', '-c', 'command -v curl']);
+        self::assertSame(0, $lookup->run());
+        $curl = trim($lookup->getOutput());
+        self::assertNotSame('', $curl);
+        $wrapper = <<<'BASH'
+            set -euo pipefail
+            args=()
+            for argument in "$@"; do
+              args+=("${argument/#https:\/\/elasticsearch:9200/http:\/\/elasticsearch:9200}")
+            done
+            exec __CURL__ "${args[@]}"
+            BASH;
+        file_put_contents($transport . '/curl', "#!/usr/bin/env bash\n" . str_replace('__CURL__', escapeshellarg($curl), $wrapper));
+        chmod($transport . '/curl', 0700);
+
+        return $transport;
     }
 
     private function postgres(string $role, string $password): PDO

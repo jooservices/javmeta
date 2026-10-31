@@ -33,7 +33,7 @@ if (( skip_ci )); then
 elif command -v gh >/dev/null 2>&1; then
   # Actions use check runs; legacy integrations may still publish commit statuses.
   if ! statuses="$(gh api "repos/jooservices/javmeta/commits/$commit/status" --jq '[.total_count, .state] | @tsv')" ||
-     ! checks="$(gh api --paginate "repos/jooservices/javmeta/commits/$commit/check-runs?per_page=100" --jq '.check_runs[] | [.status, .conclusion] | @tsv')"; then
+     ! checks="$(gh api --paginate "repos/jooservices/javmeta/commits/$commit/check-runs?per_page=100" --jq '.check_runs[] | [.name, .status, .conclusion] | @tsv')"; then
     die 'WARNING: CI unavailable/offline; explicitly pass --skip-ci-check to proceed.'
   fi
   read -r status_count status_state <<< "$statuses"
@@ -42,7 +42,19 @@ elif command -v gh >/dev/null 2>&1; then
     [[ "$status_state" == success ]] || die 'Commit CI status is not green.'
   fi
   [[ "$status_count" != 0 || -n "$checks" ]] || die 'Commit has no CI results.'
-  while IFS=$'\t' read -r state conclusion; do
+  required_checks=('Lint and test' 'Integration (Postgres, Mongo, Elasticsearch, OpenObserve)' 'E2E journeys (isolated services)' 'Secrets scan' 'Build app image')
+  for required in "${required_checks[@]}"; do
+    found=0
+    while IFS=$'\t' read -r name state conclusion; do
+      if [[ "$name" == "$required" ]]; then
+        [[ "$state" == completed && "$conclusion" == success ]] || die "Required CI check is not green: $required"
+        found=1
+        break
+      fi
+    done <<< "$checks"
+    (( found )) || die "Required CI check is missing: $required"
+  done
+  while IFS=$'\t' read -r name state conclusion; do
     [[ -z "$state" ]] && continue
     [[ "$state" == completed && "$conclusion" =~ ^(success|neutral|skipped)$ ]] || die 'Commit check runs are not green.'
   done <<< "$checks"

@@ -42,12 +42,12 @@ done
 install -d -o xcrawler -g xcrawler -m 2770 /var/www/xcrawler/shared/huggingface
 # Preserve an existing .env; the operator fills it privately before first deployment.
 if [[ ! -e /var/www/xcrawler/shared/.env ]]; then
-  install -o xcrawler -g xcrawler -m 0640 "$root/production/env.production.example" /var/www/xcrawler/shared/.env
+  install -o xcrawler -g xcrawler -m 0640 "$root/deploy/production/env.production.example" /var/www/xcrawler/shared/.env
 fi
 if [[ ! -x /var/www/xcrawler/shared/embedder-venv/bin/python ]]; then
   runuser -u xcrawler -- python3 -m venv /var/www/xcrawler/shared/embedder-venv
 fi
-runuser -u xcrawler -- /var/www/xcrawler/shared/embedder-venv/bin/pip install -r "$root/../embedder/requirements.production.txt"
+runuser -u xcrawler -- /var/www/xcrawler/shared/embedder-venv/bin/pip install -r "$root/embedder/requirements.production.txt"
 configuration_changed=0
 install_if_changed() {
   local source_file="$1" target="$2" mode="$3"
@@ -56,14 +56,14 @@ install_if_changed() {
     configuration_changed=1
   fi
 }
-install_if_changed "$root/production/node/xcrawler-fpm.conf" /etc/php/8.5/fpm/pool.d/xcrawler.conf 0644
-install_if_changed "$root/production/node/xcrawler.nginx.conf" /etc/nginx/sites-available/xcrawler 0644
+install_if_changed "$root/deploy/production/node/xcrawler-fpm.conf" /etc/php/8.5/fpm/pool.d/xcrawler.conf 0644
+install_if_changed "$root/deploy/production/node/xcrawler.nginx.conf" /etc/nginx/sites-available/xcrawler 0644
 if [[ ! -L /etc/nginx/sites-enabled/xcrawler || "$(readlink /etc/nginx/sites-enabled/xcrawler)" != /etc/nginx/sites-available/xcrawler ]]; then
   ln -sfn /etc/nginx/sites-available/xcrawler /etc/nginx/sites-enabled/xcrawler
   configuration_changed=1
 fi
 for service in horizon scheduler embedder; do
-  install_if_changed "$root/production/node/xcrawler-$service.service" "/etc/systemd/system/xcrawler-$service.service" 0644
+  install_if_changed "$root/deploy/production/node/xcrawler-$service.service" "/etc/systemd/system/xcrawler-$service.service" 0644
 done
 # The deployment account can control these units only, never arbitrary systemd services.
 sudoers_file="$(mktemp)"
