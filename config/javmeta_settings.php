@@ -31,9 +31,11 @@ return [
         'files' => 'Máy chủ tệp',
         'media' => 'Xử lý media',
         'capture' => 'Ghi luồng',
+        'ui_security' => 'Bảo mật giao diện',
     ],
 
     'definitions' => [
+        'ui_guest.rate_limit_per_minute' => ['group' => 'ui_security', 'label' => 'Giới hạn yêu cầu giao diện khách mỗi phút theo IP', 'description' => 'Số yêu cầu tối đa mỗi phút từ một địa chỉ IP đến cầu nối giao diện công khai chỉ đọc.', 'type' => 'int', 'config' => ['javmeta.ui_guest_rate_limit_per_minute'], 'min' => 1, 'max' => 1200],
         'dataset.allowed_databases' => ['group' => 'dataset', 'label' => 'Cơ sở dữ liệu cho phép nạp dữ liệu mẫu', 'description' => 'Chỉ cho phép nạp và xóa dữ liệu mẫu trên các cơ sở dữ liệu này; ngoài kiểm thử luôn cần --force.', 'type' => 'string_list', 'config' => ['javmeta_dataset.allowed_databases']],
         'perf.warm_enabled' => ['group' => 'search', 'label' => 'Làm ấm bộ nhớ đệm', 'description' => 'Tự làm mới trạng thái và bộ lọc toàn bộ danh mục theo lịch, giảm thời gian chờ khi bộ nhớ đệm hết hạn.', 'type' => 'bool', 'config' => ['javmeta_perf.warm_enabled']],
 

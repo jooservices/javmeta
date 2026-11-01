@@ -6,6 +6,7 @@ namespace App\Providers;
 
 use App\Contracts\AlertNotifier;
 use App\Contracts\ReportChannel;
+use App\Http\Middleware\EnsureSuperAdministrator;
 use App\Logging\ArrayLogStore;
 use App\Notifications\ActivityLogAlertNotifier;
 use App\Notifications\CompositeAlertNotifier;
@@ -26,12 +27,38 @@ use App\Services\Normalize\Normalizers\JableSourceNormalizer;
 use App\Services\Normalize\SourceNormalizerRegistry;
 use App\Services\Persist\MoviePersister;
 use App\Services\Persist\PerformerPersister;
+use App\Services\Ui\UiLoginStateRecorder;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Routing\Events\RouteMatched;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use JOOservices\LaravelLogging\Contracts\LogStoreInterface;
+use Throwable;
 
 class AppServiceProvider extends ServiceProvider
 {
+    public function boot(): void
+    {
+        Event::listen(RouteMatched::class, static function (RouteMatched $event): void {
+            if (in_array($event->route->getName(), ['storage.local', 'storage.local.upload'], true)) {
+                $event->route->middleware(['auth', EnsureSuperAdministrator::class]);
+            }
+        });
+
+        $this->app->booted(static function (): void {
+            if (app()->runningInConsole() || app()->runningUnitTests()) {
+                return;
+            }
+
+            try {
+                app(UiLoginStateRecorder::class)->record();
+            } catch (Throwable $exception) {
+                // A crawl event must never prevent the UI from booting when the event store is unavailable.
+                report($exception);
+            }
+        });
+    }
+
     /**
      * Register any application services.
      */

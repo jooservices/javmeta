@@ -719,3 +719,11 @@ Số nguyên; từ 1024 đến 16777216. Mã mục: `capture.max_manifest_bytes`
 Không dùng cookie hoặc tài khoản để vượt bảo vệ.
 
 Số nguyên; từ 1 đến 120. Mã mục: `capture.http_timeout_sec`.
+
+## Bảo mật giao diện
+
+### Giới hạn yêu cầu giao diện khách mỗi phút theo IP
+
+Số yêu cầu tối đa mỗi phút từ một địa chỉ IP đến cầu nối giao diện công khai chỉ đọc.
+
+Số nguyên; từ 1 đến 1200. Mã mục: `ui_guest.rate_limit_per_minute`.

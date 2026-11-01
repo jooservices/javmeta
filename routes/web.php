@@ -13,21 +13,38 @@ use App\Http\Controllers\Ui\UiLibraryController;
 use App\Http\Controllers\Ui\UiMarksController;
 use App\Http\Controllers\Ui\UiSettingsController;
 use App\Http\Controllers\Ui\UiShellController;
+use App\Http\Middleware\EnsureUiOwnerOrGuest;
 use App\Http\Middleware\EnsureSuperAdministrator;
+use App\Http\Middleware\ThrottleGuestUiApi;
+use Illuminate\Session\Middleware\StartSession;
+use Illuminate\View\Middleware\ShareErrorsFromSession;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 
 Route::get('/', static fn() => redirect()->route('ui.index'));
 
-Route::get('/files/download', [FileController::class, 'download'])->middleware('signed')->name('files.download');
+Route::get('/files/download', [FileController::class, 'download'])
+    ->middleware(['auth', EnsureSuperAdministrator::class, 'signed'])
+    ->name('files.download');
 
 Route::get('/login', [LoginController::class, 'show'])->name('login');
 Route::post('/login', [LoginController::class, 'store'])->middleware('throttle:6,1');
 Route::post('/logout', [LoginController::class, 'destroy'])->middleware('auth')->name('logout');
 
+Route::get('/app', UiShellController::class)
+    ->middleware(EnsureUiOwnerOrGuest::class)
+    ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class])
+    ->name('ui.index');
+
+Route::match(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], '/ui-api/{path}', UiApiController::class)
+    ->where('path', '.*')
+    ->middleware([EnsureUiOwnerOrGuest::class, ThrottleGuestUiApi::class])
+    ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class])
+    ->name('ui.api');
+
 Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static function (): void {
     Route::get('/ops', [DashboardController::class, 'index'])->name('operations.index');
     Route::get('/ops/data', [DashboardController::class, 'data'])->name('operations.data');
 
-    Route::get('/app', UiShellController::class)->name('ui.index');
     Route::get('/ui-admin/keys', [UiAdminController::class, 'keys']);
     Route::post('/ui-admin/keys', [UiAdminController::class, 'createKey']);
     Route::get('/ui-admin/keys/{id}/usage', [UiAdminController::class, 'usage'])->whereNumber('id');
@@ -57,5 +74,4 @@ Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static funct
     Route::get('/ui-me/library/unmatched', [UiLibraryController::class, 'unmatched']);
     Route::get('/ui-admin/settings', [UiSettingsController::class, 'index']);
     Route::put('/ui-admin/settings', [UiSettingsController::class, 'update']);
-    Route::get('/ui-api/{path}', UiApiController::class)->where('path', '.*')->name('ui.api');
 });

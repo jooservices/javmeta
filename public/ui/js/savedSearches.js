@@ -1,7 +1,9 @@
 import { admin, send } from './api.js';
 import { esc, queryString } from './util.js';
 
-export const savedSearchesHtml = () => `<section class="saved-searches"><button type="button" class="btn sm" data-save-search>Lưu bộ lọc</button><details><summary>Bộ lọc đã lưu</summary><div data-saved-list role="status">Đang tải…</div></details><form data-save-form hidden><label class="f">Tên bộ lọc<input name="search_name" maxlength="80" required></label><button class="btn sm" type="submit">Lưu</button><button class="btn sm" type="button" data-save-cancel>Huỷ</button></form><p data-saved-error role="alert"></p></section>`;
+export const savedSearchesHtml = () => document.body.dataset.guestMode === 'true'
+  ? '<p class="guest-login-hint"><a href="/login">Đăng nhập để dùng tìm kiếm đã lưu.</a></p>'
+  : `<section class="saved-searches"><button type="button" class="btn sm" data-save-search>Lưu bộ lọc</button><details><summary>Bộ lọc đã lưu</summary><div data-saved-list role="status">Đang tải…</div></details><form data-save-form hidden><label class="f">Tên bộ lọc<input name="search_name" maxlength="80" required></label><button class="btn sm" type="submit">Lưu</button><button class="btn sm" type="button" data-save-cancel>Huỷ</button></form><p data-saved-error role="alert"></p></section>`;
 export function parseSaved(rows, kind) {
   return rows.filter(r => r.kind === 'saved_search' && r.subject === kind).flatMap(r => {
     try { const value = JSON.parse(r.key); return typeof value.name === 'string' && typeof value.query === 'string' ? [{ ...value, key: r.key }] : []; } catch { return []; }
@@ -9,6 +11,7 @@ export function parseSaved(rows, kind) {
 }
 export const savedItemsHtml = (rows, kind) => rows.map((r, i) => `<div class="saved-item"><a href="#/${kind}${r.query ? '?' + esc(r.query) : ''}">${esc(r.name)}</a><button type="button" class="btn sm" data-delete-search="${i}" aria-label="Xoá ${esc(r.name)}">×</button></div>`).join('') || '<p class="dim">Chưa có bộ lọc đã lưu.</p>';
 export function mountSavedSearches(root, kind, query, signal) {
+  if (document.body.dataset.guestMode === 'true') return;
   const host = root.querySelector('[data-saved-list]'), form = root.querySelector('[data-save-form]'), error = root.querySelector('[data-saved-error]');
   let rows = [];
   const load = async () => { try { const body = await admin('/ui-me/marks?kind=saved_search&subject=' + kind); if (!signal.aborted) { rows = parseSaved(body.data || [], kind); host.innerHTML = savedItemsHtml(rows, kind); } } catch (e) { if (!signal.aborted) { host.innerHTML = '<button class="btn sm" type="button" data-saved-retry>Thử tải lại</button>'; error.textContent = e.message; } } };

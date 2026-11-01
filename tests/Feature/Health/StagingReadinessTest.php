@@ -130,4 +130,14 @@ final class StagingReadinessTest extends TestCase
     {
         $this->artisan('staging:readiness', ['--json' => true, '--no-record' => true])->assertFailed();
     }
+
+    public function test_guest_mode_is_a_warning_in_readiness(): void
+    {
+        config(['javmeta.ui_login_required' => false]);
+
+        $rows = $this->byName();
+
+        $this->assertSame('warn', $rows['ui_login']['status']);
+        $this->assertSame('UI login disabled (guest mode)', $rows['ui_login']['message']);
+    }
 }

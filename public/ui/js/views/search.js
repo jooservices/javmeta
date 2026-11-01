@@ -5,6 +5,7 @@ import { head, a, href, movieCard, performerCard, emptyBox, errorBox } from '../
 export default {
   async render({ query }) {
     const q = (query.q || '').trim();
+    const guestMode = document.body.dataset.guestMode === 'true';
     const semantic = query.mode === 'meaning';
     const modeLinks = `<div class="seg"><a class="${semantic ? '' : 'on'}" style="padding:3px 9px" href="${href.search(q)}">Từ khoá</a><a class="${semantic ? 'on' : ''}" style="padding:3px 9px" href="#/search${queryString({ q, mode: 'meaning' })}">Theo nghĩa</a></div>`;
     const form = `<form class="bigq" id="sform"><input type="text" id="sq" value="${esc(q)}" placeholder="Mô tả phim hoặc diễn viên, mã phim, thể loại…" autocomplete="off"><button class="btn pri" type="submit">Tìm</button></form>`;
@@ -16,7 +17,7 @@ export default {
       [hy, sg, scenes] = await Promise.all([
         api('search', { q, per_page: 18, ...(semantic ? {} : { understand: 0 }) }),
         api('suggest', { q, limit: 8 }).then(r => r.data || {}).catch(() => ({})),
-        q.length >= 3 ? api('scenes/search', { q, per_page: 12 }).then(r => r.data || []).catch(e => { sceneError = e; return []; }) : Promise.resolve([]),
+        !guestMode && q.length >= 3 ? api('scenes/search', { q, per_page: 12 }).then(r => r.data || []).catch(e => { sceneError = e; return []; }) : Promise.resolve([]),
       ]);
       movies = { data: hy.data.movies, meta: { pagination: { total: hy.data.movies.length } } };
       people = { data: hy.data.performers, meta: { pagination: { total: hy.data.performers.length } } };
@@ -31,7 +32,7 @@ export default {
     const html = `<div class="wrap">${head('Kết quả', `“${esc(q)}”`, modeLinks)}<div class="hero">${form}${understood}</div>${facets}
       <div class="panel"><div class="hd"><h2>Phim</h2><span class="chip mono">${fmt(mt)}</span><span class="sp"></span>${mt > 18 ? a(href.movies({ q }), 'Xem tất cả →', 'btn sm ghost') : ''}</div><div class="bd">${(movies.data || []).length ? `<div class="mgrid">${movies.data.map((m, i) => movieCard(m, i)).join('')}</div>` : emptyBox('Không có phim khớp', semantic ? 'Tìm theo nghĩa cần embedder; thử chế độ từ khoá.' : 'Thử từ khoá khác.')}</div></div>
       <div class="panel"><div class="hd"><h2>Diễn viên</h2><span class="chip mono">${fmt(pt)}</span><span class="sp"></span>${pt > 8 ? a(href.performers({ q }), 'Xem tất cả →', 'btn sm ghost') : ''}</div><div class="bd">${(people.data || []).length ? `<div class="agrid">${people.data.map((p, i) => performerCard(p, i)).join('')}</div>` : '<span class="muted">Không có diễn viên khớp.</span>'}</div></div></div>`;
-    const sceneHtml = `<section class="panel"><div class="hd"><h2>Cảnh</h2><span class="chip">${scenes.length}</span></div><div class="bd">${sceneError ? errorBox(sceneError) : scenes.map(s => `<a class="row-i" href="#/player/${encodeURIComponent(s.movie_code || 'file-' + s.library_file_id)}?file=${s.library_file_id}&t=${Number(s.start_sec)}" style="overflow-wrap:anywhere">${s.thumb_url ? `<img src="${esc(s.thumb_url)}" alt="" loading="lazy" width="96">` : ''}<span>${esc(s.movie_code || 'Tệp #' + s.library_file_id)} · ${Math.floor(s.start_sec / 60)}:${String(Math.floor(s.start_sec % 60)).padStart(2, '0')}<br>${esc(s.description)}</span></a>`).join('') || 'Chưa có cảnh khớp. Hãy tách và mô tả cảnh trong Thư viện.'}</div></section>`;
+    const sceneHtml = guestMode ? '' : `<section class="panel"><div class="hd"><h2>Cảnh</h2><span class="chip">${scenes.length}</span></div><div class="bd">${sceneError ? errorBox(sceneError) : scenes.map(s => `<a class="row-i" href="#/player/${encodeURIComponent(s.movie_code || 'file-' + s.library_file_id)}?file=${s.library_file_id}&t=${Number(s.start_sec)}" style="overflow-wrap:anywhere">${s.thumb_url ? `<img src="${esc(s.thumb_url)}" alt="" loading="lazy" width="96">` : ''}<span>${esc(s.movie_code || 'Tệp #' + s.library_file_id)} · ${Math.floor(s.start_sec / 60)}:${String(Math.floor(s.start_sec % 60)).padStart(2, '0')}<br>${esc(s.description)}</span></a>`).join('') || 'Chưa có cảnh khớp. Hãy tách và mô tả cảnh trong Thư viện.'}</div></section>`;
     return { html: html.replace(/<\/div>$/, () => sceneHtml + '</div>'), mount: bind };
   },
 };
