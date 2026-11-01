@@ -10,11 +10,10 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Symfony\Component\Console\Output\BufferedOutput;
-use Tests\TestCase;
 use Throwable;
 
 /** Uses only unique throwaway streams in the local shared OpenObserve. */
-final class PruneLegacyStreamsTest extends TestCase
+final class PruneLegacyStreamsTest extends IntegrationTestCase
 {
     public function test_only_legacy_streams_are_exported_and_deleted_and_rerun_is_safe(): void
     {
