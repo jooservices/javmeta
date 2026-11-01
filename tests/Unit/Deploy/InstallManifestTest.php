@@ -53,6 +53,22 @@ final class InstallManifestTest extends TestCase
         $this->assertStringContainsString('~' . $fields['REDIS_PREFIX']['default'] . '*', $acl);
     }
 
+    public function test_guest_login_switch_is_optional_non_secret_and_defaults_to_required(): void
+    {
+        $root = dirname(__DIR__, 3);
+        $manifest = json_decode(file_get_contents($root . '/deploy/manifest.json'), true, flags: JSON_THROW_ON_ERROR);
+        $fields = array_merge($manifest['options'], ...array_column($manifest['services'], 'fields'));
+        $field = array_values(array_filter($fields, static fn(array $item): bool => $item['key'] === 'JAVMETA_UI_LOGIN_REQUIRED'))[0] ?? null;
+
+        $this->assertIsArray($field);
+        $this->assertFalse($field['secret']);
+        $this->assertFalse($field['required']);
+        $this->assertSame('true', $field['default']);
+        $this->assertTrue($field['env']);
+        $this->assertStringContainsString('JAVMETA_UI_LOGIN_REQUIRED=true', file_get_contents($root . '/.env.example'));
+        $this->assertArrayNotHasKey('setting', $field);
+    }
+
     public function test_probe_has_no_dependency_on_composer_before_installation(): void
     {
         $probe = file_get_contents(dirname(__DIR__, 3) . '/deploy/lib/probe.php');

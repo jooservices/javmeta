@@ -6,7 +6,7 @@ import { head, a, href, stat, errorBox, ic } from '../components.js';
 export function sourceState(s) {
   if (!s.enabled) return { key: 'off', label: 'Tắt', dot: 'off', chip: '' };
   const age = s.last_success_at ? (Date.now() - new Date(s.last_success_at).getTime()) / 1000 : Infinity;
-  const failing = s.last_error_at && (!s.last_success_at || new Date(s.last_error_at) > new Date(s.last_success_at));
+  const failing = s.has_recent_failure ?? (s.last_error_at && (!s.last_success_at || new Date(s.last_error_at) > new Date(s.last_success_at)));
   if (age > 3600 && failing) return { key: 'bad', label: 'Hỏng', dot: 'bad', chip: 'bad' };
   if (failing || age > 1800) return { key: 'warn', label: 'Lỗi một phần', dot: 'warn', chip: 'warn' };
   return { key: 'ok', label: 'Ổn', dot: '', chip: 'ok' };
@@ -14,6 +14,7 @@ export function sourceState(s) {
 
 export default {
   async render() {
+    const guestMode = document.body.dataset.guestMode === 'true';
     let summary, sources;
     try { [summary, sources] = await Promise.all([api('status/summary'), api('status/sources')]); } catch (e) { return { html: `<div class="wrap">${errorBox(e)}</div>` }; }
     const s = summary.data, rows = sources.data;
@@ -32,7 +33,7 @@ export default {
         <td class="mono">${fmt(r.gap_seconds_current)}s <span class="dim">(${fmt(r.gap_seconds_min)}–${fmt(r.gap_seconds_max)})</span></td>
         <td class="mono">${fmt(r.queue.pending)}</td><td class="mono">${fmt(r.queue.claimed)}</td><td class="mono">${fmt(r.queue.done)}</td><td class="mono">${fmt(r.queue.failed)}</td>
         <td class="muted">${r.last_success_at ? ago(r.last_success_at) : '—'}</td>
-        <td class="muted" title="${esc(r.last_error || '')}">${r.last_error ? esc(r.last_error.slice(0, 70)) + (r.last_error.length > 70 ? '…' : '') + '<div class="dim">' + ago(r.last_error_at) + '</div>' : '—'}</td></tr>`; }).join('')}
+        <td class="muted"${!guestMode && r.last_error ? ` title="${esc(r.last_error)}"` : ''}>${guestMode ? (r.has_recent_failure ? 'Lỗi gần đây' : '—') : (r.last_error ? esc(r.last_error.slice(0, 70)) + (r.last_error.length > 70 ? '…' : '') + '<div class="dim">' + ago(r.last_error_at) + '</div>' : '—')}</td></tr>`; }).join('')}
       </tbody></table></div>
       <p class="dim">Bật hay tắt một nguồn nằm trong cơ sở dữ liệu (<code>crawler:source-toggle</code>); màn hình này chỉ đọc. Khoảng nghỉ tự tăng khi site chặn hoặc giới hạn tốc độ.</p></div>`;
     return { html, mount: root => { /* refreshed by the app timer */ } };

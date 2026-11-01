@@ -5,6 +5,7 @@ import { admin, send } from './api.js';
 let cache = null;
 
 export async function myMarks(force = false) {
+  if (document.body.dataset.guestMode === 'true') return new Set();
   if (!cache || force) {
     try { cache = new Set(((await admin('/ui-me/marks')).data || []).map(m => [m.kind, m.subject, m.key].join('\u0001'))); } catch { cache = new Set(); }
   }
@@ -14,6 +15,10 @@ export async function myMarks(force = false) {
 let diskAt = 0;
 /* refresh the set of on-disk codes (at most once a minute) */
 export async function loadDisk(disk) {
+  if (document.body.dataset.guestMode === 'true') {
+    disk.codes = new Set();
+    return;
+  }
   if (Date.now() - diskAt < 60000) return;
   diskAt = Date.now();
   try { disk.codes = new Set((await admin('/ui-me/library/codes')).data || []); } catch { /* the badge is optional */ }
@@ -22,6 +27,7 @@ export async function loadDisk(disk) {
 let dlAt = 0, dlStatus = { enabled: false, files_enabled: false };
 /* are downloads switched on (checked at most once a minute) */
 export async function downloadsStatus() {
+  if (document.body.dataset.guestMode === 'true') return dlStatus;
   if (Date.now() - dlAt > 60000) {
     dlAt = Date.now();
     try { dlStatus = (await admin('/ui-me/downloads/status')).data; } catch { /* keep the last answer */ }
@@ -30,6 +36,7 @@ export async function downloadsStatus() {
 }
 
 export const markBtn = (set, kind, subject, key, on, off, extra = '') => {
+  if (document.body.dataset.guestMode === 'true') return '';
   const is = set.has([kind, subject, key].join('\u0001'));
   return `<button class="btn sm ${is ? 'pri' : ''} ${extra}" data-mark data-kind="${esc(kind)}" data-subject="${esc(subject)}" data-key="${esc(key)}" data-on-label="${esc(on)}" data-off-label="${esc(off)}" aria-pressed="${is}">${esc(is ? on : off)}</button>`;
 };

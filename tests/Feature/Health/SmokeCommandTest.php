@@ -80,6 +80,17 @@ final class SmokeCommandTest extends TestCase
         self::assertNull(app(ApiKeyService::class)->findActiveByPlaintext($this->apiKeys[0]));
     }
 
+    public function test_smoke_warns_when_ui_login_is_disabled(): void
+    {
+        config(['javmeta.ui_login_required' => false]);
+
+        $exitCode = Artisan::call('javmeta:smoke');
+        $output = Artisan::output();
+
+        self::assertSame(0, $exitCode, $output);
+        self::assertStringContainsString('[WARN] ui_login: UI login disabled (guest mode)', $output);
+    }
+
     public function test_json_output_has_machine_readable_named_check_results(): void
     {
         $exitCode = Artisan::call('javmeta:smoke', ['--json' => true]);

@@ -76,6 +76,10 @@ final class DashboardController
 
         return response()->json([
             'as_of' => now()->toIso8601String(),
+            'ui_login_required' => (bool) config('javmeta.ui_login_required', true),
+            'ui_login_state' => (bool) config('javmeta.ui_login_required', true)
+                ? 'Yêu cầu đăng nhập'
+                : 'Đăng nhập giao diện đã tắt (chế độ khách)',
             'totals' => [
                 'movies' => DB::table('movies')->count(),
                 'performers' => DB::table('performers')->count(),

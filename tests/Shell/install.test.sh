@@ -51,6 +51,7 @@ jq --arg repo "$fixture/repo" --arg target "$fixture/node" --arg user "$(id -un 
   [.options[], .services[].fields[]] | map({key:.key,value:(if .secret then "private-test-value" elif .key == "CREDENTIALS_FILE" then ($target+".credentials") elif .default != "" then .default else "fixture" end)}) | from_entries
   | .REPO_URL=$repo | .TARGET_DIR=$target | .SERVICE_USER="fixture-user" | .DB_DATABASE="fixture" | .REF="candidate"
   | .APP_URL="https://fixture.invalid" | .DB_HOST="fixture.invalid" | .MONGO_URI="mongodb://fixture.invalid/fixture"
+  | .JAVMETA_UI_LOGIN_REQUIRED="false"
   | .APP_KEY="" | .CI_CHECKS="" | .INSTALL_NODE="0" | .READINESS_TIMEOUT="1" | .BACKUP_FILE=($target+".dump") | .BACKUP_RESTORE_VERIFIED="1"' "$root/deploy/manifest.json" > "$fixture/answers.json"
 chmod 600 "$fixture/answers.json"
 rm -f "$CALLS"
@@ -85,6 +86,7 @@ rm -- "$fixture/node/current"
 bash "$script" --non-interactive --config "$fixture/answers.json" --skip-os-install --apply > "$fixture/log" 2>&1
 [[ "$(readlink "$fixture/node/current")" != "$fixture/node/releases/old" ]] || fail 'release not activated'
 [[ "$(stat -c '%a' "$fixture/node/shared/.env")" == 640 ]] || fail 'unsafe env mode'
+grep -q '^JAVMETA_UI_LOGIN_REQUIRED="false"$' "$fixture/node/shared/.env" || fail 'UI login option missing from env'
 [[ "$(stat -c '%a' "$fixture/node.credentials")" == 600 ]] || fail 'unsafe credentials mode'
 grep -q 'OWNER_PASSWORD=private-owner-password' "$fixture/node.credentials" || fail 'owner password not captured'
 owner_runs="$(grep -c 'operations:make-super-admin' "$CALLS" || true)"

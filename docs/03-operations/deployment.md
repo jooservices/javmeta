@@ -53,6 +53,26 @@ VM pulls the requested branch, builds the local Docker runtime, installs the
 locked dependencies, runs the migration, and starts the selected Compose
 services.
 
+### XCrawler guest mode
+
+`JAVMETA_UI_LOGIN_REQUIRED` defaults to `true`. Set it to `false` to make the
+read-only XCrawler catalogue available without a login. The UI bridge only
+allows its public-safe GET routes; administration, personal data, writes,
+downloads, file serving, and operations remain owner-only. Guest bridge
+traffic is limited per IP using the `ui_guest.rate_limit_per_minute` setting
+in the database settings registry (default: 120 requests per minute).
+
+The shell sends `X-Robots-Tag: noindex, nofollow` and includes a `noindex`
+robots meta tag while guest mode is enabled. `staging:readiness` and
+`javmeta:smoke` report `WARN: UI login disabled (guest mode)`.
+
+After changing the environment value, clear cached configuration with
+`php artisan config:clear` and reload the application processes. If Horizon
+workers are running, restart them with `php artisan horizon:terminate` so they
+load the current configuration. To require login again, set
+`JAVMETA_UI_LOGIN_REQUIRED=true`, clear configuration cache, and reload the
+application processes; this restores the login gate on the next request.
+
 This flow does not transfer application images with `scp`, publish images to a
 registry, or store image archives in GitHub. Docker still creates local images
 from the repository Dockerfiles and may pull their pinned base images.

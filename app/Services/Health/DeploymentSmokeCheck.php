@@ -81,6 +81,10 @@ final class DeploymentSmokeCheck
             (bool) config('openobserve.enabled', false),
         );
 
+        if (! (bool) config('javmeta.ui_login_required', true)) {
+            $checks[] = $this->check('ui_login', 'warn', 'UI login disabled (guest mode)');
+        }
+
         return $checks;
     }
 

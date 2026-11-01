@@ -58,6 +58,19 @@ const NAV = [
 
 let cleanup = null;
 let current = null;
+const guestMode = document.body.dataset.guestMode === 'true';
+const OWNER_ONLY_NAV_IDS = new Set(['me-favourite', 'me-watch_later', 'me-seen', 'feed', 'library', 'downloads', 'media', 'ops', 'admin', 'settings']);
+
+function guestLoginPrompt(page) {
+  const pageNames = { admin: 'Quản trị', settings: 'Cài đặt', library: 'Thư viện', downloads: 'Tải về', media: 'Media', feed: 'Theo dõi' };
+  const label = pageNames[page] || page;
+  return `<div class="wrap"><section class="panel guest-login-prompt"><div class="bd"><h1>Đăng nhập để dùng tính năng này</h1><p>${label} chỉ dành cho chủ sở hữu đã đăng nhập.</p><a class="btn pri" href="/login">Đăng nhập</a></div></section></div>`;
+}
+
+function isOwnerPage(route) {
+  return ['admin', 'settings', 'library', 'downloads', 'media', 'feed'].includes(route.top)
+    || route.top.startsWith('me-');
+}
 
 function parse() {
   const raw = location.hash.replace(/^#\/?/, '');
@@ -75,7 +88,11 @@ function parse() {
 }
 
 function drawShell(top) {
-  $('#side').innerHTML = '<div class="brand"><i>X</i>XCrawler</div>' + NAV.map(g => `<div class="nav-h">${g[0]}</div>` + g[1].map(n => `<a class="nav ${top === n[0] ? 'on' : ''}" href="${n[3]}" style="text-decoration:none">${ic(n[2])}<span>${n[1]}</span></a>`).join('')).join('') + '<div class="side-foot">JavMeta API · dữ liệu thật</div>';
+  const groups = guestMode
+    ? NAV.map(([label, items]) => [label, items.filter(item => !OWNER_ONLY_NAV_IDS.has(item[0]))])
+      .filter(group => group[1].length)
+    : NAV;
+  $('#side').innerHTML = '<div class="brand"><i>X</i>XCrawler</div>' + groups.map(g => `<div class="nav-h">${g[0]}</div>` + g[1].map(n => `<a class="nav ${top === n[0] ? 'on' : ''}" href="${n[3]}" style="text-decoration:none">${ic(n[2])}<span>${n[1]}</span></a>`).join('')).join('') + '<div class="side-foot">JavMeta API · dữ liệu thật</div>';
   const bn = [['home', 'Discover', 'home', '#/'], ['search', 'Tìm', 'search', '#/search'], ['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers'], ['crawl', 'Crawl', 'spider', '#/crawl']];
   $('#bnav').innerHTML = bn.map(n => `<a class="${top === n[0] ? 'on' : ''}" href="${n[3]}" style="flex:1;text-decoration:none;color:inherit;display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 0;font-size:10px">${ic(n[2])}${n[1]}</a>`).join('');
   $('.top .menu').innerHTML = ic('menu');
@@ -87,8 +104,13 @@ async function render() {
   const view = $('#view');
   drawShell(r.top);
   $('#side').classList.remove('open');
-  if (!r.view) { view.innerHTML = '<div class="wrap"><div class="empty">Trang không tồn tại.<a class="btn" href="#/">Về Discover</a></div></div>'; return; }
   const token = current = {};
+  if (guestMode && isOwnerPage(r)) {
+    const page = r.top.startsWith('me-') || r.top === 'feed' ? 'Tính năng cá nhân' : r.top;
+    view.innerHTML = guestLoginPrompt(page);
+    return;
+  }
+  if (!r.view) { view.innerHTML = '<div class="wrap"><div class="empty">Trang không tồn tại.<a class="btn" href="#/">Về Discover</a></div></div>'; return; }
   view.innerHTML = loadingBox();
   try {
     await loadDisk(disk);

@@ -39,6 +39,21 @@ docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/zizmorcore/zizmor:latest --offl
 Tests use sqlite in-memory and an array cache (`phpunit.xml`), so no Postgres,
 Redis or Mongo service is needed.
 
+## Test stability gate calibration
+
+The "Lint and test" job runs the full suite three times and compares each run with a baseline kept in
+`.github/workflows/ci.yml` (`baseline_seconds`, `warning_seconds` = baseline + 30%, `maximum_seconds` = 2x baseline;
+a run above the maximum fails the job, a run above the warning value only warns). The gate exists to catch a 2x slowdown, not to
+chase runner noise.
+
+Current calibration (2026-11-02): baseline 150 s, warning 195 s, maximum 300 s. The previous baseline (95 s, maximum 190 s)
+dated from a much smaller suite. With 1,265 to 1,357 tests every run on GitHub-hosted runners took 190 to 235 s (PRs 181 to 185 and develop,
+2026-11-01 and 2026-11-02; no individual test was slow), so correct pull requests failed at random and needed several reruns.
+
+Recalibrate in a dedicated pull request when the number of tests changes by more than 20% or when the median of five consecutive
+runs on develop moves by more than 20%. Record the measured runs in the pull request. Never raise the maximum to hide a regression
+that a single new test or change caused; find the slow test first.
+
 ## Test layers
 
 | Layer | Where | What it proves |
