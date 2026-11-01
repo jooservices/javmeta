@@ -65,6 +65,14 @@ await run('movies', await load('views/movies.js'), { params: {}, query: { genre:
 assert.match(out.movies, /Bộ lọc/); assert.match(out.movies, /data-drop="genre" data-value="Drama"/); assert.match(out.movies, /Thể loại: Drama/);
 const detail = await run('movie', await load('views/movie.js'), { params: { code: 'AAA-001' }, query: {} });
 assert.match(detail, /Title of AAA-001/); assert.match(detail, /Eimi Fukada/); assert.match(detail, /#\/facet\/genre\/Drama/);
+globalThis.innerWidth = 375;
+for (const code of ['JAVBTC-DERIVED-' + 'A'.repeat(64), 'TOKYOHOT-SLUG-JAPANESE_INVASION_2_AMERICA_SC4']) {
+  const longDetail = await (await load('views/movie.js')).render({ params: { code }, query: {} });
+  assert.match(longDetail.html, /overflow-wrap:anywhere/, 'long source codes must wrap within the movie detail');
+  assert.ok(longDetail.html.includes(`data-v="${code}"`), 'copy keeps the full source identity');
+  assert.ok(longDetail.html.includes(`#/movie/${encodeURIComponent(code)}?tab=codes`), 'source-code navigation keeps the full identity');
+}
+globalThis.innerWidth = 1280;
 await run('performers', await load('views/performers.js'), { params: {}, query: { blood_type: 'O' } });
 const pd = await run('performer', await load('views/performer.js'), { params: { id: '1' }, query: {} });
 assert.match(pd, /Aaliyah Love/); assert.match(pd, /Tokyo/);

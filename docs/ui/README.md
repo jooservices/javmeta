@@ -137,5 +137,7 @@ The Crawl & sources table shows each source’s effective lane (Trực tiếp or
 Product-code recovery for javbtc, ffjav, tokyohot and 141jav preserves source
 product identifiers and uses a stable source-scoped URL identity when needed.
 The movie remains accessible through the existing movie UI; no new controls
-or settings are added. Operator dry-run and requeue instructions are in
+or settings are added. Long source codes wrap in the movie detail, including
+the breadcrumb and metadata, without truncating copy or navigation identities.
+Operator dry-run and requeue instructions are in
 [queue operations](../03-operations/queue.md#product-code-recovery-jooxcr-283).
