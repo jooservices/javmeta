@@ -70,7 +70,7 @@
       "default": "true",
       "required": false,
       "secret": false,
-      "env": true
+      "setting": "ui_security.login_required"
     },
     {
       "key": "GATEKEEPER_ADDRESS",
@@ -406,11 +406,11 @@
         },
         {
           "key": "JAVMETA_WORKERS_PER_QUEUE",
-          "label": "JAVMETA_WORKERS_PER_QUEUE",
+          "label": "Default Horizon workers per queue",
           "default": "2",
           "required": true,
           "secret": false,
-          "description": "Horizon reads this environment key ONLY; queue.workers_per_queue in the database cannot configure Horizon."
+          "setting": "queue.workers_per_queue"
         },
         {
           "key": "MEDIA_API_URL",
@@ -625,7 +625,8 @@
           "label": "ELASTICSEARCH_VERIFY_SSL",
           "secret": false,
           "required": true,
-          "default": "true"
+          "default": "false",
+          "setting": "search.verify_ssl"
         },
         {
           "key": "ELASTICSEARCH_MOVIES_INDEX",
@@ -633,8 +634,7 @@
           "secret": false,
           "required": true,
           "default": "xcrawler_movies",
-          "setting": "search.movies_index",
-          "env": true
+          "setting": "search.movies_index"
         },
         {
           "key": "ELASTICSEARCH_PERFORMERS_INDEX",
@@ -642,8 +642,7 @@
           "secret": false,
           "required": true,
           "default": "xcrawler_performers",
-          "setting": "search.performers_index",
-          "env": true
+          "setting": "search.performers_index"
         },
         {
           "key": "ELASTICSEARCH_CA",
@@ -657,7 +656,8 @@
           "label": "Embedding dimensions",
           "default": "384",
           "required": true,
-          "secret": false
+          "secret": false,
+          "setting": "search.embedding_dimensions"
         },
         {
           "key": "SCENES_INDEX",
@@ -681,8 +681,7 @@
           "secret": false,
           "required": true,
           "default": "http://127.0.0.1:8000",
-          "setting": "search.embedder_url",
-          "env": true
+          "setting": "search.embedder_url"
         }
       ]
     },
@@ -697,7 +696,8 @@
           "label": "FLARESOLVERR_URL",
           "secret": false,
           "required": true,
-          "default": ""
+          "default": "",
+          "setting": "browser.flaresolverr_url"
         }
       ]
     },
@@ -712,7 +712,8 @@
           "label": "PLAYWRIGHT_URL",
           "secret": false,
           "required": true,
-          "default": ""
+          "default": "",
+          "setting": "browser.playwright_url"
         }
       ]
     },
@@ -820,6 +821,7 @@
           "key": "JAVMETA_OWNER_ADMIN_TOKEN",
           "label": "JAVMETA_OWNER_ADMIN_TOKEN",
           "secret": true,
+          "setting": "ui_security.owner_admin_token",
           "required": false,
           "default": ""
         },
@@ -827,6 +829,7 @@
           "key": "JAVMETA_MCP_API_KEY",
           "label": "JAVMETA_MCP_API_KEY",
           "secret": true,
+          "setting": "ui_security.mcp_api_key",
           "required": false,
           "default": ""
         }

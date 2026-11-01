@@ -64,9 +64,9 @@ final class InstallManifestTest extends TestCase
         $this->assertFalse($field['secret']);
         $this->assertFalse($field['required']);
         $this->assertSame('true', $field['default']);
-        $this->assertTrue($field['env']);
-        $this->assertStringContainsString('JAVMETA_UI_LOGIN_REQUIRED=true', file_get_contents($root . '/.env.example'));
-        $this->assertArrayNotHasKey('setting', $field);
+        $this->assertSame('ui_security.login_required', $field['setting']);
+        $this->assertArrayNotHasKey('env', $field);
+        $this->assertStringNotContainsString('JAVMETA_UI_LOGIN_REQUIRED', file_get_contents($root . '/.env.example'));
     }
 
     public function test_probe_has_no_dependency_on_composer_before_installation(): void

@@ -38,6 +38,7 @@ const input = r => {
   if (r.type === 'secret') return `<input type="password" id="${id}" data-key="${esc(r.key)}" data-type="secret" autocomplete="new-password" placeholder="${r.is_set ? 'đã đặt, nhập để thay (để trống = giữ nguyên)' : 'chưa đặt'}" style="min-width:240px">`;
   if (r.type === 'string_list') return `<textarea id="${id}" data-key="${esc(r.key)}" data-type="string_list" rows="3" style="min-width:300px">${esc((r.value || []).join('\n'))}</textarea>`;
   if (Array.isArray(r.options) && r.options.length > 0) return `<select id="${id}" data-key="${esc(r.key)}" data-type="${esc(r.type)}" style="min-width:140px">${r.options.map(option => `<option value="${esc(option)}"${String(option) === String(r.value) ? ' selected' : ''}>${esc(option)}</option>`).join('')}</select>`;
+  if (r.type === 'json') return `<textarea id="${id}" data-key="${esc(r.key)}" data-type="json" rows="5" maxlength="${r.max_length || 500}" spellcheck="false" aria-label="${esc(r.label)}" style="min-width:min(100%,420px);font-family:monospace">${esc(JSON.stringify(r.value || {}, null, 2))}</textarea>`;
   const num = r.type === 'int' || r.type === 'float';
   return `<input ${num ? `type="number" step="${r.type === 'float' ? '0.05' : '1'}"` : 'type="text"'} id="${id}" data-key="${esc(r.key)}" data-type="${r.type}" value="${esc(Array.isArray(r.value) ? r.value.join(',') : (r.value ?? ''))}" ${r.min != null ? `min="${r.min}"` : ''} ${r.max != null ? `max="${r.max}"` : ''} style="min-width:140px">`;
 };
@@ -46,9 +47,9 @@ const input = r => {
 function systemPanels(sys) {
   const byGroup = {};
   sys.settings.forEach(r => { (byGroup[r.group] ||= []).push(r); });
-  return `<div class="panel" style="grid-column:1/-1"><div class="hd"><h2>Cấu hình hệ thống</h2><span class="chip ok">lưu trong cơ sở dữ liệu</span></div><div class="bd muted">Mọi tính năng và cấu hình nằm ở đây, không đặt trong tệp env. Thay đổi có hiệu lực ngay, trừ mục có nhãn “khởi động lại”.</div></div>` +
+  return `<div class="panel" style="grid-column:1/-1"><div class="hd"><h2>Cấu hình hệ thống</h2><span class="chip ok">lưu trong cơ sở dữ liệu</span></div><div class="bd muted">Mọi tính năng và cấu hình nằm ở đây. Sau khi lưu, mỗi mục hiển thị thời gian áp dụng dự kiến.</div></div>` +
     Object.entries(sys.groups).filter(([g]) => byGroup[g]).map(([g, title]) => `<div class="panel" style="grid-column:1/-1" data-group="${esc(g)}"><div class="hd"><h2>${esc(title)}</h2><span class="sp"></span><span class="muted" data-msg></span><button class="btn sm pri" data-save="${esc(g)}">Lưu</button></div>` +
-      byGroup[g].map(r => `<div class="row-i" style="align-items:flex-start;flex-wrap:wrap"><div class="grow" style="min-width:220px"><b>${esc(r.label)}</b> ${r.source === 'database' ? '<span class="chip ok">DB</span>' : '<span class="chip warn">mặc định</span>'}${r.restart ? ` <span class="chip">khởi động lại ${esc(r.restart)}</span>` : ''}<div class="muted">${esc(r.description)}</div>${r.warning ? `<div class="err" role="alert">${esc(r.warning)}</div>` : ''}</div><div>${input(r)}</div></div>`).join('') + '</div>').join('');
+      byGroup[g].map(r => `<div class="row-i" style="align-items:flex-start;flex-wrap:wrap"><div class="grow" style="min-width:220px"><b>${esc(r.label)}</b> ${r.source === 'database' ? '<span class="chip ok">DB</span>' : r.source === 'environment' ? '<span class="chip warn">env chuyển đổi</span>' : '<span class="chip warn">mặc định</span>'}${r.apply_after_seconds > 0 ? ` <span class="chip">áp dụng sau tối đa ${r.apply_after_seconds} giây</span>` : ''}${r.restart ? ` <span class="chip">khởi động lại ${esc(r.restart)}</span>` : ''}<div class="muted">${esc(r.description)}</div>${r.warning ? `<div class="err" role="alert">${esc(r.warning)}</div>` : ''}</div><div>${input(r)}</div></div>`).join('') + '</div>').join('');
 }
 
 function mountSystem(root) {
@@ -56,16 +57,24 @@ function mountSystem(root) {
     const b = e.target.closest('[data-save]'); if (!b) return;
     const panel = b.closest('[data-group]'), msg = panel.querySelector('[data-msg]');
     const settings = {};
+    let invalid = '';
     panel.querySelectorAll('[data-key]').forEach(el => {
       const t = el.dataset.type;
       if (t === 'bool') settings[el.dataset.key] = el.checked;
       else if (t === 'secret') { if (el.value !== '') settings[el.dataset.key] = el.value; }
+      else if (t === 'json') {
+        try { settings[el.dataset.key] = JSON.parse(el.value); }
+        catch { invalid = `${el.getAttribute('aria-label')}: JSON không hợp lệ.`; }
+      }
       else settings[el.dataset.key] = el.value;
     });
+    if (invalid) { msg.innerHTML = `<span class="err" role="alert">${esc(invalid)}</span>`; return; }
     b.disabled = true; msg.textContent = 'Đang lưu…';
     try {
-      await send('PUT', '/ui-admin/settings', { settings });
-      msg.textContent = 'Đã lưu'; setTimeout(() => location.reload(), 600);
+      const result = await send('PUT', '/ui-admin/settings', { settings });
+      const delay = Number(result.data?.apply_after_seconds || 30);
+      msg.textContent = `Đã lưu; áp dụng sau tối đa ${delay} giây`;
+      setTimeout(() => location.reload(), 1500);
     } catch (err) {
       const errs = err.body?.data?.errors; msg.innerHTML = `<span class="err">${esc(errs ? Object.values(errs).join(' · ') : err.message)}</span>`;
     } finally { b.disabled = false; }

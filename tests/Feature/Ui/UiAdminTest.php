@@ -36,4 +36,13 @@ final class UiAdminTest extends TestCase
         $this->assertSame('revoked', ApiKey::query()->find($id)->status);
         $this->postJson('/ui-admin/keys', ['label' => 'bad', 'scopes' => ['nope']])->assertStatus(422);
     }
+
+    public function test_the_owner_can_create_a_key_limited_to_browser_service_configuration(): void
+    {
+        $owner = User::factory()->create(['role' => 'super_administrator']);
+        $this->actingAs($owner);
+
+        $created = $this->postJson('/ui-admin/keys', ['label' => 'browser-config', 'scopes' => ['config']])->assertCreated();
+        $this->assertSame(['config'], ApiKey::query()->find($created->json('data.id'))->scopes);
+    }
 }

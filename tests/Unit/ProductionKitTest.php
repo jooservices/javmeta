@@ -15,7 +15,7 @@ final class ProductionKitTest extends TestCase
         foreach (['APP_NAME=XCrawler', 'APP_ENV=production', 'APP_URL=https://xcrawler.net', 'DB_DATABASE=xcrawler', 'DB_USERNAME=xcrawler', 'DB_SSLMODE=require', 'REDIS_USERNAME=xcrawler', 'REDIS_PREFIX=xcrawler:', 'HORIZON_PREFIX=xcrawler:horizon:', 'ELASTICSEARCH_MOVIES_INDEX=xcrawler_movies', 'ELASTICSEARCH_PERFORMERS_INDEX=xcrawler_performers'] as $line) {
             self::assertStringContainsString($line . "\n", $template);
         }
-        foreach (['APP_KEY', 'DB_PASSWORD', 'MONGO_URI', 'REDIS_PASSWORD', 'ELASTICSEARCH_API_KEY', 'OPENOBSERVE_PASSWORD', 'JAVMETA_SENTRY_DSN', 'JAVMETA_OWNER_ADMIN_TOKEN', 'JAVMETA_MCP_API_KEY'] as $key) {
+        foreach (['APP_KEY', 'DB_PASSWORD', 'MONGO_URI', 'REDIS_PASSWORD', 'ELASTICSEARCH_API_KEY', 'OPENOBSERVE_PASSWORD', 'JAVMETA_SENTRY_DSN'] as $key) {
             self::assertMatchesRegularExpression('/^' . $key . '=$/m', $template);
         }
         foreach (['DOMAINS_', 'TELEGRAM_', 'JAVMETA_QUEUE_', 'JAVMETA_FRESH_', 'OLLAMA_', 'ELASTICSEARCH_SCENES_INDEX'] as $prefix) {
@@ -33,7 +33,7 @@ final class ProductionKitTest extends TestCase
         $root = dirname(__DIR__, 2);
         $installer = (string) file_get_contents($root . '/deploy/production/node/install-node.sh');
         preg_match_all('/"\$root\/([^"\n]+)"/', $installer, $matches);
-        self::assertCount(7, $matches[1]);
+        self::assertCount(9, $matches[1]);
         foreach ($matches[1] as $path) {
             foreach (['horizon', 'scheduler', 'embedder'] as $service) {
                 self::assertFileExists($root . '/' . str_replace('$service', $service, $path));

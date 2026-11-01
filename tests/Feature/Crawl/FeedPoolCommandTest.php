@@ -15,6 +15,7 @@ use App\Models\Source;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -58,6 +59,27 @@ final class FeedPoolCommandTest extends TestCase
         Queue::assertNotPushed(FetchDetailJob::class);
         $this->assertSame(CrawlQueue::STATUS_CLAIMED, $first->refresh()->status);
         $this->assertSame(CrawlQueue::STATUS_PENDING, $second->refresh()->status);
+    }
+
+    public function test_scheduled_feed_pool_reads_the_current_database_interval_without_scheduler_restart(): void
+    {
+        config(['cache.default' => 'array', 'javmeta_queues.feed_interval_seconds' => 15]);
+        Cache::store('array')->flush();
+        $row = CrawlQueue::factory()->create([
+            'source_slug' => fake()->slug(2),
+            'kind' => CrawlQueue::KIND_LISTING,
+        ]);
+        Queue::fake();
+
+        $this->artisan('crawler:feed-pool', ['--scheduled' => true])->assertSuccessful();
+        $this->travel(14)->seconds();
+        config(['javmeta_queues.feed_interval_seconds' => 10]);
+        $this->artisan('crawler:feed-pool', ['--scheduled' => true])->expectsOutputToContain('Feed interval has not elapsed.')->assertSuccessful();
+        $this->travel(1)->seconds();
+        $this->artisan('crawler:feed-pool', ['--scheduled' => true])->assertSuccessful();
+
+        Queue::assertPushed(FetchListingJob::class, 1);
+        $this->assertSame(CrawlQueue::STATUS_CLAIMED, $row->refresh()->status);
     }
 
     public function test_feed_pool_dispatches_each_configured_crawl_kind(): void

@@ -53,6 +53,7 @@ final readonly class AuthenticateApiKey
             'api/v1/performers', 'api/v1/performers/{id}', 'api/v1/performers/facets' => 'performers',
             'api/v1/meta/genres', 'api/v1/meta/catalog/{kind}', 'api/v1/suggest' => 'catalog',
             'api/v1/status/summary', 'api/v1/status/sources' => 'status',
+            'api/v1/config/browser-services' => 'config',
             'api/v1/mcp' => 'mcp',
             'api/v1/media/config', 'api/v1/media/jobs/next', 'api/v1/media/jobs/{id}/complete', 'api/v1/media/jobs/{id}/fail' => 'media',
             default => throw new ForbiddenScopeException('undeclared'),

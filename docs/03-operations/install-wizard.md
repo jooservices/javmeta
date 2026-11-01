@@ -10,3 +10,10 @@ answers initialize missing registered values. Secrets never belong in argv,
 documentation, logs or version control. Local proof must use disposable
 namespaces and `--skip-os-install --no-systemd --no-start`; it does not prove
 production readiness or a running scheduler.
+
+After installing Horizon on each main or worker node, install and enable
+`deploy/systemd/javmeta-horizon-reconcile.service` and
+`javmeta-horizon-reconcile.timer`. Worker nodes intentionally do not run the
+application scheduler, so the timer is required there. The timer is local to
+each node and is safe to run alongside the main scheduler's once-a-minute
+reconcile command.

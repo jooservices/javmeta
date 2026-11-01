@@ -13,8 +13,8 @@ private Workspaces root `.env` or the deployment secret store; do not copy it
 into this repository, logs, or Jira. If both DSNs are empty, Sentry remains
 disabled and the application does not send events.
 
-Errors are sampled at 100%. Trace sampling defaults to zero and can be enabled
-with `JAVMETA_SENTRY_TRACES_SAMPLE_RATE`; profiling is disabled. Personal data
+Errors are sampled at 100%. Trace sampling defaults to zero and is controlled
+by the database setting `observability.sentry_traces_sample_rate`; profiling is disabled. Personal data
 collection is disabled. The event scrubber removes request bodies, cookies,
 headers, query strings, user context, and arbitrary event extras. Breadcrumbs
 retain only allowlisted operational fields.

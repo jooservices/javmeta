@@ -12,7 +12,6 @@ use App\Notifications\ActivityLogAlertNotifier;
 use App\Notifications\CompositeAlertNotifier;
 use App\Notifications\TelegramAlertNotifier;
 use App\Observability\ObservabilityEmitter;
-use App\Support\BrowserServiceEnvironment;
 use App\Support\InsecureDefaults;
 use App\Observability\OpenObserveClient;
 use App\Observability\TelemetrySanitizer;
@@ -64,7 +63,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        BrowserServiceEnvironment::applyAliases();
         $this->app->scoped(\App\Services\Search\SearchBudget::class);
 
         /** @var array{allow_samples: bool, environments: list<string>, settings: list<string>, values: array<string, string|null>, known_defaults: list<string>} $rules */

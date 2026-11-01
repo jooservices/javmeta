@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 return [
     // The newest movie must not be older than this, or the crawl is not moving.
-    'max_newest_movie_age_minutes' => (int) env('JAVMETA_READINESS_NEWEST_MOVIE_MINUTES', 30),
+    'max_newest_movie_age_minutes' => 30,
     // How many enabled sources may be past due under their configured crawl schedule before readiness fails.
-    'max_dead_sources' => (int) env('JAVMETA_READINESS_MAX_DEAD_SOURCES', 3),
-    'max_backup_age_hours' => (int) env('JAVMETA_READINESS_BACKUP_HOURS', 26),
+    'max_dead_sources' => 3,
+    'max_backup_age_hours' => 26,
 ];

@@ -7,7 +7,7 @@ return [
     | Master on/off switch. When false, AlertDispatcher skips every alert
     | (no fan-out to Telegram / activity log). Default: on.
     */
-    'enabled' => (bool) env('JAVMETA_ALERTS_ENABLED', true),
+    'enabled' => true,
 
     /*
     | Telegram credentials prefer jooservices/laravel-notifications config /
@@ -15,26 +15,28 @@ return [
     */
     'telegram' => [
         'owner_user_id' => null,
-        'bot_token' => env('TELEGRAM_BOT_TOKEN', ''),
-        'chat_id' => env('TELEGRAM_CHAT_ID', ''),
-        'api_base' => env('TELEGRAM_API_BASE', 'https://api.telegram.org'),
-        'timeout' => (int) env('TELEGRAM_TIMEOUT', 5),
+        'bot_token' => '',
+        'chat_id' => '',
+        'api_base' => 'https://api.telegram.org',
+        'timeout' => 5,
     ],
     // Hourly Telegram report: totals now and the change since the previous report (javmeta:hourly-report).
     'hourly_report' => [
-        'timezone' => (string) env('JAVMETA_REPORT_TIMEZONE', 'Asia/Ho_Chi_Minh'),
-        'state_path' => (string) env('JAVMETA_REPORT_STATE_PATH', ''),
+        'timezone' => 'Asia/Ho_Chi_Minh',
+        'state_path' => storage_path('app/private/reports/hourly.json'),
     ],
-    'debounce_seconds' => (int) env('JAVMETA_ALERT_DEBOUNCE_SECONDS', 900),
+    'debounce_seconds' => 900,
     // At most one alert per cause per this many seconds (watchdog, backup, stalled crawl, stuck queue).
-    'throttle_seconds' => (int) env('JAVMETA_ALERT_THROTTLE_SECONDS', 3600),
-    'miss_debounce_seconds' => (int) env('JAVMETA_MISS_ALERT_DEBOUNCE_SECONDS', 3600),
-    'title_failure_threshold' => (int) env('JAVMETA_TITLE_FAILURE_THRESHOLD', 3),
+    'throttle_seconds' => 3600,
+    'miss_debounce_seconds' => 3600,
+    'title_failure_threshold' => 3,
     'watchdog' => [
-        'heartbeat_stale_seconds' => (int) env('JAVMETA_WATCHDOG_HEARTBEAT_STALE_SECONDS', 600),
-        'source_stale_seconds' => (int) env('JAVMETA_WATCHDOG_SOURCE_STALE_SECONDS', 86400),
-        'crawl_stall_seconds' => (int) env('JAVMETA_WATCHDOG_CRAWL_STALL_SECONDS', 1800),
-        'queue_stuck_seconds' => (int) env('JAVMETA_WATCHDOG_QUEUE_STUCK_SECONDS', 1800),
-        'pending_queue_limit' => (int) env('JAVMETA_WATCHDOG_PENDING_QUEUE_LIMIT', 1000),
+        'heartbeat_stale_seconds' => 600,
+        'source_stale_seconds' => 86400,
+        'crawl_stall_seconds' => 1800,
+        'queue_stuck_seconds' => 1800,
+        'pending_queue_limit' => 1000,
+        'stall_after_minutes' => 45,
+        'temp_data_max_age_hours' => 24,
     ],
 ];

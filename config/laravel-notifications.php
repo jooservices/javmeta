@@ -12,17 +12,14 @@ return [
     | explicit channels list. Each name must match a registered adapter.
     |
     */
-    'default_channels' => array_values(array_filter(array_map(
-        'trim',
-        explode(',', (string) env('NOTIFICATION_DEFAULT_CHANNELS', 'telegram')),
-    ))),
+    'default_channels' => ['telegram'],
 
     'channels' => [
         'telegram' => [
-            'bot_token' => env('NOTIFICATION_TELEGRAM_BOT_TOKEN', env('TELEGRAM_BOT_TOKEN', '')),
-            'chat_id' => env('NOTIFICATION_TELEGRAM_CHAT_ID', env('TELEGRAM_CHAT_ID', '')),
-            'api_base' => env('NOTIFICATION_TELEGRAM_API_BASE', 'https://api.telegram.org'),
-            'timeout' => (float) env('NOTIFICATION_TELEGRAM_TIMEOUT', 5),
+            'bot_token' => '',
+            'chat_id' => '',
+            'api_base' => 'https://api.telegram.org',
+            'timeout' => 5.0,
         ],
 
         'slack' => [

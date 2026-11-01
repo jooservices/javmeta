@@ -3,36 +3,36 @@
 set -euo pipefail
 
 CONNECTION="${QUEUE_CONNECTION:-redis}"
-QUEUES="${JAVMETA_QUEUE_NAMES:-listing,detail,performer_listing,performer_detail,gallery,search,browser_listing,browser_detail,browser_performer_listing,browser_performer_detail,browser_gallery,observability}"
-SLEEP="${JAVMETA_QUEUE_SLEEP:-3}"
-TRIES="${JAVMETA_QUEUE_TRIES:-3}"
-MAX_TIME="${JAVMETA_QUEUE_MAX_TIME:-3600}"
-MAX_JOBS="${JAVMETA_QUEUE_MAX_JOBS:-500}"
-WORKERS_PER_QUEUE="${JAVMETA_WORKERS_PER_QUEUE:-1}"
-BROWSER_WORKERS_PER_QUEUE="${JAVMETA_BROWSER_WORKERS_PER_QUEUE:-2}"
-TIMEOUT="${JAVMETA_QUEUE_TIMEOUT:-180}"
-STOP_GRACE="${JAVMETA_QUEUE_STOP_GRACE:-200}"
 PHP_BIN="${JAVMETA_PHP_BIN:-php}"
-
-IFS=',' read -r -a QUEUE_LIST <<< "${QUEUES}"
-# Old environment files list only direct queues; enroll their browser counterparts too.
-queue_set=",${QUEUES//[[:space:]]/},"
-for direct_queue in listing detail performer_listing performer_detail gallery; do
-  if [[ "${queue_set}" == *",${direct_queue},"* && "${queue_set}" != *",browser_${direct_queue},"* ]]; then
-    QUEUE_LIST+=("browser_${direct_queue}")
-  fi
+WORKER_LAYOUT="$(${PHP_BIN} artisan settings:worker-layout --shell)"
+QUEUE_LIST=()
+declare -A worker_counts=()
+SLEEP=''
+TRIES=''
+MAX_TIME=''
+MAX_JOBS=''
+TIMEOUT=''
+STOP_GRACE=''
+while IFS=$'\t' read -r kind name value; do
+  case "${kind}:${name}" in
+    SETTING:sleep) SLEEP="${value}" ;;
+    SETTING:tries) TRIES="${value}" ;;
+    SETTING:max_time) MAX_TIME="${value}" ;;
+    SETTING:max_jobs) MAX_JOBS="${value}" ;;
+    SETTING:timeout) TIMEOUT="${value}" ;;
+    SETTING:stop_grace_seconds) STOP_GRACE="${value}" ;;
+    QUEUE:*)
+      [[ "${value}" =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid database worker layout.' >&2; exit 1; }
+      QUEUE_LIST+=("${name}")
+      worker_counts["${name}"]="${value}"
+      ;;
+    *) echo 'Invalid database worker layout.' >&2; exit 1 ;;
+  esac
+done <<< "${WORKER_LAYOUT}"
+(( ${#QUEUE_LIST[@]} > 0 )) || { echo 'Database worker layout is empty.' >&2; exit 1; }
+for setting in "${SLEEP}" "${TRIES}" "${MAX_TIME}" "${MAX_JOBS}" "${TIMEOUT}" "${STOP_GRACE}"; do
+  [[ "${setting}" =~ ^[0-9]+$ ]] || { echo 'Invalid database worker layout.' >&2; exit 1; }
 done
-has_observability_queue=0
-for configured_queue in "${QUEUE_LIST[@]}"; do
-  configured_queue="$(echo "${configured_queue}" | xargs)"
-  if [[ "${configured_queue}" == observability ]]; then
-    has_observability_queue=1
-    break
-  fi
-done
-if ((has_observability_queue == 0)); then
-  QUEUE_LIST+=(observability)
-fi
 
 worker_queues=()
 worker_slots=()
@@ -51,10 +51,7 @@ start_worker() {
   local index="$1"
   local queue="${worker_queues[$index]}"
   local slot="${worker_slots[$index]}"
-  local total="${WORKERS_PER_QUEUE}"
-  if [[ "${queue}" == browser_* ]]; then
-    total="${BROWSER_WORKERS_PER_QUEUE}"
-  fi
+  local total="${worker_counts[$queue]}"
 
   echo "Starting worker instance queue=${queue} slot=${slot}/${total}"
   "${PHP_BIN}" artisan queue:work "${CONNECTION}" \
@@ -137,10 +134,7 @@ for queue in "${QUEUE_LIST[@]}"; do
   queue="$(echo "${queue}" | xargs)"
   [[ -z "${queue}" ]] && continue
 
-  queue_workers="${WORKERS_PER_QUEUE}"
-  if [[ "${queue}" == browser_* ]]; then
-    queue_workers="${BROWSER_WORKERS_PER_QUEUE}"
-  fi
+  queue_workers="${worker_counts[$queue]}"
   for ((slot = 1; slot <= queue_workers; slot++)); do
     worker_queues[worker_count]="${queue}"
     worker_slots[worker_count]="${slot}"

@@ -6,13 +6,7 @@
 
 Tên và mô tả dưới đây lấy trực tiếp từ danh sách Cài đặt của ứng dụng. Không chứa giá trị đã lưu hay bí mật.
 
-## Hàng đợi crawl
-
-### Số worker mỗi hàng đợi
-
-Horizon chạy bấy nhiêu tiến trình cho mỗi hàng đợi.
-
-Số nguyên; từ 1 đến 32; cần khởi động lại javmeta-horizon. Mã mục: `queue.workers_per_queue`.
+## Hàng đợi
 
 ### Ngưỡng hàng đợi đầy
 
@@ -26,15 +20,15 @@ Tối đa số việc của một nguồn được chạy cùng lúc.
 
 Số nguyên; từ 1 đến 64. Mã mục: `queue.per_source_inflight`.
 
-### Việc nạp vào hàng đợi mỗi phút
+### Việc nạp mỗi lượt
 
-Tối đa số dòng crawl_queue được nạp mỗi phút.
+Tối đa số dòng crawl_queue được nạp trong một lượt feed pool.
 
 Số nguyên; từ 1 đến 5000. Mã mục: `queue.feed_pool_limit`.
 
 ### Chu kỳ nạp hàng đợi (giây)
 
-Khoảng thời gian giữa các lần nạp hàng đợi. Chọn 5, 10, 15, 30 hoặc 60 giây; 60 giây khôi phục nhịp chạy mỗi phút.
+Chọn 5, 10, 15, 30 hoặc 60 giây; feeder kiểm tra cấu hình mỗi 5 giây nên thay đổi không cần khởi động lại scheduler.
 
 Số nguyên; từ 5 đến 60; chọn: 5, 10, 15, 30, 60. Mã mục: `queue.feed_interval_seconds`.
 
@@ -50,41 +44,171 @@ Khi một nguồn bị chặn, khoảng nghỉ giữa các request tăng gấp �
 
 Số nguyên; từ 1 đến 86400. Mã mục: `queue.gap_blocked_max_seconds`.
 
+### Thời gian giữ job trước khi thử lại (giây)
+
+Phải dài hơn timeout của worker để không chạy trùng một job còn đang xử lý.
+
+Số nguyên; từ 181 đến 86400. Mã mục: `queue.retry_after_seconds`.
+
+### Tỷ lệ lấy mẫu telemetry (%)
+
+Chọn phần trăm request được đưa vào hàng đợi OpenObserve.
+
+Số nguyên; từ 0 đến 100. Mã mục: `queue.observability_sample_percent`.
+
+### Độ sâu tối đa hàng đợi telemetry
+
+Giới hạn số sự kiện đang chờ gửi sang OpenObserve.
+
+Số nguyên; từ 1 đến 100000. Mã mục: `queue.observability_depth_limit`.
+
+## Worker
+
+### Worker mặc định mỗi hàng đợi
+
+Số tiến trình Horizon mặc định cho mỗi hàng đợi; cấu hình theo làn, loại hàng đợi và node có thể ghi đè.
+
+Số nguyên; từ 1 đến 32; cần khởi động lại javmeta-horizon. Mã mục: `queue.workers_per_queue`.
+
+### Worker mỗi hàng đợi làn trực tiếp
+
+Để trống để dùng số worker mặc định; thiết lập riêng cho các queue không dùng trình duyệt.
+
+Số nguyên; từ 1 đến 32; cần khởi động lại javmeta-horizon. Mã mục: `worker.direct_workers_per_queue`.
+
+### Worker mỗi hàng đợi làn trình duyệt
+
+Số tiến trình Horizon tối đa cho từng queue cần Playwright hoặc FlareSolverr.
+
+Số nguyên; từ 1 đến 32; cần khởi động lại javmeta-horizon. Mã mục: `worker.browser_workers_per_queue`.
+
+### Worker ghi đè theo hàng đợi (JSON)
+
+Đối tượng JSON ánh xạ tên queue sang số worker từ 1 đến 32, ví dụ {"listing":2,"browser_detail":1}.
+
+Đối tượng JSON; mỗi hàng đợi đã biết nhận 1–32 worker; cần khởi động lại javmeta-horizon. Mã mục: `worker.queue_overrides`.
+
+### Worker ghi đè theo node (JSON)
+
+Ánh xạ main, worker hoặc role@hostname sang default, direct, browser và queues.
+
+Đối tượng JSON; ghi đè theo vai trò hoặc role@hostname; worker từ 1 đến 32; cần khởi động lại javmeta-horizon. Mã mục: `worker.node_overrides`.
+
+### Tên hàng đợi cần chạy
+
+Mỗi worker Horizon giám sát một tên trong danh sách; queue crawl tự thêm queue trình duyệt tương ứng.
+
+Danh sách văn bản; cần khởi động lại javmeta-horizon. Mã mục: `worker.queue_names`.
+
+### Số lần thử lại hàng đợi
+
+Số lần Horizon thử một job trước khi đánh dấu thất bại.
+
+Số nguyên; từ 1 đến 20; cần khởi động lại javmeta-horizon. Mã mục: `worker.queue_tries`.
+
+### Thời gian tối đa tiến trình worker (giây)
+
+Horizon thay tiến trình sau khoảng thời gian này để giải phóng bộ nhớ.
+
+Số nguyên; từ 60 đến 86400; cần khởi động lại javmeta-horizon. Mã mục: `worker.queue_max_time`.
+
+### Số job tối đa mỗi tiến trình
+
+Horizon thay tiến trình sau số job này; 0 không được dùng để tránh tiến trình chạy vô hạn.
+
+Số nguyên; từ 1 đến 100000; cần khởi động lại javmeta-horizon. Mã mục: `worker.queue_max_jobs`.
+
+### Nghỉ trước khi thử lại job (giây)
+
+Khoảng nghỉ cơ bản của Horizon trước khi thử lại job lỗi.
+
+Số nguyên; từ 0 đến 3600; cần khởi động lại javmeta-horizon. Mã mục: `worker.queue_backoff_seconds`.
+
+### Thời gian nghỉ giữa hai lần lấy job (giây)
+
+Worker dùng giá trị này khi hàng đợi chưa có việc.
+
+Số nguyên; từ 0 đến 60; cần khởi động lại javmeta-horizon. Mã mục: `worker.queue_sleep_seconds`.
+
+### Thời gian chờ worker dừng an toàn (giây)
+
+Worker chờ các tiến trình đang chạy thoát trước khi kết thúc.
+
+Số nguyên; từ 1 đến 3600; cần khởi động lại javmeta-horizon. Mã mục: `worker.stop_grace_seconds`.
+
+### Khoảng cách tối thiểu giữa hai lần đổi worker (giây)
+
+Giữ mỗi node khỏi khởi động Horizon lại thường xuyên hơn mức này.
+
+Số nguyên; từ 600 đến 3600. Mã mục: `worker.reconcile_cooldown_seconds`.
+
+### Độ trễ ngẫu nhiên ổn định giữa các node (giây)
+
+Mỗi node chờ một khoảng khác nhau trước khi đổi cấu hình worker.
+
+Số nguyên; từ 0 đến 600. Mã mục: `worker.reconcile_jitter_seconds`.
+
+## Trình duyệt
+
+### Số trình duyệt chạy đồng thời
+
+Giới hạn số phiên trình duyệt hoạt động trên máy dịch vụ.
+
+Số nguyên; từ 1 đến 64. Mã mục: `browser.max_concurrency`.
+
+### Địa chỉ dịch vụ FlareSolverr
+
+Địa chỉ dịch vụ giải CAPTCHA trong mạng nội bộ; thay đổi áp dụng cho các job mới.
+
+Văn bản. Mã mục: `browser.flaresolverr_url`.
+
+### Địa chỉ dịch vụ Playwright
+
+Địa chỉ gateway Playwright trong mạng nội bộ; thay đổi áp dụng cho các job mới.
+
+Văn bản. Mã mục: `browser.playwright_url`.
+
+### Số yêu cầu trình duyệt chờ tối đa
+
+Giới hạn độ dài hàng đợi của dịch vụ trình duyệt.
+
+Số nguyên; từ 1 đến 10000. Mã mục: `browser.max_queue`.
+
+### Timeout request Playwright (mili giây)
+
+Giới hạn thời gian một yêu cầu điều hướng trên dịch vụ trình duyệt.
+
+Số nguyên; từ 1000 đến 300000. Mã mục: `browser.playwright_request_timeout_ms`.
+
+### Số request tối đa mỗi trình duyệt
+
+Đóng và tạo lại phiên trình duyệt sau số request này.
+
+Số nguyên; từ 1 đến 10000. Mã mục: `browser.max_requests_per_browser`.
+
+### Timeout tối đa FlareSolverr (mili giây)
+
+Giới hạn thời gian dịch vụ FlareSolverr chờ phản hồi của trang.
+
+Số nguyên; từ 1000 đến 300000. Mã mục: `browser.flaresolverr_max_timeout_ms`.
+
+### Gateway chờ dịch vụ tối đa (mili giây)
+
+Giới hạn thời gian gateway chờ kết quả từ dịch vụ trình duyệt.
+
+Số nguyên; từ 1000 đến 300000. Mã mục: `browser.gateway_wait_timeout_ms`.
+
+### Chu kỳ lấy cấu hình dịch vụ (giây)
+
+Browser gateway và watchdog đọc lại cấu hình qua API theo chu kỳ này.
+
+Số nguyên; từ 10 đến 300. Mã mục: `browser.config_poll_interval_seconds`.
+
 ### Việc dùng trình duyệt cùng lúc (tổng)
 
-Các nguồn cần FlareSolverr/Playwright trên Dev VM dùng chung giới hạn này để dịch vụ không quá tải và báo lỗi mạng. 0 = không giới hạn.
+Giới hạn chung các job dùng FlareSolverr hoặc Playwright để tránh quá tải dịch vụ.
 
 Số nguyên; từ 0 đến 64. Mã mục: `queue.browser_inflight`.
-
-### Tách làn crawl
-
-Tách queue HTTP trực tiếp và trình duyệt. Tắt để dùng chung queue cũ; các job đang chờ vẫn được xử lý.
-
-Bật/tắt. Mã mục: `crawl.lanes_enabled`.
-
-### Tỷ lệ dùng trình duyệt (%)
-
-Nguồn có tỷ lệ fetch bằng FlareSolverr/Playwright đạt mức này trong 24 giờ được chuyển sang làn trình duyệt khi kiểm tra sức khỏe nguồn.
-
-Số nguyên; từ 0 đến 100. Mã mục: `crawl.lane_browser_percent`.
-
-### Số fetch tối thiểu để phân làn
-
-Chỉ tự phân làn khi đủ số lần fetch trong 24 giờ; bỏ qua lần bị skipped.
-
-Số nguyên; từ 1 đến 1000000. Mã mục: `crawl.lane_min_attempts`.
-
-### Ghim nguồn vào làn trực tiếp
-
-Mỗi dòng một mã nguồn. Ưu tiên hơn danh sách mặc định, kết quả tự động và ghim trình duyệt.
-
-Danh sách văn bản. Mã mục: `crawl.lane_direct_pins`.
-
-### Ghim nguồn vào làn trình duyệt
-
-Mỗi dòng một mã nguồn. Ưu tiên hơn kết quả tự động; bỏ ghim trực tiếp trước nếu có.
-
-Danh sách văn bản. Mã mục: `crawl.lane_browser_pins`.
 
 ### Độ sâu queue trình duyệt
 
@@ -94,23 +218,135 @@ Số nguyên; từ 1 đến 100000. Mã mục: `queue.browser_depth_limit`.
 
 ### Nguồn cần trình duyệt (mỗi dòng một mã nguồn)
 
-Ví dụ javlibrary, javbus, missav, jable, warashi, javdatabase.
+Danh sách nguồn bắt buộc dùng dịch vụ trình duyệt.
 
 Danh sách văn bản. Mã mục: `queue.browser_sources`.
 
-### Thời gian tối đa một việc (giây)
+### Tách làn crawl
 
-Việc chạy lâu hơn sẽ bị dừng.
+Tách queue HTTP trực tiếp và trình duyệt; job đang chờ vẫn được xử lý khi tắt.
 
-Số nguyên; từ 10 đến 3600; cần khởi động lại javmeta-horizon. Mã mục: `queue.worker_timeout`.
+Bật/tắt. Mã mục: `crawl.lanes_enabled`.
 
-## Vòng lặp crawl
+### Tỷ lệ dùng trình duyệt (%)
+
+Nguồn đạt tỷ lệ fetch qua trình duyệt này được tự chuyển làn khi kiểm tra sức khỏe.
+
+Số nguyên; từ 0 đến 100. Mã mục: `crawl.lane_browser_percent`.
+
+### Số fetch tối thiểu để phân làn
+
+Chỉ tự phân làn khi có đủ lần fetch trong 24 giờ; bỏ qua lần bị bỏ qua.
+
+Số nguyên; từ 1 đến 1000000. Mã mục: `crawl.lane_min_attempts`.
+
+### Ghim nguồn vào làn trực tiếp
+
+Mỗi dòng là một mã nguồn ưu tiên dùng fetch trực tiếp.
+
+Danh sách văn bản. Mã mục: `crawl.lane_direct_pins`.
+
+### Ghim nguồn vào làn trình duyệt
+
+Mỗi dòng là một mã nguồn ưu tiên dùng trình duyệt.
+
+Danh sách văn bản. Mã mục: `crawl.lane_browser_pins`.
+
+## Dọn dẹp
 
 ### Việc kẹt được giải phóng sau (giây)
 
 Việc ở trạng thái claimed lâu hơn mức này được trả lại hàng đợi.
 
 Số nguyên; từ 60 đến 86400. Mã mục: `crawl.stale_claim_timeout_seconds`.
+
+### Worker im lặng quá (giây) thì cảnh báo
+
+Watchdog coi nhịp tim worker cũ hơn mức này là không hoạt động.
+
+Số nguyên; từ 30 đến 86400. Mã mục: `alerts.heartbeat_stale_seconds`.
+
+### Nguồn không thành công quá (giây) thì cảnh báo
+
+Ngưỡng mặc định; chu kỳ nguồn trong manifest được cộng thêm một lượt quét.
+
+Số nguyên; từ 60 đến 2592000. Mã mục: `alerts.source_stale_seconds`.
+
+### Crawl đứng quá (giây) thì cảnh báo
+
+Watchdog kiểm tra khoảng thời gian không có phim mới.
+
+Số nguyên; từ 60 đến 604800. Mã mục: `alerts.crawl_stall_seconds`.
+
+### Hàng đợi kẹt quá (giây) thì cảnh báo
+
+Watchdog kiểm tra việc chờ quá lâu mà chưa được xử lý.
+
+Số nguyên; từ 60 đến 604800. Mã mục: `alerts.queue_stuck_seconds`.
+
+### Ngưỡng việc chờ trước khi báo động
+
+Watchdog cảnh báo khi số job chờ vượt mức này.
+
+Số nguyên; từ 1 đến 100000. Mã mục: `cleanup.pending_queue_limit`.
+
+### Ngưỡng watchdog 45 phút (phút)
+
+Remote watchdog đánh dấu tác vụ không tiến triển sau khoảng thời gian này.
+
+Số nguyên; từ 1 đến 1440. Mã mục: `cleanup.watchdog_stall_after_minutes`.
+
+### Tuổi dữ liệu tạm tối đa (giờ)
+
+Remote watchdog dọn dữ liệu tạm cũ hơn mức này.
+
+Số nguyên; từ 1 đến 720. Mã mục: `cleanup.temp_data_max_age_hours`.
+
+### Số ngày giữ lịch sử thử tải
+
+Tự động xóa các lần thử tải cũ sau số ngày này.
+
+Số nguyên; từ 1 đến 365. Mã mục: `observability.fetch_attempts_retention_days`.
+
+### Bản sao lưu coi là cũ sau (giây)
+
+Dùng cho cảnh báo sao lưu hằng phút.
+
+Số nguyên; từ 3600 đến 2592000. Mã mục: `backup.stale_after_seconds`.
+
+## Thời gian chờ
+
+### Timeout client gateway (mili giây)
+
+Phải dài hơn thời gian gateway chờ dịch vụ để client nhận được kết quả.
+
+Số nguyên; từ 1000 đến 300000. Mã mục: `browser.gateway_client_timeout_ms`.
+
+### Timeout client lấy cấu hình (mili giây)
+
+Thời gian tối đa remote service chờ API cấu hình XCrawler.
+
+Số nguyên; từ 100 đến 30000. Mã mục: `browser.config_api_client_ms`.
+
+### Timeout dịch vụ fetch (giây)
+
+Giới hạn một phương thức fetch; timeout client của worker phải dài hơn giá trị này.
+
+Số nguyên; từ 1 đến 150. Mã mục: `timeouts.fetch_service_seconds`.
+
+### Timeout client fetch (giây)
+
+Thời gian tối đa worker chờ fetch; phải dài hơn timeout của dịch vụ fetch.
+
+Số nguyên; từ 10 đến 3600; cần khởi động lại javmeta-horizon. Mã mục: `queue.worker_timeout`.
+
+### Timeout OpenObserve (giây)
+
+Giới hạn thời gian gửi telemetry tới OpenObserve.
+
+Số nguyên; từ 1 đến 30. Mã mục: `observability.openobserve_timeout_seconds`.
+
+## Vòng lặp crawl
 
 ### Thời gian chờ khi bị chặn (giây, cách nhau bằng dấu phẩy)
 
@@ -154,6 +390,24 @@ Sau số lần này phim không được crawl lại nữa.
 
 Số nguyên; từ 1 đến 20. Mã mục: `crawl.recrawl_max_rounds`.
 
+### Số lần thử crawl tối đa
+
+Sau số lần này một dòng crawl được đánh dấu thất bại.
+
+Số nguyên; từ 1 đến 20. Mã mục: `crawl.max_attempts`.
+
+### Số lỗi mở mạch nguồn
+
+Sau số lỗi liên tiếp này, tạm dừng yêu cầu tới nguồn.
+
+Số nguyên; từ 1 đến 100. Mã mục: `crawl.circuit_failure_threshold`.
+
+### Thời gian nghỉ mạch nguồn (giây)
+
+Khoảng chờ trước khi thử lại nguồn bị mở mạch.
+
+Số nguyên; từ 1 đến 86400. Mã mục: `crawl.circuit_cooldown_seconds`.
+
 ## Cảnh báo
 
 ### Bật cảnh báo
@@ -186,30 +440,6 @@ Một phim lỗi quá số lần này sẽ được cảnh báo.
 
 Số nguyên; từ 1 đến 100. Mã mục: `alerts.title_failure_threshold`.
 
-### Worker im lặng quá (giây) thì cảnh báo
-
-Watchdog: nhịp tim worker cũ hơn mức này.
-
-Số nguyên; từ 30 đến 86400. Mã mục: `alerts.heartbeat_stale_seconds`.
-
-### Nguồn không thành công quá (giây) thì cảnh báo
-
-Ngưỡng mặc định; nguồn có chu kỳ trong manifest được cộng thêm một lượt quét mới.
-
-Số nguyên; từ 60 đến 2592000. Mã mục: `alerts.source_stale_seconds`.
-
-### Crawl đứng quá (giây) thì cảnh báo
-
-Watchdog: không có phim mới trong khoảng này.
-
-Số nguyên; từ 60 đến 604800. Mã mục: `alerts.crawl_stall_seconds`.
-
-### Hàng đợi kẹt quá (giây) thì cảnh báo
-
-Watchdog: việc chờ lâu không được xử lý.
-
-Số nguyên; từ 60 đến 604800. Mã mục: `alerts.queue_stuck_seconds`.
-
 ## Telegram
 
 ### Token của bot
@@ -228,11 +458,11 @@ Văn bản. Mã mục: `telegram.chat_id`.
 
 Bắt buộc cho nhóm: chỉ người dùng này được gửi lệnh và bấm nút. Để trống cho chat riêng.
 
-Số nguyên. Mã mục: `telegram.owner_user_id`.
+Số nguyên; từ 1 đến 2147483647. Mã mục: `telegram.owner_user_id`.
 
 ### Địa chỉ API Telegram
 
-Mặc định https://api.telegram.org.
+Địa chỉ HTTPS của API Telegram; chỉ cho phép HTTP ở localhost.
 
 Văn bản. Mã mục: `telegram.api_base`.
 
@@ -262,6 +492,12 @@ Ví dụ Asia/Ho_Chi_Minh.
 
 Văn bản. Mã mục: `report.timezone`.
 
+### Tệp trạng thái báo cáo
+
+Đường dẫn tệp lưu mốc gửi báo cáo hằng giờ.
+
+Văn bản. Mã mục: `report.state_path`.
+
 ## Kiểm tra sẵn sàng
 
 ### Phim mới nhất không cũ quá (phút)
@@ -272,7 +508,7 @@ Số nguyên; từ 1 đến 10080. Mã mục: `readiness.max_newest_movie_age_mi
 
 ### Số nguồn chết tối đa
 
-Số nguồn bật đã quá hạn theo chu kỳ trong manifest hoặc ngưỡng mặc định; vượt số này thì báo lỗi.
+Số nguồn bật đã quá hạn theo lịch; vượt số này thì báo lỗi.
 
 Số nguyên; từ 0 đến 100. Mã mục: `readiness.max_dead_sources`.
 
@@ -302,6 +538,12 @@ Tắt thì chỉ dùng tìm kiếm trong cơ sở dữ liệu.
 
 Bật/tắt. Mã mục: `search.enabled`.
 
+### Xác thực chứng chỉ TLS Elasticsearch
+
+Bật xác thực chứng chỉ TLS của máy chủ Elasticsearch.
+
+Bật/tắt. Mã mục: `search.verify_ssl`.
+
 ### Bật vector (tìm theo nghĩa)
 
 Tắt thì tài liệu được lập chỉ mục mà không có vector.
@@ -328,23 +570,41 @@ Văn bản. Mã mục: `search.movies_index`.
 
 ### Chỉ mục Elasticsearch của diễn viên
 
-Như trên.
+Tên chỉ mục lưu vector và dữ liệu diễn viên.
 
 Văn bản. Mã mục: `search.performers_index`.
 
 ## Giám sát
-
-### Số ngày giữ lịch sử thử tải
-
-Tự động xóa các lần thử tải cũ sau số ngày này.
-
-Số nguyên. Mã mục: `observability.fetch_attempts_retention_days`.
 
 ### Gửi log và metric tới OpenObserve
 
 Tắt thì không ghi telemetry.
 
 Bật/tắt. Mã mục: `observability.openobserve_enabled`.
+
+### Tổ chức OpenObserve
+
+Tên tổ chức nhận log và metric.
+
+Văn bản. Mã mục: `observability.openobserve_org`.
+
+### Luồng log OpenObserve
+
+Tên luồng lưu log của ứng dụng.
+
+Văn bản. Mã mục: `observability.openobserve_log_stream`.
+
+### Luồng metric OpenObserve
+
+Tên luồng lưu metric của ứng dụng.
+
+Văn bản. Mã mục: `observability.openobserve_metrics_stream`.
+
+### Tên dịch vụ OpenObserve
+
+Tên ứng dụng hiển thị trong dữ liệu telemetry.
+
+Văn bản. Mã mục: `observability.openobserve_service_name`.
 
 ### Tỷ lệ lấy mẫu trace (0 đến 1)
 
@@ -360,11 +620,11 @@ Số thập phân; từ 0 đến 1. Mã mục: `observability.sentry_traces_samp
 
 ## Sao lưu
 
-### Bản sao lưu coi là cũ sau (giây)
+### Đường dẫn manifest sao lưu
 
-Dùng cho cảnh báo sao lưu hằng phút.
+Tệp trạng thái được lệnh backup cập nhật sau khi hoàn tất.
 
-Số nguyên; từ 3600 đến 2592000. Mã mục: `backup.stale_after_seconds`.
+Văn bản. Mã mục: `backup.manifest_path`.
 
 ## AI (Ollama, embedding)
 
@@ -394,7 +654,7 @@ Văn bản. Mã mục: `ai.ollama_chat_model`.
 
 ### Thời gian chờ Ollama (giây)
 
-Nhập giá trị theo tên mục ở trên.
+Giới hạn thời gian một yêu cầu đến Ollama.
 
 Số nguyên; từ 1 đến 300. Mã mục: `ai.ollama_timeout`.
 
@@ -524,7 +784,7 @@ Văn bản. Mã mục: `downloads.qbittorrent_url`.
 
 ### Tài khoản qBittorrent
 
-Nhập giá trị theo tên mục ở trên.
+Tài khoản dùng để đăng nhập Web UI qBittorrent.
 
 Văn bản. Mã mục: `downloads.qbittorrent_username`.
 
@@ -548,7 +808,7 @@ Văn bản. Mã mục: `downloads.save_path`.
 
 ### Thời gian chờ qBittorrent (giây)
 
-Nhập giá trị theo tên mục ở trên.
+Giới hạn thời gian mỗi yêu cầu tới qBittorrent.
 
 Số nguyên; từ 1 đến 120. Mã mục: `downloads.timeout`.
 
@@ -568,7 +828,7 @@ Danh sách văn bản. Mã mục: `files.root_folders`.
 
 ### Liên kết hết hạn sau (phút)
 
-Nhập giá trị theo tên mục ở trên.
+Liên kết tải tệp tự hết hạn sau khoảng thời gian này.
 
 Số nguyên; từ 1 đến 1440. Mã mục: `files.link_ttl_minutes`.
 
@@ -727,3 +987,21 @@ Số nguyên; từ 1 đến 120. Mã mục: `capture.http_timeout_sec`.
 Số yêu cầu tối đa mỗi phút từ một địa chỉ IP đến cầu nối giao diện công khai chỉ đọc.
 
 Số nguyên; từ 1 đến 1200. Mã mục: `ui_guest.rate_limit_per_minute`.
+
+### Yêu cầu đăng nhập chủ sở hữu
+
+Bảo vệ giao diện và cấu hình quản trị bằng phiên đăng nhập chủ sở hữu.
+
+Bật/tắt. Mã mục: `ui_security.login_required`.
+
+### Token quản trị chủ sở hữu
+
+Được mã hóa trong cơ sở dữ liệu và không hiển thị lại.
+
+Thông tin bí mật. Mã mục: `ui_security.owner_admin_token`.
+
+### API key MCP cũ
+
+Được mã hóa trong cơ sở dữ liệu và không hiển thị lại; API key mới nên dùng scope MCP.
+
+Thông tin bí mật. Mã mục: `ui_security.mcp_api_key`.

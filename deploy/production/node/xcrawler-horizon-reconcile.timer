@@ -1,0 +1,11 @@
+[Unit]
+Description=Check XCrawler Horizon settings on this node every minute
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=60s
+Persistent=true
+Unit=@UNIT_PREFIX@-horizon-reconcile.service
+
+[Install]
+WantedBy=timers.target

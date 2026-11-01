@@ -31,7 +31,7 @@ product-specific text.
 | Source stale/recovered | Enabled source exceeded its manifest cycle plus one scheduler sweep, or the 24-hour fallback; watchdog every 5 minutes | Telegram + activity log |
 | Crawl stalled/recovered | Due pending work and no source success for 30 minutes | Telegram + activity log |
 | Claimed queue stuck/recovered | Claimed crawl item older than 30 minutes | Telegram + activity log |
-| Due crawl backlog high/recovered | At least JAVMETA_WATCHDOG_PENDING_QUEUE_LIMIT due pending rows; default 1,000 | Telegram + activity log |
+| Due crawl backlog high/recovered | At least `cleanup.pending_queue_limit` due pending rows; default 1,000 | Telegram + activity log |
 | Backup missing/stale/recovered | Manifest missing or older than 26 hours; checked every minute, one message per cause per hour | Telegram + activity log |
 | Consumer lookup miss | Query not in the catalogue; per normalized query, one message per hour | Telegram + activity log |
 | Source quality alert | Source stale, soft-404, or repeated title-needs-review signals | Telegram + activity log |

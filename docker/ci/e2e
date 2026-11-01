@@ -5,10 +5,12 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 project="javmeta-e2e-$$"
 cache_volume="javmeta-e2e-composer-cache-$$"
+JAVMETA_CI_APP_KEY="base64:$(openssl rand -base64 32 | tr -d '\n')"
 cache_volume_created=0
 compose=(docker compose --project-name "$project" --file "${root}/docker/ci/compose.integration.yml")
 export JAVMETA_CI_UID="$(id -u)" JAVMETA_CI_GID="$(id -g)"
 export JAVMETA_CI_COMPOSER_CACHE_VOLUME="$cache_volume"
+export JAVMETA_CI_APP_KEY
 
 cleanup() {
   status=$?
@@ -29,4 +31,5 @@ fi
 "${compose[@]}" pull --quiet postgres mongo redis elasticsearch openobserve
 "${compose[@]}" up --detach --wait postgres mongo redis elasticsearch openobserve
 "${compose[@]}" run --rm gate php artisan migrate --force --ansi
+"${compose[@]}" run --rm gate php artisan settings:import-env --ansi
 "${compose[@]}" run --rm gate composer test:e2e

@@ -55,6 +55,7 @@ final class ScheduleTest extends TestCase
             'crawler:sync-sources' => '*/15 * * * *',
             'crawler:watchdog' => '*/5 * * * *',
             'follows:notify' => '*/5 * * * *',
+            'horizon:reconcile-workers' => '* * * * *',
             'javmeta:backup-status' => '* * * * *',
             'javmeta:hourly-report' => '0 * * * *',
             'library:scan' => '0 * * * *',
@@ -73,7 +74,7 @@ final class ScheduleTest extends TestCase
         $this->assertSame($expectedFrequencies, $actualFrequencies);
         $this->assertTrue($scheduled['crawler:prune-fetch-attempts']->withoutOverlapping);
         $this->assertTrue($scheduled['crawler:feed-pool']->withoutOverlapping);
-        $this->assertSame(10, $scheduled['crawler:feed-pool']->repeatSeconds);
+        $this->assertSame(5, $scheduled['crawler:feed-pool']->repeatSeconds);
         $this->assertTrue($scheduled['crawler:recrawl-incomplete']->withoutOverlapping);
         $this->assertTrue($scheduled['javmeta:hourly-report']->withoutOverlapping);
         $this->assertTrue($scheduled['search:backfill-embeddings']->withoutOverlapping);
@@ -85,14 +86,14 @@ final class ScheduleTest extends TestCase
         }
     }
 
-    public function test_feed_pool_schedule_uses_the_database_interval(): void
+    public function test_feed_pool_schedule_polls_at_five_seconds_independent_of_the_current_database_interval(): void
     {
         $settings = new SettingsService(new FakeConfigStore());
         $this->app->instance(SettingsService::class, $settings);
         $previousEnvironment = app('env');
         app()->instance('env', 'local');
         try {
-            foreach ([5 => 5, 10 => 10, 15 => 15, 30 => 30, 60 => null] as $interval => $repeatSeconds) {
+            foreach ([5, 60] as $interval) {
                 $settings->set('queue.feed_interval_seconds', $interval);
                 $this->app->instance(Schedule::class, new Schedule());
                 ScheduleFacade::clearResolvedInstance(Schedule::class);
@@ -102,9 +103,9 @@ final class ScheduleTest extends TestCase
                     ->first(static fn($event): bool => str_contains((string) $event->command, 'crawler:feed-pool'));
 
                 $this->assertNotNull($feed, "Feed pool schedule was not registered for {$interval} seconds.");
-                $this->assertSame($repeatSeconds, $feed->repeatSeconds);
+                $this->assertSame(5, $feed->repeatSeconds);
                 $this->assertSame('* * * * *', $feed->expression);
-                $this->assertStringContainsString('--schedule-interval=' . $interval, (string) $feed->command);
+                $this->assertStringContainsString('--scheduled', (string) $feed->command);
             }
         } finally {
             app()->instance('env', $previousEnvironment);

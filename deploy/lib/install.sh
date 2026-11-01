@@ -121,7 +121,6 @@ collect_answers() {
   [[ "${answers[REPO_URL]}" != *://*@* ]] || die 'Use a credential helper, not credentials in REPO_URL.'
   for key in REDIS_PREFIX CACHE_PREFIX HORIZON_PREFIX; do answers[$key]="${answers[$key]//@APP_NAME@/${answers[APP_NAME]}}"; done
   [[ "${answers[NODE_ROLE]}" =~ ^(primary|worker)$ ]] || die 'NODE_ROLE must be primary or worker.'
-  [[ "${answers[JAVMETA_WORKERS_PER_QUEUE]}" =~ ^[1-9][0-9]*$ ]] || die 'Invalid worker count.'
   answers[CRAWLERX_PLAYWRIGHT_SCRIPT]="${answers[TARGET_DIR]}/current/vendor/jooservices/crawlerx/scripts/playwright-fetch.mjs"
   answers[CREDENTIALS_FILE]="${answers[CREDENTIALS_FILE]//@APP_NAME@/${answers[APP_NAME]}}"
   [[ "${answers[CREDENTIALS_FILE]}" == /* && ! -L "${answers[CREDENTIALS_FILE]}" ]] || die 'Invalid credentials file.'
@@ -213,13 +212,13 @@ control() {
 }
 role_units() {
   local prefix="${answers[UNIT_PREFIX]}"
-  answers[STOP_UNITS]="$prefix-horizon $prefix-embedder"
+  answers[STOP_UNITS]="$prefix-horizon $prefix-horizon-reconcile.timer $prefix-embedder"
   answers[RESTART_UNITS]="$prefix-embedder $prefix-horizon ${answers[EXPORTER_UNIT]}"
-  answers[START_UNITS]=''
+  answers[START_UNITS]="$prefix-horizon-reconcile.timer"
   if [[ "${answers[NODE_ROLE]}" == primary ]]; then
     answers[STOP_UNITS]="$prefix-scheduler ${answers[STOP_UNITS]}"
     answers[RESTART_UNITS]="${answers[FPM_UNIT]} ${answers[NGINX_UNIT]} ${answers[RESTART_UNITS]}"
-    if (( start_scheduler )); then answers[START_UNITS]="$prefix-scheduler"; fi
+    if (( start_scheduler )); then answers[START_UNITS]+=" $prefix-scheduler"; fi
   fi
   answers[ROLLBACK_UNITS]="${answers[RESTART_UNITS]} ${answers[START_UNITS]}"
   answers[FIRST_FAILURE_UNITS]="${answers[STOP_UNITS]}"
