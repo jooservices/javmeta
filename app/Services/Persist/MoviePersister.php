@@ -475,23 +475,35 @@ final class MoviePersister implements MovieDraftSink
                 );
             }
 
-            $canonicalId = $this->identity->reconcileAndSync($source);
+            $this->identity->refreshNameKeys($source);
 
-            // Link the canonical record for the API and the source record so a later split can restore it.
-            foreach (array_unique([$canonicalId, (int) $performer->id]) as $linkedId) {
-                MoviePerformer::query()->upsert(
+            // Preserve each original source credit before reconciling the complete cast.
+            MoviePerformer::query()->upsert(
+                [
                     [
-                        [
-                            'movie_id' => $movieId,
-                            'performer_id' => $linkedId,
-                            'source_slug' => $draft->sourceSlug,
-                            'crawled_at' => $crawledAt,
-                        ],
+                        'movie_id' => $movieId,
+                        'performer_id' => (int) $performer->id,
+                        'source_slug' => $draft->sourceSlug,
+                        'crawled_at' => $crawledAt,
                     ],
-                    ['movie_id', 'performer_id'],
-                    ['source_slug', 'crawled_at'],
-                );
-            }
+                ],
+                ['movie_id', 'performer_id'],
+                ['source_slug', 'crawled_at'],
+            );
+        }
+        $this->reconcileMovieCast($movieId, $draft, $crawledAt);
+    }
+
+    private function reconcileMovieCast(int $movieId, MovieDraft $draft, CarbonImmutable $crawledAt): void
+    {
+        foreach ($draft->performers as $performerDraft) {
+            $source = PerformerSource::query()->where('site_slug', $performerDraft->sourceSlug)
+                ->where('external_id', $performerDraft->externalId)->firstOrFail();
+            $canonicalId = $this->identity->reconcileAndSync($source);
+            MoviePerformer::query()->insertOrIgnore([
+                ['movie_id' => $movieId, 'performer_id' => $canonicalId,
+                    'source_slug' => $draft->sourceSlug, 'crawled_at' => $crawledAt],
+            ]);
         }
     }
 

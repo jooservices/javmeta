@@ -141,3 +141,7 @@ or settings are added. Long source codes wrap in the movie detail, including
 the breadcrumb and metadata, without truncating copy or navigation identities.
 Operator dry-run and requeue instructions are in
 [queue operations](../03-operations/queue.md#product-code-recovery-jooxcr-283).
+
+Performer identity co-credit merges retain all source profiles on the canonical
+performer. Operational dry runs, review resolution and reversal are documented
+in [performer identity](../03-operations/performer-identity.md#co-credit-identity).
