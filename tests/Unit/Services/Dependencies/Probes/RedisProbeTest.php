@@ -29,7 +29,7 @@ final class RedisProbeTest extends TestCase
                 return 'PONG';
             }
 
-            public function set(string $key, string $value, array $options): string
+            public function setex(string $key, int $seconds, string $value): string
             {
                 $this->values[$key] = $value;
 
@@ -73,7 +73,7 @@ final class RedisProbeTest extends TestCase
                 return 'PONG';
             }
 
-            public function set(string $key, string $value, array $options): bool
+            public function setex(string $key, int $seconds, string $value): bool
             {
                 return false;
             }
@@ -111,7 +111,7 @@ final class RedisProbeTest extends TestCase
                 return 'PONG';
             }
 
-            public function set(string $key, string $value, array $options): string
+            public function setex(string $key, int $seconds, string $value): string
             {
                 $this->values[$key] = $value;
 

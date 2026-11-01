@@ -45,7 +45,7 @@ final class RedisProbe implements DetailedDependencyProbe
                 $key = 'startup-health:' . bin2hex(random_bytes(12));
                 $value = bin2hex(random_bytes(12));
                 try {
-                    if (! in_array($redis->set($key, $value, ['ex' => 2]), [true, 'OK'], true) || $redis->get($key) !== $value) {
+                    if (! in_array($redis->setex($key, $timeout, $value), [true, 'OK'], true) || $redis->get($key) !== $value) {
                         return new ProbeResult(false, 'Redis prefixed key access failed.');
                     }
                 } finally {
