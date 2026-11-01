@@ -322,8 +322,14 @@ final class PruneLegacyStreamsCommandTest extends TestCase
     public function test_first_discrepancy_stops_before_second_delete(string $mode): void
     {
         $this->mode = $mode;
-        $this->artisan('observability:prune-legacy-streams', $this->runOptions())
-            ->expectsOutputToContain('Already deleted: logs:zzlegacy_a')->assertFailed();
+        if ($mode === 'canary-stays') {
+            $this->artisan('observability:prune-legacy-streams', $this->runOptions())
+                ->expectsOutputToContain('DELETE accepted but removal unverified: logs:zzlegacy_a')
+                ->doesntExpectOutputToContain('Already deleted: logs:zzlegacy_a')->assertFailed();
+        } else {
+            $this->artisan('observability:prune-legacy-streams', $this->runOptions())
+                ->expectsOutputToContain('Already deleted: logs:zzlegacy_a')->assertFailed();
+        }
         self::assertCount(1, Http::recorded(fn(Request $request): bool => $request->method() === 'DELETE'));
         self::assertContains('zzlegacy_b', array_column($this->streams, 'name'));
     }
@@ -349,7 +355,7 @@ final class PruneLegacyStreamsCommandTest extends TestCase
         Http::assertNotSent(fn(Request $request): bool => $request->method() === 'DELETE');
     }
 
-    public function test_audit_failure_after_accepted_delete_stops_and_reports_that_stream(): void
+    public function test_audit_failure_after_accepted_delete_reports_unverified_not_confirmed(): void
     {
         Log::shouldReceive('channel')->with('single')->andReturnSelf();
         Log::shouldReceive('info')->andReturnUsing(static function (string $message, array $context): void {
@@ -358,7 +364,9 @@ final class PruneLegacyStreamsCommandTest extends TestCase
             }
         });
         $this->artisan('observability:prune-legacy-streams', $this->runOptions())
-            ->expectsOutputToContain('Already deleted: logs:zzlegacy_a')
+            ->expectsOutputToContain('Already deleted: ')
+            ->expectsOutputToContain('DELETE accepted but removal unverified: logs:zzlegacy_a')
+            ->doesntExpectOutputToContain('Already deleted: logs:zzlegacy_a')
             ->doesntExpectOutputToContain('TOP-SECRET')->assertFailed();
         self::assertCount(1, Http::recorded(fn(Request $request): bool => $request->method() === 'DELETE'));
     }

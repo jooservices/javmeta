@@ -29,9 +29,13 @@ final class PruneLegacyStreamsCommand extends Command
     /** @var list<string> */
     private array $deleted = [];
 
+    /** @var list<string> */
+    private array $unverifiedDeletes = [];
+
     public function handle(PruneApi $api, StreamPolicy $policy, StreamReferences $references, StreamExport $export): int
     {
         $this->deleted = [];
+        $this->unverifiedDeletes = [];
         try {
             $prefix = (string) $this->option('prefix');
             $policy->validatePrefix($prefix);
@@ -81,6 +85,7 @@ final class PruneLegacyStreamsCommand extends Command
             // Only our sanitized errors are safe to print; filesystem/JSON errors can contain data.
             $this->error($exception instanceof RuntimeException ? $exception->getMessage() : 'Prune failed; diagnostic contents suppressed.');
             $this->line('Already deleted: ' . implode(', ', $this->deleted));
+            $this->line('DELETE accepted but removal unverified: ' . implode(', ', $this->unverifiedDeletes));
 
             return self::FAILURE;
         }
@@ -172,13 +177,16 @@ final class PruneLegacyStreamsCommand extends Command
             $this->assertProtected($protected, $this->protectedCounts($current, $policy));
             $this->line(($index === 0 ? 'Canary delete: ' : 'Delete: ') . $candidate['type'] . ':' . $candidate['name']);
             $api->request('DELETE', $api->orgPath() . '/streams/' . rawurlencode($candidate['name']) . '?type=' . $candidate['type'] . '&delete_all=false');
-            $this->deleted[] = $candidate['type'] . ':' . $candidate['name'];
+            $identity = $candidate['type'] . ':' . $candidate['name'];
+            $this->unverifiedDeletes[] = $identity;
             $current = $api->streams();
             foreach ($current as $stream) {
                 if ($stream['name'] === $candidate['name'] && $stream['stream_type'] === $candidate['type']) {
                     throw new RuntimeException('Deleted stream still present; stopping immediately.');
                 }
             }
+            $this->deleted[] = $identity;
+            array_pop($this->unverifiedDeletes);
             $after = $this->protectedCounts($current, $policy);
             $this->assertProtected($protected, $after);
             $protected = $after;
