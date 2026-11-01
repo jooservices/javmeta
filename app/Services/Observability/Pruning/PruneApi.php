@@ -12,11 +12,14 @@ use Throwable;
 /** Fail closed; never include response bodies or transport exceptions in diagnostics. */
 final class PruneApi
 {
+    private bool $auditFailed = false;
+
     /** @param array<string, mixed> $data
      * @return array<mixed>
      */
     public function request(string $method, string $path, array $data = []): array
     {
+        $this->assertAudited();
         $status = 0;
         try {
             $response = Http::baseUrl((string) config('openobserve.url'))
@@ -27,7 +30,15 @@ final class PruneApi
         } catch (Throwable) {
             throw new RuntimeException('OpenObserve transport failed; response suppressed.');
         } finally {
-            Log::channel('single')->info('OpenObserve prune API', ['method' => $method, 'path' => $path, 'status' => $status]);
+            try {
+                Log::channel('single')->info('OpenObserve prune API', ['method' => $method, 'path' => $path, 'status' => $status]);
+            } catch (Throwable) {
+                $this->auditFailed = true;
+            }
+        }
+        // Let the caller record an accepted DELETE before stopping for an audit failure.
+        if ($method !== 'DELETE') {
+            $this->assertAudited();
         }
         if (! $response->successful()) {
             throw new RuntimeException("OpenObserve HTTP {$status}; response suppressed.");
@@ -41,6 +52,13 @@ final class PruneApi
         }
 
         return $body;
+    }
+
+    public function assertAudited(): void
+    {
+        if ($this->auditFailed) {
+            throw new RuntimeException('API audit logging failed; stopping immediately.');
+        }
     }
 
     public function orgPath(): string

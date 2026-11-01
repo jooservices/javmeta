@@ -11,6 +11,8 @@ use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\ConnectionException;
 use App\Services\Observability\Pruning\StreamExport;
 use App\Services\Observability\Pruning\StreamSnapshot;
+use App\Services\Observability\Pruning\BackupSynchronizer;
+use Mockery;
 use RuntimeException;
 use App\Observability\MetricStreams;
 use Illuminate\Support\Facades\File;
@@ -39,6 +41,7 @@ final class PruneLegacyStreamsCommandTest extends TestCase
         $this->travelTo(now()->setDate(2026, 11, 1)->startOfDay());
         config()->set(['openobserve.url' => 'http://oo.test', 'openobserve.org' => 'default', 'openobserve.stream_logs' => 'customlive_logs', 'openobserve.stream_metrics' => 'customlive_metrics']);
         $this->directory = base_path('.tmp/prune-' . bin2hex(random_bytes(8)));
+        File::ensureDirectoryExists(dirname($this->directory), 0700);
         $this->streams = [self::stream('zzlegacy_a'), self::stream('zzlegacy_b', 'metrics'), self::stream('javmeta_live'), self::stream('xcrawler_logs'), self::stream('customlive_logs')];
         Http::preventStrayRequests();
         Http::fake(function (Request $request) {
@@ -62,6 +65,12 @@ final class PruneLegacyStreamsCommandTest extends TestCase
                 $this->inventoryReads++;
                 if ($this->mode === 'changed-after-export' && $this->inventoryReads === 2) {
                     $this->streams[0]['stats']['doc_num'] = 2;
+                }
+                if ($this->mode === 'protected-shrinks-during-export' && $this->inventoryReads === 2) {
+                    $this->streams[2]['stats']['doc_num'] = 0;
+                }
+                if ($this->mode === 'protected-disappears-during-export' && $this->inventoryReads === 2) {
+                    array_splice($this->streams, 2, 1);
                 }
                 if ($this->inventoryReads === 4 && $this->mode === 'protected-shrinks') {
                     $this->streams[2]['stats']['doc_num'] = 0;
@@ -325,6 +334,51 @@ final class PruneLegacyStreamsCommandTest extends TestCase
         $this->artisan('observability:prune-legacy-streams', $this->runOptions())->assertFailed();
         Http::assertNotSent(fn(Request $request): bool => $request->method() === 'DELETE');
         self::assertFileExists($this->directory . '/manifest.json');
+    }
+
+    public function test_protected_state_cannot_shrink_or_disappear_during_export(): void
+    {
+        $original = $this->streams;
+        foreach (['protected-shrinks-during-export', 'protected-disappears-during-export'] as $mode) {
+            $this->streams = $original;
+            $this->inventoryReads = 0;
+            $this->mode = $mode;
+            $this->artisan('observability:prune-legacy-streams', $this->runOptions())->assertFailed();
+            File::deleteDirectory($this->directory);
+        }
+        Http::assertNotSent(fn(Request $request): bool => $request->method() === 'DELETE');
+    }
+
+    public function test_audit_failure_after_accepted_delete_stops_and_reports_that_stream(): void
+    {
+        Log::shouldReceive('channel')->with('single')->andReturnSelf();
+        Log::shouldReceive('info')->andReturnUsing(static function (string $message, array $context): void {
+            if ($context['method'] === 'DELETE') {
+                throw new RuntimeException('TOP-SECRET logging failure');
+            }
+        });
+        $this->artisan('observability:prune-legacy-streams', $this->runOptions())
+            ->expectsOutputToContain('Already deleted: logs:zzlegacy_a')
+            ->doesntExpectOutputToContain('TOP-SECRET')->assertFailed();
+        self::assertCount(1, Http::recorded(fn(Request $request): bool => $request->method() === 'DELETE'));
+    }
+
+    public function test_sync_failure_on_any_backup_component_aborts_before_deletion(): void
+    {
+        foreach (['logs-zzlegacy_a.ndjson.gz', 'metrics-zzlegacy_b.ndjson.gz', 'manifest.json', '', '..'] as $failure) {
+            $sync = Mockery::mock(BackupSynchronizer::class);
+            $sync->shouldReceive('sync')->andReturnUsing(function (string $path) use ($failure): void {
+                $expected = $failure === '..' ? dirname($this->directory) : $this->directory . ($failure === '' ? '' : '/' . $failure);
+                if ($path === $expected) {
+                    throw new RuntimeException('Cannot sync backup storage.');
+                }
+            });
+            $this->app->instance(BackupSynchronizer::class, $sync);
+            $this->artisan('observability:prune-legacy-streams', $this->runOptions())
+                ->expectsOutputToContain('Cannot sync backup storage')->assertFailed();
+            File::deleteDirectory($this->directory);
+        }
+        Http::assertNotSent(fn(Request $request): bool => $request->method() === 'DELETE');
     }
 
     public function test_searchable_buffer_must_agree_with_metadata_even_when_metadata_is_empty(): void

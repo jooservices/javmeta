@@ -44,7 +44,8 @@ final class PruneLegacyStreamsCommand extends Command
             $streams = $api->streams();
             $candidates = $policy->candidates($streams, $prefix, $types, $days);
             $this->line('Organization: ' . (string) config('openobserve.org'));
-            $this->reportInventory($candidates, $this->protectedCounts($streams, $policy));
+            $initialProtected = $this->protectedCounts($streams, $policy);
+            $this->reportInventory($candidates, $initialProtected);
             if ($candidates === []) {
                 $this->error('Nothing to do: empty candidate list; deletion refused.');
 
@@ -69,6 +70,7 @@ final class PruneLegacyStreamsCommand extends Command
             $this->assertManifest($policy, $current, $prefix, $types, $days, $hash);
             $references->check($candidates, fn(string $message) => $this->line($message));
             $before = $this->protectedCounts($current, $policy);
+            $this->assertProtected($initialProtected, $before);
             $after = $this->deleteCandidates($api, $policy, $references, $candidates, $before, $prefix, $types, $days);
             $this->line('Exported: ' . json_encode($files, JSON_THROW_ON_ERROR));
             $this->line('Protected before/after: ' . json_encode([$before, $after], JSON_THROW_ON_ERROR));
@@ -171,6 +173,7 @@ final class PruneLegacyStreamsCommand extends Command
             $this->line(($index === 0 ? 'Canary delete: ' : 'Delete: ') . $candidate['type'] . ':' . $candidate['name']);
             $api->request('DELETE', $api->orgPath() . '/streams/' . rawurlencode($candidate['name']) . '?type=' . $candidate['type'] . '&delete_all=false');
             $this->deleted[] = $candidate['type'] . ':' . $candidate['name'];
+            $api->assertAudited();
             $current = $api->streams();
             foreach ($current as $stream) {
                 if ($stream['name'] === $candidate['name'] && $stream['stream_type'] === $candidate['type']) {

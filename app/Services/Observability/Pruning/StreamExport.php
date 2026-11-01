@@ -8,7 +8,7 @@ use RuntimeException;
 
 final class StreamExport
 {
-    public function __construct(private readonly PruneApi $api) {}
+    public function __construct(private readonly PruneApi $api, private readonly BackupSynchronizer $synchronizer) {}
 
     /** @param list<array<string, mixed>> $candidates
      * @return list<array<string, mixed>>
@@ -16,7 +16,7 @@ final class StreamExport
     public function export(array $candidates, string $directory, string $hash): array
     {
         // A new private directory prevents accidental overwrites and reuse of an existing leaf symlink.
-        if ($directory === '' || file_exists($directory) || is_link($directory) || ! mkdir($directory, 0700, true) || ! chmod($directory, 0700)) {
+        if ($directory === '' || file_exists($directory) || is_link($directory) || ! mkdir($directory, 0700) || ! chmod($directory, 0700)) {
             throw new RuntimeException('Export requires a new, writable directory.');
         }
         $files = [];
@@ -31,6 +31,9 @@ final class StreamExport
         if (! chmod($manifestPath, 0600)) {
             throw new RuntimeException('Cannot secure export manifest.');
         }
+        $this->synchronizer->sync($manifestPath);
+        $this->synchronizer->sync($directory);
+        $this->synchronizer->sync(dirname($directory));
 
         return $files;
     }
@@ -63,6 +66,7 @@ final class StreamExport
         if ($count !== $candidate['count'] || $verified !== $candidate['count']) {
             throw new RuntimeException('Export document count mismatch; no deletion allowed.');
         }
+        $this->synchronizer->sync($path);
         $checksum = hash_file('sha256', $path);
         if ($checksum === false) {
             throw new RuntimeException('Export checksum failed.');

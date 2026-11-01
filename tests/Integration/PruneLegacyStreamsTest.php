@@ -23,6 +23,7 @@ final class PruneLegacyStreamsTest extends TestCase
         $log = $prefix . 'logs';
         $metric = $prefix . 'metric';
         $directory = base_path('.tmp/prune-integration-' . $random);
+        File::ensureDirectoryExists(dirname($directory), 0700);
         $api = app(PruneApi::class);
         $org = $api->orgPath();
         config()->set('openobserve.stream_logs', $sibling);
@@ -36,7 +37,8 @@ final class PruneLegacyStreamsTest extends TestCase
             ]]]]]]]);
             $policy = app(StreamPolicy::class);
             $candidates = [];
-            $deadline = time() + 720;
+            // File retention and statistics refresh can each take 600 seconds on the shared service.
+            $deadline = time() + 1500;
             do {
                 $candidates = $policy->candidates($api->streams(), $prefix, ['logs', 'metrics'], 0);
                 if (count($candidates) === 2 && array_sum(array_column($candidates, 'count')) === 2) {
@@ -65,6 +67,7 @@ final class PruneLegacyStreamsTest extends TestCase
             self::assertSame(1, $siblings[0]['stats']['doc_num']);
             $this->artisan('observability:prune-legacy-streams', $options)->expectsOutputToContain('Nothing to do')->assertFailed();
         } finally {
+            File::deleteDirectory($directory);
             // Exact generated identities only; never clean by prefix or touch existing streams.
             foreach ($created as [$name, $type]) {
                 $exists = array_filter($api->streams(), static fn(array $row): bool => $row['name'] === $name && $row['stream_type'] === $type);
@@ -72,7 +75,6 @@ final class PruneLegacyStreamsTest extends TestCase
                     $api->request('DELETE', $org . '/streams/' . $name . '?type=' . $type . '&delete_all=false');
                 }
             }
-            File::deleteDirectory($directory);
         }
     }
 }
