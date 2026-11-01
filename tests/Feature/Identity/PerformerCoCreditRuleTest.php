@@ -10,6 +10,7 @@ use App\Models\Movie;
 use App\Models\Performer;
 use App\Models\PerformerIdentityEvent;
 use App\Models\PerformerSource;
+use App\Services\Identity\PerformerCoCreditRule;
 use App\Services\Identity\PerformerIdentityService;
 use App\Services\Persist\MoviePersister;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -61,6 +62,55 @@ final class PerformerCoCreditRuleTest extends TestCase
         self::assertDatabaseCount('performer_name_keys', 0);
         self::assertNull($right->fresh()->canonical_performer_id);
         self::assertDatabaseHas('performer_identity_reviews', ['status' => 'open']);
+    }
+
+    public function test_sources_without_movie_credits_skip_the_name_candidate_lookup(): void
+    {
+        $left = $this->performer('left', 'Aoi Sakura');
+        $right = $this->performer('right', 'Sakura Aoi');
+        $identities = app(PerformerIdentityService::class);
+        foreach ([$left->id, $right->id] as $performerId) {
+            $identities->refreshNameKeys(PerformerSource::query()
+                ->where('source_performer_id', $performerId)->firstOrFail());
+        }
+        $source = PerformerSource::query()->where('source_performer_id', $left->id)->firstOrFail();
+
+        $candidateLookups = [];
+        DB::listen(static function ($query) use (&$candidateLookups): void {
+            if (str_contains($query->sql, 'performer_name_keys')) {
+                $candidateLookups[] = $query->sql;
+            }
+        });
+        $evaluation = app(PerformerCoCreditRule::class)->evaluate($source);
+
+        self::assertSame('review', $evaluation['decision']);
+        self::assertSame([], $candidateLookups);
+    }
+
+    public function test_same_site_name_candidates_skip_the_movie_candidate_lookup(): void
+    {
+        $left = $this->performer('same-site', 'Aoi Sakura');
+        $right = $this->performer('same-site', 'Sakura Aoi');
+        $movie = Movie::factory()->create();
+        $this->credit($left, $movie);
+        $this->credit($right, $movie);
+        $identities = app(PerformerIdentityService::class);
+        foreach ([$left->id, $right->id] as $performerId) {
+            $identities->refreshNameKeys(PerformerSource::query()
+                ->where('source_performer_id', $performerId)->firstOrFail());
+        }
+        $source = PerformerSource::query()->where('source_performer_id', $left->id)->firstOrFail();
+
+        $candidateLookups = [];
+        DB::listen(static function ($query) use (&$candidateLookups): void {
+            if (str_contains($query->sql, 'performer_name_keys') && str_contains($query->sql, 'movie_performers')) {
+                $candidateLookups[] = $query->sql;
+            }
+        });
+        $evaluation = app(PerformerCoCreditRule::class)->evaluate($source);
+
+        self::assertSame('review', $evaluation['decision']);
+        self::assertSame([], $candidateLookups);
     }
 
     #[DataProvider('rejectedPairs')]

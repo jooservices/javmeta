@@ -34,15 +34,25 @@ final class PerformerCoCreditRule
     public function candidates(PerformerSource $source): \Generator
     {
         $keys = $this->fullNames($source);
-        if ($keys === []) {
+        if ($keys === [] || ! $this->hasMovieCredit($source) || ! $this->hasCrossSiteNameCandidate($source, $keys)) {
             return;
         }
+        yield from $this->candidateMatches($source, $keys);
+    }
+
+    /** @param list<string> $keys @return \Generator<int, array<string, mixed>> */
+    private function candidateMatches(PerformerSource $source, array $keys): \Generator
+    {
         $query = PerformerSource::query()->whereNull('removed_at')
             ->where('performer_id', '<>', $source->performer_id)
             ->where('site_slug', '<>', $source->site_slug)
             ->whereIn('source_performer_id', DB::table('performer_name_keys as k')
+                ->join('performer_sources as eligible', 'eligible.source_performer_id', '=', 'k.source_performer_id')
                 ->join('movie_performers as c', 'c.performer_id', '=', 'k.source_performer_id')
                 ->join('movie_performers as own', 'own.movie_id', '=', 'c.movie_id')
+                ->whereNull('eligible.removed_at')
+                ->where('eligible.performer_id', '<>', $source->performer_id)
+                ->where('eligible.site_slug', '<>', $source->site_slug)
                 ->where('own.performer_id', $source->source_performer_id)
                 ->where('own.source_slug', $source->site_slug)
                 ->whereIn('k.normalized_name', $keys)->select('k.source_performer_id'))
@@ -146,9 +156,21 @@ final class PerformerCoCreditRule
     /** @return array<string, mixed> */
     public function evaluate(PerformerSource $source): array
     {
+        $keys = $this->fullNames($source);
+        if ($keys === [] || ! $this->hasMovieCredit($source) || ! $this->hasCrossSiteNameCandidate($source, $keys)) {
+            return [
+                'decision' => 'review',
+                'candidate_id' => null,
+                'reason' => null,
+                'similarity' => 0.0,
+                'co_credit' => null,
+                'review_candidates' => [],
+            ];
+        }
+
         $first = null;
         $ambiguous = false;
-        foreach ($this->candidates($source) as $candidate) {
+        foreach ($this->candidateMatches($source, $keys) as $candidate) {
             if ($candidate['reason'] !== 'co_credit') {
                 continue;
             }
@@ -165,14 +187,35 @@ final class PerformerCoCreditRule
             'reason' => $merge ? 'co_credit' : null,
             'similarity' => $merge ? 1.0 : 0.0,
             'co_credit' => $merge ? $first : null,
-            'review_candidates' => $this->reviews($source, $ambiguous),
+            'review_candidates' => $this->reviews($source, $ambiguous, $keys),
         ];
     }
 
-    /** @return \Generator<int, array{id: int, reason: string, similarity: float}> */
-    private function reviews(PerformerSource $source, bool $ambiguous): \Generator
+    private function hasMovieCredit(PerformerSource $source): bool
     {
-        foreach ($this->candidates($source) as $candidate) {
+        return DB::table('movie_performers')->where('performer_id', $source->source_performer_id)
+            ->where('source_slug', $source->site_slug)->exists();
+    }
+
+    /**
+     * Candidate roots must share an indexed name before movie-credit matching is useful.
+     *
+     * @param list<string> $keys
+     */
+    private function hasCrossSiteNameCandidate(PerformerSource $source, array $keys): bool
+    {
+        return DB::table('performer_name_keys as k')
+            ->join('performer_sources as candidate', 'candidate.source_performer_id', '=', 'k.source_performer_id')
+            ->whereIn('k.normalized_name', $keys)
+            ->whereNull('candidate.removed_at')
+            ->where('candidate.performer_id', '<>', $source->performer_id)
+            ->where('candidate.site_slug', '<>', $source->site_slug)->exists();
+    }
+
+    /** @param list<string> $keys @return \Generator<int, array{id: int, reason: string, similarity: float}> */
+    private function reviews(PerformerSource $source, bool $ambiguous, array $keys): \Generator
+    {
+        foreach ($this->candidateMatches($source, $keys) as $candidate) {
             if ($candidate['reason'] !== 'co_credit' || $ambiguous) {
                 yield ['id' => $candidate['candidate_source_id'], 'reason' => $candidate['reason'] === 'co_credit' ? 'co_credit_ambiguous' : $candidate['reason'], 'similarity' => 1.0];
             }
