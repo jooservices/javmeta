@@ -279,7 +279,6 @@ startup_health() {
   timeout 660 "${answers[PHP_BINARY]}" artisan health:startup "--role=$role"
 }
 activate_release() {
-  step 'Startup health on the new release' startup_health
   ln -s "$release" "$base/.current-$$"
   mv -Tf "$base/.current-$$" "$base/current"
 }
@@ -321,6 +320,7 @@ apply_release() {
   ln -s "$base/shared/storage" storage
   step 'Install authoritative production dependencies' composer install --no-dev --classmap-authoritative --no-interaction --prefer-dist
   step 'UI render smoke' node ui-tests/render-smoke.mjs
+  step 'Startup health on staged release' startup_health
   quiesced=0
   if (( ! no_start )); then quiesced=1; step 'Quiesce scheduler and workers' unit_action stop "${answers[STOP_UNITS]}"; fi
   if [[ "${answers[NODE_ROLE]}" == primary ]]; then

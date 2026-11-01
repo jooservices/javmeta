@@ -28,4 +28,18 @@ final class BrowserProbeTest extends TestCase
 
         self::assertNull((new BrowserProbe())->check()->available);
     }
+
+    public function test_it_rejects_a_missing_configured_browser_endpoint(): void
+    {
+        config([
+            'javmeta_health.startup.flaresolverr_url' => 'http://flare.example.test/v1',
+            'javmeta_health.startup.playwright_url' => '',
+        ]);
+        Http::fake(static fn() => Http::response([], 404));
+
+        $result = (new BrowserProbe())->check();
+
+        self::assertFalse($result->available);
+        self::assertSame('A configured browser endpoint failed.', $result->message);
+    }
 }

@@ -59,6 +59,7 @@ set +e
   answers[NODE_ROLE]=primary
   export STARTUP_HEALTH_EXIT=1
   trap rollback ERR
+  step 'Startup health on staged release' startup_health
   activate_release
 ) > "$fixture/rollback.log" 2>&1
 rollback_status=$?

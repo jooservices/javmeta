@@ -9,7 +9,8 @@ Each network probe has a maximum two-second timeout.
 
 ## Policy and fallback
 
-PostgreSQL (`SELECT 1` and `SHOW timezone` must report UTC), Redis (PING and a
+PostgreSQL (`SELECT 1` and `SHOW timezone` must report UTC; PostgreSQL's
+`Etc/UTC` alias is accepted), Redis (PING and a
 prefixed write/read/delete on each configured queue, cache, session and Horizon
 connection), and MongoDB (ping plus a fresh read of the settings store) are
 always primary. Elasticsearch is primary on the web role and secondary on
@@ -39,8 +40,12 @@ OpenObserve is available; it never blocks startup.
 - The native Horizon, scheduler and embedder systemd units run
   `health:startup` in `ExecStartPre`, using the database-configured wait with a
   bounded 660-second start timeout and restart-on-failure policy.
+- A clean `horizon:terminate` or `schedule:work` exit does not trigger
+  `Restart=on-failure`; use `systemctl restart <unit-prefix>-horizon` or
+  `systemctl restart <unit-prefix>-scheduler` for maintenance reloads.
 - The installer runs the health command against the staged release before it
-  replaces `current`. Failure follows the normal release rollback path.
+  stops existing units or replaces `current`. A failed check leaves the active
+  release and units untouched.
 
 `staging:readiness` is unchanged. It remains the post-start operational check,
 not the dependency gate.

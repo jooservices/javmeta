@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
-use App\Listeners\StartupCommandListener;
+use App\Console\Listeners\StartupCommandListener;
 use App\Services\Settings\SettingsService;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Queue\Events\JobProcessing;

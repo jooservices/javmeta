@@ -83,6 +83,17 @@ final class SettingsService
         return $this->apply();
     }
 
+    /** Restore the code defaults if a previously loaded settings store becomes unavailable. */
+    public function restoreDefaults(): void
+    {
+        $this->captureDefaults();
+        foreach ($this->definitions() as $key => $definition) {
+            foreach ((array) $definition['config'] as $configKey) {
+                config([$configKey => self::$defaults[$key] ?? null]);
+            }
+        }
+    }
+
     /**
      * Everything the Settings page shows. A secret is never returned: only whether it is set.
      *

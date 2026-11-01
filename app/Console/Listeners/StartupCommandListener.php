@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Listeners;
+namespace App\Console\Listeners;
 
 use App\Services\Health\StartupCommandGate;
 use App\Services\Settings\SettingsService;
@@ -17,7 +17,10 @@ final readonly class StartupCommandListener
 
     public function handle(CommandStarting $event): void
     {
-        $this->settings->apply();
+        if (! $this->settings->apply()) {
+            $this->settings->restoreDefaults();
+        }
+
         $this->gate->handle($event->command);
     }
 }

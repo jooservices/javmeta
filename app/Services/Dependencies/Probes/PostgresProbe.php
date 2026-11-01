@@ -35,13 +35,16 @@ final class PostgresProbe implements DetailedDependencyProbe
             config(["database.connections.{$connectionName}.options." . PDO::ATTR_TIMEOUT => $timeout]);
             DB::purge($connectionName);
             $connection = DB::connection();
-            $connection->statement('SET statement_timeout TO ' . ($timeout * 1000));
-            $connection->select('SELECT 1');
-            $timezone = $connection->select('SHOW timezone');
+            $timezone = $connection->transaction(function () use ($connection, $timeout): array {
+                $connection->statement('SET LOCAL statement_timeout TO ' . ($timeout * 1000));
+                $connection->select('SELECT 1');
+
+                return $connection->select('SHOW timezone');
+            });
             $first = (array) ($timezone[0] ?? []);
             $value = strtoupper(trim((string) (reset($first) ?: '')));
 
-            if ($value !== 'UTC') {
+            if (! in_array($value, ['UTC', 'ETC/UTC'], true)) {
                 return new ProbeResult(false, 'PostgreSQL timezone must be UTC.');
             }
 

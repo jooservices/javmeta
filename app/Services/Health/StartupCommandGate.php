@@ -66,6 +66,7 @@ final readonly class StartupCommandGate
     {
         return match (true) {
             str_starts_with($command, 'schedule:') => 'scheduler',
+            $command === 'javmeta:backup-status' => 'worker',
             $command === 'horizon', str_starts_with($command, 'queue:'), str_starts_with($command, 'crawler:'),
             str_starts_with($command, 'performers:'), str_starts_with($command, 'performer:'),
             str_starts_with($command, 'media:'), str_starts_with($command, 'search:backfill'),

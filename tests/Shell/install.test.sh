@@ -20,6 +20,7 @@ if [[ "${0##*/}" == php && "$*" == *probe.php* ]]; then
   if [[ "${FAIL_STEP:-}" == timezone ]]; then echo "Database timezone MUST be UTC"; exit 1; fi
   if [[ "${FAIL_STEP:-}" == retry && ! -e "$CALLS.retry" ]]; then touch "$CALLS.retry"; exit 1; fi
 fi
+if [[ "${0##*/}" == php && "$*" == *health:startup* && "${FAIL_STEP:-}" == startup ]]; then exit 1; fi
 if [[ "${0##*/}" == php && "$*" == *random_bytes* ]]; then echo generated-private-key; fi
 if [[ "${0##*/}" == php && ( "$*" == *rawurlencode* || "$*" == *mongo-uri.php* ) ]]; then echo mongodb://fixture.invalid/fixture; fi
 if [[ "${0##*/}" == php && "$*" == *operations:make-super-admin* ]]; then echo private-owner-password; fi
@@ -47,10 +48,10 @@ git -C "$fixture/repo" -c core.hooksPath=/dev/null commit -qm 'test: Fixture'
 git -C "$fixture/repo" tag v-test
 sha="$(git -C "$fixture/repo" rev-parse HEAD)"
 # Populate all required fields; optional integrations remain disabled.
-jq --arg repo "$fixture/repo" --arg target "$fixture/node" --arg user "$(id -un 2>/dev/null || id -u)" '
+jq --arg repo "$fixture/repo" --arg target "$fixture/node" --arg user "$(id -un 2>/dev/null || id -u)" --arg php "$fixture/bin/php" '
   [.options[], .services[].fields[]] | map({key:.key,value:(if .secret then "private-test-value" elif .key == "CREDENTIALS_FILE" then ($target+".credentials") elif .default != "" then .default else "fixture" end)}) | from_entries
   | .REPO_URL=$repo | .TARGET_DIR=$target | .SERVICE_USER="fixture-user" | .DB_DATABASE="fixture" | .REF="candidate"
-  | .APP_URL="https://fixture.invalid" | .DB_HOST="fixture.invalid" | .MONGO_URI="mongodb://fixture.invalid/fixture"
+  | .APP_URL="https://fixture.invalid" | .DB_HOST="fixture.invalid" | .MONGO_URI="mongodb://fixture.invalid/fixture" | .PHP_BINARY=$php
   | .JAVMETA_UI_LOGIN_REQUIRED="false"
   | .APP_KEY="" | .CI_CHECKS="" | .INSTALL_NODE="0" | .READINESS_TIMEOUT="1" | .BACKUP_FILE=($target+".dump") | .BACKUP_RESTORE_VERIFIED="1"' "$root/deploy/manifest.json" > "$fixture/answers.json"
 chmod 600 "$fixture/answers.json"
@@ -77,9 +78,11 @@ grep -q 'retry' "$fixture/log" || fail 'validation did not re-prompt'
 [[ ! -e "$fixture/node" ]] || fail 'validate-only changed node'
 mkdir -p "$fixture/node/releases/old" "$fixture/node/shared"
 ln -s "$fixture/node/releases/old" "$fixture/node/current"
-for failure in ui migrate import restart readiness horizon; do
+for failure in startup ui migrate import restart readiness horizon; do
+  : > "$CALLS"
   if FAIL_STEP="$failure" bash "$script" --non-interactive --config "$fixture/answers.json" --skip-os-install --apply > "$fixture/log" 2>&1; then fail "ignored $failure"; fi
   [[ "$(readlink "$fixture/node/current")" == "$fixture/node/releases/old" ]] || fail 'rollback failed'
+  if [[ "$failure" == startup ]] && grep -Eq '^sudo .*systemctl stop' "$CALLS"; then fail 'wizard quiesced units before staged startup health passed'; fi
   ! grep -q 'private-test-value' "$fixture/log" || fail 'secret leaked on failure'
 done
 rm -- "$fixture/node/current"

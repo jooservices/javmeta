@@ -30,7 +30,7 @@ final class BrowserProbe implements DetailedDependencyProbe
         foreach ($endpoints as $endpoint) {
             try {
                 $status = Http::withoutRedirecting()->connectTimeout($timeout)->timeout($timeout)->head(rtrim($endpoint, '/'))->status();
-                if ($status < 200 || $status >= 500) {
+                if ($status < 200 || $status === 404 || $status >= 500) {
                     return new ProbeResult(false, 'A configured browser endpoint failed.');
                 }
             } catch (Throwable) {

@@ -6,6 +6,7 @@ namespace Tests\Unit\Services\Dependencies;
 
 use App\Services\Dependencies\DependencyProbe;
 use App\Services\Dependencies\Probes\PostgresProbe;
+use Closure;
 use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\DB;
 use Mockery;
@@ -17,7 +18,10 @@ final class PostgresProbeTest extends TestCase
     {
         config(['database.default' => 'pgsql']);
         $connection = Mockery::mock(Connection::class);
-        $connection->shouldReceive('statement')->once()->with('SET statement_timeout TO 2000');
+        $connection->shouldReceive('transaction')
+            ->once()
+            ->andReturnUsing(static fn(Closure $callback): mixed => $callback());
+        $connection->shouldReceive('statement')->once()->with('SET LOCAL statement_timeout TO 2000');
         $connection->shouldReceive('select')
             ->once()
             ->with('SELECT 1')
@@ -25,7 +29,7 @@ final class PostgresProbeTest extends TestCase
         $connection->shouldReceive('select')
             ->once()
             ->with('SHOW timezone')
-            ->andReturn([['TimeZone' => 'UTC']]);
+            ->andReturn([['TimeZone' => 'Etc/UTC']]);
 
         DB::shouldReceive('purge')->once()->with((string) config('database.default'));
         DB::shouldReceive('connection')->once()->andReturn($connection);
@@ -40,7 +44,10 @@ final class PostgresProbeTest extends TestCase
     {
         config(['database.default' => 'pgsql']);
         $connection = Mockery::mock(Connection::class);
-        $connection->shouldReceive('statement')->once()->with('SET statement_timeout TO 2000');
+        $connection->shouldReceive('transaction')
+            ->once()
+            ->andReturnUsing(static fn(Closure $callback): mixed => $callback());
+        $connection->shouldReceive('statement')->once()->with('SET LOCAL statement_timeout TO 2000');
         $connection->shouldReceive('select')
             ->once()
             ->with('SELECT 1')
@@ -56,7 +63,10 @@ final class PostgresProbeTest extends TestCase
     {
         config(['database.default' => 'pgsql']);
         $connection = Mockery::mock(Connection::class);
-        $connection->shouldReceive('statement')->once()->with('SET statement_timeout TO 2000');
+        $connection->shouldReceive('transaction')
+            ->once()
+            ->andReturnUsing(static fn(Closure $callback): mixed => $callback());
+        $connection->shouldReceive('statement')->once()->with('SET LOCAL statement_timeout TO 2000');
         $connection->shouldReceive('select')->once()->with('SELECT 1')->andReturn([['?column?' => 1]]);
         $connection->shouldReceive('select')->once()->with('SHOW timezone')->andReturn([['TimeZone' => 'Asia/Bangkok']]);
         DB::shouldReceive('purge')->once()->with((string) config('database.default'));
