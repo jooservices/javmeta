@@ -987,6 +987,7 @@
     "/api/v1/status/sources": {
       "get": {
         "summary": "Health of every crawl source",
+        "description": "Each source includes lane (direct or browser), reflecting the current split setting, manual pins and the persisted 24-hour fetch classification.",
         "tags": [
           "api"
         ],

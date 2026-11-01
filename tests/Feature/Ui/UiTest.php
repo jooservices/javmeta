@@ -77,6 +77,7 @@ final class UiTest extends TestCase
 
         $sources = $this->actingAs($owner)->getJson('/ui-api/status/sources')->assertOk();
         $this->assertSame('demo', $sources->json('data.0.slug'));
+        $this->assertSame('direct', $sources->json('data.0.lane'));
         $this->assertSame(['pending', 'claimed', 'done', 'failed'], array_keys($sources->json('data.0.queue')));
     }
 }

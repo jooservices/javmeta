@@ -173,7 +173,7 @@ final class DeploymentSmokeCheck
             return $this->check('queue_depth', 'fail', 'Queue depth could not be read.');
         }
 
-        $fullQueues = array_filter($depths, static fn(int $depth): bool => $depth >= $limit);
+        $fullQueues = array_filter($depths, static fn(int $depth, string $name): bool => $depth >= LaravelCrawlQueue::depthLimit($name), ARRAY_FILTER_USE_BOTH);
         $maximum = max($depths);
         if ($fullQueues !== []) {
             $names = implode(', ', array_keys($fullQueues));

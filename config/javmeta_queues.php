@@ -11,6 +11,7 @@ $crawlQueueNames = [
     CrawlQueue::KIND_PERFORMER_DETAIL => 'performer_detail',
     CrawlQueue::KIND_GALLERY => 'gallery',
 ];
+$browserQueueNames = array_map(static fn(string $name): string => 'browser_' . $name, $crawlQueueNames);
 $searchQueueName = 'search';
 $workerQueueNames = [...array_values($crawlQueueNames), $searchQueueName];
 $observabilityQueueName = 'observability';
@@ -18,9 +19,17 @@ $observabilityQueueName = 'observability';
 /** Laravel queue names used by the feed pool and Horizon supervisors. */
 return [
     'names' => $crawlQueueNames,
+    'browser_names' => $browserQueueNames,
+    'lanes_enabled' => true,
+    'lane_browser_percent' => 25,
+    'lane_min_attempts' => 40,
+    'lane_direct_pins' => [],
+    'lane_browser_pins' => [],
+    'browser_depth_limit' => 100,
+    'browser_workers_per_queue' => max(1, (int) env('JAVMETA_BROWSER_WORKERS_PER_QUEUE', 2)),
 
     /** Queue names included in the feed-pool queue set; only crawl kinds map to crawl_queue rows. */
-    'feed_pool_names' => $workerQueueNames,
+    'feed_pool_names' => [...$workerQueueNames, ...array_values($browserQueueNames)],
 
     'search_queue' => $searchQueueName,
     'observability_queue' => $observabilityQueueName,
@@ -31,7 +40,7 @@ return [
     'observability_depth_limit' => max(1, (int) env('JAVMETA_OBSERVABILITY_QUEUE_DEPTH_LIMIT', 1000)),
 
     /** Queues supervised by Horizon; search and observability are not crawl_queue kinds. */
-    'horizon_names' => [...$workerQueueNames, $observabilityQueueName],
+    'horizon_names' => [...$workerQueueNames, ...array_values($browserQueueNames), $observabilityQueueName],
 
     /** Workers per queue name on each instance (POC: 1). */
     'workers_per_queue' => max(1, (int) env('JAVMETA_WORKERS_PER_QUEUE', 1)),

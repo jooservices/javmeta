@@ -100,3 +100,67 @@ earlier run count against the budget. The gap adapts to the answers of the site:
 double it up to `JAVMETA_GAP_BLOCKED_MAX_SECONDS` (default 600); timeouts and network errors raise it by half up to the
 source maximum; parse and not-found errors do not change it; every success lowers it by 10 percent of the distance to
 its minimum. The current gap is in `crawler:sources`, the status API and the metric `javmeta_source_gap_seconds`.
+
+
+## Direct and browser lanes
+
+`crawl.lanes_enabled` (Settings UI, default true) separates the five crawl kinds into
+`listing`, `detail`, `performer_listing`, `performer_detail`, `gallery` and their
+`browser_` counterparts. Search indexes application data rather than fetching a
+source; `search` and `observability` keep their existing queues. Every queue has
+its own Horizon supervisor and wait metric; deployment readiness checks both crawl
+lanes, including while the split is disabled so already queued browser jobs drain.
+
+The static `queue.browser_sources` list is the default browser lane. The complete
+04:00 `crawler:source-health` run also aggregates the preceding 24 hours of
+`crawl_fetch_attempts` (excluding skipped attempts). At least 40 attempts and at
+least 25% FlareSolverr/Playwright attempts assign a source to browser. The two
+thresholds are `crawl.lane_min_attempts` and `crawl.lane_browser_percent`. The
+snapshot is stored in `sources.browser_lane`; insufficient or expired history
+clears a computed decision. Runtime-escalating sources such as heyzo therefore
+join the browser cap after classification without editing the static list.
+A first unseen escalation can occur before the next daily classification; pin a
+known browser-dependent source immediately when operational evidence requires it.
+
+Manual `crawl.lane_browser_pins` and `crawl.lane_direct_pins` (one slug per line)
+override computed/static assignment. If a slug appears in both lists, direct wins;
+remove the direct pin to switch it to browser. Current effective lanes appear in
+`crawler:sources [--json]`, `/api/v1/status/sources`, MCP crawl status and Crawl &
+sources. Settings are database-backed and Vietnamese-labelled in Cài đặt.
+
+`JAVMETA_WORKERS_PER_QUEUE` controls direct workers per queue per node;
+`JAVMETA_BROWSER_WORKERS_PER_QUEUE` controls browser workers (default 2). Horizon
+reads these at startup. Each lane gets its own feed-pool dispatch budget (the
+`--limit`/`queue.feed_pool_limit` value per lane), so a full direct backlog cannot
+consume the browser dispatch budget. Queue depth limits are independent:
+`queue.depth_limit` and `queue.browser_depth_limit`. Pacing and per-source
+inflight limits remain shared across the source's work. `queue.browser_inflight`
+is a fleet-wide claimed-row cap across every browser source and crawl kind,
+including computed runtime-escalating sources and legacy claims on old queues.
+PostgreSQL serializes claim transactions with an advisory transaction lock so
+concurrent feeders cannot oversubscribe that cap.
+
+### Two-node rollout and rollback
+
+1. Pause the scheduler's feed-pool invocation and allow existing workers to finish
+   active jobs. Keep only one scheduler in the fleet.
+2. Apply the additive `sources.browser_lane` migration on the scheduler node.
+   Install the release on both nodes; refresh config caches, then gracefully
+   restart Horizon on worker nodes first, followed by the scheduler node. Verify
+   all direct and browser supervisors are running before resuming dispatch.
+3. Resume the scheduler. Run the existing complete `crawler:source-health` check
+   to seed classification now, or wait for 04:00; static/manual assignment works
+   immediately. Check source lanes, queue depths and Horizon wait metrics.
+4. Existing queued jobs retain their original queue name and claim token. Both
+   queue sets remain supervised. No queue payloads or claimed rows are rewritten.
+   Stale unstarted claims return to pending without spending an attempt; a new
+   claim token makes a delayed old job a no-op. Started rows retain the existing
+   stale timeout/retry policy. Never manually duplicate or flush queued jobs.
+5. To disable splitting, set `crawl.lanes_enabled=false` in Cài đặt. New claims
+   use old queue names; leave browser supervisors running until all old browser
+   ready/delayed/reserved jobs drain. Pause dispatch and drain both sets before
+   reverting code; keep the additive column until all new code has stopped.
+
+Additional worker-only nodes use the same two worker-count variables and queue
+supervisors. Browser-service capacity remains shared across the whole fleet;
+increasing worker nodes does not increase that capacity.

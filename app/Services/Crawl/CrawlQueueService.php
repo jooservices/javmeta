@@ -22,9 +22,13 @@ final class CrawlQueueService
     /**
      * @param  list<string>  $excludeSources  sources that must not get a row now (for example their pacing budget is used up)
      */
-    public function claimNext(string $workerId, ?string $kind = null, array $excludeSources = []): ?CrawlQueue
+    public function claimNext(string $workerId, ?string $kind = null, array $excludeSources = [], ?string $lane = null): ?CrawlQueue
     {
-        return DB::transaction(function () use ($workerId, $kind, $excludeSources): ?CrawlQueue {
+        return DB::transaction(function () use ($workerId, $kind, $excludeSources, $lane): ?CrawlQueue {
+            // Serialize claims across feeder processes so the global browser cap cannot be oversubscribed.
+            if (DB::getDriverName() === 'pgsql') {
+                DB::select('SELECT pg_advisory_xact_lock(?)', [281]);
+            }
             $query = CrawlQueue::query()
                 ->where('status', CrawlQueue::STATUS_PENDING)
                 ->where(function ($q): void {
@@ -34,6 +38,15 @@ final class CrawlQueueService
 
             if ($kind !== null) {
                 $query->where('kind', $kind);
+            }
+
+            if ($lane !== null && config('javmeta_queues.lanes_enabled', true)) {
+                $browser = app(CrawlLaneService::class)->browserSources();
+                if ($lane === 'browser') {
+                    $query->whereIn('source_slug', $browser);
+                } else {
+                    $query->whereNotIn('source_slug', $browser);
+                }
             }
 
             // Rows of a disabled source stay queued until it is enabled again.
@@ -107,7 +120,7 @@ final class CrawlQueueService
         // The browser services (FlareSolverr, Playwright on the Dev VM) serve every Cloudflare source at once: when the rows
         // claimed by those sources reach the shared cap, none of them is claimed until some finish.
         $cap = (int) config('javmeta_queues.browser_inflight', 0);
-        $browserSources = array_values(array_filter((array) config('javmeta_queues.browser_sources', []), 'is_string'));
+        $browserSources = app(CrawlLaneService::class)->browserSources();
         if ($cap > 0 && $browserSources !== []) {
             $claimed = CrawlQueue::query()->where('status', CrawlQueue::STATUS_CLAIMED)->whereIn('source_slug', $browserSources)->count();
             if ($claimed >= $cap) {

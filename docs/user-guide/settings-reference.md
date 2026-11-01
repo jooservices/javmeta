@@ -50,6 +50,42 @@ Các nguồn cần FlareSolverr/Playwright trên Dev VM dùng chung giới hạn
 
 Số nguyên; từ 0 đến 64. Mã mục: `queue.browser_inflight`.
 
+### Tách làn crawl
+
+Tách queue HTTP trực tiếp và trình duyệt. Tắt để dùng chung queue cũ; các job đang chờ vẫn được xử lý.
+
+Bật/tắt. Mã mục: `crawl.lanes_enabled`.
+
+### Tỷ lệ dùng trình duyệt (%)
+
+Nguồn có tỷ lệ fetch bằng FlareSolverr/Playwright đạt mức này trong 24 giờ được chuyển sang làn trình duyệt khi kiểm tra sức khỏe nguồn.
+
+Số nguyên; từ 0 đến 100. Mã mục: `crawl.lane_browser_percent`.
+
+### Số fetch tối thiểu để phân làn
+
+Chỉ tự phân làn khi đủ số lần fetch trong 24 giờ; bỏ qua lần bị skipped.
+
+Số nguyên; từ 1 đến 1000000. Mã mục: `crawl.lane_min_attempts`.
+
+### Ghim nguồn vào làn trực tiếp
+
+Mỗi dòng một mã nguồn. Ưu tiên hơn danh sách mặc định, kết quả tự động và ghim trình duyệt.
+
+Danh sách văn bản. Mã mục: `crawl.lane_direct_pins`.
+
+### Ghim nguồn vào làn trình duyệt
+
+Mỗi dòng một mã nguồn. Ưu tiên hơn kết quả tự động; bỏ ghim trực tiếp trước nếu có.
+
+Danh sách văn bản. Mã mục: `crawl.lane_browser_pins`.
+
+### Độ sâu queue trình duyệt
+
+Số job chờ tối đa trong mỗi queue làn trình duyệt.
+
+Số nguyên; từ 1 đến 100000. Mã mục: `queue.browser_depth_limit`.
+
 ### Nguồn cần trình duyệt (mỗi dòng một mã nguồn)
 
 Ví dụ javlibrary, javbus, missav, jable, warashi, javdatabase.
