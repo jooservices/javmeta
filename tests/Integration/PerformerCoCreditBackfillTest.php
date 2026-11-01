@@ -79,15 +79,18 @@ final class PerformerCoCreditBackfillTest extends IntegrationTestCase
         $source = PerformerSource::query()->where('source_performer_id', $left->id)->firstOrFail();
         $queries = [];
         DB::listen(static function ($query) use (&$queries): void {
-            if (str_contains($query->sql, '"own"') || str_contains($query->sql, 'COUNT(DISTINCT')) {
+            if (str_contains($query->sql, '"own"') || str_contains($query->sql, 'COUNT(DISTINCT')
+                || str_contains($query->sql, 'from "performers" where "source_slug"')) {
                 $queries[] = [$query->sql, $query->bindings, $query->time];
             }
         });
+        Performer::query()->where('source_slug', $left->source_slug)->where('external_id', $left->external_id)->firstOrFail();
         $evaluation = app(PerformerCoCreditRule::class)->evaluate($source);
         self::assertSame('merge', $evaluation['decision']);
         self::assertSame(26000, Performer::query()->count());
         self::assertSame(26000, Movie::query()->count());
         self::assertNotEmpty($queries);
+        self::assertCount(3, $queries);
         foreach ($queries as [$sql, $bindings, $milliseconds]) {
             $plan = DB::select('EXPLAIN (ANALYZE, BUFFERS) ' . $sql, $bindings);
             $text = implode("\n", array_map(static fn(object $row): string => $row->{'QUERY PLAN'}, $plan));

@@ -421,6 +421,8 @@ final class MoviePersister implements MovieDraftSink
                 'site_slug' => $performerDraft->sourceSlug,
                 'external_id' => $performerDraft->externalId,
             ]);
+            $existing = Performer::query()->where('source_slug', $performerDraft->sourceSlug)
+                ->where('external_id', $performerDraft->externalId)->first();
             $performer = Performer::query()->updateOrCreate(
                 ['source_slug' => $performerDraft->sourceSlug, 'external_id' => $performerDraft->externalId],
                 [
@@ -429,6 +431,8 @@ final class MoviePersister implements MovieDraftSink
                     'name_kana' => $this->nullableTrim($performerDraft->nameKana),
                     'profile_url' => $this->nullableTrim($performerDraft->profileUrl),
                     'image_url' => $this->nullableTrim($performerDraft->imageUrl),
+                    'height_cm' => $performerDraft->heightCm ?? $existing?->height_cm,
+                    'blood_type' => $this->nullableTrim($performerDraft->bloodType) ?? $existing?->blood_type,
                     'crawled_at' => $crawledAt,
                 ],
             );

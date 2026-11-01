@@ -136,6 +136,8 @@ normalized name the movie must contain exactly one source record from each of
 the two sites. Two same-named cast members on either side are ambiguous.
 Candidates use `performer_name_keys` and indexed movie credits; there is no fuzzy
 lookup. Movie ingestion saves the complete cast before reconciling identities.
+Movie drafts persist supplied heights and blood types before matching; recrawls
+that omit those measurements retain the stored values.
 
 When both groups have conflicting nonempty birth dates, blood types or heights,
 the co-credit rule refuses the merge. The review stays open with a

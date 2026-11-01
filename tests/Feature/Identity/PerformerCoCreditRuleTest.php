@@ -310,6 +310,33 @@ final class PerformerCoCreditRuleTest extends TestCase
         self::assertDatabaseHas('performer_identity_reviews', ['reason' => 'multiple_strong_matches', 'status' => 'open']);
     }
 
+    #[DataProvider('crawlMeasurements')]
+    public function test_movie_crawl_retains_measurements_before_checking_co_credit(?int $leftHeight, ?int $rightHeight, ?string $leftBlood, ?string $rightBlood, string $reason): void
+    {
+        $this->crawl('left', [PerformerDraft::from('left', 'a', 'Aoi Sakura', heightCm: $leftHeight, bloodType: $leftBlood)]);
+        $this->crawl('right', [PerformerDraft::from('right', 'b', 'Sakura Aoi', heightCm: $rightHeight, bloodType: $rightBlood)]);
+        self::assertSame(2, Performer::query()->whereNull('canonical_performer_id')->count());
+        self::assertDatabaseCount('performer_identity_events', 0);
+        self::assertDatabaseHas('performer_identity_reviews', ['status' => 'open', 'reason' => $reason]);
+    }
+
+    public static function crawlMeasurements(): array
+    {
+        return [
+            [160, 170, null, null, 'co_credit_conflicting_height_cm'],
+            [null, null, 'A', 'B', 'co_credit_conflicting_blood_type'],
+        ];
+    }
+
+    public function test_movie_recrawl_does_not_erase_previously_known_measurements(): void
+    {
+        $this->crawl('left', [PerformerDraft::from('left', 'a', 'Aoi Sakura', heightCm: 160, bloodType: 'A')]);
+        $this->crawl('left', [PerformerDraft::from('left', 'a', 'Aoi Sakura')]);
+        $performer = Performer::query()->sole();
+        self::assertSame(160, $performer->height_cm);
+        self::assertSame('A', $performer->blood_type);
+    }
+
     public function test_invalid_operator_options_are_rejected(): void
     {
         $this->artisan('performers:backfill-identities', ['--rule' => 'fuzzy'])->assertFailed();
