@@ -24,6 +24,14 @@ final class McpToolServiceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_every_definition_encodes_input_schema_properties_as_an_object(): void
+    {
+        foreach (app(McpToolService::class)->definitions() as $definition) {
+            $encoded = json_encode($definition['inputSchema']['properties'], JSON_THROW_ON_ERROR);
+            self::assertStringStartsWith('{', $encoded, "Tool {$definition['name']} properties must encode as a JSON object, got {$encoded}.");
+        }
+    }
+
     public function test_definitions_expose_collection_and_detail_tools(): void
     {
         $definitions = app(McpToolService::class)->definitions();
@@ -57,7 +65,7 @@ final class McpToolServiceTest extends TestCase
             preg_match('/^\| `' . preg_quote($definition['name'], '/') . '` \|.*\|$/m', $guide, $matches);
             $this->assertCount(1, $matches, "Missing MCP guide row for {$definition['name']}.");
             $toolRow = $matches[0] ?? '';
-            foreach (array_keys($definition['inputSchema']['properties']) as $input) {
+            foreach (array_keys((array) $definition['inputSchema']['properties']) as $input) {
                 $this->assertStringContainsString('`' . $input . '`', $toolRow, "Missing MCP guide input {$input} for {$definition['name']}.");
             }
         }
