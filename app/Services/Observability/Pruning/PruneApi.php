@@ -54,7 +54,7 @@ final class PruneApi
         return $body;
     }
 
-    public function assertAudited(): void
+    private function assertAudited(): void
     {
         if ($this->auditFailed) {
             throw new RuntimeException('API audit logging failed; stopping immediately.');

@@ -173,7 +173,6 @@ final class PruneLegacyStreamsCommand extends Command
             $this->line(($index === 0 ? 'Canary delete: ' : 'Delete: ') . $candidate['type'] . ':' . $candidate['name']);
             $api->request('DELETE', $api->orgPath() . '/streams/' . rawurlencode($candidate['name']) . '?type=' . $candidate['type'] . '&delete_all=false');
             $this->deleted[] = $candidate['type'] . ':' . $candidate['name'];
-            $api->assertAudited();
             $current = $api->streams();
             foreach ($current as $stream) {
                 if ($stream['name'] === $candidate['name'] && $stream['stream_type'] === $candidate['type']) {
