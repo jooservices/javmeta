@@ -73,6 +73,8 @@ collect_answers() {
         value="${value//\\\"/\"}"
         value="${value//\\\\/\\}"
       elif [[ "$value" == \'*\' ]]; then value="${value:1:${#value}-2}"; fi
+      # URI is derived later from the individually confirmed Mongo credentials.
+      if [[ "$key" == MONGO_URI && -n "${answers[MONGO_PASSWORD]}" ]]; then continue; fi
       # An empty APP_KEY requests generation only on first install, never rotation.
       if [[ "$key" == APP_KEY && -z "${answers[$key]}" ]]; then answers[$key]="$value"; continue; fi
       if [[ "${answers[$key]}" != "$value" ]]; then
@@ -105,7 +107,7 @@ collect_answers() {
   done
   [[ "${answers[TARGET_DIR]}" == /* && "${answers[TARGET_DIR]}" != / && ! -L "${answers[TARGET_DIR]}" ]] || die 'TARGET_DIR must be an absolute directory, not / or a symlink.'
   [[ "${answers[REF]}" != -* && "${answers[REPO_URL]}" != -* ]] || die 'Repository/ref cannot start with a dash.'
-  for key in FPM_UNIT NGINX_UNIT; do
+  for key in FPM_UNIT NGINX_UNIT EXPORTER_UNIT; do
     [[ "${answers[$key]}" =~ ^[a-zA-Z0-9_][a-zA-Z0-9@_.-]*$ ]] || die "Invalid unit: $key"
   done
   [[ "${answers[UNIT_PREFIX]}" =~ ^[a-zA-Z0-9_-]+$ ]] || die 'Invalid unit prefix.'
@@ -205,7 +207,7 @@ control() {
 role_units() {
   local prefix="${answers[UNIT_PREFIX]}"
   answers[STOP_UNITS]="$prefix-horizon $prefix-embedder"
-  answers[RESTART_UNITS]="$prefix-embedder $prefix-horizon"
+  answers[RESTART_UNITS]="$prefix-embedder $prefix-horizon ${answers[EXPORTER_UNIT]}"
   answers[START_UNITS]=''
   if [[ "${answers[NODE_ROLE]}" == primary ]]; then
     answers[STOP_UNITS]="$prefix-scheduler ${answers[STOP_UNITS]}"

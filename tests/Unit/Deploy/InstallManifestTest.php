@@ -52,7 +52,8 @@ final class InstallManifestTest extends TestCase
         $this->assertStringContainsString('worker-role.conf', $installer);
         $this->assertStringContainsString('ConditionPathExists=', $installer);
         $this->assertStringContainsString('systemctl disable --now "$unit"', $installer);
-        $this->assertStringContainsString('systemctl enable "$(node_value exporter_unit)"', $installer);
+        $engine = file_get_contents(dirname(__DIR__, 3) . '/deploy/lib/install.sh');
+        $this->assertStringContainsString('${answers[EXPORTER_UNIT]}', $engine);
     }
 
 }

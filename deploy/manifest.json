@@ -161,6 +161,13 @@
       "default": "0",
       "required": false,
       "secret": false
+    },
+    {
+      "key": "EXPORTER_UNIT",
+      "label": "Node exporter systemd unit",
+      "default": "prometheus-node-exporter",
+      "required": true,
+      "secret": false
     }
   ],
   "services": [
@@ -917,7 +924,6 @@
       "nodejs",
       "postgresql-client-18"
     ],
-    "exporter_unit": "prometheus-node-exporter",
     "ca_directory": "/usr/local/share/ca-certificates"
   }
 }

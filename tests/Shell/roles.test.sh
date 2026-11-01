@@ -2,10 +2,10 @@
 set -euo pipefail
 root="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
 source "$root/deploy/lib/install.sh"
-declare -A answers=([UNIT_PREFIX]=test [NODE_ROLE]=worker [FPM_UNIT]=test-fpm [NGINX_UNIT]=test-nginx)
+declare -A answers=([UNIT_PREFIX]=test [NODE_ROLE]=worker [FPM_UNIT]=test-fpm [NGINX_UNIT]=test-nginx [EXPORTER_UNIT]=test-exporter)
 start_scheduler=1
 role_units
-[[ "${answers[RESTART_UNITS]}" == 'test-embedder test-horizon' ]]
+[[ "${answers[RESTART_UNITS]}" == 'test-embedder test-horizon test-exporter' ]]
 [[ -z "${answers[START_UNITS]}" ]]
 [[ "${answers[STOP_UNITS]}" != *scheduler* ]]
 answers[NODE_ROLE]=primary

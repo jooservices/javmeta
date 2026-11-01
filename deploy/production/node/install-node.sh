@@ -71,7 +71,7 @@ for unit in "${blocked_units[@]}"; do
     rm -f "$dropin"
   fi
 done
-systemctl enable "$(node_value exporter_unit)"
+# Node exporter starts with the role units only after release verification.
 # Only these complete command vectors can be invoked by the service account.
 sudoers="$(node_value sudoers_dir)/$UNIT_PREFIX-units"
 # Restrict privilege to individual manifest-selected units; scheduler remains opt-in.

@@ -17,6 +17,7 @@ cat > "$fixture/bin/stub" <<'STUB'
 printf '%s %s\n' "${0##*/}" "$*" >> "$CALLS"
 if [[ "${0##*/}" == php && "$*" == *probe.php* ]]; then
   if [[ "${FAIL_STEP:-}" == validation ]]; then exit 1; fi
+  if [[ "${FAIL_STEP:-}" == timezone ]]; then echo "Database timezone MUST be UTC"; exit 1; fi
   if [[ "${FAIL_STEP:-}" == retry && ! -e "$CALLS.retry" ]]; then touch "$CALLS.retry"; exit 1; fi
 fi
 if [[ "${0##*/}" == php && "$*" == *random_bytes* ]]; then echo generated-private-key; fi
@@ -63,6 +64,8 @@ if bash "$script" --config "$fixture/answers.json" --non-interactive > "$fixture
 chmod 600 "$fixture/answers.json"
 if FAIL_STEP=validation bash "$script" --config "$fixture/answers.json" --non-interactive --skip-os-install --apply > "$fixture/log" 2>&1; then fail 'invalid service accepted'; fi
 [[ ! -e "$fixture/node" ]] || fail 'failed validation changed node'
+if FAIL_STEP=timezone bash "$script" --config "$fixture/answers.json" --non-interactive --skip-os-install --apply > "$fixture/log" 2>&1; then fail 'non-UTC database accepted'; fi
+grep -q 'timezone MUST be UTC' "$fixture/log" || fail 'timezone diagnostic missing'
 FAIL_STEP=retry bash "$script" --config "$fixture/answers.json" --validate-only --skip-os-install --apply <<< $'y\n\n\n\n\n\n\n\n' > "$fixture/log" 2>&1
 grep -q 'retry' "$fixture/log" || fail 'validation did not re-prompt'
 [[ ! -e "$fixture/node" ]] || fail 'validate-only changed node'
@@ -111,4 +114,4 @@ bash "$script" --non-interactive --config "$fixture/answers.json" --role worker 
 ! grep -Eq 'artisan (migrate|es:setup|settings:import-env|crawler:sync-sources|operations:make-super-admin)' "$CALLS" || fail 'worker ran migrations'
 grep -q 'no migrations' "$fixture/log" || fail 'worker migration skip not disclosed'
 ! grep -q 'private-test-value\|private-owner-password' "$fixture/log" || fail 'worker leaked credentials'
-echo 'OK (25 install wizard scenarios)'
+echo 'OK (26 install wizard scenarios)'
