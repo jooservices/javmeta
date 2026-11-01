@@ -40,14 +40,17 @@ final class PruneLegacyStreamsTest extends TestCase
             // File retention and statistics refresh can each take 600 seconds on the shared service.
             $deadline = time() + 1500;
             do {
-                $candidates = $policy->candidates($api->streams(), $prefix, ['logs', 'metrics'], 0);
-                if (count($candidates) === 2 && array_sum(array_column($candidates, 'count')) === 2) {
+                $inventory = $api->streams();
+                $candidates = $policy->candidates($inventory, $prefix, ['logs', 'metrics'], 0);
+                $siblings = array_values(array_filter($inventory, static fn(array $row): bool => $row['name'] === $sibling));
+                if (count($candidates) === 2 && array_sum(array_column($candidates, 'count')) === 2 && ($siblings[0]['stats']['doc_num'] ?? null) === 1) {
                     break;
                 }
-                usleep(500_000);
+                usleep(2_000_000);
             } while (time() < $deadline);
             self::assertCount(2, $candidates);
             self::assertSame(2, array_sum(array_column($candidates, 'count')));
+            self::assertSame(1, $siblings[0]['stats']['doc_num'] ?? null);
             $options = ['--prefix' => $prefix, '--min-idle-days' => '0'];
             self::assertSame(0, Artisan::call('observability:prune-legacy-streams', $options), Artisan::output());
             self::assertStringContainsString('Manifest SHA256:', Artisan::output());
