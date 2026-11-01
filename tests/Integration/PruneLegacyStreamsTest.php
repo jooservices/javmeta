@@ -8,7 +8,10 @@ use App\Services\Observability\Pruning\PruneApi;
 use App\Services\Observability\Pruning\StreamPolicy;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Http;
+use Symfony\Component\Console\Output\BufferedOutput;
 use Tests\TestCase;
+use Throwable;
 
 /** Uses only unique throwaway streams in the local shared OpenObserve. */
 final class PruneLegacyStreamsTest extends TestCase
@@ -29,6 +32,7 @@ final class PruneLegacyStreamsTest extends TestCase
         config()->set('openobserve.stream_logs', $sibling);
         $created = [[$log, 'logs'], [$sibling, 'logs'], [$metric, 'metrics']];
         try {
+            $this->waitForOpenObserve();
             foreach ([$log, $sibling] as $name) {
                 $api->request('POST', $org . '/' . $name . '/_json', [['_timestamp' => (int) (microtime(true) * 1_000_000), 'message' => 'throwaway']]);
             }
@@ -37,8 +41,7 @@ final class PruneLegacyStreamsTest extends TestCase
             ]]]]]]]);
             $policy = app(StreamPolicy::class);
             $candidates = [];
-            // File retention and statistics refresh can each take 600 seconds on the shared service.
-            $deadline = time() + 1500;
+            $deadline = time() + 90;
             do {
                 $inventory = $api->streams();
                 $candidates = $policy->candidates($inventory, $prefix, ['logs', 'metrics'], 0);
@@ -46,14 +49,17 @@ final class PruneLegacyStreamsTest extends TestCase
                 if (count($candidates) === 2 && array_sum(array_column($candidates, 'count')) === 2 && ($siblings[0]['stats']['doc_num'] ?? null) === 1) {
                     break;
                 }
-                usleep(2_000_000);
+                usleep(500_000);
             } while (time() < $deadline);
             self::assertCount(2, $candidates);
             self::assertSame(2, array_sum(array_column($candidates, 'count')));
             self::assertSame(1, $siblings[0]['stats']['doc_num'] ?? null);
             $options = ['--prefix' => $prefix, '--min-idle-days' => '0'];
-            self::assertSame(0, Artisan::call('observability:prune-legacy-streams', $options), Artisan::output());
-            self::assertStringContainsString('Manifest SHA256:', Artisan::output());
+            $dryRunOutput = new BufferedOutput();
+            $dryRunStatus = Artisan::call('observability:prune-legacy-streams', $options, $dryRunOutput);
+            $dryRunText = $dryRunOutput->fetch();
+            self::assertSame(0, $dryRunStatus, $dryRunText);
+            self::assertStringContainsString('Manifest SHA256:', $dryRunText);
             $this->artisan('observability:prune-legacy-streams', [...$options, '--force' => true, '--export-dir' => $directory, '--confirm' => str_repeat('0', 64)])->assertFailed();
             self::assertCount(2, $policy->candidates($api->streams(), $prefix, ['logs', 'metrics'], 0));
             self::assertDirectoryDoesNotExist($directory);
@@ -78,6 +84,26 @@ final class PruneLegacyStreamsTest extends TestCase
                     $api->request('DELETE', $org . '/streams/' . $name . '?type=' . $type . '&delete_all=false');
                 }
             }
+            $remaining = array_filter($api->streams(), static fn(array $row): bool => in_array([$row['name'], $row['stream_type']], $created, true));
+            self::assertSame([], array_values($remaining), 'Throwaway streams must be absent after cleanup.');
         }
+    }
+
+    private function waitForOpenObserve(): void
+    {
+        $deadline = time() + 30;
+        while (time() < $deadline) {
+            try {
+                if (Http::baseUrl((string) config('openobserve.url'))
+                    ->connectTimeout(2)->timeout(3)->get('/healthz')->successful()) {
+                    return;
+                }
+            } catch (Throwable) {
+                // The integration service can still be starting.
+            }
+            usleep(250_000);
+        }
+
+        self::fail('OpenObserve did not become healthy for throwaway-stream integration.');
     }
 }

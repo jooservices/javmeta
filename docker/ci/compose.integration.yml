@@ -65,6 +65,10 @@ services:
       ZO_TELEMETRY: "false"
       ZO_ROOT_USER_EMAIL: root@javmeta.test
       ZO_ROOT_USER_PASSWORD: Integration#123
+      # Flush and refresh quickly so OpenObserve-backed integration tests stay bounded.
+      ZO_MAX_FILE_RETENTION_TIME: "2"
+      ZO_FILE_PUSH_INTERVAL: "1"
+      ZO_CALCULATE_STATS_INTERVAL: "2"
     tmpfs:
       - /data
     # Distroless image (no shell): the tests wait for /healthz instead.
