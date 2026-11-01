@@ -131,7 +131,7 @@ The scheduler runs these commands:
 
 - `crawler:sync-sources` every 15 minutes. It updates the description of each source (name, URL, gaps, priority) but never the on/off switch of an existing source.
 - `crawler:reclaim` and `crawler:seed` every minute.
-- `crawler:feed-pool` every 10 seconds by default with overlapping runs prevented; `queue.feed_interval_seconds` can select 5, 10, 15, 30 or 60 seconds. The single scheduler process uses `schedule:work` for sub-minute ticks.
+- `crawler:feed-pool --scheduled` is checked every five seconds with overlapping runs prevented; `queue.feed_interval_seconds` can select 5, 10, 15, 30 or 60 seconds and is read from the database on each run. The single scheduler process uses `schedule:work` for sub-minute ticks. Scheduled command failures are logged.
 - `crawler:watchdog` every five minutes.
 - `obs:publish-metrics` every minute.
 

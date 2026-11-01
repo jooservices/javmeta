@@ -6,8 +6,10 @@ namespace Tests\Feature\Observability;
 
 use App\Console\Commands\Observability\PublishMetricsCommand;
 use App\Models\CrawlEvent;
+use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Services\Archive\MongoArchiveWriteHealth;
+use App\Services\Health\CrawlDispatchHeartbeat;
 use App\Services\Search\ElasticsearchRequestHealth;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -56,6 +58,151 @@ final class PublishMetricsCommandTest extends TestCase
                 && str_contains($request->body(), 'javmeta_source_gap_seconds')
                 && ! str_contains($request->body(), 'javmeta_source_circuit_state')
                 && ! str_contains($request->body(), 'javmeta_source_consecutive_failures');
+        });
+    }
+
+    public function test_command_publishes_dispatch_age_and_database_configured_stale_thresholds(): void
+    {
+        config()->set([
+            'cache.default' => 'array',
+            'javmeta_alerts.watchdog.crawl_dispatch_warning_seconds' => 60,
+            'javmeta_alerts.watchdog.crawl_dispatch_critical_seconds' => 180,
+        ]);
+        Cache::store('array')->flush();
+        app(CrawlDispatchHeartbeat::class)->record();
+        $this->travel(200)->seconds();
+        CrawlQueue::factory()->create([
+            'source_slug' => fake()->slug(2),
+            'kind' => CrawlQueue::KIND_LISTING,
+            'status' => CrawlQueue::STATUS_PENDING,
+            'next_attempt_at' => null,
+        ]);
+
+        config()->set([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.email' => 'root@javmeta.local',
+            'openobserve.password' => 'secret',
+            'openobserve.timeout' => 1,
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
+
+        $this->artisan('obs:publish-metrics')->assertSuccessful();
+
+        Http::assertSent(static function ($request): bool {
+            $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [];
+            $age = null;
+            $stale = [];
+            foreach ($metrics as $metric) {
+                if (($metric['name'] ?? null) === 'javmeta_crawl_dispatch_age_seconds') {
+                    $age = $metric['gauge']['dataPoints'][0]['asDouble'] ?? null;
+                }
+                if (($metric['name'] ?? null) !== 'javmeta_crawl_dispatch_stale') {
+                    continue;
+                }
+
+                $point = $metric['gauge']['dataPoints'][0] ?? [];
+                $attributes = [];
+                foreach ($point['attributes'] ?? [] as $attribute) {
+                    $attributes[$attribute['key']] = $attribute['value']['stringValue'] ?? null;
+                }
+                $stale[$attributes['severity'] ?? ''] = $point['asDouble'] ?? null;
+            }
+
+            return $age === 200.0
+                && ($stale['warning'] ?? null) === 1.0
+                && ($stale['critical'] ?? null) === 1.0;
+        });
+    }
+
+    public function test_missing_dispatch_timestamp_alerts_only_while_due_work_is_pending(): void
+    {
+        config()->set([
+            'cache.default' => 'array',
+            'javmeta_alerts.watchdog.crawl_dispatch_warning_seconds' => 60,
+            'javmeta_alerts.watchdog.crawl_dispatch_critical_seconds' => 180,
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.email' => 'root@javmeta.local',
+            'openobserve.password' => 'secret',
+            'openobserve.timeout' => 1,
+        ]);
+        Cache::store('array')->flush();
+        CrawlQueue::factory()->create([
+            'source_slug' => fake()->slug(2),
+            'kind' => CrawlQueue::KIND_LISTING,
+            'status' => CrawlQueue::STATUS_PENDING,
+            'next_attempt_at' => null,
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
+
+        $this->artisan('obs:publish-metrics')->assertSuccessful();
+
+        Http::assertSent(static function ($request): bool {
+            $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [];
+            $values = [];
+            foreach ($metrics as $metric) {
+                if (($metric['name'] ?? null) !== 'javmeta_crawl_dispatch_stale') {
+                    continue;
+                }
+
+                $point = $metric['gauge']['dataPoints'][0] ?? [];
+                $severity = null;
+                foreach ($point['attributes'] ?? [] as $attribute) {
+                    if (($attribute['key'] ?? null) === 'severity') {
+                        $severity = $attribute['value']['stringValue'] ?? null;
+                    }
+                }
+                $values[$severity ?? ''] = $point['asDouble'] ?? null;
+            }
+
+            return ($values['warning'] ?? null) === 1.0
+                && ($values['critical'] ?? null) === 1.0;
+        });
+    }
+
+    public function test_old_dispatch_age_does_not_alert_when_no_crawl_work_is_due(): void
+    {
+        config()->set([
+            'cache.default' => 'array',
+            'javmeta_alerts.watchdog.crawl_dispatch_warning_seconds' => 60,
+            'javmeta_alerts.watchdog.crawl_dispatch_critical_seconds' => 180,
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.email' => 'root@javmeta.local',
+            'openobserve.password' => 'secret',
+            'openobserve.timeout' => 1,
+        ]);
+        Cache::store('array')->flush();
+        app(CrawlDispatchHeartbeat::class)->record();
+        $this->travel(200)->seconds();
+        Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
+
+        $this->artisan('obs:publish-metrics')->assertSuccessful();
+
+        Http::assertSent(static function ($request): bool {
+            $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [];
+            $values = [];
+            foreach ($metrics as $metric) {
+                if (($metric['name'] ?? null) !== 'javmeta_crawl_dispatch_stale') {
+                    continue;
+                }
+
+                $point = $metric['gauge']['dataPoints'][0] ?? [];
+                $severity = null;
+                foreach ($point['attributes'] ?? [] as $attribute) {
+                    if (($attribute['key'] ?? null) === 'severity') {
+                        $severity = $attribute['value']['stringValue'] ?? null;
+                    }
+                }
+                $values[$severity ?? ''] = $point['asDouble'] ?? null;
+            }
+
+            return ($values['warning'] ?? null) === 0.0
+                && ($values['critical'] ?? null) === 0.0;
         });
     }
 

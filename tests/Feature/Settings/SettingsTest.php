@@ -114,6 +114,21 @@ final class SettingsTest extends TestCase
         $this->assertSame('Chu kỳ nạp hàng đợi (giây)', $setting['label']);
     }
 
+    public function test_crawl_dispatch_alert_thresholds_are_saved_database_settings(): void
+    {
+        $settings = app(SettingsService::class);
+        $settings->set('alerts.crawl_dispatch_warning_seconds', 90);
+        $settings->set('alerts.crawl_dispatch_critical_seconds', 240);
+
+        $warning = collect($settings->all())->firstWhere('key', 'alerts.crawl_dispatch_warning_seconds');
+        $critical = collect($settings->all())->firstWhere('key', 'alerts.crawl_dispatch_critical_seconds');
+
+        $this->assertSame('database', $warning['source']);
+        $this->assertSame(90, $warning['value']);
+        $this->assertSame('database', $critical['source']);
+        $this->assertSame(240, $critical['value']);
+    }
+
     public function test_worker_json_shapes_and_client_service_timeout_relationships_are_validated(): void
     {
         $settings = app(SettingsService::class);

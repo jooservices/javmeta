@@ -12,6 +12,8 @@ use App\Jobs\FetchPerformerDetailJob;
 use App\Jobs\FetchPerformerListingJob;
 use App\Models\CrawlQueue;
 use App\Models\Source;
+use App\Services\Health\CrawlDispatchHeartbeat;
+use App\Services\Settings\SettingsService;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +21,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use JOOservices\LaravelConfig\Testing\FakeConfigStore;
 use Mockery;
 use Tests\TestCase;
 
@@ -61,9 +64,26 @@ final class FeedPoolCommandTest extends TestCase
         $this->assertSame(CrawlQueue::STATUS_PENDING, $second->refresh()->status);
     }
 
+    public function test_feed_pool_records_the_time_of_a_successful_job_dispatch(): void
+    {
+        config(['cache.default' => 'array']);
+        Cache::store('array')->flush();
+        CrawlQueue::factory()->create([
+            'source_slug' => fake()->slug(2),
+            'kind' => CrawlQueue::KIND_LISTING,
+        ]);
+        Queue::fake();
+
+        $this->artisan('crawler:feed-pool', ['--limit' => 1])->assertSuccessful();
+
+        $this->assertSame(0, app(CrawlDispatchHeartbeat::class)->ageSeconds());
+    }
+
     public function test_scheduled_feed_pool_reads_the_current_database_interval_without_scheduler_restart(): void
     {
-        config(['cache.default' => 'array', 'javmeta_queues.feed_interval_seconds' => 15]);
+        config(['cache.default' => 'array']);
+        $settings = new SettingsService(new FakeConfigStore());
+        $settings->set('queue.feed_interval_seconds', 15);
         Cache::store('array')->flush();
         $row = CrawlQueue::factory()->create([
             'source_slug' => fake()->slug(2),
@@ -73,7 +93,7 @@ final class FeedPoolCommandTest extends TestCase
 
         $this->artisan('crawler:feed-pool', ['--scheduled' => true])->assertSuccessful();
         $this->travel(9)->seconds();
-        config(['javmeta_queues.feed_interval_seconds' => 10]);
+        $settings->set('queue.feed_interval_seconds', 10);
         $this->artisan('crawler:feed-pool', ['--scheduled' => true])->expectsOutputToContain('Feed interval has not elapsed.')->assertSuccessful();
         $this->travel(1)->seconds();
         $this->artisan('crawler:feed-pool', ['--scheduled' => true])->assertSuccessful();

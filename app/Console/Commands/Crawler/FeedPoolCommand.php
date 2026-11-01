@@ -15,6 +15,7 @@ use App\Observability\ObservabilityEmitter;
 use App\Observability\TraceContext;
 use App\Services\Crawl\CrawlQueueService;
 use App\Services\Crawl\SourceThrottle;
+use App\Services\Health\CrawlDispatchHeartbeat;
 use Carbon\CarbonImmutable;
 use App\Support\Crawl\LaravelCrawlQueue;
 use Illuminate\Console\Command;
@@ -33,7 +34,7 @@ final class FeedPoolCommand extends Command
 
     protected $description = 'Claim pending crawl_queue rows and dispatch FetchListing/FetchDetail/Performer/Gallery jobs.';
 
-    public function handle(CrawlQueueService $queue, ObservabilityEmitter $observability, SourceThrottle $throttle): int
+    public function handle(CrawlQueueService $queue, ObservabilityEmitter $observability, SourceThrottle $throttle, CrawlDispatchHeartbeat $dispatchHeartbeat): int
     {
         if ($this->option('scheduled') && ! $this->feedIntervalElapsed()) {
             $this->components->info('Feed interval has not elapsed.');
@@ -49,7 +50,7 @@ final class FeedPoolCommand extends Command
             return self::SUCCESS;
         }
         try {
-            return $this->feed($queue, $observability, $throttle);
+            return $this->feed($queue, $observability, $throttle, $dispatchHeartbeat);
         } finally {
             if ($postgres) {
                 DB::select('SELECT pg_advisory_unlock(?)', [282]);
@@ -57,7 +58,7 @@ final class FeedPoolCommand extends Command
         }
     }
 
-    private function feed(CrawlQueueService $queue, ObservabilityEmitter $observability, SourceThrottle $throttle): int
+    private function feed(CrawlQueueService $queue, ObservabilityEmitter $observability, SourceThrottle $throttle, CrawlDispatchHeartbeat $dispatchHeartbeat): int
     {
         $limitPerMinute = max(1, (int) config('javmeta_queues.feed_pool_limit', 50));
         $limitPerRun = $this->scaledRunLimit($limitPerMinute);
@@ -134,6 +135,9 @@ final class FeedPoolCommand extends Command
         }
 
         $observability->emitOps('crawl_dispatch', ['dispatched' => $dispatched]);
+        if ($dispatched > 0) {
+            $dispatchHeartbeat->record();
+        }
         $this->components->info("Dispatched {$dispatched} crawl job(s).");
 
         return self::SUCCESS;

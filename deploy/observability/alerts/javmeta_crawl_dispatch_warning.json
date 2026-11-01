@@ -1,0 +1,24 @@
+{
+  "name": "javmeta_crawl_dispatch_warning",
+  "description": "Due crawl work has not been dispatched within the warning threshold configured in Cài đặt.",
+  "enabled": true,
+  "is_real_time": false,
+  "stream_type": "metrics",
+  "stream_name": "javmeta_crawl_dispatch_stale",
+  "query_condition": {
+    "type": "sql",
+    "sql": "SELECT _timestamp, severity, value FROM \"javmeta_crawl_dispatch_stale\" WHERE severity = 'warning' AND value > 0"
+  },
+  "trigger_condition": {
+    "frequency_type": "minutes",
+    "frequency": 1,
+    "period": 5,
+    "operator": ">",
+    "threshold": 0,
+    "silence": 300
+  },
+  "pending_period_sec": 0,
+  "destinations": [
+    "javmeta_telegram"
+  ]
+}

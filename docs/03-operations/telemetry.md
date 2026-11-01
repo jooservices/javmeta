@@ -22,6 +22,8 @@ environment.
 | `javmeta_source_past_due` | `source_slug` | 1 when an enabled source exceeded its manifest cycle plus one scheduler sweep, or global fallback; otherwise 0. |
 | `javmeta_crawl_queue_depth` | `status` | Current queue rows by state. |
 | `javmeta_crawl_queue_claimed_age_seconds` | — | Age in seconds of the oldest claimed queue row; `-1` means none is claimed. |
+| `javmeta_crawl_dispatch_age_seconds` | — | Seconds since the feed pool last dispatched a crawl job; `-1` means no dispatch is recorded. |
+| `javmeta_crawl_dispatch_stale` | `severity` | 1 when due crawl work has exceeded the warning or critical dispatch-age threshold; 0 otherwise. Thresholds come from database settings. |
 | `javmeta_crawl_queue_avg_attempts` | — | Average attempts for pending and failed queue rows. |
 | `javmeta_crawl_events_5m` | `kind` | Crawl events created in the previous five minutes. |
 | `javmeta_api_requests_1m` | — | API requests recorded in the previous minute. |
@@ -70,6 +72,14 @@ counts stale queue claims returned to pending before a worker started them.
 | Application metrics | OTLP `/api/{org}/v1/metrics`; each point includes `environment` and `role` labels | `PublishMetricsCommand`, normally run by the scheduler. |
 | HTTP and crawl spans | OTLP `/api/{org}/v1/traces` | `TraceHttpRequest` and `TraceCrawlJob`. |
 | Watchdog notifications | Application alert events, not a separate metric stream | `WatchdogCommand` dispatches `WorkerHeartbeatStale` and `CrawlSourceUnhealthy`; listeners use `AlertDispatcher` for Telegram/activity-log fan-out. |
+
+The crawl dispatch age and severity series are exported by the existing
+`obs:publish-metrics` command. The stale series is active only while due crawl
+rows are pending, so an idle queue does not page. A missing dispatch timestamp
+is treated as stale when due work exists. OpenObserve warning and critical
+rules evaluate that series every minute; configure their age thresholds with
+`alerts.crawl_dispatch_warning_seconds` and
+`alerts.crawl_dispatch_critical_seconds` on the Settings page.
 
 ### Natural-language search parse
 

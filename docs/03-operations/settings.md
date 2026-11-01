@@ -20,6 +20,16 @@ New features (Telegram follow notifications and bot, the library scanner) read t
 
 `perf.warm_enabled` (default `true`, group Tìm kiếm) controls the scheduled `perf:warm` command. It appears automatically on Cài đặt and is applied from the database to `javmeta_perf.warm_enabled`. Turning it off stops proactive refreshes; request-driven caches still work. No environment variable is needed. See [performance](performance.md) for TTLs, subminute scheduling and verification limits.
 
+## Crawl dispatch alerts
+
+`alerts.crawl_dispatch_warning_seconds` (default 60) and
+`alerts.crawl_dispatch_critical_seconds` (default 180) control the warning and
+critical OpenObserve alert states for due crawl work that has not been
+dispatched. Both values are stored in the database and appear automatically in
+Cài đặt → Cảnh báo. `obs:publish-metrics` publishes the dispatch age and the
+threshold-derived state every minute; the OpenObserve rules send matching
+alerts to the configured Telegram destination. Idle queues do not alert.
+
 ## Hybrid search HTTP budget
 
 `search.budget_ms` (default 300, range 25–1500, group Tìm kiếm) maps to `javmeta_search.budget_ms` through the database settings service. It limits optional HTTP work within one hybrid search. SQL and response serialization can exceed that budget. A timeout falls back to keyword results; the existing response keys remain unchanged. No environment variable is needed. See [performance](performance.md) for measurements and acceptance limits.
