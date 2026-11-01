@@ -34,6 +34,7 @@ return [
         'media' => 'Xử lý media',
         'capture' => 'Ghi luồng',
         'ui_security' => 'Bảo mật giao diện',
+        'startup_health' => 'Sức khỏe khi khởi động',
     ],
 
     'validation' => [
@@ -43,6 +44,18 @@ return [
     ],
 
     'definitions' => [
+        'health.startup.enabled' => ['group' => 'startup_health', 'label' => 'Bật cổng kiểm tra khi khởi động', 'description' => 'Chặn lệnh chạy nền và yêu cầu web khi PostgreSQL, Redis hoặc MongoDB không sẵn sàng.', 'type' => 'bool', 'config' => ['javmeta_health.startup.enabled']],
+        'health.startup.timeout_seconds' => ['group' => 'startup_health', 'label' => 'Thời gian chờ mỗi dịch vụ (giây)', 'description' => 'Giới hạn cho từng lần kiểm tra kết nối; tối đa 2 giây.', 'type' => 'int', 'config' => ['javmeta_health.startup.timeout_seconds'], 'min' => 1, 'max' => 2],
+        'health.startup.wait_seconds' => ['group' => 'startup_health', 'label' => 'Chờ dịch vụ chính khởi động (giây)', 'description' => 'Thời hạn mặc định health:startup thử lại các dịch vụ chính.', 'type' => 'int', 'config' => ['javmeta_health.startup.wait_seconds'], 'min' => 0, 'max' => 600],
+        'health.startup.retry_backoff_seconds' => ['group' => 'startup_health', 'label' => 'Khoảng nghỉ thử lại (giây)', 'description' => 'Khoảng nghỉ giữa các lần kiểm tra lại dịch vụ chính.', 'type' => 'int', 'config' => ['javmeta_health.startup.retry_backoff_seconds'], 'min' => 1, 'max' => 30],
+        'health.startup.snapshot_ttl_seconds' => ['group' => 'startup_health', 'label' => 'Thời hạn ảnh chụp sức khỏe web (giây)', 'description' => 'Khoảng thời gian dùng lại kết quả kiểm tra chính để giảm độ trễ request.', 'type' => 'int', 'config' => ['javmeta_health.startup.snapshot_ttl_seconds'], 'min' => 1, 'max' => 30],
+        'health.startup.primary.web' => ['group' => 'startup_health', 'label' => 'Dịch vụ chính của nút web', 'description' => 'Mỗi dòng một dịch vụ. PostgreSQL, Redis và MongoDB luôn được kiểm tra; Elasticsearch mặc định là dịch vụ chính của nút web.', 'type' => 'string_list', 'item_options' => ['postgres', 'redis', 'mongo', 'elasticsearch'], 'config' => ['javmeta_health.startup.primary.web']],
+        'health.startup.primary.worker' => ['group' => 'startup_health', 'label' => 'Dịch vụ chính của worker', 'description' => 'Mỗi dòng một dịch vụ. Elasticsearch mặc định là phụ trên worker crawl.', 'type' => 'string_list', 'item_options' => ['postgres', 'redis', 'mongo', 'elasticsearch'], 'config' => ['javmeta_health.startup.primary.worker']],
+        'health.startup.primary.scheduler' => ['group' => 'startup_health', 'label' => 'Dịch vụ chính của scheduler', 'description' => 'Mỗi dòng một dịch vụ. PostgreSQL, Redis và MongoDB luôn được kiểm tra.', 'type' => 'string_list', 'item_options' => ['postgres', 'redis', 'mongo', 'elasticsearch'], 'config' => ['javmeta_health.startup.primary.scheduler']],
+        'health.startup.command_allowlist' => ['group' => 'startup_health', 'label' => 'Lệnh được miễn cổng khởi động', 'description' => 'Mỗi dòng một tên hoặc mẫu lệnh Artisan; ví dụ health:*, settings:*, migrate*.', 'type' => 'string_list', 'config' => ['javmeta_health.startup.command_allowlist']],
+        'health.startup.command_denylist' => ['group' => 'startup_health', 'label' => 'Lệnh luôn bị kiểm tra khi khởi động', 'description' => 'Mỗi dòng một tên hoặc mẫu lệnh Artisan; danh sách này có ưu tiên cao hơn danh sách miễn.', 'type' => 'string_list', 'config' => ['javmeta_health.startup.command_denylist']],
+        'health.startup.flaresolverr_url' => ['group' => 'startup_health', 'label' => 'Địa chỉ FlareSolverr', 'description' => 'Địa chỉ dịch vụ trình duyệt phụ; để trống nếu không dùng.', 'type' => 'string', 'url_schemes' => ['http', 'https'], 'config' => ['javmeta_health.startup.flaresolverr_url']],
+        'health.startup.playwright_url' => ['group' => 'startup_health', 'label' => 'Địa chỉ browser gateway', 'description' => 'Địa chỉ dịch vụ Playwright phụ; để trống nếu không dùng.', 'type' => 'string', 'url_schemes' => ['http', 'https'], 'config' => ['javmeta_health.startup.playwright_url']],
         'ui_guest.rate_limit_per_minute' => ['group' => 'ui_security', 'label' => 'Giới hạn yêu cầu giao diện khách mỗi phút theo IP', 'description' => 'Số yêu cầu tối đa mỗi phút từ một địa chỉ IP đến cầu nối giao diện công khai chỉ đọc.', 'type' => 'int', 'config' => ['javmeta.ui_guest_rate_limit_per_minute'], 'min' => 1, 'max' => 1200],
         'ui_security.login_required' => ['group' => 'ui_security', 'label' => 'Yêu cầu đăng nhập chủ sở hữu', 'description' => 'Bảo vệ giao diện và cấu hình quản trị bằng phiên đăng nhập chủ sở hữu.', 'type' => 'bool', 'legacy_env' => ['JAVMETA_UI_LOGIN_REQUIRED'], 'config' => ['javmeta.ui_login_required']],
         'ui_security.owner_admin_token' => ['group' => 'ui_security', 'label' => 'Token quản trị chủ sở hữu', 'description' => 'Được mã hóa trong cơ sở dữ liệu và không hiển thị lại.', 'type' => 'secret', 'legacy_env' => ['JAVMETA_OWNER_ADMIN_TOKEN'], 'config' => ['javmeta_auth.owner_admin_token']],

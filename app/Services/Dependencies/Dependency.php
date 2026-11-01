@@ -12,4 +12,9 @@ enum Dependency: string
     case Mongo = 'mongo';
     case Embedder = 'embedder';
     case Observability = 'observability';
+    case Sentry = 'sentry';
+    case Browser = 'browser';
+    case Telegram = 'telegram';
+    case Ollama = 'ollama';
+    case QBittorrent = 'qbittorrent';
 }

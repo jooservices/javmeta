@@ -9,11 +9,13 @@ Type=simple
 User=@SERVICE_USER@
 Group=@SERVICE_USER@
 WorkingDirectory=@TARGET_DIR@/current
+TimeoutStartSec=660
 Environment=HOME=@TARGET_DIR@/shared
 Environment=HF_HOME=@TARGET_DIR@/shared/huggingface
 Environment=HF_HUB_DISABLE_TELEMETRY=1
+ExecStartPre=@PHP_BINARY@ artisan health:startup --role=worker
 ExecStart=@TARGET_DIR@/shared/embedder-venv/bin/uvicorn app:app --app-dir @TARGET_DIR@/current/embedder --host @EMBEDDER_BIND@ --port @EMBEDDER_PORT@
-Restart=always
+Restart=on-failure
 RestartSec=15
 TimeoutStopSec=240
 KillSignal=SIGTERM

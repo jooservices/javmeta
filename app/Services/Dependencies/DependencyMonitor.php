@@ -100,6 +100,26 @@ final class DependencyMonitor
         return $this->check($dependency)['available'];
     }
 
+    public function probeNow(Dependency $dependency): ProbeResult
+    {
+        $probe = $this->probes[$dependency->value] ?? null;
+        if (! $probe instanceof DependencyProbe) {
+            return new ProbeResult(true, 'Check is not configured.');
+        }
+
+        try {
+            if ($probe instanceof DetailedDependencyProbe) {
+                return $probe->check();
+            }
+
+            $available = $probe->probe();
+
+            return new ProbeResult($available, $available ? 'Connection succeeded.' : 'Connection failed.');
+        } catch (Throwable) {
+            return new ProbeResult(false, 'Connection failed.');
+        }
+    }
+
     /**
      * @return array<string, array{dependency: string, hard: bool, state: string, available: bool, checked_at: string|null}>
      */
@@ -235,7 +255,14 @@ final class DependencyMonitor
     private function format(Dependency $dependency, array $state): array
     {
         $role = (string) config('dependencies.role', 'api');
-        $level = (string) config("dependencies.roles.{$role}.{$dependency->value}", 'soft');
+        $startupRole = in_array($role, ['api', 'mcp'], true) ? 'web' : $role;
+        $primary = config("javmeta_health.startup.primary.{$startupRole}");
+        if (is_array($primary)) {
+            $primary = array_unique([...['postgres', 'redis', 'mongo'], ...$primary]);
+            $level = in_array($dependency->value, $primary, true) ? 'hard' : 'soft';
+        } else {
+            $level = (string) config("dependencies.roles.{$role}.{$dependency->value}", 'soft');
+        }
 
         return [
             'dependency' => $dependency->value,

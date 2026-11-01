@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use Tests\TestCase;
+use Tests\Support\StartupHealthTestFixture;
 
 final class HorizonAccessTest extends TestCase
 {
@@ -27,6 +28,7 @@ final class HorizonAccessTest extends TestCase
     public function test_horizon_dashboard_does_not_bypass_authentication_in_local_environment(): void
     {
         config(['javmeta_auth.owner_admin_token' => '']);
+        StartupHealthTestFixture::bind();
         $this->app->detectEnvironment(static fn(): string => 'local');
 
         $this->get('/horizon')->assertForbidden();

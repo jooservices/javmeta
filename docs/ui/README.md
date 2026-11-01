@@ -120,6 +120,8 @@ Library scans skip file and directory symlinks, including links outside the conf
 
 Settings warns when a legacy service base URL is invalid and uses the config default until the owner saves a valid HTTP(S) address without credentials, query or fragment. Telegram group commands and download buttons additionally require the configured **User ID chủ sở hữu Telegram**; private chats keep their chat-ID authorization. See [settings operations](../03-operations/settings.md).
 
+Cài đặt → **Sức khỏe khi khởi động** controls primary-role policy, retry timing, web snapshot TTL and Artisan command exceptions. PostgreSQL, Redis and MongoDB remain primary; Elasticsearch defaults to primary on web and secondary on workers. A red primary health snapshot returns 503 before the owner login flow; `/api/health` and `/api/health/live` remain available for diagnosis. See [startup health operations](../03-operations/startup-health.md).
+
 ## Fetch diagnostics retention
 
 Cài đặt / Giám sát exposes **Số ngày giữ lịch sử thử tải** (default 14).

@@ -98,6 +98,7 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'options' => extension_loaded('pdo_pgsql') ? [PDO::ATTR_TIMEOUT => 2] : [],
         ],
 
         'sqlsrv' => [
@@ -123,6 +124,7 @@ return [
                 env('MONGO_PORT', '27017'),
             ),
             'database' => env('MONGODB_DATABASE', env('MONGO_DATABASE', 'javmeta_archive')),
+            'options' => ['serverSelectionTimeoutMS' => 2000, 'socketTimeoutMS' => 2000],
         ],
 
     ],
@@ -171,6 +173,8 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_DB', '0'),
+            'timeout' => 2,
+            'read_timeout' => 2,
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
@@ -184,6 +188,8 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_CACHE_DB', '1'),
+            'timeout' => 2,
+            'read_timeout' => 2,
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),

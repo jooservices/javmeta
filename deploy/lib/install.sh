@@ -273,6 +273,16 @@ readiness() {
   done
   return 1
 }
+startup_health() {
+  local role=worker
+  [[ "${answers[NODE_ROLE]}" != primary ]] || role=web
+  timeout 660 "${answers[PHP_BINARY]}" artisan health:startup "--role=$role"
+}
+activate_release() {
+  step 'Startup health on the new release' startup_health
+  ln -s "$release" "$base/.current-$$"
+  mv -Tf "$base/.current-$$" "$base/current"
+}
 apply_release() {
   base="${answers[TARGET_DIR]}"
   [[ "$(id -un 2>/dev/null || id -u)" == "${answers[SERVICE_USER]}" || "$(id -u)" == "${answers[SERVICE_USER]}" ]] || die 'Apply must run as SERVICE_USER.'
@@ -327,8 +337,7 @@ apply_release() {
     fi
   else log 'SKIP: worker uses the primary shared env/database; no migrations, shared setup or owner rotation.'; fi
   step 'Clear config/routes/views only' php artisan optimize:clear --except=cache
-  ln -s "$release" "$base/.current-$$"
-  mv -Tf "$base/.current-$$" "$base/current"
+  activate_release
   if (( ! no_start )); then
     step 'Enable role units' unit_action enable "${answers[RESTART_UNITS]} ${answers[START_UNITS]}"
     step 'Restart application units' unit_action restart "${answers[RESTART_UNITS]}"

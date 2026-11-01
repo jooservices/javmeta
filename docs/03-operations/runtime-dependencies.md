@@ -1,9 +1,11 @@
 # Runtime Dependencies
 
-JAVMeta application containers start independently and remain available while
-dependencies recover. Readiness checks do not gate container startup. The API
-container healthcheck uses `/api/health/live`, which reports only whether the
-HTTP process is serving requests.
+`health:startup` gates batch/worker commands and the native systemd worker
+units. PHP-FPM requests consult a shared, short-lived health snapshot before
+sessions/auth and return 503 while a primary is down. The API container
+healthcheck still uses `/api/health/live`, which reports only process liveness.
+The complete policy, startup command and operator steps are in
+[startup health](startup-health.md).
 
 The application, production, and CI PHP images include the phpredis 6.3.0
 extension, which is required by Composer as `ext-redis`. Redis is available to
@@ -13,18 +15,18 @@ database-backed.
 ## Dependency policy
 
 `JAVMETA_ROLE` identifies each `api`, `mcp`, `scheduler`, or `worker` container.
-The current matrix is the same for every role:
+Startup health uses a stricter role policy than the dependency status matrix:
 
 | Dependency | Role | Probe |
 | --- | --- | --- |
-| PostgreSQL | Hard | `SELECT 1` |
-| Redis | Hard when configured | `PING` only when a Redis-backed cache, queue, session, or failover connection is configured |
-| Elasticsearch | Soft | `/_cluster/health` |
-| MongoDB | Soft | `ping` |
-| Embedder | Soft | `/healthz` |
-| OpenObserve | Soft | `/healthz` when enabled |
+| PostgreSQL | Hard | `SELECT 1`; startup also verifies timezone is UTC |
+| Redis | Hard | `PING` and prefixed key write/read/delete on configured cache, queue, session and Horizon connections |
+| Elasticsearch | Hard for web/API; soft for worker/scheduler by default | `/_cluster/health` |
+| MongoDB | Hard | `ping` and settings-store read |
+| Embedder, Sentry, browser gateway, Telegram, Ollama, qBittorrent, OpenObserve | Soft | Bounded availability or read-only API check when configured/enabled |
 
-Probes are cached in process for 10 seconds. Three consecutive failures open a
+The web gate caches a shared startup snapshot for a few seconds. Dependency
+status probes remain cached in process for 10 seconds. Three consecutive failures open a
 circuit for 30 seconds before a half-open retry. Dependency state changes are
 written to the application log; OpenObserve state changes go to stderr while
 OpenObserve is down.
@@ -57,9 +59,10 @@ recovers after a successful Elasticsearch operation.
 
 ## Worker behavior
 
-Queue workers keep running while a hard dependency is down, but pause job
-reservation through Laravel's queue loop. They resume automatically after hard
-dependencies recover. Soft dependency outages do not pause the worker.
+Queue workers do not start when a primary dependency is down. A running worker
+continues to pause job reservation through Laravel's queue loop when a hard
+dependency fails later, then resumes automatically after recovery. Soft
+dependency outages do not pause the worker.
 
 ## OpenObserve behavior
 

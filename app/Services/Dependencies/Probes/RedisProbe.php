@@ -4,29 +4,58 @@ declare(strict_types=1);
 
 namespace App\Services\Dependencies\Probes;
 
-use App\Services\Dependencies\DependencyProbe;
+use App\Services\Dependencies\DetailedDependencyProbe;
+use App\Services\Dependencies\ProbeResult;
 use Illuminate\Support\Facades\Redis;
 use Throwable;
 
-final class RedisProbe implements DependencyProbe
+final class RedisProbe implements DetailedDependencyProbe
 {
     public function probe(): bool
     {
+        return $this->check()->available === true;
+    }
+
+    public function check(): ProbeResult
+    {
+        $timeout = max(1, (int) config('javmeta_health.startup.timeout_seconds', 2));
+        foreach ((array) config('database.redis', []) as $name => $connection) {
+            if (is_array($connection) && isset($connection['host'])) {
+                config([
+                    "database.redis.{$name}.timeout" => $timeout,
+                    "database.redis.{$name}.read_timeout" => $timeout,
+                    "database.redis.{$name}.read_write_timeout" => $timeout,
+                ]);
+            }
+        }
+
         $connections = $this->configuredConnections();
         if ($connections === []) {
-            return true;
+            return new ProbeResult(true, 'No Redis-backed queue, cache, session or Horizon connection is configured.');
         }
 
         try {
             foreach ($connections as $connection) {
-                if (Redis::connection($connection)->ping() === false) {
-                    return false;
+                Redis::purge($connection);
+                $redis = Redis::connection($connection);
+                if ($redis->ping() === false) {
+                    return new ProbeResult(false, 'Redis PING failed.');
+                }
+
+                $key = 'startup-health:' . bin2hex(random_bytes(12));
+                $value = bin2hex(random_bytes(12));
+                try {
+                    if (! in_array($redis->set($key, $value, ['ex' => 2]), [true, 'OK'], true) || $redis->get($key) !== $value) {
+                        return new ProbeResult(false, 'Redis prefixed key access failed.');
+                    }
+                } finally {
+                    $redis->del($key);
                 }
             }
 
-            return true;
+            return new ProbeResult(true, 'PING and prefixed key access succeeded on configured connections.');
         } catch (Throwable) {
-            return false;
+            return new ProbeResult(false, 'Redis connection, ACL or prefixed key access failed.');
         }
     }
 
@@ -43,7 +72,9 @@ final class RedisProbe implements DependencyProbe
             $connections[] = (string) config('session.connection', 'default') ?: 'default';
         }
 
-        $horizonConnection = (string) config('horizon.use', 'default');
+        $horizonConnection = is_array(config('database.redis.horizon'))
+            ? 'horizon'
+            : (string) config('horizon.use', 'default');
         if ($horizonConnection !== '') {
             $connections[] = $horizonConnection;
         }

@@ -96,12 +96,12 @@ final class HealthControllerTest extends TestCase
         DependencyMonitorTestHelper::bind([Dependency::Elasticsearch->value => false]);
 
         $this->getJson('/api/health')
-            ->assertOk()
+            ->assertServiceUnavailable()
             ->assertJsonPath('dependencies.postgres.state', 'healthy')
             ->assertJsonPath('dependencies.postgres.hard', true)
             ->assertJsonPath('dependencies.redis.state', 'healthy')
             ->assertJsonPath('dependencies.elasticsearch.state', 'down')
-            ->assertJsonPath('dependencies.elasticsearch.hard', false)
+            ->assertJsonPath('dependencies.elasticsearch.hard', true)
             ->assertJsonPath('dependencies.mongo.state', 'healthy')
             ->assertJsonPath('dependencies.embedder.state', 'healthy')
             ->assertJsonPath('dependencies.observability.state', 'healthy');
@@ -116,8 +116,8 @@ final class HealthControllerTest extends TestCase
         app(ElasticsearchHttpClient::class)->post('search', '/javmeta_test_movies/_search', ['query' => []]);
 
         $this->getJson('/api/health')
-            ->assertOk()
-            ->assertJsonPath('status', 'degraded')
+            ->assertServiceUnavailable()
+            ->assertJsonPath('status', 'down')
             ->assertJsonPath('dependencies.elasticsearch.state', 'down')
             ->assertJsonPath('dependencies.elasticsearch.available', false)
             ->assertJsonPath('dependencies.elasticsearch.request_failures', 1)

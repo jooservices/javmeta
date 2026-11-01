@@ -89,8 +89,10 @@ It then links shared env/storage, runs Composer `--no-dev
 initializes registered database settings through SettingsService, imports env
 settings, runs `es:setup` **before crawl**, syncs sources, creates the owner on
 first install,
-clears config/routes/views without flushing Redis, and swaps `current`
-atomically. Initial settings include `domains.ui_host`,
+clears config/routes/views without flushing Redis, checks `health:startup` on
+the staged release, and only then swaps `current` atomically. A failed primary
+check restores the previous release and environment. Initial settings include
+`domains.ui_host`,
 `domains.command_center_host`, `search.movies_index`, `search.performers_index`,
 `search.embedder_url`, `ai.ollama_url`, `media.api_url` and
 `observability.openobserve_enabled`; saved UI choices remain authoritative.
@@ -103,7 +105,9 @@ Matching units are enabled/restarted, including the per-node Horizon reconcile
 timer; scheduler starts last **only** when `--start-scheduler` is supplied.
 `--no-start` installs without unit actions or
 claiming process readiness; `--no-systemd` prints actions without calling
-systemctl. Normal starts wait with a bounded timeout for application readiness.
+systemctl. Horizon, scheduler and embedder units run the startup health check
+in `ExecStartPre` and restart on failure. Normal starts wait with a bounded
+timeout for application readiness.
 Every step reports duration and verification; raw command output is suppressed
 to avoid leaking secrets. Failure restores the old symlink/env and restarts old
 units; first-install failure stops role units. Database migrations/settings are

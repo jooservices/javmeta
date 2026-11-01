@@ -6,70 +6,133 @@ namespace Tests\Unit\Services\Dependencies\Probes;
 
 use App\Services\Dependencies\Probes\RedisProbe;
 use Illuminate\Support\Facades\Redis;
-use Mockery;
 use Tests\TestCase;
 
 final class RedisProbeTest extends TestCase
 {
-    public function test_it_pings_horizons_redis_connection_when_other_drivers_are_database_backed(): void
+    public function test_it_pings_and_proves_prefixed_key_access_on_configured_connections(): void
     {
-        config()->set('cache.default', 'database');
-        config()->set('queue.default', 'database');
-        config()->set('session.driver', 'database');
-        config()->set('horizon.use', 'default');
-        $connection = Mockery::mock();
-        $connection->shouldReceive('ping')->once()->andReturn('PONG');
+        config([
+            'cache.default' => 'array',
+            'queue.default' => 'redis',
+            'queue.connections.redis.driver' => 'redis',
+            'queue.connections.redis.connection' => 'default',
+            'horizon.use' => 'default',
+            'database.redis.horizon' => null,
+        ]);
+        $connection = new class {
+            /** @var array<string, string> */
+            public array $values = [];
+
+            public function ping(): string
+            {
+                return 'PONG';
+            }
+
+            public function set(string $key, string $value, array $options): string
+            {
+                $this->values[$key] = $value;
+
+                return 'OK';
+            }
+
+            public function get(string $key): ?string
+            {
+                return $this->values[$key] ?? null;
+            }
+
+            public function del(string $key): int
+            {
+                unset($this->values[$key]);
+
+                return 1;
+            }
+        };
+        Redis::shouldReceive('purge')->once()->with('default');
         Redis::shouldReceive('connection')->once()->with('default')->andReturn($connection);
 
-        self::assertTrue((new RedisProbe())->probe());
+        $result = (new RedisProbe())->check();
+
+        self::assertTrue($result->available);
+        self::assertSame([], $connection->values);
     }
 
-    public function test_it_pings_the_connection_selected_by_the_cache_store(): void
+    public function test_it_reports_acl_or_prefix_failures_as_down(): void
     {
-        config()->set('cache.default', 'redis');
-        config()->set('cache.stores.redis', ['driver' => 'redis', 'connection' => 'cache']);
-        config()->set('queue.default', 'database');
-        config()->set('session.driver', 'database');
-        $connection = Mockery::mock();
-        $horizonConnection = Mockery::mock();
-        $connection->shouldReceive('ping')->once()->andReturn('PONG');
-        $horizonConnection->shouldReceive('ping')->once()->andReturn('PONG');
-        Redis::shouldReceive('connection')->once()->with('cache')->andReturn($connection);
-        Redis::shouldReceive('connection')->once()->with('default')->andReturn($horizonConnection);
-
-        self::assertTrue((new RedisProbe())->probe());
-    }
-
-    public function test_it_pings_redis_selected_by_a_failover_cache_store(): void
-    {
-        config()->set('cache.default', 'failover');
-        config()->set('cache.stores.failover', [
-            'driver' => 'failover',
-            'stores' => ['database', 'redis'],
+        config([
+            'cache.default' => 'array',
+            'queue.default' => 'redis',
+            'queue.connections.redis.driver' => 'redis',
+            'queue.connections.redis.connection' => 'default',
+            'horizon.use' => 'default',
+            'database.redis.horizon' => null,
         ]);
-        config()->set('cache.stores.redis', ['driver' => 'redis', 'connection' => 'cache']);
-        config()->set('queue.default', 'database');
-        config()->set('session.driver', 'database');
-        $connection = Mockery::mock();
-        $horizonConnection = Mockery::mock();
-        $connection->shouldReceive('ping')->once()->andReturn('PONG');
-        $horizonConnection->shouldReceive('ping')->once()->andReturn('PONG');
-        Redis::shouldReceive('connection')->once()->with('cache')->andReturn($connection);
-        Redis::shouldReceive('connection')->once()->with('default')->andReturn($horizonConnection);
+        $connection = new class {
+            public function ping(): string
+            {
+                return 'PONG';
+            }
 
-        self::assertTrue((new RedisProbe())->probe());
-    }
+            public function set(string $key, string $value, array $options): bool
+            {
+                return false;
+            }
 
-    public function test_it_reports_a_failed_ping_as_unavailable(): void
-    {
-        config()->set('queue.default', 'redis');
-        config()->set('queue.connections.redis', ['driver' => 'redis', 'connection' => 'default']);
-        config()->set('cache.default', 'database');
-        config()->set('session.driver', 'database');
-        $connection = Mockery::mock();
-        $connection->shouldReceive('ping')->once()->andReturn(false);
+            public function get(string $key): ?string
+            {
+                return null;
+            }
+
+            public function del(string $key): int
+            {
+                return 0;
+            }
+        };
+        Redis::shouldReceive('purge')->once()->with('default');
         Redis::shouldReceive('connection')->once()->with('default')->andReturn($connection);
 
         self::assertFalse((new RedisProbe())->probe());
+    }
+
+    public function test_it_checks_the_separate_horizon_redis_connection(): void
+    {
+        config([
+            'cache.default' => 'array',
+            'queue.default' => 'sync',
+            'horizon.use' => 'default',
+            'database.redis.horizon' => ['host' => 'redis.example.test'],
+        ]);
+        $connection = new class {
+            /** @var array<string, string> */
+            public array $values = [];
+
+            public function ping(): string
+            {
+                return 'PONG';
+            }
+
+            public function set(string $key, string $value, array $options): string
+            {
+                $this->values[$key] = $value;
+
+                return 'OK';
+            }
+
+            public function get(string $key): ?string
+            {
+                return $this->values[$key] ?? null;
+            }
+
+            public function del(string $key): int
+            {
+                unset($this->values[$key]);
+
+                return 1;
+            }
+        };
+        Redis::shouldReceive('purge')->once()->with('horizon');
+        Redis::shouldReceive('connection')->once()->with('horizon')->andReturn($connection);
+
+        self::assertTrue((new RedisProbe())->probe());
     }
 }
