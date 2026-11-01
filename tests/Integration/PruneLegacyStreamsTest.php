@@ -17,6 +17,7 @@ final class PruneLegacyStreamsTest extends IntegrationTestCase
 {
     public function test_only_legacy_streams_are_exported_and_deleted_and_rerun_is_safe(): void
     {
+        self::assertSame('pgsql', getenv('DB_CONNECTION'), 'Integration setup must not leak the feature-test SQLite environment.');
         $host = parse_url((string) config('openobserve.url'), PHP_URL_HOST);
         self::assertContains($host, ['openobserve', '127.0.0.1', 'localhost'], 'Integration test refuses non-local OpenObserve.');
         $random = bin2hex(random_bytes(8));
