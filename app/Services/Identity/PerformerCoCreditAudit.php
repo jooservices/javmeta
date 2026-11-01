@@ -9,6 +9,7 @@ use App\Models\PerformerIdentityEvent;
 use App\Models\PerformerSource;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 final class PerformerCoCreditAudit
 {
@@ -17,7 +18,9 @@ final class PerformerCoCreditAudit
     /** @param array<string, mixed> $evidence */
     public function record(PerformerIdentityEvent $event, array $evidence): int
     {
-        $this->recordMovies($event, $evidence);
+        if ($this->recordMovies($event, $evidence) === 0) {
+            throw new RuntimeException('Co-credit movie evidence disappeared; retry reconciliation.');
+        }
         $details = (array) $event->getAttribute('details');
         $moved = $details['source_performer_ids'];
         $target = $this->groupIds((int) $event->to_performer_id)->whereNotIn('id', $moved);
@@ -46,12 +49,13 @@ final class PerformerCoCreditAudit
     }
 
     /** @param array<string, mixed> $evidence */
-    private function recordMovies(PerformerIdentityEvent $event, array $evidence): void
+    private function recordMovies(PerformerIdentityEvent $event, array $evidence): int
     {
         $left = PerformerSource::query()->where('source_performer_id', $evidence['source_id'])->firstOrFail();
         $right = PerformerSource::query()->where('source_performer_id', $evidence['candidate_source_id'])->firstOrFail();
+        $recorded = 0;
         $this->rule->movies($left, $right, $evidence['normalized_name'])->orderBy('m.id')
-            ->chunk(200, static function ($page) use ($event, $evidence): void {
+            ->chunkById(200, static function ($page) use ($event, $evidence, &$recorded): void {
                 $rows = [];
                 foreach ($page as $movie) {
                     $rows[] = [
@@ -62,7 +66,10 @@ final class PerformerCoCreditAudit
                     ];
                 }
                 DB::table('performer_identity_event_movie_links')->insert($rows);
-            });
+                $recorded += $page->count();
+            }, 'm.id', 'id');
+
+        return $recorded;
     }
 
     public function restore(PerformerIdentityEvent $event): void
@@ -72,6 +79,20 @@ final class PerformerCoCreditAudit
             DB::table('performer_identity_reviews')->where('id', $record->review_id)->update($snapshot);
         }
         $this->refreshFlags($event);
+    }
+
+    /** Lock reviews before the undo writes anything, preserving later operator or reconciliation decisions. */
+    public function assertCanReclose(PerformerIdentityEvent $event): void
+    {
+        foreach (DB::table('performer_identity_event_reviews')->where('event_id', $event->id)->lazyById(200) as $record) {
+            $snapshot = json_decode((string) $record->snapshot, true, 512, JSON_THROW_ON_ERROR);
+            $current = DB::table('performer_identity_reviews')->where('id', $record->review_id)->lockForUpdate()->first();
+            foreach (['source_performer_id', 'candidate_performer_id', 'status', 'reason', 'similarity', 'resolved_at'] as $field) {
+                if ($current === null || (string) $current->{$field} !== (string) ($snapshot[$field] ?? null)) {
+                    throw new RuntimeException('The restored identity review changed; resolve it before undoing this split.');
+                }
+            }
+        }
     }
 
     public function reclose(PerformerIdentityEvent $event): void

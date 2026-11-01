@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
+use RuntimeException;
 
 final class PerformerCoCreditRuleTest extends TestCase
 {
@@ -227,6 +228,86 @@ final class PerformerCoCreditRuleTest extends TestCase
         self::assertDatabaseCount('performer_identity_events', 0);
         self::assertDatabaseHas('performer_identity_reviews', ['source_performer_id' => $left->id,
             'candidate_performer_id' => $fourth->id, 'status' => 'open', 'reason' => 'co_credit_conflicting_height_cm']);
+    }
+
+    public function test_unmerge_rejects_mistyped_or_overflowing_ids_without_reversing_a_merge(): void
+    {
+        [, $right] = $this->pair();
+        $this->artisan('performers:backfill-identities', ['--rule' => 'co_credit'])->assertSuccessful();
+        $event = PerformerIdentityEvent::query()->sole();
+        foreach ([$event->id . 'oops', $event->id . 'e0', (string) PHP_INT_MAX . '0', '0', '-1'] as $invalid) {
+            $this->artisan('performers:identity-unmerge', ['event' => $invalid])->assertFailed();
+            self::assertNull($event->fresh()->reversed_at);
+            self::assertNotNull($right->fresh()->canonical_performer_id);
+        }
+    }
+
+    public function test_crawl_refuses_a_movie_with_an_unkeyed_cast_member(): void
+    {
+        [$left, $right, $movie] = $this->pair();
+        $identity = app(PerformerIdentityService::class);
+        foreach (PerformerSource::query()->get() as $source) {
+            $identity->refreshNameKeys($source);
+        }
+        $extra = $this->performer('right', 'Sakura Aoi');
+        $this->credit($extra, $movie);
+        $source = PerformerSource::query()->where('source_performer_id', $left->id)->firstOrFail();
+        $identity->reconcileSource($source);
+        self::assertDatabaseCount('performer_identity_events', 0);
+        self::assertNull($right->fresh()->canonical_performer_id);
+    }
+
+    public function test_merge_rolls_back_when_shared_movie_evidence_disappears_after_validation(): void
+    {
+        [$left, $right] = $this->pair();
+        $removed = false;
+        DB::listen(static function ($query) use (&$removed, $right): void {
+            if (! $removed && str_starts_with($query->sql, 'insert into "performer_identity_events"')) {
+                $removed = true;
+                DB::table('movie_performers')->where('performer_id', $right->id)->delete();
+            }
+        });
+        try {
+            app(PerformerIdentityService::class)->streamBackfill(false, static function (): void {}, 'co_credit');
+            self::fail('A co-credit merge must retain movie evidence.');
+        } catch (RuntimeException $exception) {
+            self::assertStringContainsString('evidence', $exception->getMessage());
+        }
+        self::assertTrue($removed);
+        self::assertDatabaseCount('performer_identity_events', 0);
+        self::assertDatabaseCount('movie_performers', 2);
+        self::assertNull($left->fresh()->canonical_performer_id);
+        self::assertNull($right->fresh()->canonical_performer_id);
+    }
+
+    public function test_undo_refuses_to_overwrite_a_review_changed_after_split(): void
+    {
+        [$left, $right] = $this->pair();
+        $this->review($left, $right);
+        $this->artisan('performers:backfill-identities', ['--rule' => 'co_credit'])->assertSuccessful();
+        $identity = app(PerformerIdentityService::class);
+        $split = $identity->split((int) PerformerIdentityEvent::query()->sole()->id);
+        DB::table('performer_identity_reviews')->update(['reason' => 'co_credit_conflicting_height_cm']);
+        try {
+            $identity->undoSplit((int) $split->id);
+            self::fail('Undo must not discard a newer review decision.');
+        } catch (RuntimeException $exception) {
+            self::assertStringContainsString('review changed', $exception->getMessage());
+        }
+        self::assertDatabaseHas('performer_identity_reviews', ['status' => 'open', 'reason' => 'co_credit_conflicting_height_cm']);
+        self::assertNull($right->fresh()->canonical_performer_id);
+        self::assertNull($split->fresh()->reversed_at);
+    }
+
+    public function test_co_credit_does_not_override_multiple_legacy_strong_matches(): void
+    {
+        [$left, $right] = $this->pair('Aoi Sakura', ['birth_date' => '1990-01-01'], ['birth_date' => '1990-01-01']);
+        $this->performer('third', 'Aoi Sakura', ['birth_date' => '1990-01-01']);
+        $this->artisan('performers:backfill-identities')->assertSuccessful();
+        self::assertDatabaseCount('performer_identity_events', 0);
+        self::assertNull($left->fresh()->canonical_performer_id);
+        self::assertNull($right->fresh()->canonical_performer_id);
+        self::assertDatabaseHas('performer_identity_reviews', ['reason' => 'multiple_strong_matches', 'status' => 'open']);
     }
 
     public function test_invalid_operator_options_are_rejected(): void

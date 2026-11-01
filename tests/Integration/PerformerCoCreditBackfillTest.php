@@ -50,8 +50,11 @@ final class PerformerCoCreditBackfillTest extends IntegrationTestCase
         self::assertSame(0, Artisan::call('es:setup', ['--reindex' => true]));
         self::assertSame(6, $this->esCount((string) config('elasticsearch.performers_index')));
         fwrite(STDOUT, "\nLocal sample: before canonical=8 reviews=4 merges=0; dry-run unchanged; after canonical=6 reviews=2 merges=2; conflicts kept=1.\n");
-        app(PerformerIdentityService::class)->split((int) DB::table('performer_identity_events')->where('event_type', 'merge')->max('id'));
+        $identity = app(PerformerIdentityService::class);
+        $split = $identity->split((int) DB::table('performer_identity_events')->where('event_type', 'merge')->max('id'));
         self::assertSame(7, $this->counts()['canonical']);
+        $identity->undoSplit((int) $split->id);
+        self::assertSame(6, $this->counts()['canonical']);
     }
 
     public function test_indexed_co_credit_queries_on_26000_movies_and_performers(): void

@@ -367,6 +367,7 @@ final class PerformerIdentityService
                 (int) $merge->to_performer_id,
             ]))->orderBy('id')->lockForUpdate()->get(['id']);
             $this->mergeGuard->assertSplitCanBeUndone($merge, $details);
+            $this->coCreditAudit->assertCanReclose($merge);
 
             // Links added to the group after the merge snapshot must follow the group, so select them live.
             DB::table('performer_sources')
@@ -525,7 +526,7 @@ final class PerformerIdentityService
     /** @param array<string, mixed> $evaluation @return array<string, mixed> */
     private function withCoCredit(PerformerSource $source, array $evaluation): array
     {
-        if ($evaluation['decision'] === 'merge') {
+        if ($evaluation['decision'] === 'merge' || ($evaluation['strong_count'] ?? 0) > 1) {
             return $evaluation;
         }
         $coCredit = $this->coCredit->evaluate($source);

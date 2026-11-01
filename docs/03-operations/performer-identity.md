@@ -10,8 +10,11 @@ remain separate and are listed by the identity review report.
 
 Names are normalized with Unicode compatibility normalization, case folding,
 punctuation removal, and token sorting. This accepts family/given name order
-changes. A cross-script match requires a shared name variant and the same birth
-date, unless a strong cross-link or unambiguous co-credit establishes identity. Source names, aliases,
+changes. Cross-script matching still needs a shared normalized full name for
+co-credit: the shared variant can occur in any romaji, kanji or kana field.
+Co-credit waives the birth-date requirement only; profiles without a shared
+normalized full name do not qualify. Namespaced cross-links remain independent
+of names. Source names, aliases,
 source URLs, and active/removal state remain available on canonical API, MCP,
 and search records.
 
@@ -139,7 +142,11 @@ the co-credit rule refuses the merge. The review stays open with a
 `co_credit_conflicting_*` reason. Existing name-plus-birth-date and namespaced
 cross-link rules retain their precedence and behavior. Name similarity alone
 still never merges, and `performer_identity.merge_name_similarity` stays `1.0`.
-Multiple eligible canonical candidates remain separate for review.
+Multiple eligible canonical candidates remain separate for review. The default
+backfill and crawl also preserve reviews for multiple legacy strong matches.
+Movies with unkeyed cast members on either source side cannot establish
+uniqueness; index or re-crawl those records first. Removed profiles still count
+in cast ambiguity because their historical movie credit remains present.
 
 A co-credit merge closes only open reviews between the two merging groups
 (including reviews pointing at their previous canonical IDs), with status `resolved_co_credit`, reason `co_credit` and `resolved_at`.
@@ -154,7 +161,9 @@ never the original shared evidence credits.
 `performers:identity-unmerge <event>` reuses the guarded split implementation
 and restores the previous canonical mapping and reviews. It records a split
 event and refreshes search. Resolve subsequent identity changes first if the
-command refuses an older event. The existing `performers:split` and
+command refuses an older event. An undo also refuses to overwrite a review
+whose status or decision changed after the split. A co-credit merge rolls back
+if its final evidence read no longer finds a shared qualifying movie. The existing `performers:split` and
 `performers:undo-split` commands remain available.
 
 ### Operator sequence

@@ -59,8 +59,8 @@ final class PerformerCoCreditRule
                     'id' => (int) $candidate->performer_id,
                     'source_id' => (int) $source->source_performer_id,
                     'candidate_source_id' => (int) $candidate->source_performer_id,
-                    'name' => (string) ($source->name_romaji ?? $source->sourcePerformer?->name_romaji),
-                    'candidate_name' => (string) ($candidate->name_romaji ?? $candidate->sourcePerformer?->name_romaji),
+                    'name' => $this->displayName($source),
+                    'candidate_name' => $this->displayName($candidate),
                     'source' => (string) $source->site_slug,
                     'candidate_source' => (string) $candidate->site_slug,
                     'movie_id' => (int) $movie->id,
@@ -87,15 +87,36 @@ final class PerformerCoCreditRule
             ->select(['m.id', 'm.display_code as code', 'l.source_slug', 'l.crawled_at']);
         foreach ([$left, $right] as $side) {
             $query->whereRaw(
-                '(SELECT COUNT(DISTINCT s.source_performer_id) FROM performer_name_keys k '
-                . 'JOIN performer_sources s ON s.source_performer_id = k.source_performer_id '
-                . 'JOIN movie_performers c ON c.performer_id = s.source_performer_id '
-                . 'WHERE k.normalized_name = ? AND s.site_slug = ? AND s.removed_at IS NULL AND c.movie_id = m.id) = 1',
+                '(SELECT COUNT(DISTINCT p.id) FROM performer_name_keys k '
+                . 'JOIN performers p ON p.id = k.source_performer_id '
+                . 'JOIN movie_performers c ON c.performer_id = p.id '
+                . 'WHERE k.normalized_name = ? AND p.source_slug = ? AND c.movie_id = m.id) = 1',
                 [$key, $side->site_slug],
             );
+            // Pre-deploy cast rows may lack indexes or source links: uncertainty must never look unique.
+            $query->whereNotExists(static function ($unknown) use ($side): void {
+                $unknown->selectRaw('1')->from('movie_performers as c')
+                    ->join('performers as p', 'p.id', '=', 'c.performer_id')
+                    ->whereColumn('c.movie_id', 'm.id')->where('p.source_slug', $side->site_slug)
+                    ->whereNotExists(static fn($keys) => $keys->selectRaw('1')->from('performer_name_keys as k')
+                        ->whereColumn('k.source_performer_id', 'p.id'));
+            });
         }
 
         return $query;
+    }
+
+    private function displayName(PerformerSource $source): string
+    {
+        $performer = $source->sourcePerformer;
+        foreach ([$source->name_romaji, $source->name_kanji, $source->name_kana,
+            $performer?->name_romaji, $performer?->name_kanji, $performer?->name_kana] as $name) {
+            if (is_string($name) && trim($name) !== '') {
+                return $name;
+            }
+        }
+
+        return '';
     }
 
     /** Reject conflicts anywhere in either canonical group, including a third source already merged. */

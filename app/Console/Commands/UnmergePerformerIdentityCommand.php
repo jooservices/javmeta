@@ -16,8 +16,15 @@ final class UnmergePerformerIdentityCommand extends Command
 
     public function handle(PerformerIdentityService $identities): int
     {
+        $argument = (string) $this->argument('event');
+        if (! ctype_digit($argument)
+            || filter_var($argument, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false) {
+            $this->error('The merge event must be a positive integer ID.');
+
+            return self::FAILURE;
+        }
         try {
-            $event = $identities->split((int) $this->argument('event'));
+            $event = $identities->split((int) $argument);
         } catch (RuntimeException $exception) {
             $this->error($exception->getMessage());
 
