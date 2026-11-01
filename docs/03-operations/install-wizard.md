@@ -17,3 +17,12 @@ After installing Horizon on each main or worker node, install and enable
 application scheduler, so the timer is required there. The timer is local to
 each node and is safe to run alongside the main scheduler's once-a-minute
 reconcile command.
+
+For release application, the wizard runs `health:startup` against the staged
+release before stopping existing units. A failed primary check leaves those
+units and `current` untouched. Once it passes, the wizard quiesces units,
+applies migrations and shared settings, and switches `current`; later failures
+use the existing rollback. Horizon, scheduler and embedder systemd units also
+run the role-specific check from `ExecStartPre`. Because the Horizon and
+scheduler units use `Restart=on-failure`, use `systemctl restart` for clean-exit
+maintenance reloads. See [startup health](startup-health.md).

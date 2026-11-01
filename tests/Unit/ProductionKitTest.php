@@ -41,6 +41,18 @@ final class ProductionKitTest extends TestCase
         }
     }
 
+    public function test_long_running_units_gate_startup_health_and_restart_after_failure(): void
+    {
+        $root = dirname(__DIR__, 2);
+        foreach (['horizon', 'scheduler', 'embedder'] as $service) {
+            $unit = (string) file_get_contents($root . '/deploy/production/node/xcrawler-' . $service . '.service');
+            self::assertStringContainsString('TimeoutStartSec=660', $unit);
+            self::assertStringContainsString('ExecStartPre=@PHP_BINARY@ artisan health:startup', $unit);
+            self::assertStringContainsString('Restart=on-failure', $unit);
+            self::assertStringContainsString('RestartSec=15', $unit);
+        }
+    }
+
     public function test_nginx_routes_both_hosts_and_gates_the_original_connection_address(): void
     {
         $nginx = (string) file_get_contents(dirname(__DIR__, 2) . '/deploy/production/node/xcrawler.nginx.conf');

@@ -69,7 +69,23 @@ final class DependencyMonitor
         }
 
         try {
-            $available = $probe->probe();
+            if ($probe instanceof DetailedDependencyProbe) {
+                $result = $probe->check();
+                if ($result->available === null) {
+                    $state = $this->changeState($dependency, $state, 'disabled');
+                    $state['available'] = true;
+                    $state['failures'] = 0;
+                    $state['cached_at'] = $now;
+                    $state['retry_at'] = null;
+                    $state['checked_at'] = now()->toIso8601String();
+
+                    return $this->storeAndFormat($dependency, $state);
+                }
+
+                $available = $result->available;
+            } else {
+                $available = $probe->probe();
+            }
         } catch (Throwable) {
             $available = false;
         }
@@ -98,6 +114,26 @@ final class DependencyMonitor
     public function isAvailable(Dependency $dependency): bool
     {
         return $this->check($dependency)['available'];
+    }
+
+    public function probeNow(Dependency $dependency): ProbeResult
+    {
+        $probe = $this->probes[$dependency->value] ?? null;
+        if (! $probe instanceof DependencyProbe) {
+            return new ProbeResult(true, 'Check is not configured.');
+        }
+
+        try {
+            if ($probe instanceof DetailedDependencyProbe) {
+                return $probe->check();
+            }
+
+            $available = $probe->probe();
+
+            return new ProbeResult($available, $available ? 'Connection succeeded.' : 'Connection failed.');
+        } catch (Throwable) {
+            return new ProbeResult(false, 'Connection failed.');
+        }
     }
 
     /**
@@ -235,7 +271,14 @@ final class DependencyMonitor
     private function format(Dependency $dependency, array $state): array
     {
         $role = (string) config('dependencies.role', 'api');
-        $level = (string) config("dependencies.roles.{$role}.{$dependency->value}", 'soft');
+        $startupRole = in_array($role, ['api', 'mcp'], true) ? 'web' : $role;
+        $primary = config("javmeta_health.startup.primary.{$startupRole}");
+        if (is_array($primary)) {
+            $primary = array_unique([...['postgres', 'redis', 'mongo'], ...$primary]);
+            $level = in_array($dependency->value, $primary, true) ? 'hard' : 'soft';
+        } else {
+            $level = (string) config("dependencies.roles.{$role}.{$dependency->value}", 'soft');
+        }
 
         return [
             'dependency' => $dependency->value,

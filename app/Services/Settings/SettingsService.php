@@ -39,12 +39,12 @@ final class SettingsService
     }
 
     /** Push every saved value into the Laravel config. Safe when the store is down: the defaults stay. */
-    public function apply(): void
+    public function apply(): bool
     {
         try {
             $saved = $this->store->group(self::GROUP);
         } catch (Throwable) {
-            return;
+            return false;
         }
 
         $this->captureDefaults();
@@ -66,6 +66,31 @@ final class SettingsService
         }
         if ($applied !== []) {
             event(new SettingsApplied($applied));
+        }
+
+        return true;
+    }
+
+    /** Force a settings-store read before applying settings used to make startup decisions. */
+    public function applyFresh(): bool
+    {
+        try {
+            $this->store->refresh();
+        } catch (Throwable) {
+            return false;
+        }
+
+        return $this->apply();
+    }
+
+    /** Restore the code defaults if a previously loaded settings store becomes unavailable. */
+    public function restoreDefaults(): void
+    {
+        $this->captureDefaults();
+        foreach ($this->definitions() as $key => $definition) {
+            foreach ((array) $definition['config'] as $configKey) {
+                config([$configKey => self::$defaults[$key] ?? null]);
+            }
         }
     }
 
@@ -373,7 +398,14 @@ final class SettingsService
             return $number;
         }
         if ($type === 'string_list') {
-            return $this->validateStringList($key, $value, $fail);
+            $items = $this->validateStringList($key, $value, $fail);
+            foreach ($items as $item) {
+                if (isset($definition['item_options']) && ! in_array($item, $definition['item_options'], true)) {
+                    $fail('entries must be one of ' . implode(', ', $definition['item_options']));
+                }
+            }
+
+            return $items;
         }
         if ($type === 'int_list') {
             return $this->validateIntList($value, $fail);

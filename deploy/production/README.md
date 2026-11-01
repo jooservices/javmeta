@@ -85,12 +85,15 @@ names come from `CI_CHECKS`; enable with `--ci-check 'Job A,Job B'` and
 `CI_REPOSITORY`. `--skip-ci-check` skips this optional gate.
 
 It then links shared env/storage, runs Composer `--no-dev
---classmap-authoritative`, UI render smoke, quiesces role units, migrates forward,
-initializes registered database settings through SettingsService, imports env
-settings, runs `es:setup` **before crawl**, syncs sources, creates the owner on
-first install,
+--classmap-authoritative` and UI render smoke, then checks `health:startup` on
+the staged release before stopping any existing role units. After that gate
+passes, it quiesces role units, migrates forward, initializes registered
+database settings through SettingsService, imports env settings, runs
+`es:setup` **before crawl**, syncs sources, creates the owner on first install,
 clears config/routes/views without flushing Redis, and swaps `current`
-atomically. Initial settings include `domains.ui_host`,
+atomically. A failed primary check leaves the running units and current release
+untouched. Initial settings include
+`domains.ui_host`,
 `domains.command_center_host`, `search.movies_index`, `search.performers_index`,
 `search.embedder_url`, `ai.ollama_url`, `media.api_url` and
 `observability.openobserve_enabled`; saved UI choices remain authoritative.
@@ -103,11 +106,17 @@ Matching units are enabled/restarted, including the per-node Horizon reconcile
 timer; scheduler starts last **only** when `--start-scheduler` is supplied.
 `--no-start` installs without unit actions or
 claiming process readiness; `--no-systemd` prints actions without calling
-systemctl. Normal starts wait with a bounded timeout for application readiness.
+systemctl. Horizon, scheduler and embedder units run the startup health check
+in `ExecStartPre` and restart on failure. Normal starts wait with a bounded
+timeout for application readiness.
 Every step reports duration and verification; raw command output is suppressed
 to avoid leaking secrets. Failure restores the old symlink/env and restarts old
 units; first-install failure stops role units. Database migrations/settings are
 not rolled back automatically. Failed releases remain for private inspection.
+The Horizon and scheduler units use `Restart=on-failure`, so clean exits from
+`horizon:terminate` or `schedule:work` do not restart them automatically; use
+`systemctl restart <unit-prefix>-horizon` or
+`systemctl restart <unit-prefix>-scheduler` for maintenance reloads.
 
 ## Adding a worker node
 

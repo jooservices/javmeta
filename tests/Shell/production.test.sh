@@ -30,9 +30,49 @@ cat > "$fixture/bin/pg_restore" <<'STUB'
 [[ "${BAD_DUMP:-}" != invalid ]] || exit 1
 printf ';     dbname: %s\n' "${DUMP_DB:-fixture}"
 STUB
+cat > "$fixture/bin/php-health" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STARTUP_LOG"
+exit "${STARTUP_HEALTH_EXIT:-0}"
+STUB
 chmod +x "$fixture/bin/"*
 export PATH="$fixture/bin:$PATH"
 declare -A answers=([CI_CHECKS]='Test gate,Secrets gate' [CI_REPOSITORY]='fixture/repo' [BACKUP_FILE]="$fixture/dump" [BACKUP_RESTORE_VERIFIED]=1 [DB_DATABASE]=fixture)
+answers[PHP_BINARY]="$fixture/bin/php-health"
+answers[NODE_ROLE]=primary
+export STARTUP_LOG="$fixture/startup.log"
+start_scheduler=0
+startup_health
+grep -q 'artisan health:startup --role=web' "$STARTUP_LOG" || fail 'primary startup health used the wrong role'
+grep -q 'artisan health:startup --role=worker' "$STARTUP_LOG" || fail 'primary startup health omitted the worker role'
+start_scheduler=1
+startup_health
+grep -q 'artisan health:startup --role=scheduler' "$STARTUP_LOG" || fail 'primary scheduler startup health was omitted'
+start_scheduler=0
+answers[NODE_ROLE]=worker
+startup_health
+grep -q 'artisan health:startup --role=worker' "$STARTUP_LOG" || fail 'worker startup health used the wrong role'
+mkdir -p "$fixture/deploy/release" "$fixture/deploy/previous"
+ln -s "$fixture/deploy/previous" "$fixture/deploy/current"
+set +e
+(
+  set -Eeuo pipefail
+  base="$fixture/deploy"
+  previous="$fixture/deploy/previous"
+  release="$fixture/deploy/release"
+  quiesced=0
+  started=$SECONDS
+  answers[NODE_ROLE]=primary
+  export STARTUP_HEALTH_EXIT=1
+  trap rollback ERR
+  step 'Startup health on staged release' startup_health
+  activate_release
+) > "$fixture/rollback.log" 2>&1
+rollback_status=$?
+set -e
+(( rollback_status != 0 )) || fail 'deployment switched current after a failed primary health check'
+[[ "$(readlink -f "$fixture/deploy/current")" == "$fixture/deploy/previous" ]] || fail 'failed startup health did not leave current on the previous release'
+unset STARTUP_HEALTH_EXIT
 skip_ci=0
 for state in offline empty unrelated missing pending failed skipped neutral; do
   if CI_STATE="$state" ci_gate exact-sha > "$fixture/log" 2>&1; then fail "accepted CI $state"; fi
@@ -59,4 +99,4 @@ if bash "$root/deploy/production.sh" < /dev/null > "$fixture/log" 2>&1; then fai
 grep -q 'Input ended at SERVICE_EMBEDDER_ENABLED' "$fixture/log" || fail 'production entry point did not prompt interactively'
 if bash "$root/deploy/install.sh" --non-interactive --set DB_PASSWORD=fixture > "$fixture/log" 2>&1; then fail 'secret argv accepted'; fi
 grep -q 'must come from private config' "$fixture/log" || fail 'secret argv not diagnosed'
-echo 'OK (19 production CI/backup/entry-point scenarios)'
+echo 'OK (22 production CI/backup/entry-point scenarios)'

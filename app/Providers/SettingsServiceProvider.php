@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Console\Listeners\StartupCommandListener;
 use App\Services\Settings\SettingsService;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Queue\Events\JobProcessing;
@@ -35,6 +36,6 @@ final class SettingsServiceProvider extends ServiceProvider
 
         $this->app->booted(static fn() => app(SettingsService::class)->apply());
         Event::listen(JobProcessing::class, static fn() => app(SettingsService::class)->apply());
-        Event::listen(CommandStarting::class, static fn() => app(SettingsService::class)->apply());
+        Event::listen(CommandStarting::class, StartupCommandListener::class);
     }
 }

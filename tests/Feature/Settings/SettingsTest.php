@@ -142,6 +142,26 @@ final class SettingsTest extends TestCase
         $this->assertSame(['main' => ['default' => 2, 'queues' => ['listing' => 3]]], config('javmeta_queues.worker_node_overrides'));
     }
 
+    public function test_startup_health_settings_are_database_backed_and_validate_role_members(): void
+    {
+        $settings = app(SettingsService::class);
+        $settings->set('health.startup.primary.web', ['postgres', 'redis', 'mongo']);
+        $settings->set('health.startup.timeout_seconds', 1);
+
+        $this->assertSame(['postgres', 'redis', 'mongo'], config('javmeta_health.startup.primary.web'));
+        $this->assertSame(1, config('javmeta_health.startup.timeout_seconds'));
+        foreach ([['health.startup.primary.web', ['postgres', 'unknown']], ['health.startup.timeout_seconds', 3]] as [$key, $value]) {
+            try {
+                $settings->set($key, $value);
+                $this->fail("{$key} must reject values outside its registered options or range.");
+            } catch (\InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+        $this->assertArrayHasKey('startup_health', $settings->groups());
+        $this->assertContains('health.startup.primary.web', array_column($settings->all(), 'key'));
+    }
+
     public function test_env_import_dry_run_lists_current_values_and_redacts_secrets_without_writing(): void
     {
         $previous = $_ENV['NOTIFICATION_TELEGRAM_BOT_TOKEN'] ?? null;

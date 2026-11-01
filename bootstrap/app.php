@@ -6,6 +6,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use App\Http\Middleware\RequiresDependency;
+use App\Http\Middleware\StartupHealthMiddleware;
 use Sentry\Laravel\Integration;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -17,6 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias(['requires' => RequiresDependency::class]);
+        if (! app()->runningUnitTests()) {
+            $middleware->prepend(StartupHealthMiddleware::class);
+        }
         // JavMeta sits behind the gatekeeper (HAProxy) that terminates TLS: trust its forwarded headers so
         // redirects, signed URLs and the Secure session cookie use https://jav.soulevil.com.
         $middleware->trustProxies(at: '*', headers: \Illuminate\Http\Request::HEADER_X_FORWARDED_FOR

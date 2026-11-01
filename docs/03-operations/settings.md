@@ -26,6 +26,8 @@ New features (Telegram follow notifications and bot, the library scanner) read t
 
 Media processing settings (`media.*`) are defined in `config/javmeta_media.php` and registered in `config/javmeta_settings.php`. They are database/UI settings, never environment variables. See [media.md](media.md) for queue limits and bootstrap credentials.
 
+Startup health settings (`health.startup.*`) are in **Sức khỏe khi khởi động**. They control the gate switch, probe timeout, retry wait/backoff, web snapshot TTL, primary Elasticsearch roles, command allow/deny patterns and optional browser gateway URLs. PostgreSQL, Redis and MongoDB remain required primaries even if removed from a saved role list; if MongoDB cannot be read, code defaults keep the gate enabled with those three services as primaries. See [startup health](startup-health.md) for the fallback and entry-point behavior.
+
 Stream capture settings (`capture.*`) default in `config/javmeta_capture.php`. Capture is off until the owner enables it on the Settings page; duration, output size, manifest count/size and HTTP timeout limits are editable there. Enabling capture never disables the DRM/content policy checks.
 
 ## Outbound base URLs and Telegram groups

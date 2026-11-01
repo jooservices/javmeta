@@ -17,8 +17,30 @@ final class StartStack extends HttpStep
         $this->expectStatus($context, $result->response, 200);
         $body = $result->response->json();
 
-        if (! is_array($body) || ($body['status'] ?? null) !== 'ok' || ($body['worker']['stale'] ?? true) !== false) {
-            throw new StepFailure('The health endpoint did not report a green stack.', $context);
+        if (! is_array($body) || ! in_array($body['status'] ?? null, ['ok', 'degraded'], true)) {
+            throw new StepFailure('The health endpoint did not report an available stack.', $context);
+        }
+
+        $dependencies = $body['dependencies'] ?? null;
+        if (! is_array($dependencies)) {
+            throw new StepFailure('The health endpoint omitted primary dependency status.', $context);
+        }
+
+        foreach (['postgres', 'redis', 'mongo'] as $primary) {
+            $dependency = $dependencies[$primary] ?? null;
+            if (! is_array($dependency) || ($dependency['hard'] ?? false) !== true || ($dependency['available'] ?? false) !== true) {
+                throw new StepFailure('The health endpoint reports an unavailable primary dependency.', $context);
+            }
+        }
+
+        foreach ($dependencies as $dependency) {
+            if (is_array($dependency) && ($dependency['hard'] ?? false) === true && ($dependency['available'] ?? false) !== true) {
+                throw new StepFailure('The health endpoint reports an unavailable primary dependency.', $context);
+            }
+        }
+
+        if (($body['worker']['stale'] ?? true) !== false) {
+            throw new StepFailure('The health endpoint reports a stale worker.', $context);
         }
 
         $sources = $body['sources'] ?? null;

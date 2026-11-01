@@ -72,6 +72,10 @@ robots meta tag while guest mode is enabled. `staging:readiness` and
 Save the setting on Cài đặt. The UI and settings bridge apply it from the
 database on the next request; no environment edit or config-cache clear is
 needed. To require login again, turn `ui_security.login_required` back on.
+On systemd nodes, restart Horizon with `systemctl restart <unit-prefix>-horizon`
+when its process must reload; a clean `horizon:terminate` exit does not trigger
+the unit's `Restart=on-failure` policy. Restart the scheduler unit with
+`systemctl restart <unit-prefix>-scheduler` when its process must reload.
 
 This flow does not transfer application images with `scp`, publish images to a
 registry, or store image archives in GitHub. Docker still creates local images

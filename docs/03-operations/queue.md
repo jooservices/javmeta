@@ -49,6 +49,9 @@ supervisor is separate from the crawl and search supervisors. Each supervisor
 uses the database worker count and timeout settings; `queue.retry_after_seconds`
 must exceed `queue.worker_timeout`. `horizon:terminate` waits for running jobs
 because `fast_termination` is disabled.
+On systemd nodes, use `systemctl restart <unit-prefix>-horizon` for an immediate
+reload: a clean Horizon exit does not activate the unit's `Restart=on-failure`
+policy.
 
 Movie and performer persistence dispatches a unique job to `search` after the database transaction commits. The crawl worker does not call Elasticsearch or the embedder; Horizon handles indexing with the configured database retry count and backoff. A failed job is recorded by Laravel's configured failed-job store and Horizon. `search.enabled` prevents new indexing jobs from being dispatched; queued jobs also exit without indexing while the switch is off.
 

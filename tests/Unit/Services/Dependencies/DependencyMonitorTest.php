@@ -7,6 +7,8 @@ namespace Tests\Unit\Services\Dependencies;
 use App\Services\Dependencies\Dependency;
 use App\Services\Dependencies\DependencyMonitor;
 use App\Services\Dependencies\DependencyProbe;
+use App\Services\Dependencies\DetailedDependencyProbe;
+use App\Services\Dependencies\ProbeResult;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Carbon;
 use Mockery;
@@ -38,6 +40,27 @@ final class DependencyMonitorTest extends TestCase
         self::assertTrue($monitor->isAvailable(Dependency::Postgres));
         Carbon::setTestNow(now()->addSecond());
         self::assertTrue($monitor->isAvailable(Dependency::Postgres));
+    }
+
+    public function test_it_reports_an_unconfigured_detailed_probe_as_disabled(): void
+    {
+        $probe = new class implements DetailedDependencyProbe {
+            public function probe(): bool
+            {
+                return true;
+            }
+
+            public function check(): ProbeResult
+            {
+                return new ProbeResult(null, 'Not configured.');
+            }
+        };
+        $monitor = new DependencyMonitor([Dependency::Browser->value => $probe]);
+
+        $status = $monitor->check(Dependency::Browser);
+
+        self::assertSame('disabled', $status['state']);
+        self::assertTrue($status['available']);
     }
 
     public function test_it_opens_after_three_failures_and_closes_after_a_successful_half_open_probe(): void

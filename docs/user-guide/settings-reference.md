@@ -1005,3 +1005,77 @@ Thông tin bí mật. Mã mục: `ui_security.owner_admin_token`.
 Được mã hóa trong cơ sở dữ liệu và không hiển thị lại; API key mới nên dùng scope MCP.
 
 Thông tin bí mật. Mã mục: `ui_security.mcp_api_key`.
+
+## Sức khỏe khi khởi động
+
+### Bật cổng kiểm tra khi khởi động
+
+Chặn lệnh chạy nền và yêu cầu web khi PostgreSQL, Redis hoặc MongoDB không sẵn sàng.
+
+Bật/tắt. Mã mục: `health.startup.enabled`.
+
+### Thời gian chờ mỗi dịch vụ (giây)
+
+Giới hạn cho từng lần kiểm tra kết nối; tối đa 2 giây.
+
+Số nguyên; từ 1 đến 2. Mã mục: `health.startup.timeout_seconds`.
+
+### Chờ dịch vụ chính khởi động (giây)
+
+Thời hạn mặc định health:startup thử lại các dịch vụ chính.
+
+Số nguyên; từ 0 đến 600. Mã mục: `health.startup.wait_seconds`.
+
+### Khoảng nghỉ thử lại (giây)
+
+Khoảng nghỉ giữa các lần kiểm tra lại dịch vụ chính.
+
+Số nguyên; từ 1 đến 30. Mã mục: `health.startup.retry_backoff_seconds`.
+
+### Thời hạn ảnh chụp sức khỏe web (giây)
+
+Khoảng thời gian dùng lại kết quả kiểm tra chính để giảm độ trễ request.
+
+Số nguyên; từ 1 đến 30. Mã mục: `health.startup.snapshot_ttl_seconds`.
+
+### Dịch vụ chính của nút web
+
+Mỗi dòng một dịch vụ. PostgreSQL, Redis và MongoDB luôn được kiểm tra; Elasticsearch mặc định là dịch vụ chính của nút web.
+
+Danh sách văn bản. Mã mục: `health.startup.primary.web`.
+
+### Dịch vụ chính của worker
+
+Mỗi dòng một dịch vụ. Elasticsearch mặc định là phụ trên worker crawl.
+
+Danh sách văn bản. Mã mục: `health.startup.primary.worker`.
+
+### Dịch vụ chính của scheduler
+
+Mỗi dòng một dịch vụ. PostgreSQL, Redis và MongoDB luôn được kiểm tra.
+
+Danh sách văn bản. Mã mục: `health.startup.primary.scheduler`.
+
+### Lệnh được miễn cổng khởi động
+
+Mỗi dòng một tên hoặc mẫu lệnh Artisan; ví dụ health:*, settings:*, migrate*.
+
+Danh sách văn bản. Mã mục: `health.startup.command_allowlist`.
+
+### Lệnh luôn bị kiểm tra khi khởi động
+
+Mỗi dòng một tên hoặc mẫu lệnh Artisan; danh sách này có ưu tiên cao hơn danh sách miễn.
+
+Danh sách văn bản. Mã mục: `health.startup.command_denylist`.
+
+### Địa chỉ FlareSolverr
+
+Địa chỉ dịch vụ trình duyệt phụ; để trống nếu không dùng.
+
+Văn bản. Mã mục: `health.startup.flaresolverr_url`.
+
+### Địa chỉ browser gateway
+
+Địa chỉ dịch vụ Playwright phụ; để trống nếu không dùng.
+
+Văn bản. Mã mục: `health.startup.playwright_url`.
