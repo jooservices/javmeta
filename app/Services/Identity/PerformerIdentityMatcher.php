@@ -16,7 +16,7 @@ final class PerformerIdentityMatcher
      * @param array{id: int, names: list<string>, birth_dates: list<string>, cross_links: list<array{source: string, id: string}>} $incoming
      * @param array<array-key, array{id: int, names: list<string>, birth_dates: list<string>, cross_links: list<array{source: string, id: string}>}>|\Closure(): iterable<array{id: int, names: list<string>, birth_dates: list<string>, cross_links: list<array{source: string, id: string}>}> $candidates
      *        An array, or a factory returning a fresh iterable each call (the matcher reads it up to three times).
-     * @return array{decision: string, candidate_id: int|null, reason: string|null, similarity: float, review_candidates: iterable<array{id: int, reason: string, similarity: float}>}
+     * @return array{strong_count: int, decision: string, candidate_id: int|null, reason: string|null, similarity: float, review_candidates: iterable<array{id: int, reason: string, similarity: float}>}
      */
     public function evaluate(array $incoming, array|\Closure $candidates): array
     {
@@ -43,6 +43,7 @@ final class PerformerIdentityMatcher
         if ($merge) {
             return [
                 'decision' => 'merge',
+                'strong_count' => $strongCount,
                 'candidate_id' => $first['id'],
                 'reason' => $first['reason'],
                 'similarity' => $first['similarity'],
@@ -52,6 +53,7 @@ final class PerformerIdentityMatcher
 
         return [
             'decision' => $strongCount + $reviewCount === 0 ? 'none' : 'review',
+            'strong_count' => $strongCount,
             'candidate_id' => null,
             'reason' => null,
             'similarity' => 0.0,

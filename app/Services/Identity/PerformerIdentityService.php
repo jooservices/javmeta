@@ -24,6 +24,8 @@ final class PerformerIdentityService
         private readonly PerformerIdentityMatcher $matcher,
         private readonly ElasticsearchIndexer $indexer,
         private readonly PerformerMergeGuard $mergeGuard,
+        private readonly PerformerCoCreditRule $coCredit,
+        private readonly PerformerCoCreditAudit $coCreditAudit,
     ) {}
 
     /** Lowest review similarity for which the trigram block is guaranteed to contain every reviewable pair. */
@@ -33,6 +35,10 @@ final class PerformerIdentityService
     private const REVIEW_PAGE_SIZE = 500;
 
     private int $candidateComparisons = 0;
+
+    private int $lastReviewsClosed = 0;
+
+    private bool $dryRunning = false;
 
     /** @var array<int, list<string>> Aliases of the current backfill batch, keyed by source performer id. */
     private array $preloadedAliases = [];
@@ -70,47 +76,55 @@ final class PerformerIdentityService
      * them, so the report never has to fit in memory.
      *
      * @param callable(string, array<string, mixed>): void $onRow
-     * @return array{merges: int, reviews: int}
+     * @return array<string, int>
      */
-    public function streamBackfill(bool $dryRun, callable $onRow): array
+    public function streamBackfill(bool $dryRun, callable $onRow, ?string $rule = null, ?int $limit = null): array
     {
         if (! $dryRun) {
-            return $this->runBackfill($dryRun, $onRow);
+            return $this->runBackfill($dryRun, $onRow, $rule, $limit);
         }
 
         DB::beginTransaction();
+        $this->dryRunning = true;
         try {
-            return $this->runBackfill($dryRun, $onRow);
+            return $this->runBackfill($dryRun, $onRow, $rule, $limit);
         } finally {
             DB::rollBack();
+            $this->dryRunning = false;
         }
     }
 
     /**
      * @param callable(string, array<string, mixed>): void $onRow
-     * @return array{merges: int, reviews: int}
+     * @return array<string, int>
      */
-    private function runBackfill(bool $dryRun, callable $onRow): array
+    private function runBackfill(bool $dryRun, callable $onRow, ?string $rule, ?int $limit): array
     {
         $this->candidateComparisons = 0;
         $this->ensureSourceLinks();
         $this->storeNameKeys();
 
-        $counts = ['merges' => 0, 'reviews' => 0];
+        $counts = ['merges' => 0, 'reviews' => 0, 'name_and_birth_date' => 0, 'cross_link' => 0, 'co_credit' => 0, 'reviews_closed' => 0, 'conflicts_kept' => 0];
 
         foreach ($this->activeSources() as $source) {
+            $source->refresh();
+            if ($limit !== null && $counts['merges'] >= $limit) {
+                break;
+            }
             $sourcePerformerId = (int) ($source->source_performer_id ?? $source->performer_id);
             $currentPerformerId = (int) $source->performer_id;
-            if ($sourcePerformerId !== $currentPerformerId
-                || ! Performer::query()->whereKey($currentPerformerId)->whereNull('canonical_performer_id')->exists()) {
+            if (! Performer::query()->whereKey($currentPerformerId)->whereNull('canonical_performer_id')->exists()) {
                 continue;
             }
 
             $incoming = $this->sourceIdentity($source);
-            $evaluation = $this->matcher->evaluate(
+            $evaluation = $rule === 'co_credit' || $sourcePerformerId !== $currentPerformerId ? $this->coCredit->evaluate($source) : $this->matcher->evaluate(
                 $incoming,
                 fn(): \Generator => $this->backfillCandidates($source, $incoming, $currentPerformerId),
             );
+            if ($rule !== 'co_credit' && $evaluation['decision'] !== 'merge') {
+                $evaluation = $this->withCoCredit($source, $evaluation);
+            }
             // Reviews are streamed and recorded before any merge changes the roots they point at; a single
             // strong match still reports its other ambiguous candidates.
             // The review rows deduplicate a pair seen from both sides; the dry run writes them too, inside the
@@ -121,6 +135,10 @@ final class PerformerIdentityService
                 true,
                 function (array $review) use (&$counts, $onRow): void {
                     $counts['reviews']++;
+                    if (str_starts_with((string) $review['reason'], 'co_credit_conflicting_')
+                        && $review['source_performer_id'] < $review['candidate_performer_id']) {
+                        $counts['conflicts_kept']++;
+                    }
                     $onRow('review', $review);
                 },
             );
@@ -129,16 +147,21 @@ final class PerformerIdentityService
                 $candidateId = (int) $evaluation['candidate_id'];
                 $fromId = max($currentPerformerId, $candidateId);
                 $toId = min($currentPerformerId, $candidateId);
+                if (! $this->mergeRoots($fromId, $toId, $evaluation)) {
+                    continue;
+                }
                 $counts['merges']++;
+                $counts[$evaluation['reason']]++;
                 $onRow('merge', [
                     'source_performer_id' => $sourcePerformerId,
                     'from_performer_id' => $fromId,
                     'to_performer_id' => $toId,
                     'reason' => $evaluation['reason'],
+                    ...($evaluation['co_credit'] ?? []),
                 ]);
 
                 // The merged-away root is no longer a candidate or a source root, so a pair cannot repeat.
-                $this->mergeRoots($fromId, $toId, $evaluation);
+                $counts['reviews_closed'] += $this->lastReviewsClosed;
             }
         }
 
@@ -301,6 +324,7 @@ final class PerformerIdentityService
             $this->copyMovieLinks($sourceIds, (int) $merge->from_performer_id, null);
             $this->removeCreatedMovieLinks($merge, $details['created_movie_links'], $sourceIds, (int) $merge->to_performer_id);
 
+            $this->coCreditAudit->restore($merge);
             $merge->reversed_at = now()->toDateTimeString();
             $merge->save();
 
@@ -343,6 +367,7 @@ final class PerformerIdentityService
                 (int) $merge->to_performer_id,
             ]))->orderBy('id')->lockForUpdate()->get(['id']);
             $this->mergeGuard->assertSplitCanBeUndone($merge, $details);
+            $this->coCreditAudit->assertCanReclose($merge);
 
             // Links added to the group after the merge snapshot must follow the group, so select them live.
             DB::table('performer_sources')
@@ -365,6 +390,7 @@ final class PerformerIdentityService
             $this->copyMovieLinks($details['source_performer_ids'], (int) $merge->to_performer_id, null);
             $this->restoreCreatedMovieLinks($merge, $details['created_movie_links'], (int) $merge->to_performer_id);
 
+            $this->coCreditAudit->reclose($merge);
             $split->reversed_at = now()->toDateTimeString();
             $split->save();
             $merge->reversed_at = null;
@@ -428,6 +454,17 @@ final class PerformerIdentityService
             $reverse = DB::table('performer_identity_reviews')->where('candidate_performer_id', $sourceId)
                 ->whereIn('source_performer_id', $candidateIds)->where('status', 'open')
                 ->pluck('source_performer_id')->map(static fn(mixed $id): int => (int) $id)->all();
+            foreach (array_diff($reverse, $forward) as $candidateId) {
+                if (str_starts_with($page[$candidateId]['reason'], 'co_credit_conflicting_')) {
+                    DB::table('performer_identity_reviews')->where('source_performer_id', $candidateId)
+                        ->where('candidate_performer_id', $sourceId)->where('status', 'open')
+                        ->update(['reason' => $page[$candidateId]['reason']]);
+                    if ($onRecorded !== null) {
+                        $onRecorded(['source_performer_id' => $sourceId, 'candidate_performer_id' => $candidateId,
+                            'reason' => $page[$candidateId]['reason'], 'similarity' => 1.0]);
+                    }
+                }
+            }
             $candidateIds = array_values(array_diff($candidateIds, array_diff($reverse, $forward)));
             if ($candidateIds === []) {
                 return;
@@ -483,7 +520,24 @@ final class PerformerIdentityService
             }
         };
 
-        return $this->matcher->evaluate($incoming, $candidates);
+        return $this->withCoCredit($source, $this->matcher->evaluate($incoming, $candidates));
+    }
+
+    /** @param array<string, mixed> $evaluation @return array<string, mixed> */
+    private function withCoCredit(PerformerSource $source, array $evaluation): array
+    {
+        if ($evaluation['decision'] === 'merge' || ($evaluation['strong_count'] ?? 0) > 1) {
+            return $evaluation;
+        }
+        $coCredit = $this->coCredit->evaluate($source);
+        $legacyReviews = $evaluation['review_candidates'];
+        $coCreditReviews = $coCredit['review_candidates'];
+        $coCredit['review_candidates'] = (static function () use ($legacyReviews, $coCreditReviews): \Generator {
+            yield from $legacyReviews;
+            yield from $coCreditReviews;
+        })();
+
+        return $coCredit;
     }
 
     /**
@@ -542,7 +596,7 @@ final class PerformerIdentityService
     }
 
     /** Stores the normalized names of a source performer so the crawl path can find candidates by index. */
-    private function refreshNameKeys(PerformerSource $source): void
+    public function refreshNameKeys(PerformerSource $source): void
     {
         $sourcePerformerId = (int) ($source->source_performer_id ?? $source->performer_id);
         $names = $this->sourceIdentity($source)['names'];
@@ -651,6 +705,7 @@ final class PerformerIdentityService
     /** @param array<string, mixed> $evaluation */
     private function mergeRoots(int $fromId, int $toId, array $evaluation): bool
     {
+        $this->lastReviewsClosed = 0;
         if ($fromId === $toId) {
             return false;
         }
@@ -662,6 +717,14 @@ final class PerformerIdentityService
             $to = $locked->get($toId) ?? throw (new ModelNotFoundException())->setModel(Performer::class, [$toId]);
             if ($from->canonical_performer_id !== null || $to->canonical_performer_id !== null) {
                 return [];
+            }
+
+            if (isset($evaluation['co_credit'])) {
+                $source = PerformerSource::query()->where('source_performer_id', $evaluation['co_credit']['source_id'])->firstOrFail();
+                $checked = $this->coCredit->evaluate($source);
+                if ($checked['decision'] !== 'merge' || $checked['candidate_id'] !== $evaluation['candidate_id']) {
+                    return [];
+                }
             }
 
             $sourceIds = Performer::query()->where('canonical_performer_id', $fromId)->pluck('id')->map(fn(mixed $id): int => (int) $id)->all();
@@ -683,7 +746,9 @@ final class PerformerIdentityService
                 'alias_owners' => $aliasOwners,
                 'media_owners' => $mediaOwners,
                 'reason' => $evaluation['reason'] ?? 'backfill',
+                'rule' => $evaluation['reason'] ?? 'backfill',
                 'similarity' => $evaluation['similarity'] ?? 1.0,
+                'co_credit' => $evaluation['co_credit'] ?? null,
             ];
 
             $mergeEvent = PerformerIdentityEvent::query()->create([
@@ -694,6 +759,9 @@ final class PerformerIdentityService
                 'created_at' => now(),
             ]);
             $this->copyMovieLinks($sourceIds, $toId, (int) $mergeEvent->id);
+            if (isset($evaluation['co_credit'])) {
+                $this->lastReviewsClosed = $this->coCreditAudit->record($mergeEvent, $evaluation['co_credit']);
+            }
 
             return $eventDetails;
         });
@@ -789,6 +857,7 @@ final class PerformerIdentityService
         $lastId = 0;
         while (true) {
             $rows = DB::table('performer_identity_event_movie_links')->where('event_id', $merge->id)
+                ->whereNull('evidence_source_performer_id')
                 ->where('id', '>', $lastId)->orderBy('id')->limit(500)->get();
             if ($rows->isEmpty()) {
                 return;
@@ -1057,6 +1126,9 @@ final class PerformerIdentityService
      */
     private function reindexPerformers(array $performerIds): void
     {
+        if ($this->dryRunning) {
+            return;
+        }
         $performerIds = array_values(array_unique($performerIds));
         DB::afterCommit(function () use ($performerIds): void {
             foreach ($performerIds as $performerId) {
