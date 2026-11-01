@@ -65,9 +65,9 @@ OS trust with `INSTALL_CA=1`; this requires sudo and cannot be combined with
 
 `CRAWLERX_PLAYWRIGHT_SCRIPT` is always resolved under
 `<TARGET_DIR>/current/vendor/jooservices/crawlerx/scripts/playwright-fetch.mjs`.
-Never use a Docker image path for a native node. `JAVMETA_WORKERS_PER_QUEUE`
-is written to env: Horizon reads this directly; the database setting
-`queue.workers_per_queue` cannot configure Horizon.
+Never use a Docker image path for a native node. Worker counts are read from the
+database settings registry; legacy worker-count env lines are retained only
+long enough for `settings:import-env` to migrate their current effective values.
 
 ## Installer and release sequence
 
@@ -99,8 +99,9 @@ atomically. Initial settings include `domains.ui_host`,
 It does not make migrations reversible. Preserve PostgreSQL and Mongo backups
 and review forward compatibility before each release.
 
-Matching units are enabled/restarted, with scheduler last **only** when
-`--start-scheduler` is supplied. `--no-start` installs without unit actions or
+Matching units are enabled/restarted, including the per-node Horizon reconcile
+timer; scheduler starts last **only** when `--start-scheduler` is supplied.
+`--no-start` installs without unit actions or
 claiming process readiness; `--no-systemd` prints actions without calling
 systemctl. Normal starts wait with a bounded timeout for application readiness.
 Every step reports duration and verification; raw command output is suppressed
@@ -110,7 +111,13 @@ not rolled back automatically. Failed releases remain for private inspection.
 
 ## Adding a worker node
 
-Use a new target/service account/node name with `--role worker`. Horizon, embedder and node exporter are enabled. Nginx and scheduler remain installed but disabled and blocked by a systemd condition drop-in. Workers never run migrations or shared setup and never rotate the owner; copy the primary shared env to `<TARGET_DIR>/shared/.env` before adding the worker, or supply its existing APP_KEY and matching service answers. A worker refuses a missing APP_KEY. Point
+Use a new target/service account/node name with `--role worker`. Horizon, the
+Horizon reconcile timer, embedder and node exporter are enabled. Nginx and
+scheduler remain installed but disabled and blocked by a systemd condition
+drop-in. Workers never run migrations or shared setup and never rotate the
+owner; copy the primary shared env to `<TARGET_DIR>/shared/.env` before adding
+the worker, or supply its existing APP_KEY and matching service answers. A
+worker refuses a missing APP_KEY. Point
 `media.api_url` at the primary API. Shared service answers must select the same
 application databases/indexes but the appropriate scoped Redis prefix.
 

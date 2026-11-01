@@ -3,7 +3,7 @@
   "info": {
     "title": "JavMeta API",
     "version": "1.0.0",
-    "description": "Movie and performer metadata crawled from many sources. Send the key in the X-API-Key header. A key may be limited to scopes: movies, bulk, performers, catalog, status, mcp. The media scope is reserved for the local media worker."
+    "description": "Movie and performer metadata crawled from many sources. Send the key in the X-API-Key header. A key may be limited to scopes: movies, bulk, performers, catalog, status, config, mcp. The media scope is reserved for the local media worker."
   },
   "servers": [
     {
@@ -953,6 +953,28 @@
           "429": {
             "description": "Rate limited"
           }
+        }
+      }
+    },
+    "/api/v1/config/browser-services": {
+      "get": {
+        "summary": "Effective configuration for browser services",
+        "description": "Poll every poll_interval_seconds (30 seconds by default), send If-None-Match, and retain the last good response when the API is unavailable. Requires the config scope.",
+        "tags": ["configuration"],
+        "security": [{"ApiKey": []}],
+        "x-scope": "config",
+        "parameters": [
+          {"name": "If-None-Match", "in": "header", "required": false, "schema": {"type": "string"}, "description": "The ETag from the previous 200 response."}
+        ],
+        "responses": {
+          "200": {
+            "description": "Effective browser and watchdog limits, with a version and ETag",
+            "headers": {"ETag": {"schema": {"type": "string"}}, "Cache-Control": {"schema": {"type": "string"}}},
+            "content": {"application/json": {"schema": {"type": "object", "required": ["data"], "properties": {"data": {"type": "object", "required": ["concurrency", "queues", "timeouts", "thresholds", "retry", "cleanup", "poll_interval_seconds", "version"], "properties": {"concurrency": {"type": "object", "properties": {"browser_max": {"type": "integer"}}}, "queues": {"type": "object", "properties": {"browser_max": {"type": "integer"}, "crawl_depth_max": {"type": "integer"}}}, "timeouts": {"type": "object", "properties": {"playwright_request_ms": {"type": "integer"}, "flaresolverr_max_ms": {"type": "integer"}, "gateway_wait_ms": {"type": "integer"}, "gateway_client_ms": {"type": "integer"}, "config_client_ms": {"type": "integer"}}}, "thresholds": {"type": "object", "properties": {"max_requests_per_browser": {"type": "integer"}, "client_inflight": {"type": "integer"}, "lane_browser_percent": {"type": "integer"}, "lane_min_attempts": {"type": "integer"}}}, "retry": {"type": "object", "properties": {"queue_tries": {"type": "integer"}, "backoff_seconds": {"type": "integer"}, "retry_after_seconds": {"type": "integer"}, "crawl_max_attempts": {"type": "integer"}}}, "cleanup": {"type": "object", "properties": {"temp_data_max_age_hours": {"type": "integer"}, "watchdog_stall_after_minutes": {"type": "integer"}}}, "poll_interval_seconds": {"type": "integer"}, "version": {"type": "string"}}}}}}}
+          },
+          "304": {"description": "Configuration has not changed", "headers": {"ETag": {"schema": {"type": "string"}}}},
+          "401": {"description": "Missing or invalid API key"},
+          "403": {"description": "The key has no access to this scope"}
         }
       }
     },

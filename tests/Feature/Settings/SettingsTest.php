@@ -13,6 +13,7 @@ use App\Observability\TelemetrySanitizer;
 use App\Services\Settings\SettingsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Testing\FakeConfigStore;
@@ -37,6 +38,8 @@ final class SettingsTest extends TestCase
     protected function tearDown(): void
     {
         SettingsService::forgetDefaults();
+        putenv('FLARESOLVERR_URL');
+        putenv('PLAYWRIGHT_URL');
         parent::tearDown();
     }
 
@@ -111,6 +114,56 @@ final class SettingsTest extends TestCase
         $this->assertSame('Chu kỳ nạp hàng đợi (giây)', $setting['label']);
     }
 
+    public function test_worker_json_shapes_and_client_service_timeout_relationships_are_validated(): void
+    {
+        $settings = app(SettingsService::class);
+        $settings->set('worker.queue_names', ['listing', 'detail', 'browser_detail', 'observability']);
+        $this->assertSame(['listing', 'detail', 'browser_detail', 'observability', 'browser_listing'], config('javmeta_queues.horizon_names'));
+        $settings->set('worker.queue_overrides', ['listing' => 2, 'browser_detail' => 1]);
+        $this->assertSame(['listing' => 2, 'browser_detail' => 1], config('javmeta_queues.worker_queue_overrides'));
+        foreach ([
+            ['worker.queue_names', ['listing', 'browser-detail']],
+            ['worker.queue_names', []],
+            ['worker.queue_overrides', ['unknown_queue' => 2]],
+            ['worker.queue_overrides', ['listing' => 33]],
+            ['worker.node_overrides', ['other' => ['default' => 2]]],
+            ['browser.gateway_wait_timeout_ms', 90000],
+            ['browser.gateway_client_timeout_ms', 110000],
+            ['queue.worker_timeout', 45],
+        ] as [$key, $value]) {
+            try {
+                $settings->set($key, $value);
+                $this->fail("{$key} should be refused");
+            } catch (\InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+        $settings->set('worker.node_overrides', ['main' => ['default' => 2, 'queues' => ['listing' => 3]]]);
+        $this->assertSame(['main' => ['default' => 2, 'queues' => ['listing' => 3]]], config('javmeta_queues.worker_node_overrides'));
+    }
+
+    public function test_env_import_dry_run_lists_current_values_and_redacts_secrets_without_writing(): void
+    {
+        $previous = $_ENV['NOTIFICATION_TELEGRAM_BOT_TOKEN'] ?? null;
+        $_ENV['NOTIFICATION_TELEGRAM_BOT_TOKEN'] = 'test-secret-value';
+        try {
+            $preview = collect(app(SettingsService::class)->importPreview())->firstWhere('key', 'telegram.bot_token');
+            $this->assertSame('[redacted]', $preview['display'] ?? null);
+            Artisan::call('settings:import-env', ['--dry-run' => true]);
+            $output = Artisan::output();
+            $this->assertStringContainsString('telegram.bot_token', $output);
+            $this->assertStringContainsString('redacted', $output);
+            $this->assertStringNotContainsString('test-secret-value', $output);
+            $this->assertNull($this->store->get('settings.telegram.bot_token'));
+        } finally {
+            if ($previous === null) {
+                unset($_ENV['NOTIFICATION_TELEGRAM_BOT_TOKEN']);
+            } else {
+                $_ENV['NOTIFICATION_TELEGRAM_BOT_TOKEN'] = $previous;
+            }
+        }
+    }
+
     public function test_capture_duration_and_both_worker_deadlines_are_validated_before_saving(): void
     {
         $settings = app(SettingsService::class);
@@ -168,6 +221,43 @@ final class SettingsTest extends TestCase
         $this->assertSame(7, (int) $this->store->get('settings.queue.per_source_inflight'));
     }
 
+    public function test_legacy_environment_values_are_first_boot_fallbacks_until_imported(): void
+    {
+        $previousEnv = $_ENV['JAVMETA_WORKERS_PER_QUEUE'] ?? null;
+        $previousServer = $_SERVER['JAVMETA_WORKERS_PER_QUEUE'] ?? null;
+        $previousProcess = getenv('JAVMETA_WORKERS_PER_QUEUE');
+        $_ENV['JAVMETA_WORKERS_PER_QUEUE'] = '4';
+        $_SERVER['JAVMETA_WORKERS_PER_QUEUE'] = '4';
+        putenv('JAVMETA_WORKERS_PER_QUEUE=4');
+        try {
+            $settings = app(SettingsService::class);
+            $settings->apply();
+
+            $row = collect($settings->all())->firstWhere('key', 'queue.workers_per_queue');
+            $this->assertSame(4, config('javmeta_queues.workers_per_queue'));
+            $this->assertSame(4, $row['value']);
+            $this->assertSame('environment', $row['source']);
+            $this->assertContains('queue.workers_per_queue', $settings->importDefaults());
+            $this->assertSame(4, $this->store->get('settings.queue.workers_per_queue'));
+        } finally {
+            if ($previousEnv === null) {
+                unset($_ENV['JAVMETA_WORKERS_PER_QUEUE']);
+            } else {
+                $_ENV['JAVMETA_WORKERS_PER_QUEUE'] = $previousEnv;
+            }
+            if ($previousServer === null) {
+                unset($_SERVER['JAVMETA_WORKERS_PER_QUEUE']);
+            } else {
+                $_SERVER['JAVMETA_WORKERS_PER_QUEUE'] = $previousServer;
+            }
+            if ($previousProcess === false) {
+                putenv('JAVMETA_WORKERS_PER_QUEUE');
+            } else {
+                putenv('JAVMETA_WORKERS_PER_QUEUE=' . $previousProcess);
+            }
+        }
+    }
+
     public function test_import_env_removes_partial_writes_when_a_store_write_fails(): void
     {
         config([
@@ -210,7 +300,7 @@ final class SettingsTest extends TestCase
         $this->assertArrayHasKey('queue', $page->json('data.groups'));
         $this->assertNotEmpty($page->json('data.settings'));
 
-        $this->putJson('/ui-admin/settings', ['settings' => ['queue.feed_pool_limit' => 120, 'alerts.enabled' => false]])->assertOk()->assertJsonPath('data.applied.0', 'queue.feed_pool_limit');
+        $this->putJson('/ui-admin/settings', ['settings' => ['queue.feed_pool_limit' => 120, 'alerts.enabled' => false]])->assertOk()->assertJsonPath('data.applied.0', 'queue.feed_pool_limit')->assertJsonPath('data.apply_after_seconds', 30);
         $this->assertSame(120, collect($this->getJson('/ui-admin/settings')->json('data.settings'))->firstWhere('key', 'queue.feed_pool_limit')['value']);
 
         $this->putJson('/ui-admin/settings', ['settings' => ['queue.feed_pool_limit' => -5]])->assertStatus(422)->assertJsonStructure(['data' => ['errors' => ['queue.feed_pool_limit']]]);
@@ -228,7 +318,7 @@ final class SettingsTest extends TestCase
     public static function invalidUrls(): array
     {
         $cases = [];
-        foreach (['media.api_url', 'search.embedder_url', 'ai.ollama_url', 'downloads.qbittorrent_url', 'telegram.api_base'] as $key) {
+        foreach (['media.api_url', 'search.embedder_url', 'ai.ollama_url', 'downloads.qbittorrent_url', 'telegram.api_base', 'browser.flaresolverr_url', 'browser.playwright_url'] as $key) {
             foreach (['ftp://example.test', '//example.test', 'https:///missing', 'https://user:pass@example.test', 'https://user@example.test', 'https://example.test?token=hidden', 'https://example.test#secret', 'https://example.test?', 'https://example.test#', "https://example.test\n", 'https://example.test\\@other.test'] as $url) {
                 // Leading/trailing whitespace is normalized by the existing settings contract.
                 if (str_ends_with($url, "\n")) {
@@ -256,7 +346,7 @@ final class SettingsTest extends TestCase
     public function test_valid_url_schemes_and_local_telegram_http_are_accepted(): void
     {
         $settings = app(SettingsService::class);
-        foreach (['media.api_url', 'search.embedder_url', 'ai.ollama_url', 'downloads.qbittorrent_url'] as $key) {
+        foreach (['media.api_url', 'search.embedder_url', 'ai.ollama_url', 'downloads.qbittorrent_url', 'browser.flaresolverr_url', 'browser.playwright_url'] as $key) {
             foreach (['http://192.168.2.10:8080/base', 'https://example.test/base/', ''] as $url) {
                 $settings->set($key, $url);
                 $this->assertSame($url, $settings->get($key));
@@ -274,8 +364,6 @@ final class SettingsTest extends TestCase
 
     public function test_invalid_saved_urls_are_ignored_without_exposing_them_and_can_be_repaired(): void
     {
-        // Keep the redaction sentinel independent of the checkout directory name.
-        config(['javmeta_media.output_folder' => '/test-output']);
         $settings = app(SettingsService::class);
         $default = $settings->get('downloads.qbittorrent_url');
         $settings->set('downloads.qbittorrent_url', 'http://valid.test');

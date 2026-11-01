@@ -22,6 +22,8 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use App\Services\Search\ElasticsearchHttpClient;
+use App\Services\Settings\SettingsService;
+use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\Client\Testing\TestResponse;
 use MongoDB\Client as MongoClient;
 use RuntimeException;
@@ -42,6 +44,9 @@ abstract class E2ETestCase extends TestCase
     private static string $mcpToken;
     private static string $embedderUrl;
 
+    /** @var array<string, array{exists: bool, value?: mixed}> */
+    private static array $previousSettings = [];
+
     /** @var resource|null */
     private static $appProcess = null;
 
@@ -57,7 +62,10 @@ abstract class E2ETestCase extends TestCase
         parent::setUp();
 
         self::useTestDatabase();
+        SettingsService::forgetDefaults();
+        app(SettingsService::class)->apply();
         self::initializeProcesses();
+        self::applyTemporarySettings();
         config()->set('javmeta_auth.owner_admin_token', self::$ownerToken);
         config()->set('javmeta_auth.mcp_api_key', self::$mcpToken);
         config()->set('queue.default', 'sync');
@@ -69,6 +77,7 @@ abstract class E2ETestCase extends TestCase
     {
         $this->stopFakingCrawlerxHttp();
         self::cleanupNamespaces();
+        self::restoreTemporarySettings();
 
         parent::tearDown();
     }
@@ -294,9 +303,8 @@ abstract class E2ETestCase extends TestCase
         self::$appLog = $directory . '/app-server.log';
         self::$embedderLog = $directory . '/embedder-server.log';
 
-        putenv('JAVMETA_OWNER_ADMIN_TOKEN=' . self::$ownerToken);
-        putenv('JAVMETA_MCP_API_KEY=' . self::$mcpToken);
-        putenv('EMBEDDER_URL=' . self::$embedderUrl);
+        self::captureTemporarySettings();
+        self::applyTemporarySettings();
         config()->set('elasticsearch.embedder_url', self::$embedderUrl);
 
         self::$embedderProcess = proc_open(
@@ -311,10 +319,18 @@ abstract class E2ETestCase extends TestCase
             fclose($pipes[0]);
         }
 
+        $appEnvironment = getenv();
+        if (! is_array($appEnvironment)) {
+            throw new RuntimeException('Could not read the E2E application environment.');
+        }
+        $appEnvironment['APP_ENV'] = 'local';
+        $appEnvironment['APP_KEY'] = (string) config('app.key');
         self::$appProcess = proc_open(
             [PHP_BINARY, 'artisan', 'serve', '--host=127.0.0.1', '--port=' . $appPort],
             [0 => ['pipe', 'r'], 1 => ['file', self::$appLog, 'a'], 2 => ['file', self::$appLog, 'a']],
             $pipes,
+            null,
+            $appEnvironment,
         );
         if (! is_resource(self::$appProcess)) {
             throw new RuntimeException('Could not start the JAVmeta E2E HTTP application.');
@@ -324,7 +340,43 @@ abstract class E2ETestCase extends TestCase
         }
 
         self::waitForHttp(self::$embedderUrl . '/healthz');
-        self::waitForHttp(self::$baseUrl . '/api/health');
+        self::waitForHttp(self::$baseUrl . '/up');
+    }
+
+    private static function captureTemporarySettings(): void
+    {
+        $stored = app(ConfigStore::class)->group(SettingsService::GROUP);
+        foreach (['ui_security.owner_admin_token', 'ui_security.mcp_api_key', 'search.embedder_url'] as $key) {
+            self::$previousSettings[$key] = array_key_exists($key, $stored)
+                ? ['exists' => true, 'value' => $stored[$key]]
+                : ['exists' => false];
+        }
+    }
+
+    private static function restoreTemporarySettings(): void
+    {
+        if (self::$previousSettings === []) {
+            return;
+        }
+
+        $settings = app(SettingsService::class);
+        $store = app(ConfigStore::class);
+        foreach (self::$previousSettings as $key => $previous) {
+            if ($previous['exists']) {
+                $settings->set($key, $previous['value']);
+                continue;
+            }
+            $store->forgetMany([SettingsService::GROUP . '.' . $key]);
+        }
+        $settings->apply();
+    }
+
+    private static function applyTemporarySettings(): void
+    {
+        $settings = app(SettingsService::class);
+        $settings->set('ui_security.owner_admin_token', self::$ownerToken);
+        $settings->set('ui_security.mcp_api_key', self::$mcpToken);
+        $settings->set('search.embedder_url', self::$embedderUrl);
     }
 
     private static function assertNamespaces(): void
@@ -405,8 +457,8 @@ abstract class E2ETestCase extends TestCase
             : sprintf('mongodb://%s:%d', config('mongodb.host'), config('mongodb.port')));
         $database = $client->selectDatabase($databaseName);
         foreach ($database->listCollectionNames() as $collection) {
-            if ($collection === '_workspaces') {
-                continue; // the ownership marker of the shared Docker project database
+            if (in_array($collection, ['_workspaces', 'configs'], true)) {
+                continue; // retain the ownership marker and the database settings store
             }
             $database->dropCollection($collection);
         }

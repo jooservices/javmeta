@@ -59,13 +59,15 @@ for service in horizon embedder; do
   render_node_template "$root/deploy/production/node/xcrawler-$service.service" "$(node_value unit_dir)/$UNIT_PREFIX-$service.service"
 done
 render_node_template "$root/deploy/production/node/xcrawler-scheduler.service" "$(node_value unit_dir)/$UNIT_PREFIX-scheduler.service"
+render_node_template "$root/deploy/production/node/xcrawler-horizon-reconcile.service" "$(node_value unit_dir)/$UNIT_PREFIX-horizon-reconcile.service"
+render_node_template "$root/deploy/production/node/xcrawler-horizon-reconcile.timer" "$(node_value unit_dir)/$UNIT_PREFIX-horizon-reconcile.timer"
 # A worker must never become a second scheduler or web node after a reboot.
 configure_node_role "$NODE_ROLE" "$TARGET_DIR" "$(node_value unit_dir)" "$NGINX_UNIT" "$UNIT_PREFIX-scheduler"
 # Only these complete command vectors can be invoked by the service account.
 sudoers="$(node_value sudoers_dir)/$UNIT_PREFIX-units"
 # Restrict privilege to individual manifest-selected units; scheduler remains opt-in.
 : > "$sudoers"
-units=("$UNIT_PREFIX-horizon" "$UNIT_PREFIX-embedder" "$EXPORTER_UNIT")
+units=("$UNIT_PREFIX-horizon" "$UNIT_PREFIX-horizon-reconcile.timer" "$UNIT_PREFIX-embedder" "$EXPORTER_UNIT")
 if [[ "$NODE_ROLE" == primary ]]; then units+=("$FPM_UNIT" "$NGINX_UNIT" "$UNIT_PREFIX-scheduler"); fi
 for unit in "${units[@]}"; do
   for action in stop start restart enable is-active; do

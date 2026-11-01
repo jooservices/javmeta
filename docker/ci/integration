@@ -13,6 +13,10 @@ export JAVMETA_CI_UID JAVMETA_CI_GID
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-javmeta-integration}"
 # Authenticated Elasticsearch is required to prove the production API-key restrictions.
 export JAVMETA_CI_ES_SECURITY=true JAVMETA_PRODUCTION_PROVISIONING=1
+if [[ -z "${JAVMETA_CI_APP_KEY:-}" ]]; then
+  JAVMETA_CI_APP_KEY="base64:$(openssl rand -base64 32 | tr -d '\n')"
+fi
+export JAVMETA_CI_APP_KEY
 JAVMETA_CI_ES_PASSWORD="$(openssl rand -hex 24)"
 export JAVMETA_CI_ES_PASSWORD
 JAVMETA_CI_XCRAWLER_MONGO_PASSWORD="$(openssl rand -hex 24)"

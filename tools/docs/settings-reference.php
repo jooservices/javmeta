@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 // Read only the schema: never boot Laravel or load saved values or secrets.
 $schema = require dirname(__DIR__, 2) . '/config/javmeta_settings.php';
-$types = ['bool' => 'Bật/tắt', 'int' => 'Số nguyên', 'float' => 'Số thập phân', 'string' => 'Văn bản', 'secret' => 'Thông tin bí mật', 'int_list' => 'Danh sách số nguyên', 'string_list' => 'Danh sách văn bản'];
+$types = ['bool' => 'Bật/tắt', 'int' => 'Số nguyên', 'float' => 'Số thập phân', 'string' => 'Văn bản', 'secret' => 'Thông tin bí mật', 'int_list' => 'Danh sách số nguyên', 'string_list' => 'Danh sách văn bản', 'json' => 'Đối tượng JSON'];
 $lines = [
     '# Cài đặt — tra cứu từng mục',
     '',
@@ -32,6 +32,13 @@ foreach ($schema['groups'] as $group => $label) {
         }
         if (isset($definition['options'])) {
             $details[] = 'chọn: ' . implode(', ', $definition['options']);
+        }
+        if ($definition['type'] === 'json') {
+            $details[] = match ($definition['shape'] ?? '') {
+                'queue_worker_map' => 'mỗi hàng đợi đã biết nhận 1–32 worker',
+                'node_worker_map' => 'ghi đè theo vai trò hoặc role@hostname; worker từ 1 đến 32',
+                default => 'cấu trúc do ứng dụng quy định',
+            };
         }
         if (isset($definition['restart'])) {
             $details[] = 'cần khởi động lại ' . $definition['restart'];

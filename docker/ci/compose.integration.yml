@@ -86,6 +86,7 @@ services:
       - "${JAVMETA_INTEGRATION_SIGNAL_DIR:-/tmp/javmeta-integration-signal}:/tmp/javmeta-integration-signal"
     environment:
       HOME: /tmp
+      APP_KEY: "${JAVMETA_CI_APP_KEY:-}"
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_CONNECTION: pgsql

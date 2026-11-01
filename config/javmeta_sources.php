@@ -21,29 +21,23 @@ return [
         ],
         'queue' => [
             'stale_claim_timeout_seconds' => 900,
-            // A blocked or challenged crawl is retried after these delays (seconds, one per retry); the next
-            // block after the last delay fails the row. While a site waits out a delay none of its other
-            // rows is claimed. Env: JAVMETA_BLOCK_DELAYS="60,120,180".
-            'block_delays_seconds' => array_values(array_filter(
-                array_map('intval', explode(',', (string) env('JAVMETA_BLOCK_DELAYS', '60,120,180'))),
-                static fn(int $seconds): bool => $seconds > 0,
-            )),
+            // A blocked crawl is retried after these delays; the database setting overrides this default.
+            'block_delays_seconds' => [60, 120, 180],
         ],
         'loop' => [
             // Re-read page-one listing seeds on this interval even while later pages are still being crawled.
-            // Env: JAVMETA_FRESH_INTERVAL_MINUTES.
-            'fresh_interval_minutes' => max(1, (int) env('JAVMETA_FRESH_INTERVAL_MINUTES', 60)),
+            'fresh_interval_minutes' => 60,
             // When every listing page of a source has been crawled (the last page has no next page) the
-            // listing is started again from page 1 after this many seconds. Env: JAVMETA_LOOP_PAUSE_SECONDS.
-            'pause_seconds' => max(0, (int) env('JAVMETA_LOOP_PAUSE_SECONDS', 300)),
+            // listing is started again from page 1 after this many seconds.
+            'pause_seconds' => 300,
         ],
         'recrawl' => [
             // A movie whose completeness tier is below `min_tier` is crawled again once its last crawl is older
-            // than `incomplete_after_days`. Env: JAVMETA_RECRAWL_DAYS, JAVMETA_RECRAWL_MIN_TIER, JAVMETA_RECRAWL_BATCH, JAVMETA_RECRAWL_MAX.
-            'incomplete_after_days' => max(1, (int) env('JAVMETA_RECRAWL_DAYS', 7)),
-            'min_tier' => (int) env('JAVMETA_RECRAWL_MIN_TIER', 3),
-            'batch' => max(1, (int) env('JAVMETA_RECRAWL_BATCH', 200)),
-            'max_rounds' => max(1, (int) env('JAVMETA_RECRAWL_MAX', 3)),
+            // than `incomplete_after_days`.
+            'incomplete_after_days' => 7,
+            'min_tier' => 3,
+            'batch' => 200,
+            'max_rounds' => 3,
         ],
         'normalize' => [
             // Per-source mapping of crawlerx metadata{} keys onto MovieDraft

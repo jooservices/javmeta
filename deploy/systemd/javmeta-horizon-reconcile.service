@@ -1,0 +1,8 @@
+[Unit]
+Description=Reconcile this node's Horizon workers from database settings
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Workspaces/JOOservices/projects/javmeta
+ExecStart=%h/Workspaces/scripts/docker/runtime php@8.5 php artisan horizon:reconcile-workers

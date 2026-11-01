@@ -16,8 +16,17 @@ final class SettingsImportEnvCommand extends Command
     public function handle(SettingsService $settings): int
     {
         if ((bool) $this->option('dry-run')) {
-            $saved = array_keys($settings->all());
-            $this->line('Dry run: ' . count($saved) . ' settings are defined; run without --dry-run to store the missing ones.');
+            $rows = $settings->importPreview();
+            if ($rows === []) {
+                $this->line('No missing settings would be imported.');
+
+                return self::SUCCESS;
+            }
+            $this->table(['Setting', 'Current value', 'Source'], array_map(
+                static fn(array $row): array => [$row['key'], is_scalar($row['display']) ? (string) $row['display'] : json_encode($row['display'], JSON_THROW_ON_ERROR), $row['source']],
+                $rows,
+            ));
+            $this->line(count($rows) . ' missing settings would be stored; secrets are redacted.');
 
             return self::SUCCESS;
         }

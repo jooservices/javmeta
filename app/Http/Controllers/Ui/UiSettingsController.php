@@ -37,6 +37,12 @@ final class UiSettingsController
             }
         }
 
-        return response()->json(['data' => ['applied' => $applied, 'errors' => $errors]], $errors === [] ? 200 : 422);
+        return response()->json([
+            'data' => [
+                'applied' => $applied,
+                'errors' => $errors,
+                'apply_after_seconds' => $settings->applyAfterSeconds($applied),
+            ],
+        ], $errors === [] ? 200 : 422);
     }
 }

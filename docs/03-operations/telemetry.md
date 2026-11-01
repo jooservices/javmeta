@@ -112,7 +112,7 @@ when it clears. Follow messages and bot replies use product-specific templates.
 | Stalled crawl | Due pending work but no source success within `JAVMETA_WATCHDOG_CRAWL_STALL_SECONDS` | `crawler:watchdog` |
 | Stuck queue | Claimed items older than `JAVMETA_WATCHDOG_QUEUE_STUCK_SECONDS` | `crawler:watchdog` |
 | Due pending backlog | Due pending items reach `JAVMETA_WATCHDOG_PENDING_QUEUE_LIMIT` (default 1,000); a recovery message follows below the limit | `crawler:watchdog` |
-| Old backup | Last backup older than `JAVMETA_BACKUP_STALE_AFTER_SECONDS` (26 hours) or missing | `javmeta:backup-status` |
+| Old backup | Last backup older than `backup.stale_after_seconds` (26 hours) or missing | `javmeta:backup-status` |
 
 `OPENOBSERVE_STREAM_METRICS` is retained in configuration for compatibility;
 the current metrics client sends OTLP metric names and does not route them into

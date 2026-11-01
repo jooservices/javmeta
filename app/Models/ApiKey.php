@@ -17,8 +17,8 @@ class ApiKey extends Model
     public const STATUS_ACTIVE = 'active';
     public const STATUS_REVOKED = 'revoked';
 
-    /** movies: lookup, search, related, calendar; bulk: movies:bulk; performers; catalog: meta and suggest; status; mcp. */
-    public const SCOPES = ['movies', 'bulk', 'performers', 'catalog', 'status', 'mcp', 'media'];
+    /** movies, bulk, performers, catalog, status, config, mcp, media. */
+    public const SCOPES = ['movies', 'bulk', 'performers', 'catalog', 'status', 'config', 'mcp', 'media'];
 
     protected $table = 'api_keys';
     public $timestamps = false;

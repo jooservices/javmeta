@@ -54,6 +54,7 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
         });
 
         Route::middleware([AuthenticateApiKey::class, 'requires:postgres', LogApiUsage::class])->group(function (): void {
+            Route::get('config/browser-services', \App\Http\Controllers\BrowserServicesConfigController::class);
             Route::get('performers', [PerformerController::class, 'index']);
             Route::get('performers/facets', [PerformerFacetsController::class, 'index']);
             Route::get('performers/{id}', [PerformerController::class, 'show']);

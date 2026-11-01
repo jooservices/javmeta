@@ -59,12 +59,12 @@ Do not add a repository to shared Elasticsearch until that isolated
 
 ## Freshness metric and alert
 
-<code>javmeta:backup-status</code> reads <code>JAVMETA_BACKUP_MANIFEST</code> (default
+<code>javmeta:backup-status</code> reads the database setting <code>backup.manifest_path</code> (default
 <code>storage/app/private/backups/latest.json</code>) every minute and publishes
 <code>javmeta_backup_last_success_age_seconds</code> through the existing OpenObserve
 client. If no manifest exists, the metric uses <code>-1</code> and the command sends a
 debounced Telegram alert. When the manifest age exceeds
-<code>JAVMETA_BACKUP_STALE_AFTER_SECONDS</code> (default 93,600 seconds), it publishes the
+<code>backup.stale_after_seconds</code> (default 93,600 seconds), it publishes the
 age and sends the existing debounced Telegram alert.
 
 The target RPO is 24 hours. RTO remains unverified until a successful rehearsal

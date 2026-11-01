@@ -48,7 +48,7 @@ and `JAVMETA_SKIP_READINESS` staging overrides do not apply to the wizard.
 
 ## Is it healthy?
 
-- `$A staging:readiness` (also `--json`): one PASS or FAIL per check with the cause and the first thing to do; exits non-zero on any FAIL. It runs every hour, keeps the last 30 runs in `storage/app/private/monitoring/readiness-history.jsonl` and tells Telegram once when it turns bad. Readiness limits are in `config/javmeta_readiness.php`; the source fallback age is `JAVMETA_WATCHDOG_SOURCE_STALE_SECONDS`. Sources with a manifest `cycle_delay_seconds` become past due after that cycle plus one fresh-listing sweep.
+- `$A staging:readiness` (also `--json`): one PASS or FAIL per check with the cause and the first thing to do; exits non-zero on any FAIL. It runs every hour, keeps the last 30 runs in `storage/app/private/monitoring/readiness-history.jsonl` and tells Telegram once when it turns bad. Readiness and watchdog thresholds are editable in Cài đặt. Sources with a manifest `cycle_delay_seconds` become past due after that cycle plus one fresh-listing sweep.
 - `$A crawler:sources`: one row per source with the switch, the current gap and the last success.
 - `$A crawler:failures`: the latest failed jobs with their reason.
 - The Operations, Data quality and Crawl debug dashboards in OpenObserve (stream `javmeta_logs` and the metric streams); alerts go to Telegram.
@@ -62,7 +62,7 @@ and `JAVMETA_SKIP_READINESS` staging overrides do not apply to the wizard.
 | A source shows a long gap (up to 600 s) and no recent success | The site blocks us (rate limit, challenge). The system slows down on its own; look at the error with `crawler:failures`. Do not switch it on and off repeatedly. If it stays blocked, open a CrawlerX ticket. |
 | Switch a source off or on | `$A crawler:source-toggle <slug>`; the switch lives only in the `sources.enabled` column. A source that needs a login (avfan) starts off. |
 | Jobs stay `claimed` for a long time | A worker died. `crawler:reclaim` runs every minute and frees them; run it by hand to force it. |
-| Queue grows without bound | More pending than the workers and gaps allow. Check Horizon, then the per-source gap; lower `JAVMETA_FEED_POOL_LIMIT` in `.env` and restart the units. |
+| Queue grows without bound | More pending than the workers and gaps allow. Check Horizon, then the per-source gap; lower `queue.feed_pool_limit` or adjust worker settings on Cài đặt. |
 | Failed jobs with `22021` (invalid UTF-8) | Fixed in the normalizer (JOOXCR-248). If it returns, find the source in `crawler:failures` and open a ticket. |
 | Smoke check fails right after a deploy | Wait a minute (workers restart) and run `$A javmeta:smoke --json` again; the deploy script retries once itself. |
 | UI render smoke gate fails | The candidate was rejected before changing the served code or services. Read the UI assertion in the deploy log, fix it in a PR and retry. `JAVMETA_SKIP_UI_SMOKE=1` is an explicit emergency bypass with a warning. |

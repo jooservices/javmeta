@@ -2,7 +2,7 @@ import { esc, fmt } from '../util.js';
 import { admin, send } from '../api.js';
 import { head, errorBox, ic } from '../components.js';
 
-const SCOPES = [['movies', 'Phim'], ['bulk', 'Tra hàng loạt'], ['performers', 'Diễn viên'], ['catalog', 'Danh mục & gợi ý'], ['status', 'Trạng thái'], ['mcp', 'MCP'], ['media', 'Worker media']];
+const SCOPES = [['movies', 'Phim'], ['bulk', 'Tra hàng loạt'], ['performers', 'Diễn viên'], ['catalog', 'Danh mục & gợi ý'], ['status', 'Trạng thái'], ['config', 'Cấu hình dịch vụ'], ['mcp', 'MCP'], ['media', 'Worker media']];
 const FIELD_NAMES = { code: 'Mã', title_jp: 'Tên JP', title_en: 'Tên EN', actresses: 'Diễn viên', cover_url: 'Ảnh bìa', release_date: 'Ngày phát hành', runtime: 'Thời lượng', maker: 'Maker', label: 'Label', series: 'Series', genres: 'Thể loại' };
 
 /* owner administration: data quality report and API keys */

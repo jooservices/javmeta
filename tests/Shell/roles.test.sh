@@ -6,15 +6,16 @@ declare -A answers=([UNIT_PREFIX]=test [NODE_ROLE]=worker [FPM_UNIT]=test-fpm [N
 start_scheduler=1
 role_units
 [[ "${answers[RESTART_UNITS]}" == 'test-embedder test-horizon test-exporter' ]]
-[[ -z "${answers[START_UNITS]}" ]]
+[[ "${answers[START_UNITS]}" == test-horizon-reconcile.timer ]]
+[[ "${answers[STOP_UNITS]}" == *test-horizon-reconcile.timer* ]]
 [[ "${answers[STOP_UNITS]}" != *scheduler* ]]
 answers[NODE_ROLE]=primary
 start_scheduler=0
 role_units
-[[ -z "${answers[START_UNITS]}" ]]
+[[ "${answers[START_UNITS]}" == test-horizon-reconcile.timer ]]
 start_scheduler=1
 role_units
-[[ "${answers[START_UNITS]}" == test-scheduler ]]
+[[ "${answers[START_UNITS]}" == 'test-horizon-reconcile.timer test-scheduler' ]]
 echo 'OK (5 role/scheduler assertions)'
 answers[MONGO_USERNAME]='name@node'
 answers[MONGO_PASSWORD]='p@ss:/?#'

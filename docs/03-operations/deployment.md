@@ -25,11 +25,14 @@ worker-role drop-ins; PHP-FPM is not managed. Workers do not migrate shared data
 the fleet (`onOneServer` is absent). `--start-scheduler` is an explicit primary
 cutover step; `--no-start` installs without starting services.
 
-Horizon needs `JAVMETA_WORKERS_PER_QUEUE` in env; its database setting alone
-cannot change process counts. PostgreSQL's role connection limit **60** and
-shared `max_connections` **150** bound fleet capacity. Browser capacity on
-vm-tools is global, shared by every crawler node. The native Playwright script
-must be under `<root>/current/vendor/jooservices/crawlerx/scripts/`.
+Horizon reads worker counts from database settings at boot. The per-node
+`horizon:reconcile-workers` command and systemd timer compare the running layout
+with the current settings and gracefully restart a node when it changes;
+deploy locks, jitter, fleet serialization and a 10-minute per-node cooldown
+guard the restart. PostgreSQL's role connection limit **60** and shared
+`max_connections` **150** bound fleet capacity. Browser capacity on vm-tools is
+global, shared by every crawler node. The native Playwright script must be
+under `<root>/current/vendor/jooservices/crawlerx/scripts/`.
 
 For local verification use a disposable shared-service namespace, a local
 repository/ref and `--skip-os-install --no-systemd --no-start`. These flags do
@@ -55,7 +58,7 @@ services.
 
 ### XCrawler guest mode
 
-`JAVMETA_UI_LOGIN_REQUIRED` defaults to `true`. Set it to `false` to make the
+`ui_security.login_required` in the Settings page defaults to `true`. Set it to `false` to make the
 read-only XCrawler catalogue available without a login. The UI bridge only
 allows its public-safe GET routes; administration, personal data, writes,
 downloads, file serving, and operations remain owner-only. Guest bridge
@@ -66,12 +69,9 @@ The shell sends `X-Robots-Tag: noindex, nofollow` and includes a `noindex`
 robots meta tag while guest mode is enabled. `staging:readiness` and
 `javmeta:smoke` report `WARN: UI login disabled (guest mode)`.
 
-After changing the environment value, clear cached configuration with
-`php artisan config:clear` and reload the application processes. If Horizon
-workers are running, restart them with `php artisan horizon:terminate` so they
-load the current configuration. To require login again, set
-`JAVMETA_UI_LOGIN_REQUIRED=true`, clear configuration cache, and reload the
-application processes; this restores the login gate on the next request.
+Save the setting on Cài đặt. The UI and settings bridge apply it from the
+database on the next request; no environment edit or config-cache clear is
+needed. To require login again, turn `ui_security.login_required` back on.
 
 This flow does not transfer application images with `scp`, publish images to a
 registry, or store image archives in GitHub. Docker still creates local images
@@ -104,8 +104,9 @@ scheduled work and alerts.
 ## Worker runtime
 
 Each configured queue worker runs with a 180-second timeout by default. The
-database queue `retry_after` default is 240 seconds and must remain greater
-than the worker timeout so a running job is not reserved by another worker.
+database setting `queue.retry_after_seconds` defaults to 240 seconds and must
+remain greater than `queue.worker_timeout` so a running job is not reserved by
+another worker.
 
 The worker supervisor tracks each `(queue, slot)` process independently. A
 worker that exits, including normal `--max-time` or `--max-jobs` rotation, is
@@ -116,10 +117,9 @@ stop grace period before killing remaining children and exits successfully.
 When a queued crawl row is missing or is no longer `claimed`, the job skips the
 fetch without changing the row and emits the `crawl_job_skipped` `ops` event.
 
-The relevant environment variables are `JAVMETA_QUEUE_TIMEOUT` (default `180`),
-`DB_QUEUE_RETRY_AFTER` (default `240`), and `JAVMETA_QUEUE_STOP_GRACE` (default
-`200`). `JAVMETA_PHP_BIN` is available for shell-test replacement of the PHP
-binary and defaults to `php`.
+The worker timeout, retry-after and stop-grace values are database settings
+under Cài đặt → Thời gian chờ / Worker. `JAVMETA_PHP_BIN` remains an optional
+executable override for the legacy shell supervisor and defaults to `php`.
 
 ## Scheduled crawler commands
 

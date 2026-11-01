@@ -6,7 +6,7 @@ $queueConfig = require __DIR__ . '/javmeta_queues.php';
 $queueNames = $queueConfig['horizon_names'];
 $workersPerQueue = max(1, (int) $queueConfig['workers_per_queue']);
 $workerTimeout = max(1, (int) $queueConfig['worker_timeout']);
-$queueTries = max(1, (int) env('JAVMETA_QUEUE_TRIES', 3));
+$queueTries = (int) $queueConfig['queue_tries'];
 $supervisors = [];
 $waits = [];
 
@@ -17,10 +17,12 @@ foreach ($queueNames as $queueName) {
         'queue' => [$queueName],
         'balance' => false,
         'maxProcesses' => in_array($queueName, $queueConfig['browser_names'], true) ? $queueConfig['browser_workers_per_queue'] : $workersPerQueue,
-        'maxTime' => (int) env('JAVMETA_QUEUE_MAX_TIME', 3600),
-        'maxJobs' => (int) env('JAVMETA_QUEUE_MAX_JOBS', 500),
+        'maxTime' => (int) $queueConfig['queue_max_time'],
+        'maxJobs' => (int) $queueConfig['queue_max_jobs'],
+        'sleep' => (int) $queueConfig['queue_sleep_seconds'],
         'memory' => 128,
         'tries' => $queueTries,
+        'backoff' => (int) $queueConfig['queue_backoff_seconds'],
         'timeout' => $workerTimeout,
         'nice' => 0,
     ];

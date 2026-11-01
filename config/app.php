@@ -55,7 +55,7 @@ return [
     */
 
     'url' => env('APP_URL', 'http://localhost'),
-    'smoke_url' => env('JAVMETA_SMOKE_BASE_URL') ?: env('APP_URL', 'http://localhost'),
+    'smoke_url' => env('APP_URL', 'http://localhost'),
 
     /*
     |--------------------------------------------------------------------------

@@ -1,0 +1,19 @@
+[Unit]
+Description=XCrawler per-node Horizon worker reconciliation
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=@TARGET_DIR@/current/artisan
+
+[Service]
+Type=oneshot
+User=@SERVICE_USER@
+Group=@SERVICE_USER@
+WorkingDirectory=@TARGET_DIR@/current
+Environment=HOME=@TARGET_DIR@/shared
+Environment=HF_HUB_DISABLE_TELEMETRY=1
+ExecStart=@PHP_BINARY@ artisan horizon:reconcile-workers
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=@TARGET_DIR@/shared/storage

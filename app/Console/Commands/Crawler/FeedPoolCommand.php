@@ -19,6 +19,7 @@ use Carbon\CarbonImmutable;
 use App\Support\Crawl\LaravelCrawlQueue;
 use Illuminate\Console\Command;
 use Illuminate\Foundation\Bus\PendingDispatch;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -26,7 +27,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class FeedPoolCommand extends Command
 {
-    protected $signature = 'crawler:feed-pool {--limit= : Per-lane jobs for this invocation (defaults to the scaled per-minute setting)} {--schedule-interval= : Interval captured when the scheduler registered this run}';
+    protected $signature = 'crawler:feed-pool {--limit= : Per-lane jobs for this invocation (defaults to the scaled per-minute setting)} {--scheduled : Apply the current database feed interval}';
 
     protected $aliases = ['crawl:dispatch'];
 
@@ -34,6 +35,12 @@ final class FeedPoolCommand extends Command
 
     public function handle(CrawlQueueService $queue, ObservabilityEmitter $observability, SourceThrottle $throttle): int
     {
+        if ($this->option('scheduled') && ! $this->feedIntervalElapsed()) {
+            $this->components->info('Feed interval has not elapsed.');
+
+            return self::SUCCESS;
+        }
+
         // Keep depth reads and Redis pushes in one scope, including concurrent manual feeders.
         $postgres = DB::getDriverName() === 'pgsql';
         if ($postgres && ! DB::selectOne('SELECT pg_try_advisory_lock(?) AS acquired', [282])->acquired) {
@@ -229,7 +236,7 @@ final class FeedPoolCommand extends Command
 
     private function scaledRunLimit(int $limitPerMinute): int
     {
-        $interval = (int) ($this->option('schedule-interval') ?? config('javmeta_queues.feed_interval_seconds', 10));
+        $interval = (int) config('javmeta_queues.feed_interval_seconds', 10);
         if (! in_array($interval, [5, 10, 15, 30, 60], true)) {
             $interval = 10;
         }
@@ -238,6 +245,31 @@ final class FeedPoolCommand extends Command
         $slotEnd = $slotStart + $interval;
 
         return intdiv($limitPerMinute * $slotEnd, 60) - intdiv($limitPerMinute * $slotStart, 60);
+    }
+
+    private function feedIntervalElapsed(): bool
+    {
+        $interval = (int) config('javmeta_queues.feed_interval_seconds', 10);
+        if (! in_array($interval, [5, 10, 15, 30, 60], true)) {
+            $interval = 10;
+        }
+
+        $lock = Cache::lock('javmeta:crawl:feed-pool:interval-lock', 5);
+        if (! $lock->get()) {
+            return false;
+        }
+
+        try {
+            $last = (int) Cache::get('javmeta:crawl:feed-pool:last-scheduled', 0);
+            if ($last > 0 && now()->timestamp < $last + $interval) {
+                return false;
+            }
+            Cache::put('javmeta:crawl:feed-pool:last-scheduled', now()->timestamp, 86400);
+
+            return true;
+        } finally {
+            $lock->release();
+        }
     }
 
     private function delayBeforeNextStart(?CarbonImmutable $latestStartedAt, float $gap): int
