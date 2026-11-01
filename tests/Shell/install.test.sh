@@ -20,7 +20,12 @@ if [[ "${0##*/}" == php && "$*" == *probe.php* ]]; then
   if [[ "${FAIL_STEP:-}" == timezone ]]; then echo "Database timezone MUST be UTC"; exit 1; fi
   if [[ "${FAIL_STEP:-}" == retry && ! -e "$CALLS.retry" ]]; then touch "$CALLS.retry"; exit 1; fi
 fi
-if [[ "${0##*/}" == php && "$*" == *health:startup* && "${FAIL_STEP:-}" == startup ]]; then exit 1; fi
+if [[ "${0##*/}" == php && "$*" == *health:startup* ]]; then
+  shared_env=absent
+  [[ ! -e "$PWD/../../shared/.env" ]] || shared_env=present
+  printf 'health-env=%s shared-env=%s command=%s\n' "$(readlink .env)" "$shared_env" "$*" >> "$CALLS"
+  if [[ "${FAIL_STEP:-}" == startup || ( "${FAIL_STEP:-}" == startup-scheduler && "$*" == *'--role=scheduler'* ) ]]; then exit 1; fi
+fi
 if [[ "${0##*/}" == php && "$*" == *random_bytes* ]]; then echo generated-private-key; fi
 if [[ "${0##*/}" == php && ( "$*" == *rawurlencode* || "$*" == *mongo-uri.php* ) ]]; then echo mongodb://fixture.invalid/fixture; fi
 if [[ "${0##*/}" == php && "$*" == *operations:make-super-admin* ]]; then echo private-owner-password; fi
@@ -82,12 +87,18 @@ for failure in startup ui migrate import restart readiness horizon; do
   : > "$CALLS"
   if FAIL_STEP="$failure" bash "$script" --non-interactive --config "$fixture/answers.json" --skip-os-install --apply > "$fixture/log" 2>&1; then fail "ignored $failure"; fi
   [[ "$(readlink "$fixture/node/current")" == "$fixture/node/releases/old" ]] || fail 'rollback failed'
-  if [[ "$failure" == startup ]] && grep -Eq '^sudo .*systemctl stop' "$CALLS"; then fail 'wizard quiesced units before staged startup health passed'; fi
+  if [[ "$failure" == startup ]]; then
+    grep -q 'health-env=.*\.env-staged-' "$CALLS" || fail 'staged health check did not use the private candidate env'
+    grep -q 'shared-env=absent' "$CALLS" || fail 'candidate env replaced shared env before its health check'
+    if grep -Eq '^sudo .*systemctl stop' "$CALLS"; then fail 'wizard quiesced units before staged startup health passed'; fi
+  fi
   ! grep -q 'private-test-value' "$fixture/log" || fail 'secret leaked on failure'
 done
 rm -- "$fixture/node/current"
 bash "$script" --non-interactive --config "$fixture/answers.json" --skip-os-install --apply > "$fixture/log" 2>&1
 [[ "$(readlink "$fixture/node/current")" != "$fixture/node/releases/old" ]] || fail 'release not activated'
+grep -q 'artisan health:startup --role=web' "$CALLS" || fail 'primary startup health omitted web role'
+grep -q 'artisan health:startup --role=worker' "$CALLS" || fail 'primary startup health omitted worker role'
 [[ "$(stat -c '%a' "$fixture/node/shared/.env")" == 640 ]] || fail 'unsafe env mode'
 ! grep -q '^JAVMETA_UI_LOGIN_REQUIRED=' "$fixture/node/shared/.env" || fail 'database-backed UI login setting leaked into env'
 [[ "$(stat -c '%a' "$fixture/node.credentials")" == 600 ]] || fail 'unsafe credentials mode'
@@ -114,6 +125,12 @@ grep -q 'requires CI_CHECKS' "$fixture/log" || fail 'missing CI gate diagnostic'
 if bash "$script" --non-interactive --config "$fixture/answers.json" --no-systemd --apply > "$fixture/log" 2>&1; then fail 'simulated units counted as readiness'; fi
 grep -q 'requires --no-start' "$fixture/log" || fail 'missing unit simulation diagnostic'
 if FAIL_STEP=scheduler bash "$script" --non-interactive --config "$fixture/answers.json" --start-scheduler --apply > "$fixture/log" 2>&1; then fail 'unhealthy scheduler accepted'; fi
+grep -q 'artisan health:startup --role=scheduler' "$CALLS" || fail 'scheduler startup health was omitted when the scheduler was enabled'
+# The wizard stops before promoting the candidate env when the scheduler-only policy fails.
+env_before_scheduler_health="$(sha256sum "$fixture/node/shared/.env")"
+if FAIL_STEP=startup-scheduler bash "$script" --non-interactive --config "$fixture/answers.json" --start-scheduler --apply > "$fixture/log" 2>&1; then fail 'failed scheduler health accepted'; fi
+grep -q 'shared-env=present' "$CALLS" || fail 'scheduler health did not preserve the active shared env'
+[[ "$(sha256sum "$fixture/node/shared/.env")" == "$env_before_scheduler_health" ]] || fail 'failed scheduler health changed the active shared env'
 # Default credentials stay with the service-owned release target after sudo handoff.
 jq --arg target "$fixture/default-node" 'del(.CREDENTIALS_FILE) | .TARGET_DIR=$target' "$fixture/answers.json" > "$fixture/default-answers.json"
 chmod 600 "$fixture/default-answers.json"
@@ -133,4 +150,4 @@ grep -q 'no migrations' "$fixture/log" || fail 'worker migration skip not disclo
 ! grep -q 'private-test-value\|private-owner-password' "$fixture/log" || fail 'worker leaked credentials'
 if bash "$script" --non-interactive --config "$fixture/answers.json" --role worker --target "$fixture/fresh-worker" > "$fixture/log" 2>&1; then fail 'new worker accepted without primary APP_KEY'; fi
 grep -q 'copy the primary shared env/key' "$fixture/log" || fail 'missing worker key diagnostic'
-echo 'OK (32 install wizard scenarios)'
+echo 'OK (34 install wizard scenarios)'

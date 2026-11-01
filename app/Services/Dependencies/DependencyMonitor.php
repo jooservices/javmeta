@@ -69,7 +69,23 @@ final class DependencyMonitor
         }
 
         try {
-            $available = $probe->probe();
+            if ($probe instanceof DetailedDependencyProbe) {
+                $result = $probe->check();
+                if ($result->available === null) {
+                    $state = $this->changeState($dependency, $state, 'disabled');
+                    $state['available'] = true;
+                    $state['failures'] = 0;
+                    $state['cached_at'] = $now;
+                    $state['retry_at'] = null;
+                    $state['checked_at'] = now()->toIso8601String();
+
+                    return $this->storeAndFormat($dependency, $state);
+                }
+
+                $available = $result->available;
+            } else {
+                $available = $probe->probe();
+            }
         } catch (Throwable) {
             $available = false;
         }

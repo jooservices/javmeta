@@ -5,7 +5,9 @@ checks the services a process needs before it serves requests or starts work. It
 prints a redacted service table and returns 0 when every enabled primary check
 passes, or 1 when a primary check fails. The default wait comes from
 `health.startup.wait_seconds` (60 seconds); retries use the configured backoff.
-Each network probe has a maximum two-second timeout.
+Each network request or Redis command has a maximum two-second timeout. A
+probe that checks several configured connections or endpoints can take longer
+than two seconds in total.
 
 ## Policy and fallback
 

@@ -62,6 +62,24 @@ final class StartupCommandGateTest extends TestCase
         self::assertSame(0, $fixture['probes']['postgres']->calls);
     }
 
+    public function test_command_starting_listener_refreshes_database_policy_before_reading_it(): void
+    {
+        $fixture = StartupHealthTestFixture::bind(['postgres' => false]);
+        $store = Mockery::mock(ConfigStore::class);
+        $store->shouldReceive('refresh')->once()->ordered();
+        $store->shouldReceive('group')->once()->with(SettingsService::GROUP)->ordered()->andReturn([
+            'health.startup.command_allowlist' => 'crawler:reclaim',
+        ]);
+        $listener = new StartupCommandListener(
+            new SettingsService($store),
+            new StartupCommandGate($fixture['health'], app(ObservabilityEmitter::class)),
+        );
+
+        $listener->handle(new CommandStarting('crawler:reclaim', new ArrayInput([]), new BufferedOutput()));
+
+        self::assertSame(0, $fixture['probes']['postgres']->calls);
+    }
+
     public function test_command_starting_listener_blocks_an_unavailable_worker_command(): void
     {
         $fixture = StartupHealthTestFixture::bind(['postgres' => false]);
@@ -84,7 +102,7 @@ final class StartupCommandGateTest extends TestCase
         self::assertTrue(app(SettingsService::class)->apply());
         config(['javmeta_health.startup.command_allowlist' => ['crawler:*']]);
         $store = Mockery::mock(ConfigStore::class);
-        $store->shouldReceive('group')->once()->with(SettingsService::GROUP)->andThrow(new RuntimeException('store down'));
+        $store->shouldReceive('refresh')->once()->andThrow(new RuntimeException('store down'));
         $listener = new StartupCommandListener(
             new SettingsService($store),
             new StartupCommandGate($fixture['health'], app(ObservabilityEmitter::class)),
@@ -109,5 +127,17 @@ final class StartupCommandGateTest extends TestCase
         $gate->handle('javmeta:backup-status');
 
         self::assertSame(0, $fixture['probes']['elasticsearch']->calls);
+    }
+
+    public function test_observability_publish_commands_use_worker_dependencies(): void
+    {
+        foreach (['obs:publish-metrics', 'javmeta:obs-publish-metrics'] as $command) {
+            $fixture = StartupHealthTestFixture::bind(['elasticsearch' => false]);
+            $gate = new StartupCommandGate($fixture['health'], app(ObservabilityEmitter::class));
+
+            $gate->handle($command);
+
+            self::assertSame(0, $fixture['probes']['elasticsearch']->calls, $command);
+        }
     }
 }

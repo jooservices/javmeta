@@ -41,8 +41,14 @@ declare -A answers=([CI_CHECKS]='Test gate,Secrets gate' [CI_REPOSITORY]='fixtur
 answers[PHP_BINARY]="$fixture/bin/php-health"
 answers[NODE_ROLE]=primary
 export STARTUP_LOG="$fixture/startup.log"
+start_scheduler=0
 startup_health
 grep -q 'artisan health:startup --role=web' "$STARTUP_LOG" || fail 'primary startup health used the wrong role'
+grep -q 'artisan health:startup --role=worker' "$STARTUP_LOG" || fail 'primary startup health omitted the worker role'
+start_scheduler=1
+startup_health
+grep -q 'artisan health:startup --role=scheduler' "$STARTUP_LOG" || fail 'primary scheduler startup health was omitted'
+start_scheduler=0
 answers[NODE_ROLE]=worker
 startup_health
 grep -q 'artisan health:startup --role=worker' "$STARTUP_LOG" || fail 'worker startup health used the wrong role'

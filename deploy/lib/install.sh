@@ -186,7 +186,7 @@ backup_gate() {
   grep -Fxq ";     dbname: ${answers[DB_DATABASE]}" <<< "$contents"
 }
 write_env() {
-  local key value service optional enabled temp="$base/shared/.env-$$"
+  local key value service optional enabled temp="$base/shared/.env-staged-$$.tmp"
   (umask 077; : > "$temp")
   # Preserve keys outside this manifest without evaluating any shell expressions.
   if [[ -f "$base/shared/.env" ]]; then
@@ -205,7 +205,7 @@ write_env() {
     printf '%s="%s"\n' "$key" "$value" >> "$temp"
   done < <(jq -r '((.options[] | select(.env == true) | [.key,"",false]), (.services[] | . as $s | .fields[] | select(.setting == null or .env == true) | [.key,$s.id,$s.optional])) | map(tostring) | join("|")' "$manifest")
   chmod 640 "$temp"
-  mv -f "$temp" "$base/shared/.env"
+  mv -f "$temp" "$base/shared/.env-staged-$$"
 }
 control() {
   if (( no_systemd )); then log "UNIT: $*"; else sudo -n /usr/bin/systemctl "$@"; fi
@@ -238,7 +238,11 @@ rollback() {
   if [[ -n "$previous" ]]; then
     ln -s "$previous" "$base/.rollback-$$" && mv -Tf "$base/.rollback-$$" "$base/current"
   else rm -f "$base/current"; fi
-  if [[ -f "$base/shared/.env-before-$$" ]]; then mv -f "$base/shared/.env-before-$$" "$base/shared/.env"; else rm -f "$base/shared/.env"; fi
+  if (( env_promoted )); then
+    if [[ -f "$base/shared/.env-before-$$" ]]; then mv -f "$base/shared/.env-before-$$" "$base/shared/.env"; else rm -f "$base/shared/.env"; fi
+  fi
+  rm -f "$base/shared/.env-staged-$$" "$base/shared/.env-staged-$$.tmp"
+  rm -f "$base/shared/.env-before-$$"
   if (( quiesced )); then
     if [[ -n "$previous" ]]; then unit_action restart "${answers[ROLLBACK_UNITS]}"; else unit_action stop "${answers[FIRST_FAILURE_UNITS]}"; fi
   fi
@@ -274,9 +278,20 @@ readiness() {
   return 1
 }
 startup_health() {
-  local role=worker
-  [[ "${answers[NODE_ROLE]}" != primary ]] || role=web
-  timeout 660 "${answers[PHP_BINARY]}" artisan health:startup "--role=$role"
+  local role
+  local -a roles=(worker)
+  if [[ "${answers[NODE_ROLE]}" == primary ]]; then
+    roles=(web worker)
+    (( ! start_scheduler )) || roles+=(scheduler)
+  fi
+  for role in "${roles[@]}"; do
+    timeout 660 "${answers[PHP_BINARY]}" artisan health:startup "--role=$role" || return $?
+  done
+}
+promote_env() {
+  mv -f "$base/shared/.env-staged-$$" "$base/shared/.env"
+  env_promoted=1
+  ln -sfn "$base/shared/.env" .env
 }
 activate_release() {
   ln -s "$release" "$base/.current-$$"
@@ -297,6 +312,7 @@ apply_release() {
   [[ -d "$previous" ]] || previous=""
   release="$(mktemp -d "$base/releases/release.XXXXXXXX")"
   quiesced=0
+  env_promoted=0
   [[ ! -f "$base/shared/.env" ]] || cp -p "$base/shared/.env" "$base/shared/.env-before-$$"
   trap rollback ERR
   trap 'false' INT TERM
@@ -314,7 +330,7 @@ apply_release() {
   # Composer scripts boot Laravel: a private env must already be available.
   if [[ -z "${answers[APP_KEY]}" ]]; then answers[APP_KEY]="$(php -r 'echo "base64:".base64_encode(random_bytes(32));')"; fi
   step 'Write private environment (0640)' write_env
-  ln -s "$base/shared/.env" .env
+  ln -s "$base/shared/.env-staged-$$" .env
   rm -rf storage
   for folder in app/private app/public framework/cache/data framework/sessions framework/views logs; do mkdir -p "$base/shared/storage/$folder"; done
   ln -s "$base/shared/storage" storage
@@ -323,6 +339,7 @@ apply_release() {
   step 'Startup health on staged release' startup_health
   quiesced=0
   if (( ! no_start )); then quiesced=1; step 'Quiesce scheduler and workers' unit_action stop "${answers[STOP_UNITS]}"; fi
+  step 'Promote verified private environment' promote_env
   if [[ "${answers[NODE_ROLE]}" == primary ]]; then
     step 'Forward migrations' php artisan migrate --force
     # Only the primary initializes shared data; adding workers must not rotate its owner.

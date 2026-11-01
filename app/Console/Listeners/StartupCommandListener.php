@@ -17,7 +17,7 @@ final readonly class StartupCommandListener
 
     public function handle(CommandStarting $event): void
     {
-        if (! $this->settings->apply()) {
+        if (! $this->settings->applyFresh()) {
             $this->settings->restoreDefaults();
         }
 
