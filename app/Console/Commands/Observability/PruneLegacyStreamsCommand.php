@@ -112,7 +112,9 @@ final class PruneLegacyStreamsCommand extends Command
         }
 
         $days = (int) $value;
-        if ($real && $days < 1) {
+        $zeroDaysTestSwitch = app()->environment('testing')
+            && config('observability.prune_allow_zero_idle_days_for_testing', false) === true;
+        if ($real && $days < 1 && ! $zeroDaysTestSwitch) {
             throw new RuntimeException('Forced runs require min-idle-days of at least 1.');
         }
 

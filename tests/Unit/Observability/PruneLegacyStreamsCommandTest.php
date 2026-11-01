@@ -169,11 +169,20 @@ final class PruneLegacyStreamsCommandTest extends TestCase
         $this->artisan('observability:prune-legacy-streams', ['--prefix' => 'zzlegacy_', '--min-idle-days' => '0'])->assertSuccessful();
     }
 
-    public function test_forced_run_rejects_zero_idle_days_before_http(): void
+    public function test_forced_run_rejects_zero_idle_days_outside_testing_even_with_test_switch(): void
     {
+        config()->set('observability.prune_allow_zero_idle_days_for_testing', true);
+        $this->app->detectEnvironment(static fn(): string => 'production');
         $this->artisan('observability:prune-legacy-streams', [...$this->runOptions(), '--min-idle-days' => '0'])
             ->expectsOutputToContain('min-idle-days of at least 1')->assertFailed();
         Http::assertNothingSent();
+    }
+
+    public function test_test_switch_allows_zero_idle_days_only_in_testing(): void
+    {
+        self::assertSame('testing', app()->environment());
+        config()->set('observability.prune_allow_zero_idle_days_for_testing', true);
+        $this->artisan('observability:prune-legacy-streams', [...$this->runOptions(), '--min-idle-days' => '0'])->assertSuccessful();
     }
 
     public function test_empty_and_more_than_200_candidates_are_refused(): void

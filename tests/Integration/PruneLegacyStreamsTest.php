@@ -79,22 +79,23 @@ final class PruneLegacyStreamsTest extends IntegrationTestCase
         $this->orgPath = $org;
         config()->set('openobserve.stream_logs', $sibling);
         $created = [[$log, 'logs'], [$sibling, 'logs'], [$metric, 'metrics']];
-        $oldTimestamp = now()->subDays(30)->getTimestamp();
         try {
             $this->waitForOpenObserve();
+            self::assertSame('testing', app()->environment(), 'Zero-day integration override is only allowed in the testing environment.');
+            config()->set('observability.prune_allow_zero_idle_days_for_testing', true);
             $this->created = $created;
             foreach ([$log, $sibling] as $name) {
-                $api->request('POST', $org . '/' . $name . '/_json', [['_timestamp' => $oldTimestamp * 1_000_000, 'message' => 'throwaway']]);
+                $api->request('POST', $org . '/' . $name . '/_json', [['_timestamp' => (int) (microtime(true) * 1_000_000), 'message' => 'throwaway']]);
             }
             $api->request('POST', $org . '/v1/metrics', ['resourceMetrics' => [['scopeMetrics' => [['metrics' => [[
-                'name' => $metric, 'gauge' => ['dataPoints' => [['asDouble' => 1.0, 'timeUnixNano' => (string) ($oldTimestamp * 1_000_000_000)]]],
+                'name' => $metric, 'gauge' => ['dataPoints' => [['asDouble' => 1.0, 'timeUnixNano' => (string) (int) (microtime(true) * 1_000_000_000)]]],
             ]]]]]]]);
             $policy = app(StreamPolicy::class);
             $candidates = [];
             $deadline = time() + 90;
             do {
                 $inventory = $api->streams();
-                $candidates = $policy->candidates($inventory, $prefix, ['logs', 'metrics'], 14);
+                $candidates = $policy->candidates($inventory, $prefix, ['logs', 'metrics'], 0);
                 $siblings = array_values(array_filter($inventory, static fn(array $row): bool => $row['name'] === $sibling));
                 if (count($candidates) === 2 && array_sum(array_column($candidates, 'count')) === 2 && ($siblings[0]['stats']['doc_num'] ?? null) === 1) {
                     break;
@@ -104,14 +105,14 @@ final class PruneLegacyStreamsTest extends IntegrationTestCase
             self::assertCount(2, $candidates);
             self::assertSame(2, array_sum(array_column($candidates, 'count')));
             self::assertSame(1, $siblings[0]['stats']['doc_num'] ?? null);
-            $options = ['--prefix' => $prefix, '--min-idle-days' => '14'];
+            $options = ['--prefix' => $prefix, '--min-idle-days' => '0'];
             $dryRunOutput = new BufferedOutput();
             $dryRunStatus = Artisan::call('observability:prune-legacy-streams', $options, $dryRunOutput);
             $dryRunText = $dryRunOutput->fetch();
             self::assertSame(0, $dryRunStatus, $dryRunText);
             self::assertStringContainsString('Manifest SHA256:', $dryRunText);
             $this->artisan('observability:prune-legacy-streams', [...$options, '--force' => true, '--export-dir' => $directory, '--confirm' => str_repeat('0', 64)])->assertFailed();
-            self::assertCount(2, $policy->candidates($api->streams(), $prefix, ['logs', 'metrics'], 14));
+            self::assertCount(2, $policy->candidates($api->streams(), $prefix, ['logs', 'metrics'], 0));
             self::assertDirectoryDoesNotExist($directory);
             $this->artisan('observability:prune-legacy-streams', [...$options, '--force' => true, '--export-dir' => $directory, '--confirm' => $policy->hash($candidates)])->assertSuccessful();
             $manifest = json_decode(file_get_contents($directory . '/manifest.json'), true, flags: JSON_THROW_ON_ERROR);
@@ -120,7 +121,7 @@ final class PruneLegacyStreamsTest extends IntegrationTestCase
                 self::assertSame(1, substr_count(gzdecode(file_get_contents($file['path'])), "\n"));
                 self::assertSame(hash_file('sha256', $file['path']), $file['sha256']);
             }
-            self::assertSame([], $policy->candidates($api->streams(), $prefix, ['logs', 'metrics'], 14));
+            self::assertSame([], $policy->candidates($api->streams(), $prefix, ['logs', 'metrics'], 0));
             $siblings = array_values(array_filter($api->streams(), static fn(array $row): bool => $row['name'] === $sibling));
             self::assertCount(1, $siblings);
             self::assertSame(1, $siblings[0]['stats']['doc_num']);
