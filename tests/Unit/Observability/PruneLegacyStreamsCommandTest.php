@@ -417,6 +417,19 @@ final class PruneLegacyStreamsCommandTest extends TestCase
         app(StreamSnapshot::class)->verify([['name' => 'zzlegacy_a', 'type' => 'logs', 'count' => 1, 'min' => 1, 'max' => 1]]);
     }
 
+    public function test_verified_empty_stream_produces_an_empty_backup_without_invalid_zero_time_search(): void
+    {
+        Http::swap(new Factory());
+        Http::preventStrayRequests();
+        Http::fake(fn() => Http::response(['error' => 'start_time must be positive'], 400));
+        $files = app(StreamExport::class)->export([
+            ['name' => 'zzlegacy_empty', 'type' => 'logs', 'count' => 0, 'min' => 0, 'max' => 0, 'size' => 0.0],
+        ], $this->directory, 'hash');
+        self::assertSame('', gzdecode(file_get_contents($files[0]['path'])));
+        self::assertSame(0, $files[0]['count']);
+        Http::assertNothingSent();
+    }
+
     public function test_missing_dashboard_and_alert_details_fail_closed_and_report_all_families(): void
     {
         $this->responses['/api/default/dashboards'] = ['dashboards' => [['dashboard_id' => 'missing']]];

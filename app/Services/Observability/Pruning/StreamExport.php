@@ -52,7 +52,8 @@ final class StreamExport
         $count = 0;
         try {
             // Half-open slices avoid duplicate boundary timestamps. Split dense slices recursively.
-            $count = $this->slice($candidate, (int) $candidate['min'], (int) $candidate['max'] + 1, $handle);
+            // Snapshot verification already proved zero documents; OpenObserve rejects zero start times.
+            $count = $candidate['count'] === 0 ? 0 : $this->slice($candidate, (int) $candidate['min'], (int) $candidate['max'] + 1, $handle);
         } finally {
             if (! gzclose($handle)) {
                 throw new RuntimeException('Export close failed.');
