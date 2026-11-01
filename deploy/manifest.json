@@ -65,6 +65,13 @@
       "secret": false
     },
     {
+      "key": "JAVMETA_UI_LOGIN_REQUIRED",
+      "label": "Require login for the XCrawler UI",
+      "default": "true",
+      "required": false,
+      "secret": false
+    },
+    {
       "key": "GATEKEEPER_ADDRESS",
       "label": "Trusted reverse proxy address",
       "default": "",
