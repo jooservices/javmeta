@@ -6,7 +6,7 @@ const store = {};
 globalThis.localStorage = { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); } };
 globalThis.location = { hash: '#/', href: '', reload() {} };
 globalThis.innerWidth = 1280;
-globalThis.document = { querySelector: () => null, body: { contains: () => true }, documentElement: { dataset: {} }, addEventListener() {}, createElement: () => ({ append() {}, remove() {} }) };
+globalThis.document = { querySelector: () => null, body: { contains: () => true, dataset: { guestMode: 'false' } }, documentElement: { dataset: {} }, addEventListener() {}, createElement: () => ({ append() {}, remove() {} }) };
 globalThis.requestAnimationFrame = () => 0;
 globalThis.IntersectionObserver = class { observe() {} disconnect() {} };
 
@@ -243,3 +243,45 @@ globalThis.fetch = normalFetch;
     assert.ok(search.html.includes('$&amp; $$ $1'));
   } finally { globalThis.fetch = previousFetch; }
 }
+
+// Guest mode keeps public search readable and prevents personal reads, writes and media links.
+{
+  const guestApi = await import('../public/ui/js/api.js');
+  const savedSearches = await import('../public/ui/js/savedSearches.js');
+  const guestSearch = await load('views/search.js');
+  const guestMovie = await load('views/movie.js');
+  const calls = [];
+  document.body.dataset.guestMode = 'true';
+  globalThis.innerWidth = 375;
+  globalThis.fetch = async url => {
+    calls.push(url);
+    if (url.startsWith('/ui-api/search')) return jsonResponse({ data: { movies: [movie('AAA-001')], performers: [], interpretation: { filters: {}, keywords: 'public', by: 'none' } } });
+    if (url.startsWith('/ui-api/suggest')) return jsonResponse({ data: { genres: [], makers: [], series: [] } });
+    if (url.startsWith('/ui-api/movies/')) return jsonResponse({ data: { ...movie('AAA-001'), magnets: [{ url: 'magnet:?private' }], hls_stream_urls: ['https://cdn.example.com/video?signature=private'], gallery: ['https://cdn.example.com/image?signature=private'] } });
+    throw new Error('unexpected guest request: ' + url);
+  };
+
+  const searchHtml = (await guestSearch.render({ query: { q: 'public' } })).html;
+  assert.ok(!searchHtml.includes('<h2>Cảnh</h2>'));
+  assert.ok(!calls.some(url => url.includes('/scenes/search')));
+  assert.match(savedSearches.savedSearchesHtml(), /Đăng nhập để dùng tìm kiếm đã lưu/);
+  assert.ok(!savedSearches.savedSearchesHtml().includes('data-save-search'));
+  const callCount = calls.length;
+  await assert.rejects(guestApi.admin('/ui-me/marks'), /Đăng nhập để dùng tính năng này/);
+  await assert.rejects(guestApi.send('POST', '/ui-me/marks'), /Đăng nhập để dùng tính năng này/);
+  assert.equal(calls.length, callCount, 'guest requests do not call personal reads or write endpoints');
+
+  globalThis.location.hash = '#/movie/AAA-001?tab=media';
+  const mediaHtml = (await guestMovie.render({ params: { code: 'AAA-001' }, query: { tab: 'media' } })).html;
+  assert.match(mediaHtml, /Đăng nhập để dùng liên kết và nội dung media/);
+  assert.ok(!mediaHtml.includes('magnet:?private'));
+  assert.ok(!mediaHtml.includes('signature=private'));
+  document.body.dataset.guestMode = 'false';
+  globalThis.location.hash = '#/';
+  globalThis.innerWidth = 1280;
+  globalThis.fetch = normalFetch;
+}
+
+const guestStyles = await readFile(new URL('../public/ui/app.css', import.meta.url), 'utf8');
+assert.match(guestStyles, /flex-wrap:wrap/);
+assert.match(guestStyles, /body\[data-guest-mode="true"\].*\[data-mark\]/);

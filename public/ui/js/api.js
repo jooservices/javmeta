@@ -5,6 +5,7 @@ export class ApiError extends Error {
 }
 
 const cache = new Map();
+const guestMode = () => document.body?.dataset.guestMode === 'true';
 
 /* GET through the owner's session: /ui-api/<path> runs /api/v1/<path> in the same process (no key in the browser). */
 export async function api(path, params = {}, opt = {}) {
@@ -22,7 +23,7 @@ export async function api(path, params = {}, opt = {}) {
   }
   const type = res.headers.get('content-type') || '';
   if (res.redirected || !type.includes('json')) {
-    if (res.status === 401 || res.redirected) { location.href = '/login'; }
+    if ((res.status === 401 || res.redirected) && !guestMode()) { location.href = '/login'; }
     throw new ApiError('Phiên đăng nhập đã hết hạn.', res.status, null);
   }
   const body = await res.json();
@@ -37,6 +38,7 @@ export const pagination = body => (body.meta && body.meta.pagination) || {};
 
 /* Changes made by the owner (admin page): POST/DELETE to /ui-admin with the page's CSRF token. */
 export async function send(method, path, body) {
+  if (guestMode()) throw new ApiError('Đăng nhập để dùng tính năng này.', 401, null);
   const token = document.querySelector('meta[name=csrf-token]')?.content || '';
   let res;
   try {
@@ -49,6 +51,7 @@ export async function send(method, path, body) {
 }
 
 export async function admin(path) {
+  if (guestMode()) throw new ApiError('Đăng nhập để dùng tính năng này.', 401, null);
   const res = await fetch(path.startsWith('/') ? path : '/ui-admin/' + path, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
   const type = res.headers.get('content-type') || '';
   if (res.redirected || !type.includes('json')) { if (res.status === 401 || res.redirected) location.href = '/login'; throw new ApiError('Phiên đăng nhập đã hết hạn.', res.status, null); }

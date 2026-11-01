@@ -39,7 +39,7 @@ final class UiTest extends TestCase
     {
         $this->getJson('/ui-api/movies')->assertUnauthorized();
         $this->actingAs(User::factory()->create(['role' => 'viewer']))->getJson('/ui-api/movies')->assertForbidden();
-        $this->actingAs($this->owner())->postJson('/ui-api/movies', [])->assertStatus(405);
+        $this->actingAs($this->owner())->postJson('/ui-api/movies', [])->assertNotFound();
         $this->actingAs($this->owner())->getJson('/ui-api/admin/keys')->assertNotFound();
         $this->actingAs($this->owner())->getJson('/ui-api/mcp')->assertNotFound();
     }
@@ -61,6 +61,7 @@ final class UiTest extends TestCase
 
     public function test_the_public_api_still_needs_a_key_and_ignores_the_internal_flag_from_clients(): void
     {
+        $this->getJson('/api/v1/status')->assertOk();
         $this->getJson('/api/v1/movies')->assertUnauthorized();
         $this->getJson('/api/v1/movies', ['javmeta.internal_ui' => 'true'])->assertUnauthorized();
         $this->getJson('/api/v1/status/summary')->assertUnauthorized();

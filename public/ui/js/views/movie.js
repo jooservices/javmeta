@@ -11,11 +11,15 @@ export default {
       return { html: `<div class="wrap" style="overflow-wrap:anywhere">${errorBox(body.error)}</div>` };
     }
     const m = body.data;
+    const guestMode = document.body.dataset.guestMode === 'true';
     const marks = await myMarks();
     const dl = await downloadsStatus();
     const performers = m.performers || [];
-    const tab = new URLSearchParams(location.hash.split('?')[1] || '').get('tab') || 'meta';
-    const tabs = [['meta', 'Metadata'], ['media', 'Liên kết & media'], ['codes', 'Mã & nguồn']];
+    const requestedTab = new URLSearchParams(location.hash.split('?')[1] || '').get('tab') || 'meta';
+    const tab = requestedTab;
+    const tabs = guestMode
+      ? [['meta', 'Metadata'], ['codes', 'Mã & nguồn']]
+      : [['meta', 'Metadata'], ['media', 'Liên kết & media'], ['codes', 'Mã & nguồn']];
     const tabsHtml = `<div class="tabs">${tabs.map(t => `<a class="tab ${tab === t[0] ? 'on' : ''}" href="#/movie/${encodeURIComponent(m.code)}?tab=${t[0]}">${t[1]}</a>`).join('')}</div>`;
     let content = '';
     if (tab === 'meta') {
@@ -36,7 +40,9 @@ export default {
         ['Mô tả', m.description ? esc(m.description) : notKnown()],
       ]);
     }
-    if (tab === 'media') {
+    if (tab === 'media' && guestMode) {
+      content = '<p class="guest-login-hint"><a href="/login">Đăng nhập để dùng liên kết và nội dung media.</a></p>';
+    } else if (tab === 'media') {
       const magnets = m.magnets || [], hls = m.hls_stream_urls || [], gallery = m.gallery || [];
       const row = (label, u) => `<div class="row-i"><div class="grow ell mono" title="${esc(u)}">${esc(u)}</div><button class="btn sm" data-act="copy" data-v="${esc(u)}">${ic('copy')} ${label}</button></div>`;
       content = `<div class="panel"><div class="hd"><h2>Magnet / tải</h2><span class="chip mono">${magnets.length}</span></div>${magnets.map(x => row('Sao chép', typeof x === 'string' ? x : (x.url || ''))).join('') || '<div class="row-i muted">Chưa có.</div>'}</div>

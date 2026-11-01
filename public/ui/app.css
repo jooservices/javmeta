@@ -20,6 +20,12 @@ a{color:inherit;text-decoration:none}
 :focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .app{display:grid;grid-template-columns:208px minmax(0,1fr);height:100%}
+body[data-guest-mode="true"] .app{grid-template-rows:auto minmax(0,1fr)}
+.guest-banner{grid-column:1/-1;grid-row:1;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;min-height:40px;box-sizing:border-box;padding:6px 12px;background:#183c3a;color:#e6fffb;font-size:13px;line-height:1.4;text-align:center}
+.guest-banner a,.guest-login-hint a{color:#7ce6db;font-weight:600}
+.guest-login-prompt{max-width:560px;margin:48px auto}
+.guest-login-hint{margin:12px 0;color:var(--mute)}
+body[data-guest-mode="true"] [data-mark],body[data-guest-mode="true"] [data-dl],body[data-guest-mode="true"] .saved-searches{display:none!important}
 body[data-density="compact"] .app{grid-template-columns:188px minmax(0,1fr)}
 body[data-density="compact"]{font-size:12px}
 body[data-density="compact"] td,body[data-density="compact"] .row-i{padding-block:4px}

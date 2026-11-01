@@ -45,6 +45,17 @@ final class OpsDashboardTest extends TestCase
         $this->actingAs($admin)->getJson('/ops/data')->assertOk()->assertJsonStructure(['as_of', 'totals' => ['movies']]);
     }
 
+    public function test_the_command_center_displays_the_guest_mode_state(): void
+    {
+        config(['javmeta.ui_login_required' => false]);
+        $admin = $this->admin();
+
+        $this->actingAs($admin)->get('/ops')->assertOk()->assertSee('ui-login-mode');
+        $this->actingAs($admin)->getJson('/ops/data')->assertOk()
+            ->assertJsonPath('ui_login_required', false)
+            ->assertJsonPath('ui_login_state', 'Đăng nhập giao diện đã tắt (chế độ khách)');
+    }
+
     public function test_login_works_with_the_right_password_and_fails_with_a_wrong_one(): void
     {
         $this->admin('correct-horse-battery');

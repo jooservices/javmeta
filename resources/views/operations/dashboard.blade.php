@@ -75,6 +75,7 @@
     <div class="kpi"><span class="label">Videos</span><strong id="movies">—</strong><small id="movies-hour">— added in 1 hour</small></div>
     <div class="kpi"><span class="label">Performers</span><strong id="performers">—</strong><small>Unique records</small></div>
     <div class="kpi"><span class="label">Queue complete</span><strong id="done">—</strong><small>All time</small></div>
+    <div class="kpi"><span class="label">Quyền truy cập giao diện</span><strong id="ui-login-mode">—</strong><small id="ui-login-detail">—</small></div>
     <div class="kpi"><span class="label">Queue pending</span><strong id="pending">—</strong><small id="claimed">— in progress</small></div>
     <div class="kpi problem"><span class="label">Failed items</span><strong id="failed">—</strong><small id="failed-jobs">— failed jobs</small></div>
   </section>
@@ -109,6 +110,8 @@
       $('asof').textContent = `Updated ${time(data.as_of)} · refreshes every 15 seconds`;
       ['movies','performers'].forEach(key => { $(key).textContent = number(data.totals[key]); });
       $('movies-hour').textContent = `${number(data.totals.movies_first_seen_1h)} added in 1 hour`;
+      $('ui-login-mode').textContent = data.ui_login_required ? 'Yêu cầu đăng nhập' : 'Chế độ khách';
+      $('ui-login-detail').textContent = data.ui_login_required ? 'Chủ sở hữu phải đăng nhập' : 'Giao diện công khai chỉ đọc';
       ['done','pending','failed'].forEach(key => { $(key).textContent = number(data.queue[key]); });
       $('claimed').textContent = `${number(data.queue.claimed)} in progress`;
       $('failed-jobs').textContent = `${number(data.totals.failed_jobs)} failed jobs`;

@@ -204,7 +204,7 @@ write_env() {
     value="${value//\"/\\\"}"
     value="${value//\$/\\\$}"
     printf '%s="%s"\n' "$key" "$value" >> "$temp"
-  done < <(jq -r '.services[] | . as $s | .fields[] | select(.setting == null or .env == true) | [.key,$s.id,$s.optional] | map(tostring) | join("|")' "$manifest")
+  done < <(jq -r '((.options[] | select(.env == true) | [.key,"",false]), (.services[] | . as $s | .fields[] | select(.setting == null or .env == true) | [.key,$s.id,$s.optional])) | map(tostring) | join("|")' "$manifest")
   chmod 640 "$temp"
   mv -f "$temp" "$base/shared/.env"
 }

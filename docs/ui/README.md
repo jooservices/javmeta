@@ -4,7 +4,9 @@
 
 ## Running application
 
-The UI is plain ES modules under `public/ui`, served at `/app` behind the owner login, with static files at `/ui/*`. Hash routes preserve filters and browser history. The allowlisted GET bridge `/ui-api/*` dispatches to `/api/v1/*` in-process; personal data uses `/ui-me/*`, administration/settings use `/ui-admin/*`, and writes use `send()` with CSRF. Browsers never hold an API key.
+The UI is plain ES modules under `public/ui`, served at `/app` with static files at `/ui/*`. `JAVMETA_UI_LOGIN_REQUIRED` defaults to `true`, which protects the shell and read bridge with the owner login. When set to `false`, cookie-free requests bypass session middleware and receive a read-only guest view of the public catalogue and safe crawl status. A stale unauthenticated session cookie is not renewed. Personal, admin, media, file and write features continue to require an owner login. Guest responses carry noindex headers and the GET bridge applies a per-IP limit from `ui_guest.rate_limit_per_minute` in database settings. Hash routes preserve filters and browser history. The bridge dispatches to `/api/v1/*` in-process; writes use `send()` with CSRF. Browsers never hold an API key.
+
+Guests see a read-only banner, public navigation, and sign-in prompts for saved searches and owner-only pages. Personal marks, on-disk status, download controls, library details, signed media links, settings, admin screens, and the operations dashboard stay private. The `/api/v1/*` API-key contract is unchanged.
 
 The current NAV exposes Discover, Tìm kiếm, Thống kê; Phim, Diễn viên, Hồ sơ diễn viên, Mới cập nhật, Thể loại, Maker, Series, Label, Năm, Lịch phát hành; Yêu thích, Xem sau, Đã xem, Theo dõi, Thư viện, Tải về; Crawl & nguồn, Vận hành (Command Center), Quản trị and Cài đặt. [The user index](../user-guide/README.md) links each topic and every settings group. Downloads and file serving default off, but the download page exists and explains the disabled state.
 
