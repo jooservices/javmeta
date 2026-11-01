@@ -187,7 +187,7 @@ final class McpToolService
         return [
             'name' => 'get_counts',
             'description' => 'Return the total number of movies and performers in the catalog.',
-            'inputSchema' => ['type' => 'object', 'properties' => []],
+            'inputSchema' => ['type' => 'object', 'properties' => (object) []],
         ];
     }
 
@@ -197,7 +197,7 @@ final class McpToolService
         return [
             'name' => 'crawl_status',
             'description' => 'Return crawl pipeline status: catalog counts, queue depth, per-source health and per-instance worker liveness.',
-            'inputSchema' => ['type' => 'object', 'properties' => []],
+            'inputSchema' => ['type' => 'object', 'properties' => (object) []],
         ];
     }
 
@@ -207,7 +207,7 @@ final class McpToolService
         return [
             'name' => 'system_status',
             'description' => 'Return health of the backing services: database, Elasticsearch, embedder, activity log and observability.',
-            'inputSchema' => ['type' => 'object', 'properties' => []],
+            'inputSchema' => ['type' => 'object', 'properties' => (object) []],
         ];
     }
 

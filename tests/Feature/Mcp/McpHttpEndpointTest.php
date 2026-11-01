@@ -89,8 +89,29 @@ final class McpHttpEndpointTest extends TestCase
             'params' => (object) [],
         ], ['X-API-Key' => $this->apiKey])->assertOk();
 
-        self::assertSame(app(McpToolService::class)->definitions(), $response->json('result.tools'));
+        self::assertSame(json_decode(json_encode(app(McpToolService::class)->definitions(), JSON_THROW_ON_ERROR), true), $response->json('result.tools'));
         self::assertSame(array_column(self::toolInputExamples(), 0), collect($response->json('result.tools'))->pluck('name')->all());
+    }
+
+    public function test_tools_list_input_schema_properties_are_json_objects_for_strict_clients(): void
+    {
+        $response = $this->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 3,
+            'method' => 'tools/list',
+            'params' => (object) [],
+        ], ['X-API-Key' => $this->apiKey])->assertOk();
+
+        // Strict MCP clients (TypeScript SDK, OpenCode, Claude Code) validate properties as a record: a JSON array fails.
+        $raw = json_decode($response->getContent(), false, 512, JSON_THROW_ON_ERROR);
+        self::assertCount(13, $raw->result->tools);
+        foreach ($raw->result->tools as $tool) {
+            self::assertIsObject($tool->inputSchema->properties, "Tool {$tool->name} must expose inputSchema.properties as a JSON object.");
+        }
+        foreach (['get_counts', 'crawl_status', 'system_status'] as $name) {
+            $tool = collect($raw->result->tools)->firstWhere('name', $name);
+            self::assertSame('{}', json_encode($tool->inputSchema->properties), "Tool {$name} takes no arguments and must encode properties as {}.");
+        }
     }
 
     #[DataProvider('toolCallCases')]
