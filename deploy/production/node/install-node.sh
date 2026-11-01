@@ -7,7 +7,7 @@ root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
 manifest="$root/deploy/manifest.json"
 command -v jq >/dev/null || { echo 'Bootstrap jq with the OS package manager first.' >&2; exit 1; }
 node_value() { jq -er --arg key "$1" '.node[$key]' "$manifest"; }
-: "${TARGET_DIR:?}" "${SERVICE_USER:?}" "${UNIT_PREFIX:?}" "${GATEKEEPER_ADDRESS:?}" "${UI_HOST:?}" "${CC_HOST:?}" "${PHP_BINARY:?}" "${FPM_UNIT:?}" "${EMBEDDER_BIND:?}" "${EMBEDDER_PORT:?}"
+: "${EXPORTER_UNIT:?}" "${NGINX_UNIT:?}" "${NODE_ROLE:?}" "${TARGET_DIR:?}" "${SERVICE_USER:?}" "${UNIT_PREFIX:?}" "${GATEKEEPER_ADDRESS:?}" "${UI_HOST:?}" "${CC_HOST:?}" "${PHP_BINARY:?}" "${FPM_UNIT:?}" "${EMBEDDER_BIND:?}" "${EMBEDDER_PORT:?}"
 [[ "$TARGET_DIR" =~ ^/[a-zA-Z0-9_./-]+$ && "$TARGET_DIR" != / && "$SERVICE_USER" =~ ^[a-z_][a-z0-9_-]*$ && "$UNIT_PREFIX" =~ ^[a-zA-Z0-9_-]+$ ]] || exit 1
 # shellcheck source=/dev/null
 source "$(node_value os_release)"
@@ -76,7 +76,7 @@ done
 sudoers="$(node_value sudoers_dir)/$UNIT_PREFIX-units"
 # Restrict privilege to individual manifest-selected units; scheduler remains opt-in.
 : > "$sudoers"
-units=("$UNIT_PREFIX-horizon" "$UNIT_PREFIX-embedder")
+units=("$UNIT_PREFIX-horizon" "$UNIT_PREFIX-embedder" "$EXPORTER_UNIT")
 if [[ "$NODE_ROLE" == primary ]]; then units+=("$FPM_UNIT" "$NGINX_UNIT" "$UNIT_PREFIX-scheduler"); fi
 for unit in "${units[@]}"; do
   for action in stop start restart enable is-active; do

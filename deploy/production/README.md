@@ -30,7 +30,7 @@ The config is a flat JSON object of strings. Supply `REPO_URL`, `REF`,
 fields from the manifest. `UNIT_PREFIX`, `FPM_UNIT`, `NGINX_UNIT`, node name and
 release root are operator inputs. The private credentials file defaults to
 `<TARGET_DIR>/shared/<APP_NAME>-credentials.txt`; set `CREDENTIALS_FILE` to
-another absolute private path when needed.
+the operator’s `~/<APP_NAME>-credentials.txt` (an absolute writable private path) when desired.
 
 Existing shared env keys are preserved. Explicit changes require per-key
 confirmation, or `--replace-existing` unattended. APP_KEY is generated once.
@@ -110,7 +110,7 @@ not rolled back automatically. Failed releases remain for private inspection.
 
 ## Adding a worker node
 
-Use a new target/service account/node name with `--role worker`. Horizon, embedder and node exporter are enabled. Nginx and scheduler remain installed but disabled and blocked by a systemd condition drop-in. Workers never run migrations; use the shared env from the primary node. Point
+Use a new target/service account/node name with `--role worker`. Horizon, embedder and node exporter are enabled. Nginx and scheduler remain installed but disabled and blocked by a systemd condition drop-in. Workers never run migrations or shared setup and never rotate the owner; copy the primary shared env to `<TARGET_DIR>/shared/.env` before adding the worker, or supply its existing APP_KEY and matching service answers. A worker refuses a missing APP_KEY. Point
 `media.api_url` at the primary API. Shared service answers must select the same
 application databases/indexes but the appropriate scoped Redis prefix.
 

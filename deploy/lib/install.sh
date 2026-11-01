@@ -100,6 +100,7 @@ collect_answers() {
     if (( ! non_interactive )) && [[ ! -v "flags[$key]" && ! -v "$key" ]] && [[ -z "$config" || ( "$required" == true && -z "${answers[$key]}" ) ]]; then ask "$key" "$label" "$secret"; fi
     if [[ "$required" == true && -z "${answers[$key]}" ]]; then missing+=("$key"); fi
   done < <(jq -r '.options[], (.services[] | . as $s | .fields[] + {service:$s.id}) | [.key,.label,.secret,.required,(.service // "")] | map(tostring) | join("|")' "$manifest")
+  if [[ "${answers[NODE_ROLE]}" == worker && -z "${answers[APP_KEY]}" ]]; then missing+=("APP_KEY (copy the primary shared env/key for a worker)"); fi
   if (( ${#missing[@]} )); then die "Missing answers: ${missing[*]}"; fi
   for key in "${!answers[@]}"; do
     [[ "${answers[$key]}" != *$'\n'* && "${answers[$key]}" != *$'\r'* ]] || die "Multiline answer rejected: $key"
@@ -286,7 +287,8 @@ apply_release() {
   commit="$(git -C "$release/source" rev-parse --verify 'FETCH_HEAD^{commit}')"
   step 'Optional exact-commit CI gate' ci_gate "$commit"
   step 'Checkout verified commit' git -C "$release/source" checkout --detach "$commit"
-  local named="$base/releases/$(date -u +%Y%m%dT%H%M%SZ)-${commit:0:7}-$$"
+  local named
+  named="$base/releases/$(date -u +%Y%m%dT%H%M%SZ)-${commit:0:7}-$$"
   mv "$release/source" "$named"
   rmdir "$release"
   release="$named"
