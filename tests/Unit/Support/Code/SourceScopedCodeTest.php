@@ -10,6 +10,14 @@ use PHPUnit\Framework\TestCase;
 
 final class SourceScopedCodeTest extends TestCase
 {
+    public function test_tokyohot_product_url_preserves_the_entire_scene_slug(): void
+    {
+        self::assertSame(
+            'TOKYOHOT-SLUG-SHEMALESOAPLAND_SC4',
+            SiteCodeCanonicalizer::resolve('tokyohot', ['https://my.tokyo-hot.com/product/Shemalesoapland_Sc4/']),
+        );
+    }
+
     public function test_fallback_identity_ignores_tracking_and_trailing_slash_but_distinguishes_source_and_path(): void
     {
         $codes = [];

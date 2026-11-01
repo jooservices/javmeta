@@ -209,7 +209,7 @@ final class SiteCodeCanonicalizer
             return 'TOKYOHOT-' . $upper;
         }
 
-        if (preg_match('~(?:^|/product/)([A-Z0-9]+(?:_[A-Z0-9]+)*_SC\d+)(?:/|$)~', $upper, $match) === 1) {
+        if (preg_match('~(?:^|/PRODUCT/)([A-Z0-9]+(?:_[A-Z0-9]+)*_SC\d+)(?:/|$)~', $upper, $match) === 1) {
             return 'TOKYOHOT-SLUG-' . $match[1];
         }
 
