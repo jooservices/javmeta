@@ -19,6 +19,7 @@ if [[ "${0##*/}" == php && "$*" == *probe.php* ]]; then
   if [[ "${FAIL_STEP:-}" == validation ]]; then exit 1; fi
   if [[ "${FAIL_STEP:-}" == retry && ! -e "$CALLS.retry" ]]; then touch "$CALLS.retry"; exit 1; fi
 fi
+if [[ "${0##*/}" == php && "$*" == *random_bytes* ]]; then echo generated-private-key; fi
 if [[ "${0##*/}" == php && "$*" == *rawurlencode* ]]; then echo mongodb://fixture.invalid/fixture; fi
 if [[ "${0##*/}" == php && "$*" == *operations:make-super-admin* ]]; then echo private-owner-password; fi
 if [[ "${0##*/}" == id && "$*" == '-un' ]]; then echo fixture-user; exit 0; fi
@@ -47,7 +48,7 @@ jq --arg repo "$fixture/repo" --arg target "$fixture/node" --arg user "$(id -un 
   [.options[], .services[].fields[]] | map({key:.key,value:(if .secret then "private-test-value" elif .key == "CREDENTIALS_FILE" then ($target+".credentials") elif .default != "" then .default else "fixture" end)}) | from_entries
   | .REPO_URL=$repo | .TARGET_DIR=$target | .SERVICE_USER="fixture-user" | .DB_DATABASE="fixture" | .REF="candidate"
   | .APP_URL="https://fixture.invalid" | .DB_HOST="fixture.invalid" | .MONGO_URI="mongodb://fixture.invalid/fixture"
-  | .CI_CHECKS="" | .INSTALL_NODE="0" | .READINESS_TIMEOUT="1" | .BACKUP_FILE=($target+".dump") | .BACKUP_RESTORE_VERIFIED="1"' "$root/deploy/manifest.json" > "$fixture/answers.json"
+  | .APP_KEY="" | .CI_CHECKS="" | .INSTALL_NODE="0" | .READINESS_TIMEOUT="1" | .BACKUP_FILE=($target+".dump") | .BACKUP_RESTORE_VERIFIED="1"' "$root/deploy/manifest.json" > "$fixture/answers.json"
 chmod 600 "$fixture/answers.json"
 rm -f "$CALLS"
 printf backup > "$fixture/node.dump"
@@ -107,7 +108,7 @@ if grep -REn --include='*.sh' '^[[:space:]]*[^#[:space:]].*(develop|master|origi
 # A worker must not migrate a database shared with the primary.
 : > "$CALLS"
 bash "$script" --non-interactive --config "$fixture/answers.json" --role worker --skip-os-install --no-systemd --no-start --apply > "$fixture/log" 2>&1
-! grep -q 'artisan migrate' "$CALLS" || fail 'worker ran migrations'
+! grep -Eq 'artisan (migrate|es:setup|settings:import-env|crawler:sync-sources|operations:make-super-admin)' "$CALLS" || fail 'worker ran migrations'
 grep -q 'no migrations' "$fixture/log" || fail 'worker migration skip not disclosed'
 ! grep -q 'private-test-value\|private-owner-password' "$fixture/log" || fail 'worker leaked credentials'
-echo 'OK (25 install wizard scenarios)' 
+echo 'OK (25 install wizard scenarios)'

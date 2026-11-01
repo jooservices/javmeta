@@ -73,6 +73,8 @@ collect_answers() {
         value="${value//\\\"/\"}"
         value="${value//\\\\/\\}"
       elif [[ "$value" == \'*\' ]]; then value="${value:1:${#value}-2}"; fi
+      # An empty APP_KEY requests generation only on first install, never rotation.
+      if [[ "$key" == APP_KEY && -z "${answers[$key]}" ]]; then answers[$key]="$value"; continue; fi
       if [[ "${answers[$key]}" != "$value" ]]; then
         if [[ -v "flags[$key]" ]] || { [[ -n "$config" ]] && jq -e --arg k "$key" 'has($k)' "$config" >/dev/null; }; then
           if (( ! replace_existing )); then
@@ -300,17 +302,17 @@ apply_release() {
   if (( ! no_start )); then quiesced=1; step 'Quiesce scheduler and workers' unit_action stop "${answers[STOP_UNITS]}"; fi
   if [[ "${answers[NODE_ROLE]}" == primary ]]; then
     step 'Forward migrations' php artisan migrate --force
-  else log 'SKIP: worker uses the primary shared env/database; no migrations.'; fi
-  # Service answers whose configuration lives in Mongo are applied without argv secrets.
-  step 'Import manifest database settings' import_settings
-  step 'Import missing database settings' php artisan settings:import-env
-  step 'Create Elasticsearch mappings before crawl' php artisan es:setup
-  step 'Synchronize crawler sources' php artisan crawler:sync-sources
-  if [[ -z "$previous" ]]; then
-    step 'Create owner and private credentials file' owner_credentials
-  else
-    log 'SKIP: owner credentials; the existing account and password remain unchanged.'
-  fi
+    # Only the primary initializes shared data; adding workers must not rotate its owner.
+    step 'Import manifest database settings' import_settings
+    step 'Import missing database settings' php artisan settings:import-env
+    step 'Create Elasticsearch mappings before crawl' php artisan es:setup
+    step 'Synchronize crawler sources' php artisan crawler:sync-sources
+    if [[ -z "$previous" ]]; then
+      step 'Create owner and private credentials file' owner_credentials
+    else
+      log 'SKIP: owner credentials; the existing account and password remain unchanged.'
+    fi
+  else log 'SKIP: worker uses the primary shared env/database; no migrations, shared setup or owner rotation.'; fi
   step 'Clear config/routes/views only' php artisan optimize:clear --except=cache
   ln -s "$release" "$base/.current-$$"
   mv -Tf "$base/.current-$$" "$base/current"
