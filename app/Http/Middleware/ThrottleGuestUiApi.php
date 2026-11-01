@@ -21,7 +21,7 @@ final class ThrottleGuestUiApi
         $limit = max(1, (int) config('javmeta.ui_guest_rate_limit_per_minute', 120));
         $key = 'ui-guest:' . hash('sha256', (string) ($request->ip() ?? 'unknown'));
 
-        if (RateLimiter::tooManyAttempts($key, $limit)) {
+        if (RateLimiter::hit($key, 60) > $limit) {
             $retryAfter = RateLimiter::availableIn($key);
 
             return response()->json([
@@ -31,8 +31,6 @@ final class ThrottleGuestUiApi
                 'detail' => 'Đã đạt giới hạn truy cập giao diện khách.',
             ], 429)->header('Retry-After', (string) $retryAfter);
         }
-
-        RateLimiter::hit($key, 60);
 
         return $next($request);
     }

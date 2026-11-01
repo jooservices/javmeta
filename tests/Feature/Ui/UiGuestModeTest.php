@@ -68,6 +68,15 @@ final class UiGuestModeTest extends TestCase
         self::assertFileExists(public_path('ui/app.css'));
     }
 
+    public function test_guest_does_not_renew_a_stale_session_cookie(): void
+    {
+        $response = $this->withCookie((string) config('session.cookie'), 'stale-session-id')
+            ->get('/app')
+            ->assertOk();
+
+        self::assertFalse($response->headers->has('Set-Cookie'));
+    }
+
     public function test_guest_can_read_only_catalog_search_and_public_safe_crawl_status(): void
     {
         Http::fake();
@@ -119,6 +128,7 @@ final class UiGuestModeTest extends TestCase
         $this->assertArrayHasKey('has_recent_failure', $sources->json('data.0'));
         $this->assertStringNotContainsString('10.0.0.7', (string) $sources->getContent());
         $this->assertStringNotContainsString('/srv/javmeta', (string) $sources->getContent());
+        $this->getJson('/ui-api/movies?on_disk=1')->assertForbidden();
         $this->getJson('/ui-api/scenes/search?q=private')->assertForbidden();
         $bridge = $this->getJson('/ui-api/movies')->assertOk();
         self::assertFalse($bridge->headers->has('Set-Cookie'));

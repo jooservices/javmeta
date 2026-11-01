@@ -29,7 +29,7 @@ final readonly class EnsureUiOwnerOrGuest
             return $next($request);
         }
 
-        return $this->startSession->handle($request, function (Request $request) use ($required, $next): Response {
+        $response = $this->startSession->handle($request, function (Request $request) use ($required, $next): Response {
             if ($request->user() === null) {
                 if ($required) {
                     throw new AuthenticationException('Unauthenticated.', ['web'], route('login'));
@@ -44,5 +44,11 @@ final readonly class EnsureUiOwnerOrGuest
 
             return $this->ensureSuperAdministrator->handle($request, $next);
         });
+
+        if (! $required && $request->attributes->get('javmeta.guest_mode', false)) {
+            $response->headers->remove('Set-Cookie');
+        }
+
+        return $response;
     }
 }

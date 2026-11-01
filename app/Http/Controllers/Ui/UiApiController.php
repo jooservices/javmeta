@@ -36,6 +36,7 @@ final class UiApiController
 
         if ($guest) {
             abort_unless(self::guestPathAllowed($path), 403);
+            abort_if($request->query->has('on_disk'), 403);
         } else {
             abort_unless(preg_match(self::ALLOWED, $path) === 1, 404);
         }

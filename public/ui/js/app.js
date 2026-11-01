@@ -104,13 +104,13 @@ async function render() {
   const view = $('#view');
   drawShell(r.top);
   $('#side').classList.remove('open');
+  const token = current = {};
   if (guestMode && isOwnerPage(r)) {
     const page = r.top.startsWith('me-') || r.top === 'feed' ? 'Tính năng cá nhân' : r.top;
     view.innerHTML = guestLoginPrompt(page);
     return;
   }
   if (!r.view) { view.innerHTML = '<div class="wrap"><div class="empty">Trang không tồn tại.<a class="btn" href="#/">Về Discover</a></div></div>'; return; }
-  const token = current = {};
   view.innerHTML = loadingBox();
   try {
     await loadDisk(disk);

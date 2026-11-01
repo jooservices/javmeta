@@ -5,24 +5,34 @@ declare(strict_types=1);
 namespace App\Services\Ui;
 
 use App\Models\CrawlEvent;
-use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 final class UiLoginStateRecorder
 {
-    private const STATE_KEY = 'javmeta:ui-login:recorded-state';
-    private const LOCK_KEY = 'javmeta:ui-login:recording';
+    private const STATE_KEY = 'ui_login';
 
     public function record(): void
     {
         $loginRequired = (bool) config('javmeta.ui_login_required', true);
-        if (! Cache::add(self::LOCK_KEY, true, 30)) {
-            return;
-        }
+        DB::transaction(static function () use ($loginRequired): void {
+            DB::table('ui_login_states')->insertOrIgnore([
+                'state_key' => self::STATE_KEY,
+                'login_required' => null,
+                'updated_at' => now(),
+            ]);
 
-        try {
-            if (Cache::get(self::STATE_KEY) === $loginRequired) {
+            $state = DB::table('ui_login_states')
+                ->where('state_key', self::STATE_KEY)
+                ->lockForUpdate()
+                ->first();
+
+            if ($state !== null && $state->login_required !== null && (bool) $state->login_required === $loginRequired) {
                 return;
             }
+
+            DB::table('ui_login_states')
+                ->where('state_key', self::STATE_KEY)
+                ->update(['login_required' => $loginRequired, 'updated_at' => now()]);
 
             CrawlEvent::query()->create([
                 'source_slug' => 'system',
@@ -33,10 +43,6 @@ final class UiLoginStateRecorder
                 ],
                 'created_at' => now(),
             ]);
-
-            Cache::forever(self::STATE_KEY, $loginRequired);
-        } finally {
-            Cache::forget(self::LOCK_KEY);
-        }
+        });
     }
 }

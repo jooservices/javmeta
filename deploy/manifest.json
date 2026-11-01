@@ -69,7 +69,8 @@
       "label": "Require login for the XCrawler UI",
       "default": "true",
       "required": false,
-      "secret": false
+      "secret": false,
+      "env": true
     },
     {
       "key": "GATEKEEPER_ADDRESS",

@@ -52,8 +52,9 @@ class AppServiceProvider extends ServiceProvider
 
             try {
                 app(UiLoginStateRecorder::class)->record();
-            } catch (Throwable) {
+            } catch (Throwable $exception) {
                 // A crawl event must never prevent the UI from booting when the event store is unavailable.
+                report($exception);
             }
         });
     }
