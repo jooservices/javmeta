@@ -19,7 +19,18 @@ if (! app()->runningUnitTests()) {
     Schedule::command('crawler:sync-sources')->everyFifteenMinutes();
     Schedule::command('crawler:reclaim')->everyMinute();
     Schedule::command('crawler:seed')->everyMinute();
-    Schedule::command('crawler:feed-pool')->everyMinute()->withoutOverlapping();
+    $feedInterval = (int) config('javmeta_queues.feed_interval_seconds', 10);
+    if (! in_array($feedInterval, [5, 10, 15, 30, 60], true)) {
+        $feedInterval = 10;
+    }
+    $feedPool = Schedule::command('crawler:feed-pool')->withoutOverlapping();
+    match ($feedInterval) {
+        5 => $feedPool->everyFiveSeconds(),
+        10 => $feedPool->everyTenSeconds(),
+        15 => $feedPool->everyFifteenSeconds(),
+        30 => $feedPool->everyThirtySeconds(),
+        60 => $feedPool->everyMinute(),
+    };
     Schedule::command('obs:publish-metrics')->everyMinute();
     Schedule::command('javmeta:backup-status', ['--lenient'])->everyMinute();
     Schedule::command('crawler:recrawl-incomplete')->hourly()->withoutOverlapping();

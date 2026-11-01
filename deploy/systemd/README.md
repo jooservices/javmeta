@@ -6,7 +6,7 @@ runtime with `scripts/docker/runtime` (no private containers) and restart after 
 | Unit | What it runs | Notes |
 |---|---|---|
 | `javmeta-horizon.service` | `php artisan horizon` | stopped with `horizon:terminate`, so running jobs finish |
-| `javmeta-scheduler.service` | `php artisan schedule:work` | exactly one instance; it also feeds the crawl pool every minute |
+| `javmeta-scheduler.service` | `php artisan schedule:work` | exactly one instance; it feeds the crawl pool every 10 seconds by default, adjustable with `queue.feed_interval_seconds` |
 
 Install (once, as the staging user; the deploy script restarts them after each deployment):
 

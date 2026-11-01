@@ -15,6 +15,7 @@ use App\Observability\ObservabilityEmitter;
 use App\Observability\TraceContext;
 use App\Services\Crawl\CrawlQueueService;
 use App\Services\Crawl\SourceThrottle;
+use Carbon\CarbonImmutable;
 use App\Support\Crawl\LaravelCrawlQueue;
 use Illuminate\Console\Command;
 use Illuminate\Foundation\Bus\PendingDispatch;
@@ -25,7 +26,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class FeedPoolCommand extends Command
 {
-    protected $signature = 'crawler:feed-pool {--limit= : Jobs to dispatch per run (default javmeta_queues.feed_pool_limit)}';
+    protected $signature = 'crawler:feed-pool {--limit= : Per-lane jobs for this invocation (defaults to the scaled per-minute setting)}';
 
     protected $aliases = ['crawl:dispatch'];
 
@@ -51,16 +52,26 @@ final class FeedPoolCommand extends Command
 
     private function feed(CrawlQueueService $queue, ObservabilityEmitter $observability, SourceThrottle $throttle): int
     {
-        $limit = max(1, (int) ($this->option('limit') ?: config('javmeta_queues.feed_pool_limit', 50)));
+        $limitPerMinute = max(1, (int) config('javmeta_queues.feed_pool_limit', 50));
+        $limitPerRun = $this->scaledRunLimit($limitPerMinute);
+        if ($this->option('limit') !== null) {
+            $limitPerRun = min($limitPerRun, max(1, (int) $this->option('limit')));
+        }
         $queues = $this->queues();
         $workerId = gethostname() . ':' . getmypid();
 
-        // Pacing: a source may have at most floor(horizon / gap) rows waiting at once, and its rows start one gap apart.
+        // Keep queued work and recent starts in the same rolling politeness window.
         $horizon = max(1, (int) config('javmeta_queues.pacing_horizon_seconds', 60));
-        $waiting = $queue->claimedWaitingBySource();
+        $activity = $queue->pacingActivityBySource(now()->subSeconds($horizon));
+        $waiting = array_map(static fn(array $source): int => $source['waiting'], $activity);
+        $budgetUsed = array_map(static fn(array $source): int => $source['started'], $activity);
+        $latestStartedAt = array_filter(
+            array_map(static fn(array $source): ?CarbonImmutable => $source['latest_started_at'], $activity),
+            static fn(?CarbonImmutable $timestamp): bool => $timestamp !== null,
+        );
         $gapOf = $this->sourceGaps($throttle);
-        /** @var array<string, int> $budgetUsed */
-        $budgetUsed = [];
+        /** @var array<string, int> $dispatchedBySource */
+        $dispatchedBySource = [];
         $exhausted = $this->exhaustedSources($waiting, $budgetUsed, $horizon, $gapOf);
         $dispatched = 0;
         $laneDispatched = ['direct' => 0, 'browser' => 0];
@@ -69,7 +80,7 @@ final class FeedPoolCommand extends Command
         foreach ($queues as $key => $queueName) {
             $lane = str_starts_with($key, 'browser:') ? 'browser' : 'direct';
             $kind = $lane === 'browser' ? substr($key, 8) : $key;
-            if ($laneDispatched[$lane] >= $limit || $queueName === '') {
+            if ($queueName === '' || $laneDispatched[$lane] >= $limitPerRun) {
                 continue;
             }
 
@@ -78,9 +89,41 @@ final class FeedPoolCommand extends Command
                 continue;
             }
 
-            $sent = $this->dispatchQueue($queue, $queueName, $kind, $lane, min($capacity, $limit - $laneDispatched[$lane]), $exhausted, $waiting, $budgetUsed, $gapOf, $traceparent, $workerId);
+            $sent = $this->dispatchQueue(
+                $queue,
+                $observability,
+                $queueName,
+                $kind,
+                $lane,
+                min($capacity, $limitPerRun - $laneDispatched[$lane]),
+                $exhausted,
+                $waiting,
+                $budgetUsed,
+                $dispatchedBySource,
+                $latestStartedAt,
+                $gapOf,
+                $traceparent,
+                $workerId,
+            );
             $dispatched += $sent;
             $laneDispatched[$lane] += $sent;
+        }
+
+        foreach ($laneDispatched as $lane => $count) {
+            $observability->emitOps('feed_dispatched', [
+                'lane' => $lane,
+                'dispatched' => $count,
+                'limit_per_minute' => $limitPerMinute,
+                'limit_per_run' => $limitPerRun,
+            ]);
+            if ($limitPerRun === 0 || $count >= $limitPerRun) {
+                $observability->emitOps('feed_gated', [
+                    'reason' => 'global_cap',
+                    'lane' => $lane,
+                    'limit_per_minute' => $limitPerMinute,
+                    'limit_per_run' => $limitPerRun,
+                ]);
+            }
         }
 
         $observability->emitOps('crawl_dispatch', ['dispatched' => $dispatched]);
@@ -104,19 +147,33 @@ final class FeedPoolCommand extends Command
      * @param  array<string, int>  $waiting
      * @param  array<string, int>  $budgetUsed
      */
-    private function dispatchQueue(CrawlQueueService $queue, string $queueName, string $kind, string $lane, int $capacity, callable $exhausted, array $waiting, array &$budgetUsed, callable $gapOf, string $traceparent, string $workerId): int
+    private function dispatchQueue(CrawlQueueService $queue, ObservabilityEmitter $observability, string $queueName, string $kind, string $lane, int $capacity, callable $exhausted, array $waiting, array &$budgetUsed, array &$dispatchedBySource, array $latestStartedAt, callable $gapOf, string $traceparent, string $workerId): int
     {
         $dispatched = 0;
         for ($i = 0; $i < $capacity; $i++) {
-            $row = $queue->claimNext($workerId, $kind, $exhausted(), $lane);
+            $excludedSources = $exhausted();
+            $row = $queue->claimNext($workerId, $kind, $excludedSources, $lane);
             if (! $row instanceof CrawlQueue) {
+                if ($excludedSources !== []) {
+                    $observability->emitOps('feed_gated', [
+                        'reason' => 'source_budget',
+                        'lane' => $lane,
+                        'queue' => $queueName,
+                        'sources' => count($excludedSources),
+                    ]);
+                }
+
                 break;
             }
 
             $slug = (string) $row->source_slug;
-            $ahead = ($waiting[$slug] ?? 0) + ($budgetUsed[$slug] ?? 0);
-            $delay = (int) round($ahead * $gapOf($slug));
+            $gap = $gapOf($slug);
+            $ahead = ($waiting[$slug] ?? 0) + ($dispatchedBySource[$slug] ?? 0);
+            $delay = $this->delayBeforeNextStart($latestStartedAt[$slug] ?? null, $gap)
+                + ($ahead * $gap);
+            $delay = (int) ceil($delay);
             $budgetUsed[$slug] = ($budgetUsed[$slug] ?? 0) + 1;
+            $dispatchedBySource[$slug] = ($dispatchedBySource[$slug] ?? 0) + 1;
 
             $pending = $this->dispatchJob($row, $queueName, $traceparent, $workerId);
             // A zero delay would still park the job in the delayed set; only pace the rows that really wait.
@@ -135,8 +192,17 @@ final class FeedPoolCommand extends Command
         $depthLimit = LaravelCrawlQueue::depthLimit($queueName);
         $depth = LaravelCrawlQueue::readyDepth($queueName);
         $capacity = max(0, $depthLimit - $depth);
-        if ($capacity === 0) {
+        if ($depth >= $depthLimit) {
             $observability->emitOps('pool_gated', ['queue' => $queueName, 'depth' => $depth, 'threshold' => $depthLimit]);
+        }
+        if ($depth > 0) {
+            $observability->emitOps('feed_gated', [
+                'reason' => 'depth',
+                'lane' => in_array($queueName, (array) config('javmeta_queues.browser_names', []), true) ? 'browser' : 'direct',
+                'queue' => $queueName,
+                'depth' => $depth,
+                'threshold' => $depthLimit,
+            ]);
         }
 
         return $capacity;
@@ -152,13 +218,37 @@ final class FeedPoolCommand extends Command
             $slugs = [];
             foreach (array_keys($waiting + $budgetUsed) as $slug) {
                 $slug = (string) $slug;
-                if (($waiting[$slug] ?? 0) + ($budgetUsed[$slug] ?? 0) >= max(1, (int) floor($horizon / $gapOf($slug)))) {
+                if (($waiting[$slug] ?? 0) + ($budgetUsed[$slug] ?? 0) >= (int) floor($horizon / $gapOf($slug))) {
                     $slugs[] = $slug;
                 }
             }
 
             return $slugs;
         };
+    }
+
+    private function scaledRunLimit(int $limitPerMinute): int
+    {
+        $interval = (int) config('javmeta_queues.feed_interval_seconds', 10);
+        if (! in_array($interval, [5, 10, 15, 30, 60], true)) {
+            $interval = 10;
+        }
+
+        $slotStart = intdiv(now()->second, $interval) * $interval;
+        $slotEnd = $slotStart + $interval;
+
+        return intdiv($limitPerMinute * $slotEnd, 60) - intdiv($limitPerMinute * $slotStart, 60);
+    }
+
+    private function delayBeforeNextStart(?CarbonImmutable $latestStartedAt, float $gap): int
+    {
+        if ($latestStartedAt === null) {
+            return 0;
+        }
+
+        $elapsed = max(0, $latestStartedAt->diffInMicroseconds(now()) / 1_000_000);
+
+        return max(0, (int) ceil($gap - $elapsed));
     }
 
     private function dispatchJob(CrawlQueue $row, string $queueName, string $traceparent, string $workerId): ?PendingDispatch

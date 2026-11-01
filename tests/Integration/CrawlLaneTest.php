@@ -6,6 +6,7 @@ namespace Tests\Integration;
 
 use App\Models\CrawlQueue;
 use App\Models\Source;
+use App\Jobs\FetchDetailJob;
 use App\Services\Crawl\CrawlLaneService;
 use App\Services\Crawl\CrawlQueueService;
 use App\Support\Crawl\LaravelCrawlQueue;
@@ -35,7 +36,7 @@ final class CrawlLaneTest extends IntegrationTestCase
         Source::factory()->create(['slug' => 'heyzo', 'enabled' => true]);
         for ($i = 0; $i < 40; $i++) {
             DB::table('crawl_fetch_attempts')->insert([
-                'source_slug' => 'heyzo', 'created_at' => now(), 'started_at' => now(),
+                'source_slug' => 'heyzo', 'created_at' => now()->subHour(), 'started_at' => now()->subHour(),
                 'url_hash' => hash('sha256', (string) $i), 'method' => $i < 10 ? 'flaresolverr' : 'http',
                 'duration_ms' => 1, 'outcome' => 'ok',
             ]);
@@ -87,5 +88,83 @@ final class CrawlLaneTest extends IntegrationTestCase
         $this->assertTrue($competitor->selectOne('SELECT pg_try_advisory_lock(?) AS acquired', [282])->acquired);
         $competitor->select('SELECT pg_advisory_unlock(?)', [282]);
         DB::purge('lane_competitor');
+    }
+
+    public function test_postgres_feeder_respects_the_source_budget_across_six_ten_second_runs(): void
+    {
+        $this->freezeTime();
+        $start = now()->startOfMinute();
+        $this->travelTo($start);
+        $slug = 'paced_' . Str::lower(Str::random(8));
+        Source::factory()->create([
+            'slug' => $slug,
+            'name' => $slug,
+            'base_url' => 'https://' . $slug . '.test',
+            'enabled' => true,
+            'gap_seconds_default' => 5,
+            'gap_seconds_min' => 1,
+            'gap_seconds_max' => 60,
+            'gap_seconds_current' => 5,
+        ]);
+        config([
+            'queue.default' => 'sync',
+            'javmeta_queues.feed_interval_seconds' => 10,
+            'javmeta_queues.feed_pool_limit' => 50,
+            'javmeta_queues.per_source_inflight' => 12,
+            'javmeta_queues.pacing_horizon_seconds' => 60,
+        ]);
+        CrawlQueue::factory()->count(30)->create(['source_slug' => $slug, 'kind' => CrawlQueue::KIND_DETAIL]);
+        Queue::fake();
+
+        for ($run = 0; $run < 6; $run++) {
+            $this->travelTo($start->copy()->addSeconds($run * 10));
+            $this->artisan('crawler:feed-pool')->assertSuccessful();
+
+            $claimed = CrawlQueue::query()
+                ->where('source_slug', $slug)
+                ->where('status', CrawlQueue::STATUS_CLAIMED)
+                ->count();
+            $this->assertLessThanOrEqual(12, $claimed);
+            $this->assertLessThanOrEqual((int) floor(60 / 5), $claimed);
+        }
+
+        Queue::assertPushed(FetchDetailJob::class, 12);
+        $delays = Queue::pushed(FetchDetailJob::class)
+            ->map(static fn(FetchDetailJob $job): int => (int) $job->delay)
+            ->values()
+            ->all();
+        $this->assertSame(range(0, 55, 5), $delays);
+
+        $attemptSource = 'attempted_' . Str::lower(Str::random(8));
+        Source::factory()->create([
+            'slug' => $attemptSource,
+            'name' => $attemptSource,
+            'base_url' => 'https://' . $attemptSource . '.test',
+            'enabled' => true,
+            'gap_seconds_default' => 5,
+            'gap_seconds_min' => 1,
+            'gap_seconds_max' => 60,
+            'gap_seconds_current' => 5,
+        ]);
+        $attempts = [];
+        for ($index = 0; $index < 11; $index++) {
+            $attempts[] = [
+                'created_at' => now(),
+                'source_slug' => $attemptSource,
+                'crawl_queue_id' => null,
+                'url_hash' => hash('sha256', $attemptSource . $index),
+                'method' => 'http',
+                'started_at' => now()->subSeconds($index),
+                'duration_ms' => 1,
+                'outcome' => 'ok',
+            ];
+        }
+        DB::table('crawl_fetch_attempts')->insert($attempts);
+        $pending = CrawlQueue::factory()->count(3)->create(['source_slug' => $attemptSource, 'kind' => CrawlQueue::KIND_DETAIL]);
+
+        $this->artisan('crawler:feed-pool', ['--limit' => 50])->assertSuccessful();
+
+        $this->assertSame(1, $pending->filter(static fn(CrawlQueue $row): bool => $row->refresh()->status === CrawlQueue::STATUS_CLAIMED)->count());
+        Queue::assertPushed(FetchDetailJob::class, 13);
     }
 }

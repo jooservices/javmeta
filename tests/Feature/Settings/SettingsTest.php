@@ -89,6 +89,28 @@ final class SettingsTest extends TestCase
         $this->assertFalse(config('javmeta_alerts.enabled'));
     }
 
+    public function test_feed_interval_accepts_only_supported_values_and_can_be_rolled_back(): void
+    {
+        $settings = app(SettingsService::class);
+        foreach ([5, 10, 15, 30, 60] as $interval) {
+            $settings->set('queue.feed_interval_seconds', $interval);
+            $this->assertSame($interval, config('javmeta_queues.feed_interval_seconds'));
+        }
+
+        try {
+            $settings->set('queue.feed_interval_seconds', 11);
+            $this->fail('Unsupported feed intervals should be refused.');
+        } catch (\InvalidArgumentException) {
+            $this->assertSame(60, config('javmeta_queues.feed_interval_seconds'));
+        }
+
+        $setting = collect($settings->all())->firstWhere('key', 'queue.feed_interval_seconds');
+        $this->assertSame('database', $setting['source']);
+        $this->assertSame(60, $setting['value']);
+        $this->assertSame([5, 10, 15, 30, 60], $setting['options']);
+        $this->assertSame('Chu kỳ nạp hàng đợi (giây)', $setting['label']);
+    }
+
     public function test_capture_duration_and_both_worker_deadlines_are_validated_before_saving(): void
     {
         $settings = app(SettingsService::class);
