@@ -49,9 +49,11 @@ final class InstallManifestTest extends TestCase
     public function test_worker_installer_blocks_web_and_scheduler_and_enables_exporter(): void
     {
         $installer = file_get_contents(dirname(__DIR__, 3) . '/deploy/production/node/install-node.sh');
-        $this->assertStringContainsString('worker-role.conf', $installer);
-        $this->assertStringContainsString('ConditionPathExists=', $installer);
-        $this->assertStringContainsString('systemctl disable --now "$unit"', $installer);
+        $this->assertStringContainsString('configure_node_role', $installer);
+        $roles = file_get_contents(dirname(__DIR__, 3) . '/deploy/lib/node-template.sh');
+        $this->assertStringContainsString('worker-role.conf', $roles);
+        $this->assertStringContainsString('ConditionPathExists=', $roles);
+        $this->assertStringContainsString('systemctl disable --now "$unit"', $roles);
         $engine = file_get_contents(dirname(__DIR__, 3) . '/deploy/lib/install.sh');
         $this->assertStringContainsString('${answers[EXPORTER_UNIT]}', $engine);
     }

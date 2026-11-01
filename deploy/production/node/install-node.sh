@@ -60,18 +60,7 @@ for service in horizon embedder; do
 done
 render_node_template "$root/deploy/production/node/xcrawler-scheduler.service" "$(node_value unit_dir)/$UNIT_PREFIX-scheduler.service"
 # A worker must never become a second scheduler or web node after a reboot.
-blocked_units=("$NGINX_UNIT" "$UNIT_PREFIX-scheduler")
-for unit in "${blocked_units[@]}"; do
-  dropin="$(node_value unit_dir)/$unit.service.d/worker-role.conf"
-  if [[ "$NODE_ROLE" == worker ]]; then
-    install -d "$(dirname -- "$dropin")"
-    printf '[Unit]\nConditionPathExists=%s/shared/primary-role\n' "$TARGET_DIR" > "$dropin"
-    systemctl disable --now "$unit"
-  else
-    rm -f "$dropin"
-  fi
-done
-# Node exporter starts with the role units only after release verification.
+configure_node_role "$NODE_ROLE" "$TARGET_DIR" "$(node_value unit_dir)" "$NGINX_UNIT" "$UNIT_PREFIX-scheduler"
 # Only these complete command vectors can be invoked by the service account.
 sudoers="$(node_value sudoers_dir)/$UNIT_PREFIX-units"
 # Restrict privilege to individual manifest-selected units; scheduler remains opt-in.

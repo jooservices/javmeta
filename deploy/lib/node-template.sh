@@ -12,3 +12,18 @@ render_node_template() {
   printf '%s\n' "$content" > "$destination"
   chmod 644 "$destination"
 }
+
+configure_node_role() {
+  local role="$1" target="$2" unit_dir="$3" unit dropin
+  shift 3
+  for unit in "$@"; do
+    dropin="$unit_dir/$unit.service.d/worker-role.conf"
+    if [[ "$role" == worker ]]; then
+      install -d "$(dirname -- "$dropin")"
+      printf '[Unit]\nConditionPathExists=%s/shared/primary-role\n' "$target" > "$dropin"
+      systemctl disable --now "$unit"
+    else
+      rm -f "$dropin"
+    fi
+  done
+}

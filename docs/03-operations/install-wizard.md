@@ -1,6 +1,6 @@
 # Install and deploy wizard
 
-`deploy/install.sh` and the unattended production/staging wrappers share one
+`deploy/install.sh`, interactive production and unattended staging wrappers share one
 manifest-driven engine. Follow the [native installation guide](../../deploy/production/README.md)
 for private answers, roles, UTC/ACL checks, backup gate, immutable releases,
 owner credentials and rollback. Dry-run is the default. No ref is implied.

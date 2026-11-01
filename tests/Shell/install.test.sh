@@ -114,4 +114,6 @@ bash "$script" --non-interactive --config "$fixture/answers.json" --role worker 
 ! grep -Eq 'artisan (migrate|es:setup|settings:import-env|crawler:sync-sources|operations:make-super-admin)' "$CALLS" || fail 'worker ran migrations'
 grep -q 'no migrations' "$fixture/log" || fail 'worker migration skip not disclosed'
 ! grep -q 'private-test-value\|private-owner-password' "$fixture/log" || fail 'worker leaked credentials'
-echo 'OK (26 install wizard scenarios)'
+if bash "$script" --non-interactive --config "$fixture/answers.json" --role worker --target "$fixture/fresh-worker" > "$fixture/log" 2>&1; then fail 'new worker accepted without primary APP_KEY'; fi
+grep -q 'copy the primary shared env/key' "$fixture/log" || fail 'missing worker key diagnostic'
+echo 'OK (27 install wizard scenarios)'
