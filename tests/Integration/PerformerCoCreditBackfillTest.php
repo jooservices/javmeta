@@ -33,6 +33,7 @@ final class PerformerCoCreditBackfillTest extends IntegrationTestCase
         self::assertStringContainsString('SAMPLE-001', $dryRun);
         self::assertSame($before, $this->counts());
         self::assertDatabaseCount('performer_identity_event_movie_links', 0);
+        self::assertDatabaseCount('performer_identity_event_reviews', 0);
         self::assertSame(0, Artisan::call('performers:backfill-identities', ['--rule' => 'co_credit', '--limit' => 1]));
         self::assertSame(1, $this->counts()['merges']);
         self::assertSame(0, Artisan::call('performers:backfill-identities', ['--rule' => 'co_credit', '--limit' => 1]));

@@ -194,6 +194,41 @@ final class PerformerCoCreditRuleTest extends TestCase
         self::assertDatabaseCount('performer_identity_events', 0);
     }
 
+    public function test_merging_a_third_source_closes_group_reviews_and_unmerge_restores_them(): void
+    {
+        $root = $this->performer('left', 'Earlier StageName');
+        $member = $this->performer('middle', 'Aoi Sakura');
+        $incoming = $this->performer('right', 'Sakura Aoi');
+        $member->update(['canonical_performer_id' => $root->id]);
+        PerformerSource::query()->where('source_performer_id', $member->id)->update(['performer_id' => $root->id]);
+        $movie = Movie::factory()->create();
+        $this->credit($member, $movie);
+        $this->credit($incoming, $movie);
+        $this->review($root, $incoming);
+        $this->review($member, $incoming);
+        self::assertSame(0, Artisan::call('performers:backfill-identities', ['--rule' => 'co_credit']));
+        self::assertStringContainsString('reviews_closed: 2', Artisan::output());
+        self::assertSame(0, DB::table('performer_identity_reviews')->where('status', 'open')->count());
+        $merge = PerformerIdentityEvent::query()->sole();
+        $this->artisan('performers:identity-unmerge', ['event' => $merge->id])->assertSuccessful();
+        self::assertSame(2, DB::table('performer_identity_reviews')->where('status', 'open')->count());
+        self::assertSame((int) $root->id, (int) $member->fresh()->canonical_performer_id);
+        self::assertNull($incoming->fresh()->canonical_performer_id);
+    }
+
+    public function test_conflict_note_is_preserved_even_when_other_candidates_are_ambiguous(): void
+    {
+        [$left, , $movie] = $this->pair('Aoi Sakura', ['height_cm' => 160]);
+        $third = $this->performer('third', 'Aoi Sakura');
+        $fourth = $this->performer('fourth', 'Sakura Aoi', ['height_cm' => 170]);
+        $this->credit($third, $movie);
+        $this->credit($fourth, $movie);
+        $this->artisan('performers:backfill-identities', ['--rule' => 'co_credit'])->assertSuccessful();
+        self::assertDatabaseCount('performer_identity_events', 0);
+        self::assertDatabaseHas('performer_identity_reviews', ['source_performer_id' => $left->id,
+            'candidate_performer_id' => $fourth->id, 'status' => 'open', 'reason' => 'co_credit_conflicting_height_cm']);
+    }
+
     public function test_invalid_operator_options_are_rejected(): void
     {
         $this->artisan('performers:backfill-identities', ['--rule' => 'fuzzy'])->assertFailed();

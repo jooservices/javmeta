@@ -141,11 +141,11 @@ cross-link rules retain their precedence and behavior. Name similarity alone
 still never merges, and `performer_identity.merge_name_similarity` stays `1.0`.
 Multiple eligible canonical candidates remain separate for review.
 
-A co-credit merge closes only open reviews between its two evidence source
-records, with status `resolved_co_credit`, reason `co_credit` and `resolved_at`.
+A co-credit merge closes only open reviews between the two merging groups
+(including reviews pointing at their previous canonical IDs), with status `resolved_co_credit`, reason `co_credit` and `resolved_at`.
 Unrelated reviews remain open. Merge details include the rule, both evidence
-source record IDs, the previous group mapping, relation owners and closed review
-snapshots. Shared movie evidence is streamed to
+source record IDs, the previous group mapping, relation owners. Closed review snapshots are paged into
+`performer_identity_event_reviews` so a large group does not grow the event JSON. Shared movie evidence is streamed to
 `performer_identity_event_movie_links`, with `evidence_source_performer_id` and
 `evidence_candidate_performer_id`. Historical and newly copied canonical movie
 links have null evidence IDs. Split/undo must only remove/restore copied links,
@@ -160,7 +160,8 @@ command refuses an older event. The existing `performers:split` and
 ### Operator sequence
 
 1. Apply the additive migration (two nullable columns on the event movie-link
-   table; no update or rewrite of the performer table).
+   table and a new empty review-snapshot table; no update or rewrite of the
+   performer table).
 2. Run `php artisan performers:backfill-identities --dry-run --rule=co_credit`.
    The entire pass runs in a rolled-back transaction, including review changes
    and audit records. Search writes are suppressed for dry runs.

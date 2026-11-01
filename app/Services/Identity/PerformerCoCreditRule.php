@@ -50,7 +50,7 @@ final class PerformerCoCreditRule
         foreach ($query->lazyById(200) as $candidate) {
             $shared = array_values(array_intersect($keys, $this->fullNames($candidate)));
             foreach ($shared as $key) {
-                $movie = $this->movies($source, $candidate, $key)->first();
+                $movie = $this->movies($source, $candidate, $key)->orderBy('m.id')->first();
                 if ($movie === null) {
                     continue;
                 }
@@ -153,7 +153,7 @@ final class PerformerCoCreditRule
     {
         foreach ($this->candidates($source) as $candidate) {
             if ($candidate['reason'] !== 'co_credit' || $ambiguous) {
-                yield ['id' => $candidate['candidate_source_id'], 'reason' => $ambiguous ? 'co_credit_ambiguous' : $candidate['reason'], 'similarity' => 1.0];
+                yield ['id' => $candidate['candidate_source_id'], 'reason' => $candidate['reason'] === 'co_credit' ? 'co_credit_ambiguous' : $candidate['reason'], 'similarity' => 1.0];
             }
         }
     }
