@@ -27,7 +27,9 @@ final class StreamReferences
         $failures = [];
         foreach ($families as $family => [$path, $key]) {
             try {
-                $body = $this->api->request('GET', $path);
+                // v1.0.4 defaults to only the default folder unless title is present.
+                // An empty title matches every dashboard across all folders, without a page limit.
+                $body = $this->api->request('GET', $path, $family === 'dashboards' ? ['title' => ''] : []);
                 $objects = $this->api->collection($key === '' ? ['items' => $body] : $body, $key === '' ? 'items' : $key);
                 foreach ($objects as $object) {
                     $detail = $this->detail($family, $object, $org, $v2);

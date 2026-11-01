@@ -228,6 +228,32 @@ final class PruneLegacyStreamsCommandTest extends TestCase
         self::assertSame(['zzlegacy_a'], $references->matches(['zzlegacy_a' => ['enabled' => true]], ['zzlegacy_a']));
     }
 
+    public function test_dashboard_check_includes_nondefault_folders_without_pagination(): void
+    {
+        Http::swap(new Factory());
+        Http::preventStrayRequests();
+        Http::fake(function (Request $request) {
+            $path = parse_url($request->url(), PHP_URL_PATH);
+            if ($path === '/api/default/dashboards') {
+                parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+                // v1.0.4 lists only the default folder when title is absent.
+                return Http::response(['dashboards' => array_key_exists('title', $query) && $query['title'] === ''
+                    && ! array_key_exists('folder', $query) && ! array_key_exists('pageSize', $query)
+                    ? [['dashboard_id' => 'other-folder-dashboard', 'folder_id' => 'other-folder']] : []]);
+            }
+            if ($path === '/api/default/dashboards/other-folder-dashboard') {
+                self::assertSame('other-folder', $request['folder']);
+
+                return Http::response(['version' => 8, 'v8' => ['sql' => 'SELECT * FROM zzlegacy_a']]);
+            }
+
+            return Http::response(str_ends_with($path, 'destinations') ? [] : ['list' => []]);
+        });
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('References candidates: zzlegacy_a');
+        app(StreamReferences::class)->check([['name' => 'zzlegacy_a']], static function (string $message): void {});
+    }
+
     public function test_unavailable_or_malformed_reference_inventory_fails_closed(): void
     {
         foreach ([404, ['unexpected' => []], ['list' => [], 'total' => 1]] as $value) {
