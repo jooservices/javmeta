@@ -10,8 +10,8 @@ use InvalidArgumentException;
  * Resolves a SoR-ready movie code from crawlerx MovieDto candidates.
  *
  * Site adapters may return raw IDs (digits-only, date-ids, opaque slugs).
- * This layer maps them onto forms NormalizedCode accepts, without inventing
- * IDs when no candidate yields a valid shape (BR-11).
+ * This layer preserves product IDs and uses a URL-derived identity only for
+ * the four sources whose detail pages can legitimately lack a DVD code.
  */
 final class SiteCodeCanonicalizer
 {
@@ -19,7 +19,7 @@ final class SiteCodeCanonicalizer
      * @param  list<string|null>  $candidates
      * @return non-empty-string|null
      */
-    public static function resolve(string $slug, array $candidates): ?string
+    public static function resolve(string $slug, array $candidates, ?string $sourceUrl = null): ?string
     {
         foreach ($candidates as $candidate) {
             if (! is_string($candidate)) {
@@ -38,7 +38,31 @@ final class SiteCodeCanonicalizer
             }
         }
 
+        $path = self::detailPath($slug, $sourceUrl);
+        if ($path !== null) {
+            return strtoupper($slug) . '-DERIVED-' . strtoupper(hash('sha256', $path));
+        }
+
         return null;
+    }
+
+    /** @return non-empty-string|null */
+    private static function detailPath(string $slug, ?string $sourceUrl): ?string
+    {
+        $prefix = match ($slug) {
+            'javbtc' => 'r18',
+            'ffjav', '141jav' => 'torrent',
+            'tokyohot' => 'product',
+            default => null,
+        };
+        $path = $sourceUrl === null ? null : parse_url($sourceUrl, PHP_URL_PATH);
+        if ($prefix === null || ! is_string($path)) {
+            return null;
+        }
+
+        $path = rtrim($path, '/');
+
+        return preg_match('~^/' . $prefix . '/[^/]+$~D', $path) === 1 ? $path : null;
     }
 
     /**
@@ -53,6 +77,8 @@ final class SiteCodeCanonicalizer
             'caribbeancom' => self::qualifyCaribbeancom($raw),
             'heyzo' => self::qualifyHeyzo($raw),
             'tokyohot' => self::qualifyTokyohot($raw),
+            'ffjav' => self::qualifyFfjav($raw),
+            '141jav' => preg_match('/^C(\d+)$/i', $raw, $match) === 1 ? 'C-' . $match[1] : null,
             'fc2' => self::qualifyFc2($raw),
             'xcity' => self::qualifyXcity($raw),
             default => null,
@@ -157,6 +183,16 @@ final class SiteCodeCanonicalizer
     /**
      * @return non-empty-string|null
      */
+    private static function qualifyFfjav(string $raw): ?string
+    {
+        if (preg_match('/\b(10musume-\d{6}_\d+)\b/i', rawurldecode($raw), $match) === 1) {
+            return strtoupper($match[1]);
+        }
+
+        return null;
+    }
+
+    /** @return non-empty-string|null */
     private static function qualifyTokyohot(string $raw): ?string
     {
         $upper = mb_strtoupper(trim($raw));
@@ -171,6 +207,10 @@ final class SiteCodeCanonicalizer
 
         if (preg_match('/^\d{3,5}$/u', $upper) === 1) {
             return 'TOKYOHOT-' . $upper;
+        }
+
+        if (preg_match('~(?:^|/PRODUCT/)([A-Z0-9]+(?:_[A-Z0-9]+)*_SC\d+)(?:/|$)~', $upper, $match) === 1) {
+            return 'TOKYOHOT-SLUG-' . $match[1];
         }
 
         // Letter+digit product ids (crazyasia097085, HO-576) pass through extractDvdLike / raw.

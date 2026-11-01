@@ -19,6 +19,19 @@ use Tests\TestCase;
 
 final class SourceNormalizerTest extends TestCase
 {
+    public function test_other_sources_keep_product_ids_from_query_parameters(): void
+    {
+        $draft = $this->registry()->forSlug('xcity')->normalizeMovie(
+            new MovieDto(title: 'Product title'),
+            [],
+            'xcity',
+            'https://xcity.jp/avod/detail/?id=202424',
+            CarbonImmutable::parse('2026-11-01'),
+        );
+
+        self::assertSame('XCITY-202424', $draft->code);
+    }
+
     public function test_default_normalizer_maps_typed_fields_and_known_metadata_keys(): void
     {
         $normalizer = $this->registry()->forSlug('onejav');
@@ -482,7 +495,7 @@ final class SourceNormalizerTest extends TestCase
         self::assertSame('SSNI-00916', $draft->code);
     }
 
-    public function test_javbtc_without_a_recognizable_product_code_throws_a_specific_exception(): void
+    public function test_javbtc_without_a_product_code_or_detail_path_throws_a_specific_exception(): void
     {
         $normalizer = $this->registry()->forSlug('javbtc');
         $movie = new MovieDto(
@@ -497,7 +510,7 @@ final class SourceNormalizerTest extends TestCase
             $movie,
             [],
             'javbtc',
-            'https://javbtc.com/r18/no-code-detail',
+            'https://javbtc.com/',
             CarbonImmutable::now(),
         );
     }

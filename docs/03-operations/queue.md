@@ -18,7 +18,7 @@ flowchart LR
 
 Redis is the standard queue connection. Database queue support remains available when `QUEUE_CONNECTION=database` is explicitly selected; its depth check counts rows in the configured `jobs` table that are not reserved and are available now. Redis mode reads `LLEN queues:<name>` through Laravel's Redis connection, so feed-pool backpressure reflects the shared Redis queue rather than the database `jobs` table. Redis keys use `REDIS_PREFIX=javmeta:`; test runs use `javmeta_it:`.
 
-A JavBTC detail that has no recognizable product code is stored as a terminal `parse_failed` crawl row with a plain reason. JavBTC codes found in the page fields, title, or URL are normalized; no code is inferred when those sources contain none.
+A JavBTC detail without a recognizable product code uses a stable `JAVBTC-DERIVED-<SHA256>` identity from its `/r18/<slug>` path. Recognizable codes from page fields, title or URL path take precedence. A code-less page without a valid detail path still becomes a terminal `parse_failed` row with a plain reason.
 
 ## Redis and Horizon configuration
 
@@ -172,3 +172,50 @@ each configured crawl kind, so existing Compose environments keep consuming work
 Additional worker-only nodes use the same two worker-count variables and queue
 supervisors. Browser-service capacity remains shared across the whole fleet;
 increasing worker nodes does not increase that capacity.
+
+### Product-code recovery (JOOXCR-283)
+
+The rejection was in javmeta's `SiteCodeCanonicalizer` / `NormalizedCode`, not a
+CrawlerX parse failure: JavBTC's specialized normalizer reports `parse_failed`
+when no DVD code is found. CrawlerX already supplies a title and external ID.
+No CrawlerX dependency update is needed for this fix.
+
+Code rules (existing recognizable DVD codes keep their current identity):
+
+| Source | Product identity |
+| --- | --- |
+| ffjav | Preserve `10musume-052425_01` as `10MUSUME-052425_01`; both the date and sequence belong to the identity. |
+| 141jav | Accept the single-letter product number `C2897`, displayed as `C-2897`. |
+| tokyohot | Keep numeric/N IDs unchanged; scene products use the **entire** slug, e.g. `TOKYOHOT-SLUG-JAPANESE_INVASION_2_AMERICA_SC4`. Never use `Sc4` alone: different movies share scene numbers. |
+| javbtc | Prefer a recognizable product number from page fields, title or URL. |
+
+Only these four sources may fall back to `<SOURCE>-DERIVED-<SHA256>` when no
+product candidate is usable. The path must match `/r18/<slug>` for javbtc,
+`/torrent/<slug>` for ffjav/141jav, or `/product/<slug>` for tokyohot.
+SHA256 covers the complete case-sensitive URL path
+without a trailing slash; query parameters, fragments and host aliases do not
+change it. For these path-based sources, query parameters and fragments are
+also excluded from product-code extraction, including typed codes inferred
+by CrawlerX from tracking parameters. Other sources keep their query-ID rules.
+The reserved source namespace prevents cross-source collisions.
+Titles never enter the hash. Re-crawling the same page updates its existing
+movie through the indexed `code_normalized` identity. Missing titles still fail.
+Other sources retain their previous rejection behavior.
+
+After the fix has been reviewed and deployed by the operator, inspect the
+recovery scope first (these commands were **not** run against production):
+
+```bash
+php artisan crawler:requeue-product-codes --dry-run
+php artisan crawler:requeue-product-codes
+```
+
+The command prints counts separately for javbtc, ffjav, tokyohot and 141jav.
+Only failed **detail** rows with `parse_failed` or `normalization_failed` are
+reset to pending; attempts, errors, timestamps and worker claims are cleared.
+This is an error-code recovery scope: it also retries unrelated parse failures
+and missing-title normalization failures with those same error codes; those
+may fail again if their page problem remains. The dry-run reports all of them.
+Other sources, error codes, active rows and completed rows are untouched.
+Repeated execution is safe because pending rows no longer match. It changes
+queue state only; the existing scheduler performs the actual crawl.

@@ -7,8 +7,8 @@ export default {
   async render({ params }) {
     const body = await api('movies/' + encodeURIComponent(params.code)).catch(e => ({ error: e }));
     if (body.error) {
-      if (body.error.status === 404) return { html: `<div class="wrap">${crumbs([['Phim', '#/movies'], [params.code]])}${emptyBox('Không tìm thấy phim', esc(params.code), a('#/movies', 'Về danh sách phim', 'btn'))}</div>` };
-      return { html: `<div class="wrap">${errorBox(body.error)}</div>` };
+      if (body.error.status === 404) return { html: `<div class="wrap" style="overflow-wrap:anywhere">${crumbs([['Phim', '#/movies'], [params.code]])}${emptyBox('Không tìm thấy phim', esc(params.code), a('#/movies', 'Về danh sách phim', 'btn'))}</div>` };
+      return { html: `<div class="wrap" style="overflow-wrap:anywhere">${errorBox(body.error)}</div>` };
     }
     const m = body.data;
     const marks = await myMarks();
@@ -48,7 +48,7 @@ export default {
         <div class="panel"><div class="hd"><h2>Nguồn của diễn viên</h2></div>${performers.flatMap(p => (p.sources || []).map(s => `<div class="row-i"><span class="dot"></span><div class="grow">${esc(performerName(p))} <span class="muted">· ${esc(s.source_slug)}</span></div><a class="btn sm" href="${esc(s.source_url)}" target="_blank" rel="noreferrer noopener">${ic('link')} Mở trang</a></div>`)).join('') || '<div class="row-i muted">Chưa có.</div>'}</div>
         <div class="panel"><div class="hd"><h2>Thuộc tính thêm (attrs)</h2></div><div class="bd mono" style="font-size:12px;white-space:pre-wrap;word-break:break-word">${esc(JSON.stringify(m.attrs || {}, null, 2))}</div></div>`;
     }
-    const html = `<div class="wrap">${crumbs([['Phim', '#/movies'], ...(m.maker ? [[m.maker, href.facet('maker', m.maker)]] : []), [m.code]])}
+    const html = `<div class="wrap" style="overflow-wrap:anywhere">${crumbs([['Phim', '#/movies'], ...(m.maker ? [[m.maker, href.facet('maker', m.maker)]] : []), [m.code]])}
       <div class="cols" style="grid-template-columns:minmax(0,340px) minmax(0,1fr)"><div class="col">${cover(m, { dur: true })}</div>
       <div class="col"><div><div class="mono muted">${esc(m.code)}${m.release_date ? ' · ' + esc(m.release_date) : ''}${m.needs_review ? ' · <span class="chip warn">cần xem lại</span>' : ''}${m.delisted_at ? ' · <span class="chip bad">đã gỡ</span>' : ''}</div><h1 style="font-size:22px">${esc(titleOf(m))}</h1></div>
         <div class="chips">${(m.genres || []).map(g => facetChip('genre', g)).join('')}${m.series ? facetChip('series', m.series) : ''}${m.maker ? facetChip('maker', m.maker) : ''}${m.runtime_minutes ? `<span class="chip mono">${m.runtime_minutes}′</span>` : ''}${m.community_score !== null ? `<span class="chip mono">★ ${esc(m.community_score)}</span>` : ''}</div>

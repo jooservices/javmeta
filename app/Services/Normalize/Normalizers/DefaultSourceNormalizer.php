@@ -30,7 +30,7 @@ class DefaultSourceNormalizer implements SourceNormalizer
 
     public function normalizeMovie(MovieDto $movie, array $metadata, string $slug, string $sourceUrl, CarbonImmutable $crawledAt): MovieDraft
     {
-        $code = SiteCodeCanonicalizer::resolve($slug, $this->codeCandidates($movie, $metadata, $sourceUrl));
+        $code = SiteCodeCanonicalizer::resolve($slug, $this->codeCandidates($movie, $metadata, $sourceUrl, $slug), $sourceUrl);
         $title = $this->titleFrom($movie, $metadata);
 
         if ($code === null || $title === null) {
@@ -127,10 +127,16 @@ class DefaultSourceNormalizer implements SourceNormalizer
      * @param  array<string, mixed>  $metadata
      * @return list<string|null>
      */
-    protected function codeCandidates(MovieDto $movie, array $metadata, string $sourceUrl): array
+    protected function codeCandidates(MovieDto $movie, array $metadata, string $sourceUrl, string $slug): array
     {
+        $pathIdentity = in_array($slug, ['javbtc', 'ffjav', 'tokyohot', '141jav'], true);
+        $codeUrl = $pathIdentity ? (string) parse_url($sourceUrl, PHP_URL_PATH) : $sourceUrl;
+        // These adapters can infer their typed code from the entire URL. Rebuild
+        // it from page fields and the path when tracking data could contaminate it.
+        $ignoreTyped = $pathIdentity && (parse_url($sourceUrl, PHP_URL_QUERY) !== null || parse_url($sourceUrl, PHP_URL_FRAGMENT) !== null);
+
         return [
-            $movie->code,
+            $ignoreTyped ? null : $movie->code,
             $this->firstString($metadata, [
                 'code',
                 'product_code',
@@ -148,8 +154,8 @@ class DefaultSourceNormalizer implements SourceNormalizer
             $movie->title,
             $this->firstString($metadata, ['title']),
             $movie->externalId,
-            $this->queryParam($sourceUrl, 'id'),
-            $sourceUrl,
+            $this->queryParam($codeUrl, 'id'),
+            $codeUrl,
             $this->urlBasename($sourceUrl),
         ];
     }
