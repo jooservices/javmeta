@@ -8,6 +8,7 @@ use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Services\Crawl\CrawlQueueService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class CrawlQueueServiceClaimTest extends TestCase
@@ -125,6 +126,150 @@ final class CrawlQueueServiceClaimTest extends TestCase
         $this->assertSame($wanted->id, $claimed->id);
     }
 
+    public function test_pacing_waiting_counts_only_claims_that_have_not_started(): void
+    {
+        $this->source('waiting');
+        $this->row('waiting', CrawlQueue::STATUS_CLAIMED)->forceFill(['started_at' => null])->save();
+        $this->row('waiting', CrawlQueue::STATUS_CLAIMED)->forceFill(['started_at' => now()])->save();
+
+        $this->assertSame(['waiting' => 1], app(CrawlQueueService::class)->claimedWaitingBySource());
+    }
+
+    public function test_pacing_activity_uses_fetch_start_time_for_the_rolling_horizon(): void
+    {
+        $this->source('activity');
+        $this->row('activity', CrawlQueue::STATUS_CLAIMED)->forceFill(['started_at' => null])->save();
+        $this->row('activity', CrawlQueue::STATUS_CLAIMED)->forceFill(['started_at' => now()->subSeconds(5)])->save();
+        DB::table('crawl_fetch_attempts')->insert([
+            [
+                'created_at' => now(),
+                'source_slug' => 'activity',
+                'crawl_queue_id' => null,
+                'url_hash' => hash('sha256', 'recent-request'),
+                'method' => 'http',
+                'started_at' => now()->subSeconds(10),
+                'duration_ms' => 1,
+                'outcome' => 'ok',
+            ],
+            [
+                'created_at' => now(),
+                'source_slug' => 'activity',
+                'crawl_queue_id' => null,
+                'url_hash' => hash('sha256', 'expired-request'),
+                'method' => 'http',
+                'started_at' => now()->subSeconds(61),
+                'duration_ms' => 1,
+                'outcome' => 'ok',
+            ],
+        ]);
+
+        $activity = app(CrawlQueueService::class)->pacingActivityBySource(now()->subSeconds(60));
+
+        $this->assertSame(1, $activity['activity']['waiting']);
+        $this->assertSame(2, $activity['activity']['started']);
+        $this->assertSame(now()->subSeconds(5)->timestamp, $activity['activity']['latest_started_at']?->timestamp);
+    }
+
+    public function test_pacing_activity_counts_an_active_queue_row_once_when_its_attempt_is_recorded(): void
+    {
+        $this->source('deduplicated');
+        $row = $this->row('deduplicated', CrawlQueue::STATUS_CLAIMED)
+            ->forceFill(['started_at' => now()->subSeconds(5)]);
+        $row->save();
+        DB::table('crawl_fetch_attempts')->insert([
+            'created_at' => now(),
+            'source_slug' => 'deduplicated',
+            'crawl_queue_id' => $row->id,
+            'url_hash' => hash('sha256', 'active-request'),
+            'method' => 'http',
+            'started_at' => now()->subSeconds(5),
+            'duration_ms' => 1,
+            'outcome' => 'ok',
+        ]);
+
+        $activity = app(CrawlQueueService::class)->pacingActivityBySource(now()->subSeconds(60));
+
+        $this->assertSame(1, $activity['deduplicated']['started']);
+    }
+
+    public function test_pacing_activity_counts_retries_for_an_active_queue_row_without_double_counting_its_current_attempt(): void
+    {
+        $this->source('retried');
+        $row = $this->row('retried', CrawlQueue::STATUS_CLAIMED)
+            ->forceFill(['started_at' => now()->subSeconds(5)]);
+        $row->save();
+        DB::table('crawl_fetch_attempts')->insert([
+            'created_at' => now(),
+            'source_slug' => 'retried',
+            'crawl_queue_id' => $row->id,
+            'url_hash' => hash('sha256', 'previous-request'),
+            'method' => 'http',
+            'started_at' => now()->subSeconds(20),
+            'duration_ms' => 1,
+            'outcome' => 'error',
+        ]);
+
+        $service = app(CrawlQueueService::class);
+        $since = now()->subSeconds(60);
+        $this->assertSame(2, $service->pacingActivityBySource($since)['retried']['started']);
+
+        DB::table('crawl_fetch_attempts')->insert([
+            'created_at' => now(),
+            'source_slug' => 'retried',
+            'crawl_queue_id' => $row->id,
+            'url_hash' => hash('sha256', 'current-request'),
+            'method' => 'http',
+            'started_at' => now()->subSeconds(4),
+            'duration_ms' => 1,
+            'outcome' => 'ok',
+        ]);
+
+        $this->assertSame(2, $service->pacingActivityBySource($since)['retried']['started']);
+    }
+
+    public function test_pacing_activity_counts_each_completed_request_and_ignores_skipped_attempts(): void
+    {
+        $this->source('completed');
+        $row = $this->row('completed', CrawlQueue::STATUS_DONE);
+        DB::table('crawl_fetch_attempts')->insert([
+            [
+                'created_at' => now(),
+                'source_slug' => 'completed',
+                'crawl_queue_id' => $row->id,
+                'url_hash' => hash('sha256', 'completed-request-one'),
+                'method' => 'http',
+                'started_at' => now()->subSeconds(10),
+                'duration_ms' => 1,
+                'outcome' => 'error',
+            ],
+            [
+                'created_at' => now(),
+                'source_slug' => 'completed',
+                'crawl_queue_id' => $row->id,
+                'url_hash' => hash('sha256', 'completed-request-two'),
+                'method' => 'http',
+                'started_at' => now()->subSeconds(5),
+                'duration_ms' => 1,
+                'outcome' => 'ok',
+            ],
+            [
+                'created_at' => now(),
+                'source_slug' => 'completed',
+                'crawl_queue_id' => $row->id,
+                'url_hash' => hash('sha256', 'completed-request-skipped'),
+                'method' => 'http',
+                'started_at' => now()->subSeconds(2),
+                'duration_ms' => 1,
+                'outcome' => 'skipped',
+            ],
+        ]);
+
+        $activity = app(CrawlQueueService::class)->pacingActivityBySource(now()->subSeconds(60));
+
+        $this->assertSame(2, $activity['completed']['started']);
+        $this->assertSame(now()->subSeconds(5)->timestamp, $activity['completed']['latest_started_at']?->timestamp);
+    }
+
     public function test_a_source_alone_can_still_use_its_limit_and_is_released_when_a_row_finishes(): void
     {
         config()->set('javmeta_queues.per_source_inflight', 2);
@@ -142,7 +287,7 @@ final class CrawlQueueServiceClaimTest extends TestCase
         $this->assertSame($third->id, $service->claimNext('worker', CrawlQueue::KIND_DETAIL)?->id);
     }
 
-    public function test_the_limit_is_per_kind(): void
+    public function test_the_limit_is_shared_across_kinds_for_a_source(): void
     {
         config()->set('javmeta_queues.per_source_inflight', 1);
         $this->source('mixed');
@@ -151,6 +296,7 @@ final class CrawlQueueServiceClaimTest extends TestCase
 
         $claimed = app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_LISTING);
 
-        $this->assertSame($listing->id, $claimed?->id);
+        $this->assertNull($claimed);
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $listing->refresh()->status);
     }
 }

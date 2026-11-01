@@ -92,6 +92,7 @@ final class SettingsService
                 'type' => $definition['type'],
                 'min' => $definition['min'] ?? null,
                 'max' => $definition['max'] ?? null,
+                'options' => $definition['options'] ?? null,
                 'restart' => $definition['restart'] ?? null,
                 'source' => $inDatabase ? 'database' : 'default',
                 'value' => $isSecret ? null : $current,
@@ -294,6 +295,9 @@ final class SettingsService
             }
             if (isset($definition['max']) && $number > $definition['max']) {
                 $fail('must be at most ' . $definition['max']);
+            }
+            if (isset($definition['options']) && ! in_array($number, $definition['options'], true)) {
+                $fail('must be one of ' . implode(', ', $definition['options']));
             }
 
             return $number;

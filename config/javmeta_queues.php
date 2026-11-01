@@ -49,19 +49,20 @@ return [
     'depth_limit' => max(1, (int) env('JAVMETA_QUEUE_DEPTH_LIMIT', 100)),
 
     /**
-     * Fairness: at most this many rows per source and kind may be claimed and unfinished at the same time, so one
+     * Fairness: at most this many rows per source may be claimed and unfinished at the same time, so one
      * source with thousands of older rows cannot fill the worker queue and starve the others.
      */
     'per_source_inflight' => max(1, (int) env('JAVMETA_PER_SOURCE_INFLIGHT', 4)),
 
-    /** Jobs the feed pool may dispatch per run (every minute); the per-source in-flight cap and throttle keep each site polite. */
+    /** Maximum feed-pool rows per lane per minute; scaled across scheduler runs. */
     // Sources that need the browser services, and how many of their rows may be claimed at the same time (0 = no cap).
     // Both are settings in the database (docs/03-operations/settings.md).
     'browser_sources' => ['javlibrary', 'javbus', 'missav', 'jable', 'warashi', 'javdatabase'],
     'browser_inflight' => 8,
     'feed_pool_limit' => max(1, (int) env('JAVMETA_FEED_POOL_LIMIT', 50)),
+    'feed_interval_seconds' => 10,
 
-    /** Seconds of work a source may have queued at once; with its gap this gives its per-minute budget (floor(horizon / gap)). */
+    /** Rolling per-source row budget is floor(horizon / current gap), including waiting claims and recent starts. */
     'pacing_horizon_seconds' => max(1, (int) env('JAVMETA_PACING_HORIZON_SECONDS', 60)),
 
     /** Highest gap (seconds) the throttle may reach after rate limits, blocks and challenges. */

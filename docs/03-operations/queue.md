@@ -56,6 +56,16 @@ Set JAVMETA_OBSERVABILITY_SAMPLE_PERCENT to adjust sampling from 0 to 100. Set J
 
 The depth check covers ready jobs. Reserved and delayed Redis jobs do not count toward this buffer. A Redis depth-query failure stops the feed-pool command before it claims rows.
 
+## Feed interval and pacing budget
+
+`queue.feed_interval_seconds` controls the scheduled `crawler:feed-pool` cadence. It is database-backed and appears on the Settings page; valid values are 5, 10, 15, 30 and 60 seconds. The default is 10 seconds. The scheduler captures the setting when it starts and passes that interval to each feeder run, keeping the run allowance aligned with the registered cadence. After changing this setting, restart `php artisan schedule:work` on the main scheduler node to apply it. Set it to `60` on the Settings page to restore the former once-per-minute cadence.
+
+`queue.feed_pool_limit` remains a per-lane, per-minute cap. The feeder apportions that budget across the interval slots using the difference between cumulative minute quotas. For example, 50 jobs per minute at a 10-second interval yields per-run limits of 8, 8, 9, 8, 8 and 9. This preserves the configured minute total while distributing jobs through the minute. An explicit `crawler:feed-pool --limit=N` adds a per-run ceiling but cannot exceed that slot's apportioned allowance.
+
+For each source, the pacing budget is `floor(queue.pacing_horizon_seconds / current_gap_seconds)`. A run counts claimed rows that have not started, started rows and each recent non-skipped fetch request in the horizon; an active claimed row is counted once while its attempt is recorded. It then adds its own dispatches before claiming more work. New delayed jobs remain behind those already waiting and are spaced by at least the current source gap. The per-source in-flight cap applies across crawl kinds; the browser in-flight cap remains shared across browser sources. Queue depth still gates each lane independently, and the PostgreSQL feeder lock prevents concurrent dispatch cycles.
+
+Each run emits `feed_dispatched` with a lane and count, and `feed_gated` with reason `depth`, `source_budget` or `global_cap`. The existing `crawl_dispatch` event remains the total for the run. Use these events in OpenObserve to compare the new cadence with queue depth and worker activity.
+
 Claiming a crawl row does not increment `attempts`. A worker increments it once when it starts the current claim, and the claim token prevents an older buffered job from starting after that claim has been reclaimed. Stale claims that never started return to pending with the same attempt count; stale started claims retain the existing worker-lost retry behavior. Existing claimed rows are marked started by the schema migration because the previous schema cannot distinguish buffered jobs from jobs already running.
 
 Each stale claim reclaimed before worker start creates a `queue_reclaimed_without_start` crawl event. The count is reported for the previous five minutes by `javmeta_crawl_events_5m` with `kind=queue_reclaimed_without_start`.
@@ -85,8 +95,8 @@ See the [Laravel Horizon documentation](https://laravel.com/docs/13.x/horizon) f
 
 ## Fairness between sources
 
-`CrawlQueueService::claimNext` skips a source that already has `JAVMETA_PER_SOURCE_INFLIGHT` (default 4) claimed, unfinished
-rows of the same kind, so one source with thousands of older rows cannot fill the worker queue and starve the others.
+`CrawlQueueService::claimNext` skips a source that already has `queue.per_source_inflight` (default 4) claimed, unfinished
+rows across crawl kinds, so one source with thousands of older rows cannot fill the worker queue and starve the others.
 Parallelism comes from `JAVMETA_WORKERS_PER_QUEUE` (processes per queue name); each source is still limited by its own
 throttle gap.
 

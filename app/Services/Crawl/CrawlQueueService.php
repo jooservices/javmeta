@@ -9,6 +9,8 @@ use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Observability\Sentry\CrawlFailureReporter;
+use Carbon\CarbonImmutable;
+use DateTimeInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -59,8 +61,8 @@ final class CrawlQueueService
                 $query->whereNotIn('source_slug', $excludeSources);
             }
 
-            // Fairness: a source that already has its share of claimed, unfinished rows (of this kind) waits for them.
-            $query->whereNotIn('source_slug', $this->sourcesAtInflightLimit($kind));
+            // Fairness: a source waits until its claimed work across every crawl kind has room.
+            $query->whereNotIn('source_slug', $this->sourcesAtInflightLimit());
 
             if (DB::getDriverName() === 'pgsql') {
                 $query->lockForUpdate();
@@ -91,7 +93,12 @@ final class CrawlQueueService
     public function claimedWaitingBySource(): array
     {
         $counts = [];
-        foreach (CrawlQueue::query()->where('status', CrawlQueue::STATUS_CLAIMED)->select('source_slug', DB::raw('COUNT(*) AS total'))->groupBy('source_slug')->get() as $row) {
+        foreach (CrawlQueue::query()
+            ->where('status', CrawlQueue::STATUS_CLAIMED)
+            ->whereNull('started_at')
+            ->select('source_slug', DB::raw('COUNT(*) AS total'))
+            ->groupBy('source_slug')
+            ->get() as $row) {
             $counts[(string) $row->source_slug] = (int) $row->getAttribute('total');
         }
 
@@ -99,11 +106,70 @@ final class CrawlQueueService
     }
 
     /**
-     * Sources that already hold `javmeta_queues.per_source_inflight` claimed rows of the given kind (all kinds when null).
+     * Pending claims and recent request activity used to preserve the source's pacing window across feeder runs.
+     * An active claim counts once until its current request attempt has been recorded.
+     *
+     * @return array<string, array{waiting: int, started: int, latest_started_at: ?CarbonImmutable}>
+     */
+    public function pacingActivityBySource(DateTimeInterface $since): array
+    {
+        $activity = [];
+        $claims = CrawlQueue::query()
+            ->where('status', CrawlQueue::STATUS_CLAIMED)
+            ->select('source_slug')
+            ->selectRaw('SUM(CASE WHEN started_at IS NULL THEN 1 ELSE 0 END) AS waiting')
+            ->selectRaw(
+                'SUM(CASE WHEN started_at >= ? AND NOT EXISTS ('
+                    . 'SELECT 1 FROM crawl_fetch_attempts '
+                    . 'WHERE crawl_fetch_attempts.crawl_queue_id = crawl_queue.id '
+                    . 'AND crawl_fetch_attempts.started_at >= crawl_queue.started_at '
+                    . 'AND crawl_fetch_attempts.outcome <> ?'
+                . ') THEN 1 ELSE 0 END) AS active',
+                [$since, 'skipped'],
+            )
+            ->selectRaw('MAX(started_at) AS latest_started_at')
+            ->groupBy('source_slug')
+            ->get();
+
+        foreach ($claims as $row) {
+            $slug = (string) $row->getAttribute('source_slug');
+            $latestStartedAt = $this->recentTimestamp($row->getAttribute('latest_started_at'), $since);
+            $activity[$slug] = [
+                'waiting' => (int) $row->getAttribute('waiting'),
+                'started' => (int) $row->getAttribute('active'),
+                'latest_started_at' => $latestStartedAt,
+            ];
+        }
+
+        $attempts = DB::table('crawl_fetch_attempts')
+            ->where('created_at', '>=', $since)
+            ->where('started_at', '>=', $since)
+            ->where('outcome', '!=', 'skipped')
+            ->select('source_slug')
+            ->selectRaw('COUNT(*) AS total')
+            ->selectRaw('MAX(started_at) AS latest_started_at')
+            ->groupBy('source_slug')
+            ->get();
+
+        foreach ($attempts as $row) {
+            $slug = (string) $row->source_slug;
+            $activity[$slug] ??= ['waiting' => 0, 'started' => 0, 'latest_started_at' => null];
+            $activity[$slug]['started'] += (int) $row->total;
+            $latestStartedAt = $this->recentTimestamp($row->latest_started_at, $since);
+            if ($latestStartedAt !== null && ($activity[$slug]['latest_started_at'] === null || $latestStartedAt->greaterThan($activity[$slug]['latest_started_at']))) {
+                $activity[$slug]['latest_started_at'] = $latestStartedAt;
+            }
+        }
+
+        return $activity;
+    }
+
+    /**
+     * Sources that already hold `javmeta_queues.per_source_inflight` claimed rows across crawl kinds.
      *
      * @return list<string>
      */
-    private function sourcesAtInflightLimit(?string $kind): array
+    private function sourcesAtInflightLimit(): array
     {
         $limit = max(1, (int) config('javmeta_queues.per_source_inflight', 4));
 
@@ -112,9 +178,6 @@ final class CrawlQueueService
             ->select('source_slug')
             ->groupBy('source_slug')
             ->havingRaw('COUNT(*) >= ?', [$limit]);
-        if ($kind !== null) {
-            $query->where('kind', $kind);
-        }
 
         $atLimit = array_values(array_map('strval', $query->pluck('source_slug')->all()));
 
@@ -134,6 +197,17 @@ final class CrawlQueueService
         }
 
         return $atLimit;
+    }
+
+    private function recentTimestamp(mixed $value, DateTimeInterface $since): ?CarbonImmutable
+    {
+        if (! is_string($value) && ! $value instanceof DateTimeInterface) {
+            return null;
+        }
+
+        $timestamp = CarbonImmutable::parse($value);
+
+        return $timestamp->greaterThanOrEqualTo($since) ? $timestamp : null;
     }
 
     public function enqueue(string $url, string $sourceSlug, string $kind, ?int $maxAttempts = null): CrawlQueue

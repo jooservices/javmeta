@@ -31,7 +31,7 @@ final class CrawlLaneServiceTest extends TestCase
                 CrawlQueue::factory()->create(['source_slug' => $slug, 'kind' => $kind]);
             }
         }
-        config(['javmeta_queues.browser_inflight' => 0]);
+        config(['javmeta_queues.browser_inflight' => 0, 'javmeta_queues.per_source_inflight' => 5]);
         $this->artisan('crawler:feed-pool')->assertSuccessful();
         foreach (config('javmeta_queues.names') as $kind => $name) {
             $job = match ($kind) {

@@ -32,6 +32,12 @@ Tối đa số dòng crawl_queue được nạp mỗi phút.
 
 Số nguyên; từ 1 đến 5000. Mã mục: `queue.feed_pool_limit`.
 
+### Chu kỳ nạp hàng đợi (giây)
+
+Khoảng thời gian giữa các lần nạp hàng đợi. Chọn 5, 10, 15, 30 hoặc 60 giây; 60 giây khôi phục nhịp chạy mỗi phút.
+
+Số nguyên; từ 5 đến 60; chọn: 5, 10, 15, 30, 60. Mã mục: `queue.feed_interval_seconds`.
+
 ### Tầm giãn nhịp (giây)
 
 Cửa sổ dùng để chia nhịp request của mỗi nguồn.

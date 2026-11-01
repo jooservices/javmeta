@@ -135,6 +135,7 @@ Initial host and service answers initialize missing database settings; later
 changes made in **Settings** remain authoritative across deployments.
 
 The Crawl & sources table shows each source’s effective lane (Trực tiếp or Trình duyệt). Configure lane thresholds, pins and the split switch in Cài đặt → Hàng đợi crawl.
+The same group exposes **Feed interval (seconds)** (`queue.feed_interval_seconds`), with choices 5, 10, 15, 30 and 60. The default is 10 seconds; 60 restores the former once-per-minute cadence. Changes apply on the next scheduler minute.
 
 Product-code recovery for javbtc, ffjav, tokyohot and 141jav preserves source
 product identifiers and uses a stable source-scoped URL identity when needed.
