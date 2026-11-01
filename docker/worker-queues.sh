@@ -3,17 +3,25 @@
 set -euo pipefail
 
 CONNECTION="${QUEUE_CONNECTION:-redis}"
-QUEUES="${JAVMETA_QUEUE_NAMES:-listing,detail,performer_listing,performer_detail,gallery,search,observability}"
+QUEUES="${JAVMETA_QUEUE_NAMES:-listing,detail,performer_listing,performer_detail,gallery,search,browser_listing,browser_detail,browser_performer_listing,browser_performer_detail,browser_gallery,observability}"
 SLEEP="${JAVMETA_QUEUE_SLEEP:-3}"
 TRIES="${JAVMETA_QUEUE_TRIES:-3}"
 MAX_TIME="${JAVMETA_QUEUE_MAX_TIME:-3600}"
 MAX_JOBS="${JAVMETA_QUEUE_MAX_JOBS:-500}"
 WORKERS_PER_QUEUE="${JAVMETA_WORKERS_PER_QUEUE:-1}"
+BROWSER_WORKERS_PER_QUEUE="${JAVMETA_BROWSER_WORKERS_PER_QUEUE:-2}"
 TIMEOUT="${JAVMETA_QUEUE_TIMEOUT:-180}"
 STOP_GRACE="${JAVMETA_QUEUE_STOP_GRACE:-200}"
 PHP_BIN="${JAVMETA_PHP_BIN:-php}"
 
 IFS=',' read -r -a QUEUE_LIST <<< "${QUEUES}"
+# Old environment files list only direct queues; enroll their browser counterparts too.
+queue_set=",${QUEUES//[[:space:]]/},"
+for direct_queue in listing detail performer_listing performer_detail gallery; do
+  if [[ "${queue_set}" == *",${direct_queue},"* && "${queue_set}" != *",browser_${direct_queue},"* ]]; then
+    QUEUE_LIST+=("browser_${direct_queue}")
+  fi
+done
 has_observability_queue=0
 for configured_queue in "${QUEUE_LIST[@]}"; do
   configured_queue="$(echo "${configured_queue}" | xargs)"
@@ -43,8 +51,12 @@ start_worker() {
   local index="$1"
   local queue="${worker_queues[$index]}"
   local slot="${worker_slots[$index]}"
+  local total="${WORKERS_PER_QUEUE}"
+  if [[ "${queue}" == browser_* ]]; then
+    total="${BROWSER_WORKERS_PER_QUEUE}"
+  fi
 
-  echo "Starting worker instance queue=${queue} slot=${slot}/${WORKERS_PER_QUEUE}"
+  echo "Starting worker instance queue=${queue} slot=${slot}/${total}"
   "${PHP_BIN}" artisan queue:work "${CONNECTION}" \
     --queue="${queue}" \
     --sleep="${SLEEP}" \
@@ -125,7 +137,11 @@ for queue in "${QUEUE_LIST[@]}"; do
   queue="$(echo "${queue}" | xargs)"
   [[ -z "${queue}" ]] && continue
 
-  for ((slot = 1; slot <= WORKERS_PER_QUEUE; slot++)); do
+  queue_workers="${WORKERS_PER_QUEUE}"
+  if [[ "${queue}" == browser_* ]]; then
+    queue_workers="${BROWSER_WORKERS_PER_QUEUE}"
+  fi
+  for ((slot = 1; slot <= queue_workers; slot++)); do
     worker_queues[worker_count]="${queue}"
     worker_slots[worker_count]="${slot}"
     worker_restarts[worker_count]=0

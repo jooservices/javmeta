@@ -12,6 +12,13 @@ use Illuminate\Support\Facades\Redis;
 /** Maps crawl_queue.kind → Laravel queue name (onQueue). */
 final class LaravelCrawlQueue
 {
+    public static function depthLimit(string $queue): int
+    {
+        $browser = in_array($queue, (array) config('javmeta_queues.browser_names', []), true);
+
+        return max(1, (int) config($browser ? 'javmeta_queues.browser_depth_limit' : 'javmeta_queues.depth_limit', 100));
+    }
+
     public static function readyDepth(string $queue): int
     {
         $connectionName = (string) config('queue.default', 'database');
@@ -55,7 +62,7 @@ final class LaravelCrawlQueue
         /** @var array<string, string> $names */
         $names = config('javmeta_queues.names', []);
 
-        return array_values($names);
+        return array_values(array_unique([...array_values($names), ...array_values((array) config('javmeta_queues.browser_names', []))]));
     }
 
     public static function forListing(): string

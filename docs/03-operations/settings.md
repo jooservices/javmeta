@@ -40,3 +40,5 @@ A previously saved invalid URL is ignored during application boot and direct set
 `javmeta_observability.fetch_attempts_retention_days`. The daily
 `crawler:prune-fetch-attempts` command applies the current database value.
 See [fetch diagnostics](telemetry.md#fetch-attempts).
+
+Crawl lanes are controlled by `crawl.lanes_enabled`, `crawl.lane_browser_percent`, `crawl.lane_min_attempts`, `crawl.lane_direct_pins`, `crawl.lane_browser_pins` and `queue.browser_depth_limit`. See [queue.md](queue.md) for classification, precedence and fleet rollout. Horizon browser worker counts use `JAVMETA_BROWSER_WORKERS_PER_QUEUE` (default 2) at process startup.

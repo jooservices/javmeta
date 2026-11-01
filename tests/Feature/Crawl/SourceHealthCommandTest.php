@@ -10,6 +10,8 @@ use App\Services\Crawler\CrawlerxFetchResult;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
 use Tests\TestCase;
 
 final class SourceHealthCommandTest extends TestCase
@@ -63,5 +65,29 @@ final class SourceHealthCommandTest extends TestCase
         $this->artisan('crawler:source-health', ['--source' => 'one', '--no-write' => true])
             ->expectsOutputToContain('WORKING 0, DEGRADED 0, BLOCKED 1, DISABLED 0')
             ->assertSuccessful();
+    }
+
+    public function test_report_and_history_survive_a_lane_recompute_failure(): void
+    {
+        config(['javmeta_sources.sources' => []]);
+        $directory = storage_path('app/private/reports');
+        $files = [$directory . '/source-health.json', $directory . '/source-health.md', $directory . '/source-health-history.jsonl'];
+        File::delete($files);
+        DB::listen(static function ($query): void {
+            if (str_contains($query->sql, 'crawl_fetch_attempts')) {
+                throw new RuntimeException('Lane aggregate unavailable');
+            }
+        });
+        try {
+            Artisan::call('crawler:source-health');
+            self::fail('Expected the lane aggregate failure.');
+        } catch (RuntimeException $exception) {
+            self::assertSame('Lane aggregate unavailable', $exception->getMessage());
+            foreach ($files as $file) {
+                self::assertFileExists($file);
+            }
+        } finally {
+            File::delete($files);
+        }
     }
 }

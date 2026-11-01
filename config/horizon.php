@@ -16,7 +16,7 @@ foreach ($queueNames as $queueName) {
         'connection' => 'redis',
         'queue' => [$queueName],
         'balance' => false,
-        'maxProcesses' => $workersPerQueue,
+        'maxProcesses' => in_array($queueName, $queueConfig['browser_names'], true) ? $queueConfig['browser_workers_per_queue'] : $workersPerQueue,
         'maxTime' => (int) env('JAVMETA_QUEUE_MAX_TIME', 3600),
         'maxJobs' => (int) env('JAVMETA_QUEUE_MAX_JOBS', 500),
         'memory' => 128,

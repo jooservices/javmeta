@@ -43,6 +43,7 @@ final class StatusController extends BaseApiController
                 'slug' => $source['slug'],
                 'name' => $source['name'],
                 'enabled' => $source['enabled'],
+                'lane' => $source['lane'],
                 'gap_seconds_current' => $source['gap_seconds_current'],
                 'gap_seconds_min' => $source['gap_seconds_min'],
                 'gap_seconds_max' => $source['gap_seconds_max'],

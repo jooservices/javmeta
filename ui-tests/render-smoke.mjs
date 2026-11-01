@@ -20,8 +20,8 @@ const performer = id => ({ uuid: 'p' + id, id, name_romaji: 'Aaliyah Love', name
 const pg = (total, hasMore = false) => ({ meta: { pagination: { total, per_page: 24, sort: 'release_date', has_more: hasMore, next_cursor: null, last_page: 1 } } });
 const summary = { counts: { movies: 4469, performers: 4015 }, ingest: { movies_1h: 1010, movies_24h: 3000, performers_1h: 800, performers_24h: 2000 }, queue: { by_status: { pending: 100, claimed: 5, done: 900, failed: 7 }, stuck_claimed: 0 }, workers: [{ instance: 'w1', stale: false, active_claims: 3 }], runs_24h: { runs: 400, pages_fetched: 0, movies_new: 0, movies_updated: 0, failures: 0 }, checked_at: new Date().toISOString() };
 const sources = [
-  { slug: 'javdb', name: 'JavDB', enabled: true, gap_seconds_current: 5, gap_seconds_min: 4, gap_seconds_max: 60, last_success_at: new Date().toISOString(), last_error_at: null, last_error: null, queue: { pending: 3, claimed: 1, done: 20, failed: 0 } },
-  { slug: 'javbus', name: 'JavBus', enabled: true, gap_seconds_current: 600, gap_seconds_min: 4, gap_seconds_max: 60, last_success_at: null, last_error_at: new Date().toISOString(), last_error: 'All fetch methods exhausted', queue: { pending: 90, claimed: 0, done: 0, failed: 4 } },
+  { slug: 'javdb', name: 'JavDB', lane: 'direct', enabled: true, gap_seconds_current: 5, gap_seconds_min: 4, gap_seconds_max: 60, last_success_at: new Date().toISOString(), last_error_at: null, last_error: null, queue: { pending: 3, claimed: 1, done: 20, failed: 0 } },
+  { slug: 'javbus', name: 'JavBus', lane: 'browser', enabled: true, gap_seconds_current: 600, gap_seconds_min: 4, gap_seconds_max: 60, last_success_at: null, last_error_at: new Date().toISOString(), last_error: 'All fetch methods exhausted', queue: { pending: 90, claimed: 0, done: 0, failed: 4 } },
   { slug: 'avfan', name: 'Avfan', enabled: false, gap_seconds_current: 5, gap_seconds_min: 2, gap_seconds_max: 30, last_success_at: null, last_error_at: null, last_error: null, queue: { pending: 0, claimed: 0, done: 0, failed: 0 } },
 ];
 
@@ -69,7 +69,11 @@ await run('performers', await load('views/performers.js'), { params: {}, query: 
 const pd = await run('performer', await load('views/performer.js'), { params: { id: '1' }, query: {} });
 assert.match(pd, /Aaliyah Love/); assert.match(pd, /Tokyo/);
 const crawl = await run('crawl', await load('views/crawl.js'), { params: {}, query: {} });
-assert.match(crawl, /JavBus/); assert.match(crawl, /600s/);
+assert.match(crawl, /JavBus/); assert.match(crawl, /600s/); assert.match(crawl, /Trình duyệt/); assert.match(crawl, /Trực tiếp/);
+assert.match(crawl, /Avfan[\s\S]*?<td>—<\/td>/);
+sources[2].lane = 'future-lane';
+assert.match(await run('crawl-unknown-lane', await load('views/crawl.js'), { params: {}, query: {} }), /Avfan[\s\S]*?<td>—<\/td>/);
+delete sources[2].lane;
 const s = await run('search', await load('views/search.js'), { params: {}, query: { q: 'Drama' } });
 assert.match(s, /Kết quả/);
 const sm = await run('search-meaning', await load('views/search.js'), { params: {}, query: { q: 'Mankitsu night movies from 2024', mode: 'meaning' } });

@@ -11,6 +11,7 @@ final class HorizonServiceProviderTest extends TestCase
     public function test_horizon_supervisors_cover_worker_and_observability_queues_in_all_environments(): void
     {
         $names = ['listing', 'detail', 'performer_listing', 'performer_detail', 'gallery', 'search'];
+        $names = [...$names, 'browser_listing', 'browser_detail', 'browser_performer_listing', 'browser_performer_detail', 'browser_gallery'];
         $horizonNames = [...$names, 'observability'];
         $this->assertSame($horizonNames, config('javmeta_queues.horizon_names'));
         $this->assertSame($names, config('javmeta_queues.feed_pool_names'));
@@ -23,7 +24,7 @@ final class HorizonServiceProviderTest extends TestCase
 
             foreach ($supervisors as $name => $supervisor) {
                 $this->assertSame('redis', $supervisor['connection']);
-                $this->assertSame(1, $supervisor['maxProcesses']);
+                $this->assertSame(config(str_contains($name, 'browser_') ? 'javmeta_queues.browser_workers_per_queue' : 'javmeta_queues.workers_per_queue'), $supervisor['maxProcesses']);
                 $this->assertSame(180, $supervisor['timeout']);
                 $queue = $name === 'api-observability' ? 'observability' : substr($name, strlen('crawler-'));
                 $this->assertSame([$queue], $supervisor['queue']);

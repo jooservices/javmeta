@@ -104,11 +104,14 @@ final class CrawlStatusService
     private function sourceStatus(): array
     {
         $rows = [];
+        $lanes = app(CrawlLaneService::class);
+        $browser = $lanes->browserSources();
         foreach (Source::query()->orderBy('priority')->orderBy('slug')->get() as $source) {
             $rows[] = [
                 'slug' => $source->slug,
                 'name' => $source->name,
                 'enabled' => (bool) $source->enabled,
+                'lane' => config('javmeta_queues.lanes_enabled', true) && in_array((string) $source->slug, $browser, true) ? 'browser' : 'direct',
                 // Deprecated: crawlerx owns fetch health; kept so MCP crawl_status keys stay stable.
                 'circuit_state' => 'closed',
                 'consecutive_failures' => 0,

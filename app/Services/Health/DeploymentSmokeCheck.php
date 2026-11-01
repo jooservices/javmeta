@@ -163,7 +163,6 @@ final class DeploymentSmokeCheck
             return $this->check('queue_depth', 'fail', 'Queue depth is unsupported for the configured queue driver.');
         }
 
-        $limit = max(1, (int) config('javmeta_queues.depth_limit', 100));
         $depths = [];
         try {
             foreach ($queueNames as $queueName) {
@@ -173,7 +172,7 @@ final class DeploymentSmokeCheck
             return $this->check('queue_depth', 'fail', 'Queue depth could not be read.');
         }
 
-        $fullQueues = array_filter($depths, static fn(int $depth): bool => $depth >= $limit);
+        $fullQueues = array_filter($depths, static fn(int $depth, string $name): bool => $depth >= LaravelCrawlQueue::depthLimit($name), ARRAY_FILTER_USE_BOTH);
         $maximum = max($depths);
         if ($fullQueues !== []) {
             $names = implode(', ', array_keys($fullQueues));
@@ -182,14 +181,14 @@ final class DeploymentSmokeCheck
             return $this->check(
                 'queue_depth',
                 'warn',
-                "Queue depth reached the limit of {$limit} for: {$names}.",
+                "Queue depth reached its configured limit for: {$names}.",
             );
         }
 
         return $this->check(
             'queue_depth',
             'pass',
-            "All crawl queues are below the limit of {$limit}; maximum depth is {$maximum}.",
+            "All crawl queues are below their configured limits; maximum depth is {$maximum}.",
         );
     }
 

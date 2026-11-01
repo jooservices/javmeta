@@ -19,6 +19,19 @@ final class CrawlStatusServiceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_source_status_reports_static_computed_and_pinned_lanes(): void
+    {
+        Source::factory()->create(['slug' => 'javbus', 'priority' => 1]);
+        Source::factory()->create(['slug' => 'heyzo', 'browser_lane' => true, 'priority' => 2]);
+        Source::factory()->create(['slug' => 'direct', 'priority' => 3]);
+        $status = app(CrawlStatusService::class);
+        $this->assertSame(['browser', 'browser', 'direct'], array_column($status->status()['sources'], 'lane'));
+        config(['javmeta_queues.lane_direct_pins' => ['heyzo'], 'javmeta_queues.lane_browser_pins' => ['direct']]);
+        $this->assertSame(['browser', 'direct', 'browser'], array_column($status->status()['sources'], 'lane'));
+        config(['javmeta_queues.lanes_enabled' => false]);
+        $this->assertSame(['direct', 'direct', 'direct'], array_column($status->status()['sources'], 'lane'));
+    }
+
     public function test_runs_aggregate_keeps_zero_totals_and_excludes_old_runs(): void
     {
         $service = app(CrawlStatusService::class);

@@ -6,6 +6,7 @@ namespace App\Console\Commands\Crawler;
 
 use App\Contracts\ReportChannel;
 use App\Models\Source;
+use App\Services\Crawl\CrawlLaneService;
 use App\Services\Crawler\CrawlerxClient;
 use App\Services\Health\SourceHealthChecker;
 use Illuminate\Console\Command;
@@ -44,6 +45,7 @@ final class SourceHealthCommand extends Command
         if (! $this->option('no-write') && $only === '') {
             $this->write($report);
             $this->recordHistory($report, $channel);
+            app(CrawlLaneService::class)->recompute();
         }
 
         if ($this->option('json')) {

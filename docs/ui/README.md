@@ -131,3 +131,5 @@ for the Settings-page checklist; restarting Horizon on that node uses `xcrawler-
 Installation operators use the [install/deploy wizard](../03-operations/install-wizard.md).
 Initial host and service answers initialize missing database settings; later
 changes made in **Settings** remain authoritative across deployments.
+
+The Crawl & sources table shows each source’s effective lane (Trực tiếp or Trình duyệt). Configure lane thresholds, pins and the split switch in Cài đặt → Hàng đợi crawl.
