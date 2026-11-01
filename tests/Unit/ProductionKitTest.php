@@ -33,7 +33,7 @@ final class ProductionKitTest extends TestCase
         $root = dirname(__DIR__, 2);
         $installer = (string) file_get_contents($root . '/deploy/production/node/install-node.sh');
         preg_match_all('/"\$root\/([^"\n]+)"/', $installer, $matches);
-        self::assertCount(5, $matches[1]);
+        self::assertCount(7, $matches[1]);
         foreach ($matches[1] as $path) {
             foreach (['horizon', 'scheduler', 'embedder'] as $service) {
                 self::assertFileExists($root . '/' . str_replace('$service', $service, $path));
@@ -44,14 +44,14 @@ final class ProductionKitTest extends TestCase
     public function test_nginx_routes_both_hosts_and_gates_the_original_connection_address(): void
     {
         $nginx = (string) file_get_contents(dirname(__DIR__, 2) . '/deploy/production/node/xcrawler.nginx.conf');
-        self::assertStringContainsString('server_name xcrawler.net cc.xcrawler.net;', $nginx);
+        self::assertStringContainsString('server_name @UI_HOST@ @CC_HOST@;', $nginx);
         self::assertStringContainsString('geo $realip_remote_addr $gatekeeper_client', $nginx);
         self::assertStringContainsString('default 0;', $nginx);
-        self::assertStringContainsString('192.168.10.4 1;', $nginx);
+        self::assertStringContainsString('@GATEKEEPER_ADDRESS@ 1;', $nginx);
         self::assertStringContainsString('if ($gatekeeper_client = 0) { return 403; }', $nginx);
-        self::assertStringContainsString('set_real_ip_from 192.168.10.4;', $nginx);
+        self::assertStringContainsString('set_real_ip_from @GATEKEEPER_ADDRESS@;', $nginx);
         self::assertStringContainsString('real_ip_header X-Forwarded-For;', $nginx);
-        self::assertStringNotContainsString('allow 192.168.10.4;', $nginx);
+        self::assertStringNotContainsString('allow @GATEKEEPER_ADDRESS@;', $nginx);
     }
 
     public function test_runbook_setting_keys_exist_and_host_rules_keep_the_command_center_isolated(): void

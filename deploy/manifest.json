@@ -1,0 +1,922 @@
+{
+  "description": "Operator-overridable defaults only. No deployment ref is implied. Optional services require SERVICE_<ID>_ENABLED=1.",
+  "options": [
+    {
+      "key": "REPO_URL",
+      "label": "Repository URL",
+      "default": "",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "REF",
+      "label": "Branch, tag or full commit SHA",
+      "default": "",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "TARGET_DIR",
+      "label": "Absolute installation directory",
+      "default": "",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "SERVICE_USER",
+      "label": "Service account",
+      "default": "",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "BACKUP_FILE",
+      "label": "Fresh rehearsed PostgreSQL dump",
+      "default": "",
+      "required": false,
+      "secret": false
+    },
+    {
+      "key": "BACKUP_RESTORE_VERIFIED",
+      "label": "Restore rehearsal verified (1)",
+      "default": "",
+      "required": false,
+      "secret": false
+    },
+    {
+      "key": "CI_REPOSITORY",
+      "label": "GitHub owner/repository",
+      "default": "",
+      "required": false,
+      "secret": false
+    },
+    {
+      "key": "CI_CHECKS",
+      "label": "Required CI check names (comma separated)",
+      "default": "",
+      "required": false,
+      "secret": false
+    },
+    {
+      "key": "READINESS_TIMEOUT",
+      "label": "Readiness deadline in seconds",
+      "default": "90",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "GATEKEEPER_ADDRESS",
+      "label": "Trusted reverse proxy address",
+      "default": "",
+      "required": false,
+      "secret": false
+    },
+    {
+      "key": "UNIT_PREFIX",
+      "label": "Native unit prefix",
+      "default": "xcrawler",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "PHP_BINARY",
+      "label": "Native PHP binary",
+      "default": "/usr/bin/php8.5",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "FPM_UNIT",
+      "label": "PHP-FPM unit",
+      "default": "php8.5-fpm",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "EMBEDDER_BIND",
+      "label": "Native embedder bind address",
+      "default": "127.0.0.1",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "EMBEDDER_PORT",
+      "label": "Native embedder port",
+      "default": "8000",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "INSTALL_NODE",
+      "label": "Install native prerequisites (1=yes)",
+      "default": "1",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "ES_ADMIN_USER",
+      "label": "Elasticsearch administrator username",
+      "default": "",
+      "required": false,
+      "secret": false
+    },
+    {
+      "key": "PROVISION_ADMIN_DATABASE",
+      "label": "PostgreSQL admin database",
+      "default": "postgres",
+      "required": false,
+      "secret": false
+    },
+    {
+      "key": "NODE_ROLE",
+      "label": "NODE_ROLE",
+      "default": "primary",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "NGINX_UNIT",
+      "label": "NGINX_UNIT",
+      "default": "nginx",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "OWNER_EMAIL",
+      "label": "OWNER_EMAIL",
+      "default": "",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "CREDENTIALS_FILE",
+      "label": "CREDENTIALS_FILE",
+      "default": "@TARGET_DIR@/shared/@APP_NAME@-credentials.txt",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "INSTALL_CA",
+      "label": "Install the supplied Elasticsearch CA into OS trust (1/0)",
+      "default": "0",
+      "required": false,
+      "secret": false
+    }
+  ],
+  "services": [
+    {
+      "id": "application",
+      "label": "Application and session",
+      "validation": "none",
+      "optional": false,
+      "fields": [
+        {
+          "key": "APP_NAME",
+          "label": "APP_NAME",
+          "secret": false,
+          "required": true,
+          "default": "XCrawler"
+        },
+        {
+          "key": "APP_ENV",
+          "label": "APP_ENV",
+          "secret": false,
+          "required": true,
+          "default": "production"
+        },
+        {
+          "key": "APP_KEY",
+          "label": "APP_KEY",
+          "secret": true,
+          "required": false,
+          "default": ""
+        },
+        {
+          "key": "APP_DEBUG",
+          "label": "APP_DEBUG",
+          "secret": false,
+          "required": true,
+          "default": "false"
+        },
+        {
+          "key": "APP_URL",
+          "label": "APP_URL",
+          "secret": false,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "APP_LOCALE",
+          "label": "APP_LOCALE",
+          "secret": false,
+          "required": true,
+          "default": "en"
+        },
+        {
+          "key": "APP_FALLBACK_LOCALE",
+          "label": "APP_FALLBACK_LOCALE",
+          "secret": false,
+          "required": true,
+          "default": "en"
+        },
+        {
+          "key": "APP_MAINTENANCE_DRIVER",
+          "label": "APP_MAINTENANCE_DRIVER",
+          "secret": false,
+          "required": true,
+          "default": "file"
+        },
+        {
+          "key": "JAVMETA_NODE_NAME",
+          "label": "JAVMETA_NODE_NAME",
+          "secret": false,
+          "required": true,
+          "default": "xcrawler"
+        },
+        {
+          "key": "JAVMETA_ROLE",
+          "label": "JAVMETA_ROLE",
+          "secret": false,
+          "required": true,
+          "default": "api"
+        },
+        {
+          "key": "ACTIVITY_LOG_CONNECTION",
+          "label": "ACTIVITY_LOG_CONNECTION",
+          "secret": false,
+          "required": true,
+          "default": "mongodb"
+        },
+        {
+          "key": "ACTIVITY_LOG_COLLECTION",
+          "label": "ACTIVITY_LOG_COLLECTION",
+          "secret": false,
+          "required": true,
+          "default": "activity_logs"
+        },
+        {
+          "key": "HORIZON_PREFIX",
+          "label": "HORIZON_PREFIX",
+          "secret": false,
+          "required": true,
+          "default": "@APP_NAME@:horizon:"
+        },
+        {
+          "key": "QUEUE_CONNECTION",
+          "label": "QUEUE_CONNECTION",
+          "secret": false,
+          "required": true,
+          "default": "redis"
+        },
+        {
+          "key": "CACHE_STORE",
+          "label": "CACHE_STORE",
+          "secret": false,
+          "required": true,
+          "default": "redis"
+        },
+        {
+          "key": "CACHE_PREFIX",
+          "label": "CACHE_PREFIX",
+          "secret": false,
+          "required": true,
+          "default": "@APP_NAME@:cache:"
+        },
+        {
+          "key": "SESSION_DRIVER",
+          "label": "SESSION_DRIVER",
+          "secret": false,
+          "required": true,
+          "default": "redis"
+        },
+        {
+          "key": "SESSION_CONNECTION",
+          "label": "SESSION_CONNECTION",
+          "secret": false,
+          "required": true,
+          "default": "default"
+        },
+        {
+          "key": "SESSION_COOKIE",
+          "label": "SESSION_COOKIE",
+          "secret": false,
+          "required": true,
+          "default": "xcrawler_session"
+        },
+        {
+          "key": "SESSION_SECURE_COOKIE",
+          "label": "SESSION_SECURE_COOKIE",
+          "secret": false,
+          "required": true,
+          "default": "true"
+        },
+        {
+          "key": "SESSION_HTTP_ONLY",
+          "label": "SESSION_HTTP_ONLY",
+          "secret": false,
+          "required": true,
+          "default": "true"
+        },
+        {
+          "key": "SESSION_SAME_SITE",
+          "label": "SESSION_SAME_SITE",
+          "secret": false,
+          "required": true,
+          "default": "lax"
+        },
+        {
+          "key": "SESSION_DOMAIN",
+          "label": "SESSION_DOMAIN",
+          "secret": false,
+          "required": false,
+          "default": ""
+        },
+        {
+          "key": "CRAWLERX_NODE",
+          "label": "CRAWLERX_NODE",
+          "secret": false,
+          "required": true,
+          "default": "/usr/bin/node"
+        },
+        {
+          "key": "CRAWLERX_PLAYWRIGHT_SCRIPT",
+          "label": "CRAWLERX_PLAYWRIGHT_SCRIPT",
+          "secret": false,
+          "required": true,
+          "default": "@TARGET_DIR@/current/vendor/jooservices/crawlerx/scripts/playwright-fetch.mjs"
+        },
+        {
+          "key": "LOG_CHANNEL",
+          "label": "LOG_CHANNEL",
+          "secret": false,
+          "required": true,
+          "default": "stack"
+        },
+        {
+          "key": "LOG_STACK",
+          "label": "LOG_STACK",
+          "secret": false,
+          "required": true,
+          "default": "daily,openobserve"
+        },
+        {
+          "key": "LOG_LEVEL",
+          "label": "LOG_LEVEL",
+          "secret": false,
+          "required": true,
+          "default": "info"
+        },
+        {
+          "key": "MAIL_MAILER",
+          "label": "MAIL_MAILER",
+          "secret": false,
+          "required": true,
+          "default": "log"
+        },
+        {
+          "key": "UI_HOST",
+          "label": "UI hostname",
+          "setting": "domains.ui_host",
+          "secret": false,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "CC_HOST",
+          "label": "Command center hostname",
+          "setting": "domains.command_center_host",
+          "secret": false,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "JAVMETA_WORKERS_PER_QUEUE",
+          "label": "JAVMETA_WORKERS_PER_QUEUE",
+          "default": "2",
+          "required": true,
+          "secret": false,
+          "description": "Horizon reads this environment key ONLY; queue.workers_per_queue in the database cannot configure Horizon."
+        },
+        {
+          "key": "MEDIA_API_URL",
+          "label": "MEDIA_API_URL",
+          "default": "",
+          "required": false,
+          "secret": false,
+          "setting": "media.api_url"
+        }
+      ]
+    },
+    {
+      "id": "postgres",
+      "label": "PostgreSQL",
+      "validation": "postgres",
+      "optional": false,
+      "fields": [
+        {
+          "key": "DB_CONNECTION",
+          "label": "DB_CONNECTION",
+          "secret": false,
+          "required": true,
+          "default": "pgsql"
+        },
+        {
+          "key": "DB_HOST",
+          "label": "DB_HOST",
+          "secret": false,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "DB_PORT",
+          "label": "DB_PORT",
+          "secret": false,
+          "required": true,
+          "default": "5432"
+        },
+        {
+          "key": "DB_DATABASE",
+          "label": "DB_DATABASE",
+          "secret": false,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "DB_USERNAME",
+          "label": "DB_USERNAME",
+          "secret": false,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "DB_PASSWORD",
+          "label": "DB_PASSWORD",
+          "secret": true,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "DB_SSLMODE",
+          "label": "DB_SSLMODE",
+          "secret": false,
+          "required": true,
+          "default": "require"
+        }
+      ]
+    },
+    {
+      "id": "mongo",
+      "label": "MongoDB",
+      "validation": "mongo",
+      "optional": false,
+      "fields": [
+        {
+          "key": "MONGO_HOST",
+          "label": "MONGO_HOST",
+          "secret": false,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "MONGO_PORT",
+          "label": "MONGO_PORT",
+          "secret": false,
+          "required": true,
+          "default": "27017"
+        },
+        {
+          "key": "MONGO_DATABASE",
+          "label": "MONGO_DATABASE",
+          "secret": false,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "MONGO_URI",
+          "label": "MONGO_URI",
+          "secret": true,
+          "required": false,
+          "default": ""
+        },
+        {
+          "key": "MONGO_USERNAME",
+          "label": "MONGO_USERNAME",
+          "default": "",
+          "required": true,
+          "secret": false
+        },
+        {
+          "key": "MONGO_PASSWORD",
+          "label": "MONGO_PASSWORD",
+          "default": "",
+          "required": true,
+          "secret": true
+        },
+        {
+          "key": "MONGO_AUTH_SOURCE",
+          "label": "MONGO_AUTH_SOURCE",
+          "default": "admin",
+          "required": true,
+          "secret": false
+        }
+      ]
+    },
+    {
+      "id": "redis",
+      "label": "Redis",
+      "validation": "redis",
+      "optional": false,
+      "fields": [
+        {
+          "key": "REDIS_CLIENT",
+          "label": "REDIS_CLIENT",
+          "secret": false,
+          "required": true,
+          "default": "phpredis"
+        },
+        {
+          "key": "REDIS_HOST",
+          "label": "REDIS_HOST",
+          "secret": false,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "REDIS_PORT",
+          "label": "REDIS_PORT",
+          "secret": false,
+          "required": true,
+          "default": "6379"
+        },
+        {
+          "key": "REDIS_USERNAME",
+          "label": "REDIS_USERNAME",
+          "secret": false,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "REDIS_PASSWORD",
+          "label": "REDIS_PASSWORD",
+          "secret": true,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "REDIS_DB",
+          "label": "REDIS_DB",
+          "secret": false,
+          "required": true,
+          "default": "0"
+        },
+        {
+          "key": "REDIS_CACHE_DB",
+          "label": "REDIS_CACHE_DB",
+          "secret": false,
+          "required": true,
+          "default": "1"
+        },
+        {
+          "key": "REDIS_PREFIX",
+          "label": "REDIS_PREFIX",
+          "secret": false,
+          "required": true,
+          "default": "@APP_NAME@:"
+        }
+      ]
+    },
+    {
+      "id": "elasticsearch",
+      "label": "Elasticsearch HTTPS",
+      "validation": "elasticsearch",
+      "optional": false,
+      "fields": [
+        {
+          "key": "ELASTICSEARCH_HOST",
+          "label": "ELASTICSEARCH_HOST",
+          "secret": false,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "ELASTICSEARCH_API_KEY",
+          "label": "ELASTICSEARCH_API_KEY",
+          "secret": true,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "ELASTICSEARCH_VERIFY_SSL",
+          "label": "ELASTICSEARCH_VERIFY_SSL",
+          "secret": false,
+          "required": true,
+          "default": "true"
+        },
+        {
+          "key": "ELASTICSEARCH_MOVIES_INDEX",
+          "label": "ELASTICSEARCH_MOVIES_INDEX",
+          "secret": false,
+          "required": true,
+          "default": "xcrawler_movies",
+          "setting": "search.movies_index",
+          "env": true
+        },
+        {
+          "key": "ELASTICSEARCH_PERFORMERS_INDEX",
+          "label": "ELASTICSEARCH_PERFORMERS_INDEX",
+          "secret": false,
+          "required": true,
+          "default": "xcrawler_performers",
+          "setting": "search.performers_index",
+          "env": true
+        },
+        {
+          "key": "ELASTICSEARCH_CA",
+          "label": "Elasticsearch CA PEM file (empty uses system trust)",
+          "secret": false,
+          "required": false,
+          "default": ""
+        },
+        {
+          "key": "EMBEDDER_DIM",
+          "label": "Embedding dimensions",
+          "default": "384",
+          "required": true,
+          "secret": false
+        },
+        {
+          "key": "SCENES_INDEX",
+          "label": "Scene vector index (database setting)",
+          "default": "xcrawler_scenes",
+          "setting": "media.scenes_index",
+          "required": true,
+          "secret": false
+        }
+      ]
+    },
+    {
+      "id": "embedder",
+      "label": "Embedding service",
+      "validation": "http",
+      "optional": true,
+      "fields": [
+        {
+          "key": "EMBEDDER_URL",
+          "label": "EMBEDDER_URL",
+          "secret": false,
+          "required": true,
+          "default": "http://127.0.0.1:8000",
+          "setting": "search.embedder_url",
+          "env": true
+        }
+      ]
+    },
+    {
+      "id": "flare",
+      "label": "FlareSolverr",
+      "validation": "flare",
+      "optional": false,
+      "fields": [
+        {
+          "key": "FLARESOLVERR_URL",
+          "label": "FLARESOLVERR_URL",
+          "secret": false,
+          "required": true,
+          "default": ""
+        }
+      ]
+    },
+    {
+      "id": "playwright",
+      "label": "Playwright fetch",
+      "validation": "http",
+      "optional": false,
+      "fields": [
+        {
+          "key": "PLAYWRIGHT_URL",
+          "label": "PLAYWRIGHT_URL",
+          "secret": false,
+          "required": true,
+          "default": ""
+        }
+      ]
+    },
+    {
+      "id": "openobserve",
+      "label": "OpenObserve ingest",
+      "validation": "openobserve",
+      "optional": false,
+      "fields": [
+        {
+          "key": "OPENOBSERVE_URL",
+          "label": "OPENOBSERVE_URL",
+          "secret": false,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "OPENOBSERVE_ORG",
+          "label": "OPENOBSERVE_ORG",
+          "secret": false,
+          "required": true,
+          "default": "default"
+        },
+        {
+          "key": "OPENOBSERVE_STREAM_LOGS",
+          "label": "OPENOBSERVE_STREAM_LOGS",
+          "secret": false,
+          "required": true,
+          "default": "xcrawler_logs"
+        },
+        {
+          "key": "OPENOBSERVE_STREAM_METRICS",
+          "label": "OPENOBSERVE_STREAM_METRICS",
+          "secret": false,
+          "required": true,
+          "default": "xcrawler_metrics"
+        },
+        {
+          "key": "OPENOBSERVE_SERVICE_NAME",
+          "label": "OPENOBSERVE_SERVICE_NAME",
+          "secret": false,
+          "required": true,
+          "default": "XCrawler"
+        },
+        {
+          "key": "OPENOBSERVE_EMAIL",
+          "label": "OPENOBSERVE_EMAIL",
+          "secret": false,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "OPENOBSERVE_PASSWORD",
+          "label": "OPENOBSERVE_PASSWORD",
+          "secret": true,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "OPENOBSERVE_ENABLED",
+          "label": "OPENOBSERVE_ENABLED",
+          "default": "true",
+          "required": true,
+          "secret": false,
+          "setting": "observability.openobserve_enabled"
+        }
+      ]
+    },
+    {
+      "id": "sentry",
+      "label": "Sentry DSN",
+      "validation": "sentry",
+      "optional": true,
+      "fields": [
+        {
+          "key": "JAVMETA_SENTRY_DSN",
+          "label": "JAVMETA_SENTRY_DSN",
+          "secret": true,
+          "required": true,
+          "default": ""
+        },
+        {
+          "key": "SENTRY_ENVIRONMENT",
+          "label": "SENTRY_ENVIRONMENT",
+          "secret": false,
+          "required": true,
+          "default": "production"
+        },
+        {
+          "key": "SENTRY_RELEASE",
+          "label": "SENTRY_RELEASE",
+          "secret": false,
+          "required": false,
+          "default": ""
+        }
+      ]
+    },
+    {
+      "id": "legacy",
+      "label": "Legacy API integrations",
+      "validation": "none",
+      "optional": true,
+      "fields": [
+        {
+          "key": "JAVMETA_OWNER_ADMIN_TOKEN",
+          "label": "JAVMETA_OWNER_ADMIN_TOKEN",
+          "secret": true,
+          "required": false,
+          "default": ""
+        },
+        {
+          "key": "JAVMETA_MCP_API_KEY",
+          "label": "JAVMETA_MCP_API_KEY",
+          "secret": true,
+          "required": false,
+          "default": ""
+        }
+      ]
+    },
+    {
+      "id": "ollama",
+      "label": "Ollama",
+      "validation": "ollama",
+      "optional": true,
+      "fields": [
+        {
+          "key": "OLLAMA_URL",
+          "label": "Ollama URL (database setting ai.ollama_url)",
+          "secret": false,
+          "required": true,
+          "default": "",
+          "setting": "ai.ollama_url"
+        }
+      ]
+    },
+    {
+      "id": "telegram",
+      "label": "Telegram (optional)",
+      "validation": "telegram",
+      "optional": true,
+      "fields": [
+        {
+          "key": "TELEGRAM_API_BASE",
+          "label": "Telegram API base",
+          "default": "https://api.telegram.org",
+          "required": true,
+          "secret": false,
+          "setting": "telegram.api_base"
+        },
+        {
+          "key": "TELEGRAM_BOT_TOKEN",
+          "label": "Telegram bot token",
+          "default": "",
+          "required": true,
+          "secret": true,
+          "setting": "telegram.bot_token"
+        },
+        {
+          "key": "TELEGRAM_CHAT_ID",
+          "label": "Telegram owner chat ID",
+          "default": "",
+          "required": true,
+          "secret": false,
+          "setting": "telegram.chat_id"
+        }
+      ]
+    }
+  ],
+  "node": {
+    "os_release": "/etc/os-release",
+    "minimum_ubuntu": 24,
+    "php_ppa": "ppa:ondrej/php",
+    "node_key": "https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key",
+    "node_repo": "https://deb.nodesource.com/node_24.x",
+    "pg_key": "https://www.postgresql.org/media/keys/ACCC4CF8.asc",
+    "pg_repo": "https://apt.postgresql.org/pub/repos/apt",
+    "composer_installer": "https://getcomposer.org/installer",
+    "composer_signature": "https://composer.github.io/installer.sig",
+    "composer_dir": "/usr/local/bin",
+    "sudoers_dir": "/etc/sudoers.d",
+    "unit_dir": "/etc/systemd/system",
+    "fpm_pool_dir": "/etc/php/8.5/fpm/pool.d",
+    "nginx_available": "/etc/nginx/sites-available",
+    "nginx_enabled": "/etc/nginx/sites-enabled",
+    "node_key_path": "/usr/share/keyrings/nodesource.gpg",
+    "node_list_path": "/etc/apt/sources.list.d/nodesource.list",
+    "pg_key_path": "/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc",
+    "pg_list_path": "/etc/apt/sources.list.d/pgdg.list",
+    "packages": [
+      "ca-certificates",
+      "curl",
+      "gnupg",
+      "software-properties-common",
+      "git",
+      "gh",
+      "unzip",
+      "jq",
+      "nginx",
+      "python3-venv",
+      "python3-pip",
+      "redis-tools",
+      "prometheus-node-exporter",
+      "sudo"
+    ],
+    "runtime_packages": [
+      "php8.5-cli",
+      "php8.5-fpm",
+      "php8.5-pgsql",
+      "php8.5-mongodb",
+      "php8.5-redis",
+      "php8.5-intl",
+      "php8.5-mbstring",
+      "php8.5-xml",
+      "php8.5-curl",
+      "php8.5-zip",
+      "php8.5-bcmath",
+      "nodejs",
+      "postgresql-client-18"
+    ],
+    "ca_directory": "/usr/local/share/ca-certificates"
+  }
+}

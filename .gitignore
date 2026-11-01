@@ -28,3 +28,6 @@ __pycache__/
 /build
 /.php-cs-fixer.cache
 /.tmp/
+
+# Operator answers contain installation credentials.
+/deploy/answers*.json

@@ -1,90 +1,81 @@
 #!/usr/bin/env bash
-# Run once (or again) as root on a fresh Ubuntu LTS node, never on the workstation.
-set -euo pipefail
-[[ "$EUID" == 0 ]] || { echo 'Run as root on the production node.' >&2; exit 1; }
-# shellcheck source=/dev/null
-source /etc/os-release
-[[ "$ID" == ubuntu && "${VERSION_ID%%.*}" -ge 24 ]] || { echo 'Ubuntu 24.04 or newer required.' >&2; exit 1; }
+# Invoked by the wizard on an approved Ubuntu node only. Never on the workstation.
+set -Eeuo pipefail
+set +x
+[[ "$EUID" == 0 ]] || { echo 'Run prerequisite installation as root.' >&2; exit 1; }
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
+manifest="$root/deploy/manifest.json"
+command -v jq >/dev/null || { echo 'Bootstrap jq with the OS package manager first.' >&2; exit 1; }
+node_value() { jq -er --arg key "$1" '.node[$key]' "$manifest"; }
+: "${TARGET_DIR:?}" "${SERVICE_USER:?}" "${UNIT_PREFIX:?}" "${GATEKEEPER_ADDRESS:?}" "${UI_HOST:?}" "${CC_HOST:?}" "${PHP_BINARY:?}" "${FPM_UNIT:?}" "${EMBEDDER_BIND:?}" "${EMBEDDER_PORT:?}"
+[[ "$TARGET_DIR" =~ ^/[a-zA-Z0-9_./-]+$ && "$TARGET_DIR" != / && "$SERVICE_USER" =~ ^[a-z_][a-z0-9_-]*$ && "$UNIT_PREFIX" =~ ^[a-zA-Z0-9_-]+$ ]] || exit 1
+# shellcheck source=/dev/null
+source "$(node_value os_release)"
+[[ "$ID" == ubuntu && "${VERSION_ID%%.*}" -ge "$(node_value minimum_ubuntu)" ]] || { echo 'Unsupported Ubuntu version.' >&2; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y ca-certificates curl gnupg software-properties-common git gh unzip jq nginx python3-venv python3-pip redis-tools prometheus-node-exporter sudo
-# Official PHP image uses source builds; on native Ubuntu use the maintained Ondrej PPA.
-add-apt-repository -y ppa:ondrej/php
-curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/nodesource.gpg
-printf 'deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main\n' > /etc/apt/sources.list.d/nodesource.list
-# PG18 tools read PG18 dumps; Ubuntu 24.04's default client cannot dump a newer server.
-install -d /usr/share/postgresql-common/pgdg
-curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
-printf 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt %s-pgdg main\n' "$VERSION_CODENAME" > /etc/apt/sources.list.d/pgdg.list
+mapfile -t packages < <(jq -r '.node.packages[]' "$manifest")
+apt-get install -y "${packages[@]}"
+add-apt-repository -y "$(node_value php_ppa)"
+curl -fsSL "$(node_value node_key)" | gpg --dearmor --yes -o "$(node_value node_key_path)"
+printf 'deb [signed-by=%s] %s nodistro main\n' "$(node_value node_key_path)" "$(node_value node_repo)" > "$(node_value node_list_path)"
+install -d "$(dirname -- "$(node_value pg_key_path)")"
+curl -fsSL "$(node_value pg_key)" -o "$(node_value pg_key_path)"
+printf 'deb [signed-by=%s] %s %s-pgdg main\n' "$(node_value pg_key_path)" "$(node_value pg_repo)" "$VERSION_CODENAME" > "$(node_value pg_list_path)"
 apt-get update
-apt-get install -y php8.5-cli php8.5-fpm php8.5-pgsql php8.5-mongodb php8.5-redis php8.5-intl php8.5-mbstring php8.5-xml php8.5-curl php8.5-zip php8.5-bcmath nodejs postgresql-client-18
-update-alternatives --set php /usr/bin/php8.5
-# shellcheck disable=SC2016 # PHP variables are interpreted by PHP.
-php8.5 -r 'foreach (["mongodb", "redis", "pdo_pgsql", "pcntl", "intl", "mbstring"] as $ext) { if (!extension_loaded($ext)) { exit(1); } }'
-# Verify the installer signature before executing; do not replace an existing Composer binary.
-if [[ ! -x /usr/local/bin/composer ]]; then
+mapfile -t packages < <(jq -r '.node.runtime_packages[]' "$manifest")
+apt-get install -y "${packages[@]}"
+# shellcheck disable=SC2016 # PHP evaluates these expressions.
+"$PHP_BINARY" -r 'foreach (["mongodb", "redis", "pdo_pgsql", "pcntl", "intl", "mbstring"] as $ext) { if (!extension_loaded($ext)) { exit(1); } }'
+if [[ ! -x "$(node_value composer_dir)/composer" ]]; then
   installer="$(mktemp)"
   trap 'rm -f "$installer"' EXIT
-  curl -fsSL https://getcomposer.org/installer -o "$installer"
-  expected="$(curl -fsSL https://composer.github.io/installer.sig)"
+  curl -fsSL "$(node_value composer_installer)" -o "$installer"
+  expected="$(curl -fsSL "$(node_value composer_signature)")"
   [[ "$(sha384sum "$installer" | cut -d ' ' -f1)" == "$expected" ]]
-  php8.5 "$installer" --install-dir=/usr/local/bin --filename=composer
+  "$PHP_BINARY" "$installer" --install-dir="$(node_value composer_dir)" --filename=composer
   rm -f "$installer"
   trap - EXIT
 fi
-id xcrawler >/dev/null 2>&1 || useradd --system --home-dir /var/www/xcrawler --shell /usr/sbin/nologin xcrawler
-usermod -aG xcrawler www-data
-install -d -o xcrawler -g xcrawler -m 2750 /var/www/xcrawler /var/www/xcrawler/releases /var/www/xcrawler/shared
-for path in app/private app/public framework/cache/data framework/sessions framework/views logs; do
-  install -d -o xcrawler -g xcrawler -m 2770 "/var/www/xcrawler/shared/storage/$path"
+id "$SERVICE_USER" >/dev/null 2>&1 || useradd --system --home-dir "$TARGET_DIR" --shell /usr/sbin/nologin "$SERVICE_USER"
+usermod -aG "$SERVICE_USER" www-data
+install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 2750 "$TARGET_DIR" "$TARGET_DIR/releases" "$TARGET_DIR/shared"
+for folder in app/private app/public framework/cache/data framework/sessions framework/views logs; do
+  install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 2770 "$TARGET_DIR/shared/storage/$folder"
 done
-install -d -o xcrawler -g xcrawler -m 2770 /var/www/xcrawler/shared/huggingface
-# Preserve an existing .env; the operator fills it privately before first deployment.
-if [[ ! -e /var/www/xcrawler/shared/.env ]]; then
-  install -o xcrawler -g xcrawler -m 0640 "$root/deploy/production/env.production.example" /var/www/xcrawler/shared/.env
+install -d -o "$SERVICE_USER" -g "$SERVICE_USER" -m 2770 "$TARGET_DIR/shared/huggingface"
+if [[ ! -x "$TARGET_DIR/shared/embedder-venv/bin/python" ]]; then
+  runuser -u "$SERVICE_USER" -- python3 -m venv "$TARGET_DIR/shared/embedder-venv"
 fi
-if [[ ! -x /var/www/xcrawler/shared/embedder-venv/bin/python ]]; then
-  runuser -u xcrawler -- python3 -m venv /var/www/xcrawler/shared/embedder-venv
+runuser -u "$SERVICE_USER" -- "$TARGET_DIR/shared/embedder-venv/bin/pip" install -r "$root/embedder/requirements.production.txt"
+# shellcheck source=deploy/lib/node-template.sh
+source "$root/deploy/lib/node-template.sh"
+if [[ "$NODE_ROLE" == primary ]]; then
+render_node_template "$root/deploy/production/node/xcrawler-fpm.conf" "$(node_value fpm_pool_dir)/$UNIT_PREFIX.conf"
+render_node_template "$root/deploy/production/node/xcrawler.nginx.conf" "$(node_value nginx_available)/$UNIT_PREFIX"
+ln -sfn "$(node_value nginx_available)/$UNIT_PREFIX" "$(node_value nginx_enabled)/$UNIT_PREFIX"
 fi
-runuser -u xcrawler -- /var/www/xcrawler/shared/embedder-venv/bin/pip install -r "$root/embedder/requirements.production.txt"
-configuration_changed=0
-install_if_changed() {
-  local source_file="$1" target="$2" mode="$3"
-  if ! cmp -s "$source_file" "$target" || [[ "$(stat -c '%a' "$target" 2>/dev/null || true)" != "${mode#0}" ]]; then
-    install -m "$mode" "$source_file" "$target"
-    configuration_changed=1
-  fi
-}
-install_if_changed "$root/deploy/production/node/xcrawler-fpm.conf" /etc/php/8.5/fpm/pool.d/xcrawler.conf 0644
-install_if_changed "$root/deploy/production/node/xcrawler.nginx.conf" /etc/nginx/sites-available/xcrawler 0644
-if [[ ! -L /etc/nginx/sites-enabled/xcrawler || "$(readlink /etc/nginx/sites-enabled/xcrawler)" != /etc/nginx/sites-available/xcrawler ]]; then
-  ln -sfn /etc/nginx/sites-available/xcrawler /etc/nginx/sites-enabled/xcrawler
-  configuration_changed=1
-fi
-for service in horizon scheduler embedder; do
-  install_if_changed "$root/deploy/production/node/xcrawler-$service.service" "/etc/systemd/system/xcrawler-$service.service" 0644
+for service in horizon embedder; do
+  render_node_template "$root/deploy/production/node/xcrawler-$service.service" "$(node_value unit_dir)/$UNIT_PREFIX-$service.service"
 done
-# The deployment account can control these units only, never arbitrary systemd services.
-sudoers_file="$(mktemp)"
-trap 'rm -f "$sudoers_file"' EXIT
-cat > "$sudoers_file" <<'SUDOERS'
-xcrawler ALL=(root) NOPASSWD: /usr/bin/systemctl stop xcrawler-scheduler xcrawler-horizon, /usr/bin/systemctl restart php8.5-fpm xcrawler-embedder xcrawler-horizon, /usr/bin/systemctl start xcrawler-scheduler, /usr/bin/systemctl restart php8.5-fpm xcrawler-embedder xcrawler-horizon xcrawler-scheduler, /usr/bin/systemctl stop xcrawler-horizon xcrawler-scheduler xcrawler-embedder
-SUDOERS
-if ! cmp -s "$sudoers_file" /etc/sudoers.d/xcrawler-units || [[ "$(stat -c '%a' /etc/sudoers.d/xcrawler-units 2>/dev/null || true)" != 440 ]]; then
-  install -m 0440 "$sudoers_file" /etc/sudoers.d/xcrawler-units
-  configuration_changed=1
+if [[ "$NODE_ROLE" == primary ]]; then
+  render_node_template "$root/deploy/production/node/xcrawler-scheduler.service" "$(node_value unit_dir)/$UNIT_PREFIX-scheduler.service"
 fi
-visudo -cf /etc/sudoers.d/xcrawler-units
-nginx -t
-php-fpm8.5 -t
+# Only these complete command vectors can be invoked by the service account.
+sudoers="$(node_value sudoers_dir)/$UNIT_PREFIX-units"
+# Restrict privilege to individual manifest-selected units; scheduler remains opt-in.
+: > "$sudoers"
+units=("$UNIT_PREFIX-horizon" "$UNIT_PREFIX-embedder")
+if [[ "$NODE_ROLE" == primary ]]; then units+=("$FPM_UNIT" "$NGINX_UNIT" "$UNIT_PREFIX-scheduler"); fi
+for unit in "${units[@]}"; do
+  for action in stop start restart enable is-active; do
+    printf '%s ALL=(root) NOPASSWD: /usr/bin/systemctl %s %s\n' "$SERVICE_USER" "$action" "$unit" >> "$sudoers"
+  done
+done
+chmod 440 "$sudoers"
+visudo -cf "$sudoers"
+if [[ "$NODE_ROLE" == primary ]]; then nginx -t; fi
 systemctl daemon-reload
-systemctl enable nginx php8.5-fpm prometheus-node-exporter xcrawler-horizon xcrawler-scheduler xcrawler-embedder
-# App units start after the first release. Configure the node firewall to allow HTTP only from the TLS gatekeeper.
-if (( configuration_changed )); then
-  systemctl restart nginx php8.5-fpm
-  systemctl try-restart xcrawler-horizon xcrawler-scheduler xcrawler-embedder
-else
-  systemctl start nginx php8.5-fpm
-fi
-systemctl start prometheus-node-exporter
+# Enable/start is deferred to the wizard after release verification.
+# Application units start only after the wizard creates and verifies a release.
+echo 'Node prerequisites and rendered configuration verified.'

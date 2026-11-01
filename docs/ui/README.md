@@ -127,3 +127,7 @@ The per-method report is an operator command, not a new UI screen; see
 Native XCrawler production has independent host/index settings. See the
 [production operator runbook](../../deploy/production/README.md)
 for the Settings-page checklist; restarting Horizon on that node uses `xcrawler-horizon`.
+
+Installation operators use the [install/deploy wizard](../03-operations/install-wizard.md).
+Initial host and service answers initialize missing database settings; later
+changes made in **Settings** remain authoritative across deployments.

@@ -4,9 +4,9 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-: "${JAVMETA_APP_DIR:=/home/joos/javmeta}"
-: "${JAVMETA_REPO_URL:=https://github.com/jooservices/javmeta.git}"
-: "${JAVMETA_BRANCH:=develop}"
+: "${JAVMETA_APP_DIR:?Set the application directory}"
+: "${JAVMETA_REPO_URL:?Set the repository URL}"
+: "${JAVMETA_BRANCH:?Set the ref to deploy}"
 : "${JAVMETA_COMPOSE_FILE:=docker-compose.yml}"
 : "${JAVMETA_PHP_SERVICE:=api}"
 : "${JAVMETA_WORKER_INSTANCES:=1}"
