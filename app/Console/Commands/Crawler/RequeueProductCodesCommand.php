@@ -13,7 +13,7 @@ final class RequeueProductCodesCommand extends Command
 {
     protected $signature = 'crawler:requeue-product-codes {--dry-run : Report matching counts without changing rows}';
 
-    protected $description = 'Retry failed product-code rows for javbtc, ffjav, tokyohot and 141jav.';
+    protected $description = 'Retry failed detail rows with parse/normalization errors for javbtc, ffjav, tokyohot and 141jav.';
 
     public function handle(): int
     {

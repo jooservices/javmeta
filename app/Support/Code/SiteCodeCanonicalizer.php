@@ -38,14 +38,31 @@ final class SiteCodeCanonicalizer
             }
         }
 
-        if (in_array($slug, ['javbtc', 'ffjav', 'tokyohot', '141jav'], true) && $sourceUrl !== null) {
-            $path = parse_url($sourceUrl, PHP_URL_PATH);
-            if (is_string($path) && trim($path, '/') !== '') {
-                return strtoupper($slug) . '-DERIVED-' . strtoupper(hash('sha256', rtrim($path, '/')));
-            }
+        $path = self::detailPath($slug, $sourceUrl);
+        if ($path !== null) {
+            return strtoupper($slug) . '-DERIVED-' . strtoupper(hash('sha256', $path));
         }
 
         return null;
+    }
+
+    /** @return non-empty-string|null */
+    private static function detailPath(string $slug, ?string $sourceUrl): ?string
+    {
+        $prefix = match ($slug) {
+            'javbtc' => 'r18',
+            'ffjav', '141jav' => 'torrent',
+            'tokyohot' => 'product',
+            default => null,
+        };
+        $path = $sourceUrl === null ? null : parse_url($sourceUrl, PHP_URL_PATH);
+        if ($prefix === null || ! is_string($path)) {
+            return null;
+        }
+
+        $path = rtrim($path, '/');
+
+        return preg_match('~^/' . $prefix . '/[^/]+$~D', $path) === 1 ? $path : null;
     }
 
     /**

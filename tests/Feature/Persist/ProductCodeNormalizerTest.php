@@ -40,7 +40,7 @@ final class ProductCodeNormalizerTest extends TestCase
         self::assertSame($expected, $draft->code);
         $persister = app(MoviePersister::class);
         $first = $persister->persist($draft);
-        $recrawl = $normalizer->normalizeMovie($movie, [], $slug, $url . '?tracking=second', CarbonImmutable::parse('2026-11-02'));
+        $recrawl = $normalizer->normalizeMovie($movie, [], $slug, $url . '?id=SSIS-001&campaign=SONE-763#YMDS-282', CarbonImmutable::parse('2026-11-02'));
         $second = $persister->persist($recrawl, isRecrawl: true);
         self::assertSame($first->getKey(), $second->getKey());
         self::assertSame(1, Movie::query()->count());

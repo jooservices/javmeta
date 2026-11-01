@@ -19,6 +19,19 @@ use Tests\TestCase;
 
 final class SourceNormalizerTest extends TestCase
 {
+    public function test_other_sources_keep_product_ids_from_query_parameters(): void
+    {
+        $draft = $this->registry()->forSlug('xcity')->normalizeMovie(
+            new MovieDto(title: 'Product title'),
+            [],
+            'xcity',
+            'https://xcity.jp/avod/detail/?id=202424',
+            CarbonImmutable::parse('2026-11-01'),
+        );
+
+        self::assertSame('XCITY-202424', $draft->code);
+    }
+
     public function test_default_normalizer_maps_typed_fields_and_known_metadata_keys(): void
     {
         $normalizer = $this->registry()->forSlug('onejav');

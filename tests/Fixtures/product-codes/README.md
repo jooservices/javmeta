@@ -15,7 +15,9 @@ profiles and unrelated product metadata are omitted.
 
 Each fixture is parsed by the locked CrawlerX dependency, passed through the
 javmeta detail job and persisted twice to check that a re-crawl cannot duplicate
-its movie. The unit/feature product cases additionally check source scoping and tracking
+its movie. The second response changes the title and uses tracking parameters
+containing unrelated DVD codes to verify both field updates and identity stability.
+The unit/feature product cases additionally check source scoping and tracking
 parameter stability without requiring live HTTP in CI.
 
 `ffjav.html` was captured from

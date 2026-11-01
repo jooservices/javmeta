@@ -8,7 +8,9 @@ use App\Models\CrawlQueue;
 use App\Models\Movie;
 use App\Models\MovieCode;
 use App\Support\Code\NormalizedCode;
+use JOOservices\Client\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Symfony\Component\DomCrawler\Crawler;
 
 final class ProductCodeFixtureTest extends CrawlerxContractTestCase
 {
@@ -37,12 +39,28 @@ final class ProductCodeFixtureTest extends CrawlerxContractTestCase
         self::assertSame(NormalizedCode::from($code)->value(), $movie->getAttribute('code_normalized'));
         self::assertNotEmpty($movie->getAttribute('title_en') ?? $movie->getAttribute('title_jp'));
 
-        $row->update(['status' => CrawlQueue::STATUS_CLAIMED]);
-        $this->respondWithFixture($url, $path);
+        $titleColumn = $movie->getAttribute('title_en') !== null ? 'title_en' : 'title_jp';
+        $title = $movie->getAttribute($titleColumn);
+        $crawler = new Crawler((string) file_get_contents($path));
+        $selector = match ($slug) {
+            'javbtc' => 'div.a8 + div.a6 a',
+            'tokyohot' => '#main .contents > h2',
+            default => 'h5.title a',
+        };
+        $node = $crawler->filter($selector)->first()->getNode(0);
+        self::assertNotNull($node);
+        $node->textContent = rtrim($node->textContent) . ' updated';
+        $trackedUrl = $url . '?campaign=SSIS-001&id=SONE-763#YMDS-282';
+        $this->travel(1)->minutes();
+        $row->update(['status' => CrawlQueue::STATUS_CLAIMED, 'url' => $trackedUrl]);
+        foreach ([$url, $trackedUrl, explode('#', $trackedUrl, 2)[0]] as $fetchUrl) {
+            $this->respondWith($fetchUrl, TestResponse::make(200, ['Content-Type' => 'text/html'], $crawler->html()));
+        }
         $this->dispatchFor($row);
         self::assertSame(CrawlQueue::STATUS_DONE, $row->refresh()->status, (string) $row->last_error);
         self::assertSame(1, Movie::query()->count());
         self::assertSame(1, MovieCode::query()->count());
         self::assertSame($movie->getKey(), Movie::query()->sole()->getKey());
+        self::assertSame($title . ' updated', $movie->refresh()->getAttribute($titleColumn));
     }
 }

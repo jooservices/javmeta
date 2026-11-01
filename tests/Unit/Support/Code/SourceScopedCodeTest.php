@@ -13,11 +13,14 @@ final class SourceScopedCodeTest extends TestCase
     public function test_fallback_identity_ignores_tracking_and_trailing_slash_but_distinguishes_source_and_path(): void
     {
         $codes = [];
-        foreach (['javbtc', 'ffjav', '141jav', 'tokyohot'] as $slug) {
-            $code = SiteCodeCanonicalizer::resolve($slug, [null], 'https://example.test/product/no-code');
+        foreach (['javbtc' => 'r18', 'ffjav' => 'torrent', '141jav' => 'torrent', 'tokyohot' => 'product'] as $slug => $prefix) {
+            $base = 'https://example.test/' . $prefix;
+            $code = SiteCodeCanonicalizer::resolve($slug, [null], $base . '/no-code');
             self::assertNotNull($code);
-            self::assertSame($code, SiteCodeCanonicalizer::resolve($slug, [], 'https://example.test/product/no-code/?a=1#part'));
-            self::assertNotSame($code, SiteCodeCanonicalizer::resolve($slug, [], 'https://example.test/product/other'));
+            self::assertSame($code, SiteCodeCanonicalizer::resolve($slug, [], $base . '/no-code/?a=1#part'));
+            self::assertNotSame($code, SiteCodeCanonicalizer::resolve($slug, [], $base . '/other'));
+            self::assertNull(SiteCodeCanonicalizer::resolve($slug, [], 'https://example.test/category/other'));
+            self::assertNull(SiteCodeCanonicalizer::resolve($slug, [], $base . '?id=123'));
             self::assertSame($code, NormalizedCode::from($code)->value());
             $codes[] = $code;
         }

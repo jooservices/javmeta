@@ -24,7 +24,12 @@ final class ProductCodeRecoveryTest extends IntegrationTestCase
         ];
         $persister = app(MoviePersister::class);
         foreach ($products as [$slug, $product]) {
-            $url = 'https://example.test/product/' . $product;
+            $prefix = match ($slug) {
+                'javbtc' => 'r18',
+                'tokyohot' => 'product',
+                default => 'torrent',
+            };
+            $url = 'https://example.test/' . $prefix . '/' . $product;
             $normalizer = app(SourceNormalizerRegistry::class)->forSlug($slug);
             $draft = $normalizer->normalizeMovie(
                 new MovieDto(title: 'Product title', externalId: $product),
