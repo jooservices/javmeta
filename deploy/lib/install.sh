@@ -377,6 +377,14 @@ install_main() {
     return
   fi
   prerequisites
+  if [[ "${answers[INSTALL_CA]}" == 1 && -n "${answers[ELASTICSEARCH_CA]}" ]]; then
+    (( ! skip_os )) || die 'CA installation conflicts with --skip-os-install.'
+    local ca_target
+    ca_target="$(jq -r '.node.ca_directory' "$manifest")/${answers[UNIT_PREFIX]}.crt"
+    step 'Install operator supplied CA' sudo install -m 644 "${answers[ELASTICSEARCH_CA]}" "$ca_target"
+    step 'Refresh OS trust' sudo update-ca-certificates
+  fi
+  answers[INSTALL_CA]=0
   if [[ "$(id -un 2>/dev/null || id -u)" != "${answers[SERVICE_USER]}" && "$(id -u)" != "${answers[SERVICE_USER]}" ]]; then
     local preserved='' handoff=(--apply --non-interactive)
     (( ! skip_ci )) || handoff+=(--skip-ci-check)
@@ -398,13 +406,6 @@ install_main() {
     return
   fi
   (( EUID != 0 )) || die 'Composer and application steps must run as an unprivileged service user.'
-  if [[ "${answers[INSTALL_CA]}" == 1 && -n "${answers[ELASTICSEARCH_CA]}" ]]; then
-    (( ! skip_os )) || die 'CA installation conflicts with --skip-os-install.'
-    local ca_target
-    ca_target="$(jq -r '.node.ca_directory' "$manifest")/${answers[UNIT_PREFIX]}.crt"
-    step 'Install operator supplied CA' sudo install -m 644 "${answers[ELASTICSEARCH_CA]}" "$ca_target"
-    step 'Refresh OS trust' sudo update-ca-certificates
-  fi
   build_mongo_uri
   validate_services
   (( ! validate_only )) || return 0

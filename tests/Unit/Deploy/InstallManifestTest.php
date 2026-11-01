@@ -55,5 +55,4 @@ final class InstallManifestTest extends TestCase
         $engine = file_get_contents(dirname(__DIR__, 3) . '/deploy/lib/install.sh');
         $this->assertStringContainsString('${answers[EXPORTER_UNIT]}', $engine);
     }
-
 }

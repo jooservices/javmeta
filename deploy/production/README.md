@@ -128,3 +128,14 @@ proof at production. Use the existing shared runtime/services, `--skip-os-instal
 --no-systemd --no-start`, a local file repository and a local commit SHA.
 External browser service reachability and full started-process readiness require
 separate operator verification when those services are available.
+
+### WSL verification evidence (2026-11-01)
+
+The wizard completed a real first install (13s) and repeat install (11s) in a
+throwaway `wizard279_wt279` namespace on the shared local services, using HTTP
+Elasticsearch with a namespace-only API key and prefix-restricted Redis ACL.
+Both runs used `--skip-os-install --no-systemd --no-start --skip-backup-check`.
+Composer, migrations, settings import, ES setup and owner creation completed.
+The repeat preserved env and owner credentials byte-for-byte; credentials were
+0600 and neither run printed secrets. Browser checks were read-only health/session
+checks; no crawl, production access, OS installation or process start was tested.
