@@ -176,11 +176,11 @@ final class FetchDetailJobTest extends TestCase
         $this->assertNotNull(Source::query()->find('onejav')?->last_error_at);
     }
 
-    public function test_javbtc_detail_without_a_product_code_is_terminal_parse_failed(): void
+    public function test_javbtc_without_a_product_code_or_detail_path_is_terminal_parse_failed(): void
     {
         $source = $this->source('javbtc');
         $row = $this->detailRow($source);
-        $row->forceFill(['url' => 'https://javbtc.com/r18/no-code-detail'])->save();
+        $row->forceFill(['url' => 'https://javbtc.com/'])->save();
         $sink = new FakeMovieDraftSink();
         $this->app->instance(MovieDraftSink::class, $sink);
         $client = $this->fakeClient(CrawlerxFetchResult::movie(new MovieDto(

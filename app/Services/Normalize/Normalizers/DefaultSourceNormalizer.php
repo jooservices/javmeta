@@ -30,7 +30,7 @@ class DefaultSourceNormalizer implements SourceNormalizer
 
     public function normalizeMovie(MovieDto $movie, array $metadata, string $slug, string $sourceUrl, CarbonImmutable $crawledAt): MovieDraft
     {
-        $code = SiteCodeCanonicalizer::resolve($slug, $this->codeCandidates($movie, $metadata, $sourceUrl));
+        $code = SiteCodeCanonicalizer::resolve($slug, $this->codeCandidates($movie, $metadata, $sourceUrl), $sourceUrl);
         $title = $this->titleFrom($movie, $metadata);
 
         if ($code === null || $title === null) {

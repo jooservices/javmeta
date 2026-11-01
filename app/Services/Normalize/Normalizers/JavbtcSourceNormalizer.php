@@ -20,7 +20,7 @@ final class JavbtcSourceNormalizer extends DefaultSourceNormalizer
 
     public function normalizeMovie(MovieDto $movie, array $metadata, string $slug, string $sourceUrl, CarbonImmutable $crawledAt): MovieDraft
     {
-        if (SiteCodeCanonicalizer::resolve($slug, $this->codeCandidates($movie, $metadata, $sourceUrl)) === null) {
+        if (SiteCodeCanonicalizer::resolve($slug, $this->codeCandidates($movie, $metadata, $sourceUrl), $sourceUrl) === null) {
             throw new JavbtcCodeMissingException('JavBTC detail page has no recognizable product code.');
         }
 
