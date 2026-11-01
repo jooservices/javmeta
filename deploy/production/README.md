@@ -139,3 +139,16 @@ Composer, migrations, settings import, ES setup and owner creation completed.
 The repeat preserved env and owner credentials byte-for-byte; credentials were
 0600 and neither run printed secrets. Browser checks were read-only health/session
 checks; no crawl, production access, OS installation or process start was tested.
+
+Host inputs accept exact DNS names (including localhost); wildcard and underscore
+catch-all names are rejected before rendering. Mongo authSource defaults to the
+selected database, and supplied URI TLS/replica-set options survive credential
+encoding. Redis/cache/Horizon defaults match the bundled lowercase `xcrawler:`
+ACL; custom namespaces must supply their matching prefixes.
+
+`--ci-check` requires nonempty check names and repository, including after sudo
+handoff. `--validate-only --apply` performs probes without OS installation or unit
+configuration. `--no-systemd --apply` requires `--no-start`, so simulated unit
+status cannot count as readiness. Started deployments verify active units,
+Horizon supervisors and (only when explicitly started) scheduler heartbeat,
+without requiring crawl data or backup history from a fresh installation.

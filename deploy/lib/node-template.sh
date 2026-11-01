@@ -2,6 +2,7 @@
 # Render only known placeholders, without eval or sed replacement interpretation.
 render_node_template() {
   local source_file="$1" destination="$2" key value content
+  valid_node_hostname "$UI_HOST" && valid_node_hostname "$CC_HOST" || return 1
   content="$(cat "$source_file")"
   for key in TARGET_DIR SERVICE_USER UNIT_PREFIX GATEKEEPER_ADDRESS UI_HOST CC_HOST PHP_BINARY EMBEDDER_BIND EMBEDDER_PORT; do
     value="${!key}"
@@ -34,4 +35,21 @@ node_control() {
   else
     systemctl "$@"
   fi
+}
+
+# Only exact hostnames are supported; wildcard/catch-all server names are not UI domains.
+valid_node_hostname() {
+  local hostname="$1" label labels
+  [[ ${#hostname} -le 253 && "$hostname" != *..* && "$hostname" != .* && "$hostname" != *. ]] || return 1
+  IFS='.' read -ra labels <<< "$hostname"
+  (( ${#labels[@]} )) || return 1
+  for label in "${labels[@]}"; do
+    [[ ${#label} -le 63 && "$label" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$ ]] || return 1
+  done
+}
+
+ensure_node_account() {
+  local account="$1" target="$2"
+  getent group "$account" >/dev/null || groupadd --system "$account"
+  id "$account" >/dev/null 2>&1 || useradd --system --gid "$account" --home-dir "$target" --shell /usr/sbin/nologin "$account"
 }

@@ -40,3 +40,23 @@ WIZARD_NO_SYSTEMD=1 node_control daemon-reload > "$fixture/plan"
 grep -Fxq 'UNIT: daemon-reload' "$fixture/plan"
 [[ "$(wc -l < "$fixture/units")" == "$prior_calls" ]]
 echo 'OK (2 no-systemd assertions)'
+
+for bad in 'ui.example; access_log /tmp/exposed; #' '*.example.test' '_' 'bad..test' '-bad.test' 'bad-.test'; do
+  if valid_node_hostname "$bad"; then echo 'FAIL: unsafe hostname accepted'; exit 1; fi
+done
+for good in localhost ui.example.test ui-name.example.test; do valid_node_hostname "$good"; done
+echo 'OK (9 exact-hostname assertions)'
+getent() { [[ "$GROUP_EXISTS" == 1 ]]; }
+groupadd() { GROUP_EXISTS=1; printf '%s\n' "$*" >> "$fixture/groups"; }
+id() { [[ "$USER_EXISTS" == 1 ]]; }
+useradd() { USER_EXISTS=1; printf '%s\n' "$*" >> "$fixture/users"; }
+GROUP_EXISTS=0 USER_EXISTS=1
+ensure_node_account existing "$TARGET_DIR"
+[[ "$GROUP_EXISTS" == 1 && ! -e "$fixture/users" ]]
+ensure_node_account existing "$TARGET_DIR"
+[[ "$(wc -l < "$fixture/groups")" == 1 ]]
+GROUP_EXISTS=0 USER_EXISTS=0
+ensure_node_account fresh "$TARGET_DIR"
+grep -q -- '--gid fresh' "$fixture/users"
+unset -f getent groupadd id useradd
+echo 'OK (3 service-account idempotency assertions)'

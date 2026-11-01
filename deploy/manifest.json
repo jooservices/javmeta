@@ -266,7 +266,7 @@
           "label": "HORIZON_PREFIX",
           "secret": false,
           "required": true,
-          "default": "@APP_NAME@:horizon:"
+          "default": "xcrawler:horizon:"
         },
         {
           "key": "QUEUE_CONNECTION",
@@ -287,7 +287,7 @@
           "label": "CACHE_PREFIX",
           "secret": false,
           "required": true,
-          "default": "@APP_NAME@:cache:"
+          "default": "xcrawler:cache:"
         },
         {
           "key": "SESSION_DRIVER",
@@ -522,7 +522,7 @@
         {
           "key": "MONGO_AUTH_SOURCE",
           "label": "MONGO_AUTH_SOURCE",
-          "default": "admin",
+          "default": "@MONGO_DATABASE@",
           "required": true,
           "secret": false
         }
@@ -588,7 +588,7 @@
           "label": "REDIS_PREFIX",
           "secret": false,
           "required": true,
-          "default": "@APP_NAME@:"
+          "default": "xcrawler:"
         }
       ]
     },

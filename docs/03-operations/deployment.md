@@ -19,8 +19,9 @@ Every step prints its duration. `--skip-backup-check` is a loud explicit bypass.
 
 ### Adding a worker node
 
-Select `--role worker` and a distinct node name/target. Only Horizon and embedder
-are managed: no nginx, PHP-FPM or scheduler. Keep exactly **one scheduler** in
+Select `--role worker` and a distinct node name/target. Horizon, embedder and node exporter
+are enabled and restarted. Nginx and scheduler are installed but disabled with
+worker-role drop-ins; PHP-FPM is not managed. Workers do not migrate shared data. Keep exactly **one scheduler** in
 the fleet (`onOneServer` is absent). `--start-scheduler` is an explicit primary
 cutover step; `--no-start` installs without starting services.
 
@@ -376,8 +377,14 @@ or replace the existing checkout for an upgrade.
 
 ### 5. Build and prepare dependencies
 
-Run the Python script first so the embedder is available. For an existing
-checkout, no environment override is needed:
+Run the Python script first so the embedder is available. Export the selected
+checkout, repository and ref in the same shell (the scripts have no defaults):
+
+```bash
+export JAVMETA_APP_DIR="$CHECKOUT"
+export JAVMETA_REPO_URL="$REPO_URL"
+export JAVMETA_BRANCH="$REF"
+```
 
 ```bash
 /home/joos/javmeta/deploy/python.sh

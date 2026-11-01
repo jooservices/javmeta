@@ -62,6 +62,7 @@ collect_answers() {
     done < <(jq -r '.services[] | select(.optional) | .id' "$manifest")
   fi
   for key in REDIS_PREFIX CACHE_PREFIX HORIZON_PREFIX; do answers[$key]="${answers[$key]//@APP_NAME@/${answers[APP_NAME]}}"; done
+  answers[MONGO_AUTH_SOURCE]="${answers[MONGO_AUTH_SOURCE]//@MONGO_DATABASE@/${answers[MONGO_DATABASE]}}"
   # Existing env wins over defaults; changes to explicit answers need consent.
   if [[ -n "${answers[TARGET_DIR]}" && -f "${answers[TARGET_DIR]}/shared/.env" ]]; then
     while IFS='=' read -r key value; do
@@ -93,6 +94,7 @@ collect_answers() {
   fi
   while IFS='|' read -r key label secret required service; do
     answers[$key]="${answers[$key]//@TARGET_DIR@/${answers[TARGET_DIR]}}"
+    answers[$key]="${answers[$key]//@MONGO_DATABASE@/${answers[MONGO_DATABASE]}}"
     if [[ -n "$service" ]]; then
       enabled="SERVICE_${service^^}_ENABLED"
       [[ "${answers[$enabled]:-1}" == 1 ]] || continue
@@ -108,6 +110,7 @@ collect_answers() {
   done
   [[ "${answers[TARGET_DIR]}" == /* && "${answers[TARGET_DIR]}" != / && ! -L "${answers[TARGET_DIR]}" ]] || die 'TARGET_DIR must be an absolute directory, not / or a symlink.'
   [[ "${answers[REF]}" != -* && "${answers[REPO_URL]}" != -* ]] || die 'Repository/ref cannot start with a dash.'
+  for key in UI_HOST CC_HOST; do valid_node_hostname "${answers[$key]}" || die "Invalid hostname: $key (exact hostnames only)"; done
   for key in FPM_UNIT NGINX_UNIT EXPORTER_UNIT; do
     [[ "${answers[$key]}" =~ ^[a-zA-Z0-9_][a-zA-Z0-9@_.-]*$ ]] || die "Invalid unit: $key"
   done
@@ -157,7 +160,8 @@ validate_services() {
 }
 ci_gate() {
   local commit="$1" checks name state conclusion found required
-  if (( skip_ci )) || [[ -z "${answers[CI_CHECKS]}" ]]; then log 'SKIP: optional CI gate'; return; fi
+  if (( skip_ci )); then log 'SKIP: optional CI gate'; return; fi
+  [[ -n "${answers[CI_CHECKS]}" ]] || return 1
   [[ -n "${answers[CI_REPOSITORY]}" ]] || die 'CI_REPOSITORY is required with --ci-check.'
   checks="$(gh api --paginate "repos/${answers[CI_REPOSITORY]}/commits/$commit/check-runs?per_page=100" --jq '.check_runs[] | [.name,.status,.conclusion] | @tsv')" || return 1
   if [[ "${answers[CI_CHECKS]}" == \[* ]]; then
@@ -183,7 +187,7 @@ backup_gate() {
   grep -Fxq ";     dbname: ${answers[DB_DATABASE]}" <<< "$contents"
 }
 write_env() {
-  local key value temp="$base/shared/.env-$$"
+  local key value service optional enabled temp="$base/shared/.env-$$"
   (umask 077; : > "$temp")
   # Preserve keys outside this manifest without evaluating any shell expressions.
   if [[ -f "$base/shared/.env" ]]; then
@@ -192,13 +196,15 @@ write_env() {
       if [[ ! -v "allowed[$key]" ]]; then printf '%s\n' "$line" >> "$temp"; fi
     done < "$base/shared/.env"
   fi
-  while IFS= read -r key; do
+  while IFS='|' read -r key service optional; do
+    enabled="SERVICE_${service^^}_ENABLED"
+    if [[ "$optional" == true && "${answers[$enabled]:-0}" != 1 ]]; then continue; fi
     value="${answers[$key]}"
     value="${value//\\/\\\\}"
     value="${value//\"/\\\"}"
     value="${value//\$/\\\$}"
     printf '%s="%s"\n' "$key" "$value" >> "$temp"
-  done < <(jq -r '.services[].fields[] | select(.setting == null or .env == true) | .key' "$manifest")
+  done < <(jq -r '.services[] | . as $s | .fields[] | select(.setting == null or .env == true) | [.key,$s.id,$s.optional] | map(tostring) | join("|")' "$manifest")
   chmod 640 "$temp"
   mv -f "$temp" "$base/shared/.env"
 }
@@ -242,7 +248,8 @@ rollback() {
 }
 readiness() {
   local deadline=$((SECONDS+answers[READINESS_TIMEOUT])) remaining unit healthy
-  local units
+  local units scheduler_required=0
+  if [[ "${answers[NODE_ROLE]}" == primary ]] && (( start_scheduler )); then scheduler_required=1; fi
   read -ra units <<< "${answers[RESTART_UNITS]} ${answers[START_UNITS]}"
   while (( SECONDS < deadline )); do
     healthy=1
@@ -259,6 +266,9 @@ readiness() {
       (( remaining > 0 )) || return 1
       curl --silent --fail --max-time "$remaining" "${answers[APP_URL]%/}/up" >/dev/null 2>&1 || healthy=0
     fi
+    remaining=$((deadline-SECONDS))
+    (( remaining > 0 )) || return 1
+    timeout "$remaining" php "$root/deploy/lib/readiness.php" "$scheduler_required" >/dev/null 2>&1 || healthy=0
     (( ! healthy )) || return 0
     sleep 1
   done
@@ -337,6 +347,17 @@ import_settings() {
   for key in "${!answers[@]}"; do export "$key=${answers[$key]}"; done
   WIZARD_REPLACE_SETTINGS="$replace_existing" php "$root/deploy/lib/import-settings.php" "$manifest"
 }
+make_handoff_flags() {
+  handoff=(--apply --non-interactive)
+  if (( skip_ci )); then handoff+=(--skip-ci-check); else handoff+=(--ci-check); fi
+  (( ! replace_existing )) || handoff+=(--replace-existing)
+  (( ! validate_only )) || handoff+=(--validate-only)
+  (( ! skip_os )) || handoff+=(--skip-os-install)
+  (( ! no_systemd )) || handoff+=(--no-systemd)
+  (( ! no_start )) || handoff+=(--no-start)
+  (( ! start_scheduler )) || handoff+=(--start-scheduler)
+  (( ! skip_backup )) || handoff+=(--skip-backup-check)
+}
 install_main() {
   exec 3<&0
   manifest="$root/deploy/manifest.json"
@@ -373,11 +394,21 @@ install_main() {
   done
   collect_answers
   role_units
+  if (( ! skip_ci )) && [[ -z "${answers[CI_CHECKS]}" || -z "${answers[CI_REPOSITORY]}" ]]; then die '--ci-check requires CI_CHECKS and CI_REPOSITORY.'; fi
   if (( ! apply )); then
     log 'DRY RUN: answers validated; no network calls, files, packages or services changed.'
     log 'DRY RUN: prerequisites; authenticated service probes; backup; clone/fetch selected ref; CI; composer; env/storage; UI; migrate; settings; atomic current; restart; readiness; rollback on failure.'
     return
   fi
+  if (( validate_only )); then
+    skip_os=1
+    answers[INSTALL_NODE]=0
+    prerequisites
+    build_mongo_uri
+    validate_services
+    return
+  fi
+  (( ! no_systemd || no_start )) || die '--no-systemd on apply requires --no-start.'
   prerequisites
   if [[ "${answers[INSTALL_CA]}" == 1 && -n "${answers[ELASTICSEARCH_CA]}" ]]; then
     (( ! skip_os )) || die 'CA installation conflicts with --skip-os-install.'
@@ -388,15 +419,8 @@ install_main() {
   fi
   answers[INSTALL_CA]=0
   if [[ "$(id -un 2>/dev/null || id -u)" != "${answers[SERVICE_USER]}" && "$(id -u)" != "${answers[SERVICE_USER]}" ]]; then
-    local preserved='' handoff=(--apply --non-interactive)
-    (( ! skip_ci )) || handoff+=(--skip-ci-check)
-    (( ! replace_existing )) || handoff+=(--replace-existing)
-    (( ! validate_only )) || handoff+=(--validate-only)
-    (( ! skip_os )) || handoff+=(--skip-os-install)
-    (( ! no_systemd )) || handoff+=(--no-systemd)
-    (( ! no_start )) || handoff+=(--no-start)
-    (( ! start_scheduler )) || handoff+=(--start-scheduler)
-    (( ! skip_backup )) || handoff+=(--skip-backup-check)
+    local preserved='' handoff=()
+    make_handoff_flags
     answers[INSTALL_NODE]=0
     (
       for key in "${!answers[@]}"; do
@@ -416,8 +440,8 @@ install_main() {
 build_mongo_uri() {
   if [[ -n "${answers[MONGO_PASSWORD]}" ]]; then
     answers[MONGO_URI]="$(
-      export MONGO_USERNAME="${answers[MONGO_USERNAME]}" MONGO_PASSWORD="${answers[MONGO_PASSWORD]}" MONGO_HOST="${answers[MONGO_HOST]}" MONGO_PORT="${answers[MONGO_PORT]}" MONGO_DATABASE="${answers[MONGO_DATABASE]}" MONGO_AUTH_SOURCE="${answers[MONGO_AUTH_SOURCE]}"
-      php -r 'echo "mongodb://".rawurlencode(getenv("MONGO_USERNAME")).":".rawurlencode(getenv("MONGO_PASSWORD"))."@".getenv("MONGO_HOST").":".getenv("MONGO_PORT")."/".rawurlencode(getenv("MONGO_DATABASE"))."?authSource=".rawurlencode(getenv("MONGO_AUTH_SOURCE"));'
+      export MONGO_URI="${answers[MONGO_URI]:-}" MONGO_USERNAME="${answers[MONGO_USERNAME]}" MONGO_PASSWORD="${answers[MONGO_PASSWORD]}" MONGO_HOST="${answers[MONGO_HOST]}" MONGO_PORT="${answers[MONGO_PORT]}" MONGO_DATABASE="${answers[MONGO_DATABASE]}" MONGO_AUTH_SOURCE="${answers[MONGO_AUTH_SOURCE]}"
+      php "$root/deploy/lib/mongo-uri.php"
     )"
   fi
 }

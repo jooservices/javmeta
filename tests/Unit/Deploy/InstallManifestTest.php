@@ -39,6 +39,20 @@ final class InstallManifestTest extends TestCase
         $this->expectExceptionMessage('Invalid HTTP URL');
         \JavMeta\Deploy\request('file:///etc/passwd');
     }
+
+    public function test_auth_defaults_follow_the_database_and_the_bundled_redis_acl(): void
+    {
+        $root = dirname(__DIR__, 3);
+        $manifest = json_decode(file_get_contents($root . '/deploy/manifest.json'), true, flags: JSON_THROW_ON_ERROR);
+        $fields = array_column(array_merge(...array_column($manifest['services'], 'fields')), null, 'key');
+        $this->assertSame('@MONGO_DATABASE@', $fields['MONGO_AUTH_SOURCE']['default']);
+        $acl = file_get_contents($root . '/deploy/production/provision/redis-acl.txt');
+        foreach (['REDIS_PREFIX', 'CACHE_PREFIX', 'HORIZON_PREFIX'] as $key) {
+            $this->assertStringStartsWith($fields['REDIS_PREFIX']['default'], $fields[$key]['default']);
+        }
+        $this->assertStringContainsString('~' . $fields['REDIS_PREFIX']['default'] . '*', $acl);
+    }
+
     public function test_probe_has_no_dependency_on_composer_before_installation(): void
     {
         $probe = file_get_contents(dirname(__DIR__, 3) . '/deploy/lib/probe.php');

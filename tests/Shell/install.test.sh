@@ -21,10 +21,12 @@ if [[ "${0##*/}" == php && "$*" == *probe.php* ]]; then
   if [[ "${FAIL_STEP:-}" == retry && ! -e "$CALLS.retry" ]]; then touch "$CALLS.retry"; exit 1; fi
 fi
 if [[ "${0##*/}" == php && "$*" == *random_bytes* ]]; then echo generated-private-key; fi
-if [[ "${0##*/}" == php && "$*" == *rawurlencode* ]]; then echo mongodb://fixture.invalid/fixture; fi
+if [[ "${0##*/}" == php && ( "$*" == *rawurlencode* || "$*" == *mongo-uri.php* ) ]]; then echo mongodb://fixture.invalid/fixture; fi
 if [[ "${0##*/}" == php && "$*" == *operations:make-super-admin* ]]; then echo private-owner-password; fi
 if [[ "${0##*/}" == id && "$*" == '-un' ]]; then echo fixture-user; exit 0; fi
 if [[ "${0##*/}" == php && "$*" == *staging:readiness* ]]; then echo 'Staging is READY'; fi
+if [[ "${0##*/}" == php && "$*" == *readiness.php* && "${FAIL_STEP:-}" == horizon ]]; then exit 1; fi
+if [[ "${0##*/}" == php && "$*" == *readiness.php* && "$*" == *' 1' && "${FAIL_STEP:-}" == scheduler ]]; then exit 1; fi
 if [[ "${0##*/}" == php && "$*" == *migrate* && "${FAIL_STEP:-}" == migrate ]]; then exit 1; fi
 if [[ "${0##*/}" == php && "$*" == *staging:readiness* && "${FAIL_STEP:-}" == readiness ]]; then exit 1; fi
 if [[ "${0##*/}" == sudo && "${FAIL_STEP:-}" == restart && "$*" == *restart* ]]; then exit 1; fi
@@ -66,12 +68,15 @@ if FAIL_STEP=validation bash "$script" --config "$fixture/answers.json" --non-in
 [[ ! -e "$fixture/node" ]] || fail 'failed validation changed node'
 if FAIL_STEP=timezone bash "$script" --config "$fixture/answers.json" --non-interactive --skip-os-install --apply > "$fixture/log" 2>&1; then fail 'non-UTC database accepted'; fi
 grep -q 'timezone MUST be UTC' "$fixture/log" || fail 'timezone diagnostic missing'
-FAIL_STEP=retry bash "$script" --config "$fixture/answers.json" --validate-only --skip-os-install --apply <<< $'y\n\n\n\n\n\n\n\n' > "$fixture/log" 2>&1
+jq '.INSTALL_NODE="1"' "$fixture/answers.json" > "$fixture/validate.json"
+chmod 600 "$fixture/validate.json"
+FAIL_STEP=retry bash "$script" --config "$fixture/validate.json" --validate-only --apply <<< $'y\n\n\n\n\n\n\n\n' > "$fixture/log" 2>&1
 grep -q 'retry' "$fixture/log" || fail 'validation did not re-prompt'
+! grep -q 'install-node.sh' "$CALLS" || fail 'validate-only ran native installer'
 [[ ! -e "$fixture/node" ]] || fail 'validate-only changed node'
 mkdir -p "$fixture/node/releases/old" "$fixture/node/shared"
 ln -s "$fixture/node/releases/old" "$fixture/node/current"
-for failure in ui migrate import restart readiness; do
+for failure in ui migrate import restart readiness horizon; do
   if FAIL_STEP="$failure" bash "$script" --non-interactive --config "$fixture/answers.json" --skip-os-install --apply > "$fixture/log" 2>&1; then fail "ignored $failure"; fi
   [[ "$(readlink "$fixture/node/current")" == "$fixture/node/releases/old" ]] || fail 'rollback failed'
   ! grep -q 'private-test-value' "$fixture/log" || fail 'secret leaked on failure'
@@ -97,6 +102,13 @@ for ref in candidate v-test "$sha"; do
   bash "$script" --non-interactive --config "$fixture/answers.json" --ref "$ref" --skip-os-install --no-start --apply > "$fixture/log" 2>&1
   [[ "$(git -C "$fixture/node/current" rev-parse HEAD)" == "$sha" ]] || fail 'wrong selected commit'
 done
+! grep -q '^JAVMETA_SENTRY_DSN=' "$fixture/node/shared/.env" || fail 'disabled Sentry was enabled by an env value'
+grep -q '^MONGO_AUTH_SOURCE="fixture"$' "$fixture/node/shared/.env" || fail 'Mongo auth source did not follow selected database'
+if bash "$script" --non-interactive --config "$fixture/answers.json" --ci-check > "$fixture/log" 2>&1; then fail 'empty explicit CI gate accepted'; fi
+grep -q 'requires CI_CHECKS' "$fixture/log" || fail 'missing CI gate diagnostic'
+if bash "$script" --non-interactive --config "$fixture/answers.json" --no-systemd --apply > "$fixture/log" 2>&1; then fail 'simulated units counted as readiness'; fi
+grep -q 'requires --no-start' "$fixture/log" || fail 'missing unit simulation diagnostic'
+if FAIL_STEP=scheduler bash "$script" --non-interactive --config "$fixture/answers.json" --start-scheduler --apply > "$fixture/log" 2>&1; then fail 'unhealthy scheduler accepted'; fi
 # Default credentials stay with the service-owned release target after sudo handoff.
 jq --arg target "$fixture/default-node" 'del(.CREDENTIALS_FILE) | .TARGET_DIR=$target' "$fixture/answers.json" > "$fixture/default-answers.json"
 chmod 600 "$fixture/default-answers.json"
@@ -116,4 +128,4 @@ grep -q 'no migrations' "$fixture/log" || fail 'worker migration skip not disclo
 ! grep -q 'private-test-value\|private-owner-password' "$fixture/log" || fail 'worker leaked credentials'
 if bash "$script" --non-interactive --config "$fixture/answers.json" --role worker --target "$fixture/fresh-worker" > "$fixture/log" 2>&1; then fail 'new worker accepted without primary APP_KEY'; fi
 grep -q 'copy the primary shared env/key' "$fixture/log" || fail 'missing worker key diagnostic'
-echo 'OK (27 install wizard scenarios)'
+echo 'OK (32 install wizard scenarios)'
