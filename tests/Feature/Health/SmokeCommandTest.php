@@ -199,6 +199,22 @@ final class SmokeCommandTest extends TestCase
         self::assertStringContainsString('[WARN] queue_depth:', $output);
     }
 
+    public function test_browser_queue_readiness_uses_its_own_depth_limit(): void
+    {
+        config()->set([
+            'javmeta_queues.depth_limit' => 100,
+            'javmeta_queues.browser_depth_limit' => 1,
+            'queue.default' => 'database',
+        ]);
+        DB::table('jobs')->insert([
+            'queue' => 'browser_detail', 'payload' => '{}', 'attempts' => 0,
+            'reserved_at' => null, 'available_at' => now()->getTimestamp(), 'created_at' => now()->getTimestamp(),
+        ]);
+
+        Artisan::call('javmeta:smoke');
+        self::assertStringContainsString('[WARN] queue_depth: Queue depth reached its configured limit for: browser_detail.', Artisan::output());
+    }
+
     public function test_api_and_mcp_failures_still_revoke_the_temporary_key(): void
     {
         $this->failApiRequests = true;
