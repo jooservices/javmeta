@@ -55,9 +55,10 @@ render_node_template "$root/deploy/production/node/xcrawler-fpm.conf" "$(node_va
 render_node_template "$root/deploy/production/node/xcrawler.nginx.conf" "$(node_value nginx_available)/$UNIT_PREFIX"
 ln -sfn "$(node_value nginx_available)/$UNIT_PREFIX" "$(node_value nginx_enabled)/$UNIT_PREFIX"
 fi
-for service in horizon embedder scheduler; do
+for service in horizon embedder; do
   render_node_template "$root/deploy/production/node/xcrawler-$service.service" "$(node_value unit_dir)/$UNIT_PREFIX-$service.service"
 done
+render_node_template "$root/deploy/production/node/xcrawler-scheduler.service" "$(node_value unit_dir)/$UNIT_PREFIX-scheduler.service"
 # A worker must never become a second scheduler or web node after a reboot.
 blocked_units=("$NGINX_UNIT" "$UNIT_PREFIX-scheduler")
 for unit in "${blocked_units[@]}"; do

@@ -261,7 +261,7 @@ readiness() {
 }
 apply_release() {
   base="${answers[TARGET_DIR]}"
-  [[ "$(id -un 2>/dev/null || id -u)" == "${answers[SERVICE_USER]}" ]] || die 'Apply must run as SERVICE_USER.'
+  [[ "$(id -un 2>/dev/null || id -u)" == "${answers[SERVICE_USER]}" || "$(id -u)" == "${answers[SERVICE_USER]}" ]] || die 'Apply must run as SERVICE_USER.'
   if (( skip_backup )); then log 'WARNING: BACKUP CHECK BYPASSED; migration recovery is operator responsibility.';
   else step 'Fresh backup and restore attestation' backup_gate; fi
   mkdir -p "$base/shared/storage" "$base/releases"
@@ -373,7 +373,7 @@ install_main() {
     return
   fi
   prerequisites
-  if [[ "$(id -un 2>/dev/null || id -u)" != "${answers[SERVICE_USER]}" ]]; then
+  if [[ "$(id -un 2>/dev/null || id -u)" != "${answers[SERVICE_USER]}" && "$(id -u)" != "${answers[SERVICE_USER]}" ]]; then
     local preserved='' handoff=(--apply --non-interactive)
     (( ! skip_ci )) || handoff+=(--skip-ci-check)
     (( ! replace_existing )) || handoff+=(--replace-existing)
