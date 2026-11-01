@@ -42,6 +42,7 @@ final class ProductCodeRecoveryTest extends IntegrationTestCase
         $row = CrawlQueue::factory()->create([
             'source_slug' => 'javbtc', 'kind' => CrawlQueue::KIND_DETAIL,
             'status' => CrawlQueue::STATUS_FAILED, 'error_code' => 'parse_failed', 'attempts' => 5,
+            'last_error' => 'Missing product code', 'last_failed_at' => CarbonImmutable::parse('2026-11-01'),
         ]);
         $this->artisan('crawler:requeue-product-codes', ['--dry-run' => true])
             ->expectsOutput('javbtc: 1 would requeue')->assertSuccessful();
