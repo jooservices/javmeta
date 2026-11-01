@@ -274,6 +274,8 @@ final class SettingsTest extends TestCase
 
     public function test_invalid_saved_urls_are_ignored_without_exposing_them_and_can_be_repaired(): void
     {
+        // Keep the redaction sentinel independent of the checkout directory name.
+        config(['javmeta_media.output_folder' => '/test-output']);
         $settings = app(SettingsService::class);
         $default = $settings->get('downloads.qbittorrent_url');
         $settings->set('downloads.qbittorrent_url', 'http://valid.test');

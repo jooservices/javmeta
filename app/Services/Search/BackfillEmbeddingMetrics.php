@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Search;
 
+use App\Observability\MetricStreams;
+
 final class BackfillEmbeddingMetrics
 {
     /**
@@ -16,12 +18,12 @@ final class BackfillEmbeddingMetrics
         $points = [];
         foreach ($missingByEntity as $entity => $missing) {
             $points[] = [
-                'name' => 'javmeta_search_embedding_backfill_missing',
+                'name' => MetricStreams::NAMES['search_embedding_backfill_missing'],
                 'value' => $missing,
                 'labels' => ['entity' => (string) $entity],
             ];
             $points[] = [
-                'name' => 'javmeta_search_embedding_backfill_fixed',
+                'name' => MetricStreams::NAMES['search_embedding_backfill_fixed'],
                 'value' => $fixedByEntity[$entity] ?? 0,
                 'labels' => ['entity' => (string) $entity],
             ];

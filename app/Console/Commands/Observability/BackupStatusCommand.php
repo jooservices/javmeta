@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands\Observability;
 
 use App\Observability\OpenObserveClient;
+use App\Observability\MetricStreams;
 use App\Services\Alerts\AlertDispatcher;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
@@ -21,7 +22,7 @@ final class BackupStatusCommand extends Command
         $age = $this->lastSuccessAge((string) config('backup.manifest_path'));
         $client->ingestMetrics([
             [
-                'name' => 'javmeta_backup_last_success_age_seconds',
+                'name' => MetricStreams::NAMES['backup_last_success_age_seconds'],
                 'value' => $age ?? -1,
             ],
         ]);
