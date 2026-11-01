@@ -145,3 +145,7 @@ Operator dry-run and requeue instructions are in
 Performer identity co-credit merges retain all source profiles on the canonical
 performer. Operational dry runs, review resolution and reversal are documented
 in [performer identity](../03-operations/performer-identity.md#co-credit-identity).
+
+## Legacy telemetry maintenance
+
+Legacy OpenObserve stream removal is an operator-only Artisan command, with no browser action. Follow [Removing legacy streams](../03-operations/observability.md#removing-legacy-streams) for dry-run review, complete exports, confirmation and live-stream verification.

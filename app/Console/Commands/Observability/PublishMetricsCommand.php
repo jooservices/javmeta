@@ -13,6 +13,7 @@ use App\Models\Performer;
 use App\Models\ReviewFlag;
 use App\Models\Source;
 use App\Observability\OpenObserveClient;
+use App\Observability\MetricStreams;
 use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Search\ElasticsearchHttpClient;
 use App\Services\Search\ElasticsearchRequestHealth;
@@ -58,12 +59,12 @@ final class PublishMetricsCommand extends Command
             $this->failedJobMetrics(),
             $this->postgresCapacityMetrics(),
             [[
-                'name' => 'javmeta_mongo_archive_write_failures',
+                'name' => MetricStreams::NAMES['mongo_archive_write_failures'],
                 'value' => $archiveWrites->failureCount(),
             ]],
             $this->dependencyProbeMetrics($elasticsearch),
             [[
-                'name' => 'javmeta_elasticsearch_request_failures',
+                'name' => MetricStreams::NAMES['elasticsearch_request_failures'],
                 'value' => $elasticsearchHealth->failureCount(),
             ]],
         );
@@ -86,7 +87,7 @@ final class PublishMetricsCommand extends Command
         foreach (Source::query()->get() as $source) {
             $labels = ['source_slug' => $source->slug];
             $points[] = [
-                'name' => 'javmeta_source_gap_seconds',
+                'name' => MetricStreams::NAMES['source_gap_seconds'],
                 'value' => (float) $source->gap_seconds_current,
                 'labels' => $labels,
             ];
@@ -94,12 +95,12 @@ final class PublishMetricsCommand extends Command
                 ? max(0, now()->diffInSeconds($source->last_success_at))
                 : -1;
             $points[] = [
-                'name' => 'javmeta_source_last_success_age_seconds',
+                'name' => MetricStreams::NAMES['source_last_success_age_seconds'],
                 'value' => $age,
                 'labels' => $labels,
             ];
             $points[] = [
-                'name' => 'javmeta_source_past_due',
+                'name' => MetricStreams::NAMES['source_past_due'],
                 'value' => $source->enabled && $sourceFreshness->isPastDue($source->last_success_at, (string) $source->slug, $defaultStaleSeconds) ? 1 : 0,
                 'labels' => $labels,
             ];
@@ -121,7 +122,7 @@ final class PublishMetricsCommand extends Command
 
         foreach ($rows as $row) {
             $points[] = [
-                'name' => 'javmeta_crawl_queue_depth',
+                'name' => MetricStreams::NAMES['crawl_queue_depth'],
                 'value' => (int) $row->getAttribute('c'),
                 'labels' => ['status' => (string) $row->status],
             ];
@@ -133,7 +134,7 @@ final class PublishMetricsCommand extends Command
             ->orderBy('claimed_at')
             ->value('claimed_at');
         $points[] = [
-            'name' => 'javmeta_crawl_queue_claimed_age_seconds',
+            'name' => MetricStreams::NAMES['crawl_queue_claimed_age_seconds'],
             'value' => $oldestClaimed !== null ? max(0, (int) now()->diffInSeconds($oldestClaimed)) : -1,
         ];
 
@@ -141,7 +142,7 @@ final class PublishMetricsCommand extends Command
             ->whereIn('status', [CrawlQueue::STATUS_PENDING, CrawlQueue::STATUS_FAILED])
             ->avg('attempts');
         $points[] = [
-            'name' => 'javmeta_crawl_queue_avg_attempts',
+            'name' => MetricStreams::NAMES['crawl_queue_avg_attempts'],
             'value' => $avgAttempts !== null ? (float) $avgAttempts : 0.0,
         ];
 
@@ -163,7 +164,7 @@ final class PublishMetricsCommand extends Command
 
         foreach ($rows as $row) {
             $points[] = [
-                'name' => 'javmeta_crawl_events_5m',
+                'name' => MetricStreams::NAMES['crawl_events_5m'],
                 'value' => (int) $row->getAttribute('c'),
                 'labels' => ['kind' => (string) $row->kind],
             ];
@@ -184,11 +185,11 @@ final class PublishMetricsCommand extends Command
 
         if ($rows->isEmpty()) {
             return [
-                ['name' => 'javmeta_api_requests_1m', 'value' => 0],
-                ['name' => 'javmeta_api_error_rate_1m', 'value' => 0],
-                ['name' => 'javmeta_api_p50_ms_1m', 'value' => 0],
-                ['name' => 'javmeta_api_p95_ms_1m', 'value' => 0],
-                ['name' => 'javmeta_api_429_1m', 'value' => 0],
+                ['name' => MetricStreams::NAMES['api_requests_1m'], 'value' => 0],
+                ['name' => MetricStreams::NAMES['api_error_rate_1m'], 'value' => 0],
+                ['name' => MetricStreams::NAMES['api_p50_ms_1m'], 'value' => 0],
+                ['name' => MetricStreams::NAMES['api_p95_ms_1m'], 'value' => 0],
+                ['name' => MetricStreams::NAMES['api_429_1m'], 'value' => 0],
             ];
         }
 
@@ -198,22 +199,22 @@ final class PublishMetricsCommand extends Command
         $latencies = $rows->pluck('response_ms')->filter(fn($ms) => $ms !== null)->map(fn($ms) => (int) $ms)->sort()->values();
 
         $points = [
-            ['name' => 'javmeta_api_requests_1m', 'value' => $total],
-            ['name' => 'javmeta_api_error_rate_1m', 'value' => $total > 0 ? $errors / $total : 0],
-            ['name' => 'javmeta_api_p50_ms_1m', 'value' => $this->percentile($latencies->all(), 0.50)],
-            ['name' => 'javmeta_api_p95_ms_1m', 'value' => $this->percentile($latencies->all(), 0.95)],
-            ['name' => 'javmeta_api_429_1m', 'value' => $rateLimited],
+            ['name' => MetricStreams::NAMES['api_requests_1m'], 'value' => $total],
+            ['name' => MetricStreams::NAMES['api_error_rate_1m'], 'value' => $total > 0 ? $errors / $total : 0],
+            ['name' => MetricStreams::NAMES['api_p50_ms_1m'], 'value' => $this->percentile($latencies->all(), 0.50)],
+            ['name' => MetricStreams::NAMES['api_p95_ms_1m'], 'value' => $this->percentile($latencies->all(), 0.95)],
+            ['name' => MetricStreams::NAMES['api_429_1m'], 'value' => $rateLimited],
         ];
 
         foreach ($rows->groupBy('endpoint') as $endpoint => $group) {
             $points[] = [
-                'name' => 'javmeta_api_requests_by_endpoint_1m',
+                'name' => MetricStreams::NAMES['api_requests_by_endpoint_1m'],
                 'value' => $group->count(),
                 'labels' => ['endpoint' => (string) $endpoint],
             ];
             $epLat = $group->pluck('response_ms')->filter(fn($ms) => $ms !== null)->map(fn($ms) => (int) $ms)->sort()->values()->all();
             $points[] = [
-                'name' => 'javmeta_api_p95_ms_by_endpoint_1m',
+                'name' => MetricStreams::NAMES['api_p95_ms_by_endpoint_1m'],
                 'value' => $this->percentile($epLat, 0.95),
                 'labels' => ['endpoint' => (string) $endpoint],
             ];
@@ -230,11 +231,11 @@ final class PublishMetricsCommand extends Command
         $points = [];
 
         $points[] = [
-            'name' => 'javmeta_movies_needs_review',
+            'name' => MetricStreams::NAMES['movies_needs_review'],
             'value' => Movie::query()->where('needs_review', true)->count(),
         ];
         $points[] = [
-            'name' => 'javmeta_review_flags_open',
+            'name' => MetricStreams::NAMES['review_flags_open'],
             'value' => ReviewFlag::query()->whereNull('resolved_at')->count(),
         ];
 
@@ -244,7 +245,7 @@ final class PublishMetricsCommand extends Command
             ->get();
         foreach ($tiers as $tier) {
             $points[] = [
-                'name' => 'javmeta_movies_completeness_tier',
+                'name' => MetricStreams::NAMES['movies_completeness_tier'],
                 'value' => (int) $tier->getAttribute('c'),
                 'labels' => ['tier' => (string) ($tier->completeness_tier ?? 'unknown')],
             ];
@@ -280,7 +281,7 @@ final class PublishMetricsCommand extends Command
 
         foreach ($conflicts as $row) {
             $points[] = [
-                'name' => 'javmeta_observation_conflict_rate',
+                'name' => MetricStreams::NAMES['observation_conflict_rate'],
                 'value' => (float) ($row->conflict_rate ?? 0),
                 'labels' => ['field' => (string) $row->field],
             ];
@@ -313,7 +314,7 @@ final class PublishMetricsCommand extends Command
             $labels = ['source_slug' => (string) $row->source_slug];
             foreach (['pages_fetched', 'movies_new', 'movies_updated', 'failures', 'proxy_requests', 'proxy_bytes', 'browser_fetches'] as $metric) {
                 $points[] = [
-                    'name' => 'javmeta_crawl_run_' . $metric . '_1h',
+                    'name' => MetricStreams::NAMES['crawl_run_' . $metric . '_1h'],
                     'value' => (int) $row->{$metric},
                     'labels' => $labels,
                 ];
@@ -329,10 +330,10 @@ final class PublishMetricsCommand extends Command
     private function catalogMetrics(): array
     {
         return [
-            ['name' => 'javmeta_movies_total', 'value' => Movie::query()->count()],
-            ['name' => 'javmeta_performers_total', 'value' => Performer::query()->whereNull('canonical_performer_id')->count()],
+            ['name' => MetricStreams::NAMES['movies_total'], 'value' => Movie::query()->count()],
+            ['name' => MetricStreams::NAMES['performers_total'], 'value' => Performer::query()->whereNull('canonical_performer_id')->count()],
             [
-                'name' => 'javmeta_observations_1d',
+                'name' => MetricStreams::NAMES['observations_1d'],
                 'value' => DB::table('movie_observations')->where('crawled_at', '>=', now()->subDay())->count(),
             ],
         ];
@@ -344,13 +345,13 @@ final class PublishMetricsCommand extends Command
     private function failedJobMetrics(): array
     {
         if (! Schema::hasTable('failed_jobs')) {
-            return [['name' => 'javmeta_failed_jobs', 'value' => 0]];
+            return [['name' => MetricStreams::NAMES['failed_jobs'], 'value' => 0]];
         }
 
         return [
-            ['name' => 'javmeta_failed_jobs', 'value' => DB::table('failed_jobs')->count()],
+            ['name' => MetricStreams::NAMES['failed_jobs'], 'value' => DB::table('failed_jobs')->count()],
             [
-                'name' => 'javmeta_failed_jobs_1h',
+                'name' => MetricStreams::NAMES['failed_jobs_1h'],
                 'value' => DB::table('failed_jobs')->where('failed_at', '>=', now()->subHour())->count(),
             ],
         ];
@@ -372,9 +373,9 @@ final class PublishMetricsCommand extends Command
         $maximum = max(1, (int) ($row->maximum ?? 1));
 
         return [
-            ['name' => 'javmeta_postgres_connections_used', 'value' => $used],
-            ['name' => 'javmeta_postgres_connections_max', 'value' => $maximum],
-            ['name' => 'javmeta_postgres_connection_utilization', 'value' => $used / $maximum],
+            ['name' => MetricStreams::NAMES['postgres_connections_used'], 'value' => $used],
+            ['name' => MetricStreams::NAMES['postgres_connections_max'], 'value' => $maximum],
+            ['name' => MetricStreams::NAMES['postgres_connection_utilization'], 'value' => $used / $maximum],
         ];
     }
 
@@ -384,25 +385,25 @@ final class PublishMetricsCommand extends Command
 
         try {
             DB::connection()->getPdo();
-            $points[] = ['name' => 'javmeta_dep_up', 'value' => 1, 'labels' => ['dependency' => 'postgres']];
+            $points[] = ['name' => MetricStreams::NAMES['dep_up'], 'value' => 1, 'labels' => ['dependency' => 'postgres']];
         } catch (Throwable) {
-            $points[] = ['name' => 'javmeta_dep_up', 'value' => 0, 'labels' => ['dependency' => 'postgres']];
+            $points[] = ['name' => MetricStreams::NAMES['dep_up'], 'value' => 0, 'labels' => ['dependency' => 'postgres']];
         }
 
         try {
             $ok = $elasticsearch->get('metrics_probe', '/_cluster/health', 2)->successful();
-            $points[] = ['name' => 'javmeta_dep_up', 'value' => $ok ? 1 : 0, 'labels' => ['dependency' => 'elasticsearch']];
+            $points[] = ['name' => MetricStreams::NAMES['dep_up'], 'value' => $ok ? 1 : 0, 'labels' => ['dependency' => 'elasticsearch']];
         } catch (Throwable) {
-            $points[] = ['name' => 'javmeta_dep_up', 'value' => 0, 'labels' => ['dependency' => 'elasticsearch']];
+            $points[] = ['name' => MetricStreams::NAMES['dep_up'], 'value' => 0, 'labels' => ['dependency' => 'elasticsearch']];
         }
 
         $ooUrl = rtrim((string) config('openobserve.url'), '/');
         try {
             $response = Http::timeout(2)->get("{$ooUrl}/healthz");
             $ok = $response->successful() || $response->status() < 500;
-            $points[] = ['name' => 'javmeta_dep_up', 'value' => $ok ? 1 : 0, 'labels' => ['dependency' => 'openobserve']];
+            $points[] = ['name' => MetricStreams::NAMES['dep_up'], 'value' => $ok ? 1 : 0, 'labels' => ['dependency' => 'openobserve']];
         } catch (Throwable) {
-            $points[] = ['name' => 'javmeta_dep_up', 'value' => 0, 'labels' => ['dependency' => 'openobserve']];
+            $points[] = ['name' => MetricStreams::NAMES['dep_up'], 'value' => 0, 'labels' => ['dependency' => 'openobserve']];
         }
 
         $mongoHost = (string) config('mongodb.host', '127.0.0.1');
@@ -412,7 +413,7 @@ final class PublishMetricsCommand extends Command
         $fp = @fsockopen($mongoHost, $mongoPort, $errno, $errstr, 1.0);
         $mongoUp = $fp !== false;
         $points[] = [
-            'name' => 'javmeta_dep_up',
+            'name' => MetricStreams::NAMES['dep_up'],
             'value' => $mongoUp ? 1 : 0,
             'labels' => ['dependency' => 'mongo'],
         ];
