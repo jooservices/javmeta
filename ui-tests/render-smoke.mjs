@@ -70,6 +70,10 @@ const pd = await run('performer', await load('views/performer.js'), { params: { 
 assert.match(pd, /Aaliyah Love/); assert.match(pd, /Tokyo/);
 const crawl = await run('crawl', await load('views/crawl.js'), { params: {}, query: {} });
 assert.match(crawl, /JavBus/); assert.match(crawl, /600s/); assert.match(crawl, /Trình duyệt/); assert.match(crawl, /Trực tiếp/);
+assert.match(crawl, /Avfan[\s\S]*?<td>—<\/td>/);
+sources[2].lane = 'future-lane';
+assert.match(await run('crawl-unknown-lane', await load('views/crawl.js'), { params: {}, query: {} }), /Avfan[\s\S]*?<td>—<\/td>/);
+delete sources[2].lane;
 const s = await run('search', await load('views/search.js'), { params: {}, query: { q: 'Drama' } });
 assert.match(s, /Kết quả/);
 const sm = await run('search-meaning', await load('views/search.js'), { params: {}, query: { q: 'Mankitsu night movies from 2024', mode: 'meaning' } });

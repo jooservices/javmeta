@@ -180,7 +180,7 @@ test_passes_timeout_default_and_override() {
   unset JAVMETA_QUEUE_TIMEOUT
   export JAVMETA_QUEUE_NAMES=alpha JAVMETA_WORKERS_PER_QUEUE=1 FAKE_MODE=hold
   start_supervisor
-  wait_for_launches 1 5
+  wait_for_launches 2 5
   args_file="$(find "${FAKE_STATE}" -name 'args_alpha_*' -type f | head -1)"
   assert_contains_arg '--timeout=180' "${args_file}"
   stop_supervisor
@@ -188,7 +188,7 @@ test_passes_timeout_default_and_override() {
   reset_state
   export JAVMETA_QUEUE_TIMEOUT=321
   start_supervisor
-  wait_for_launches 1 5
+  wait_for_launches 2 5
   args_file="$(find "${FAKE_STATE}" -name 'args_alpha_*' -type f | head -1)"
   assert_contains_arg '--timeout=321' "${args_file}"
   stop_supervisor
@@ -246,6 +246,28 @@ test_sigterm_kills_term_ignoring_child() {
   unset JAVMETA_QUEUE_STOP_GRACE
 }
 
+test_default_queues_include_browser_workers() {
+  reset_state
+  unset JAVMETA_QUEUE_NAMES
+  export JAVMETA_WORKERS_PER_QUEUE=1 JAVMETA_BROWSER_WORKERS_PER_QUEUE=2 FAKE_MODE=hold
+  start_supervisor
+  wait_for_launches 17 10
+  for queue in listing detail performer_listing performer_detail gallery; do
+    assert_eq 1 "$(awk -F'|' -v queue="${queue}" '$1 == queue { count++ } END { print count + 0 }' "${FAKE_STATE}/launches")" "${queue} workers"
+    assert_eq 2 "$(awk -F'|' -v queue="browser_${queue}" '$1 == queue { count++ } END { print count + 0 }' "${FAKE_STATE}/launches")" "browser_${queue} workers"
+  done
+  stop_supervisor
+
+  reset_state
+  export JAVMETA_QUEUE_NAMES=listing,observability
+  start_supervisor
+  wait_for_launches 4 10
+  assert_eq 2 "$(awk -F'|' '$1 == "browser_listing" { count++ } END { print count + 0 }' "${FAKE_STATE}/launches")" 'legacy environment browser workers'
+  stop_supervisor
+  unset JAVMETA_BROWSER_WORKERS_PER_QUEUE
+}
+
+test_default_queues_include_browser_workers
 test_starts_one_worker_per_queue_slot
 test_does_not_duplicate_explicit_observability_queue
 test_passes_timeout_default_and_override

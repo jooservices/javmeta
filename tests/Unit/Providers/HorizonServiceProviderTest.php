@@ -24,7 +24,7 @@ final class HorizonServiceProviderTest extends TestCase
 
             foreach ($supervisors as $name => $supervisor) {
                 $this->assertSame('redis', $supervisor['connection']);
-                $this->assertSame(str_contains($name, 'browser_') ? 2 : 1, $supervisor['maxProcesses']);
+                $this->assertSame(config(str_contains($name, 'browser_') ? 'javmeta_queues.browser_workers_per_queue' : 'javmeta_queues.workers_per_queue'), $supervisor['maxProcesses']);
                 $this->assertSame(180, $supervisor['timeout']);
                 $queue = $name === 'api-observability' ? 'observability' : substr($name, strlen('crawler-'));
                 $this->assertSame([$queue], $supervisor['queue']);

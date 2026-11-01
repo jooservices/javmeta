@@ -74,6 +74,7 @@ final class CrawlQueueService
             $row->forceFill([
                 'status' => CrawlQueue::STATUS_CLAIMED,
                 'claimed_at' => now(),
+                'claimed_lane' => $lane ?? app(CrawlLaneService::class)->lane((string) $row->source_slug),
                 'started_at' => null,
                 'locked_by' => $workerId,
             ])->save();
@@ -122,7 +123,11 @@ final class CrawlQueueService
         $cap = (int) config('javmeta_queues.browser_inflight', 0);
         $browserSources = app(CrawlLaneService::class)->browserSources();
         if ($cap > 0 && $browserSources !== []) {
-            $claimed = CrawlQueue::query()->where('status', CrawlQueue::STATUS_CLAIMED)->whereIn('source_slug', $browserSources)->count();
+            $claimed = CrawlQueue::query()->where('status', CrawlQueue::STATUS_CLAIMED)
+                ->where(static function ($query) use ($browserSources): void {
+                    // Retain browser claims after reclassification, and include escalated/legacy claims.
+                    $query->where('claimed_lane', 'browser')->orWhereIn('source_slug', $browserSources);
+                })->count();
             if ($claimed >= $cap) {
                 $atLimit = array_values(array_unique([...$atLimit, ...$browserSources]));
             }

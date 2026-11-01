@@ -28,7 +28,7 @@ export default {
       <div class="panel tbl-wrap"><table><thead><tr><th>Nguồn</th><th>Trạng thái</th><th>Làn</th><th>Khoảng nghỉ</th><th>Chờ</th><th>Đang chạy</th><th>Xong</th><th>Lỗi</th><th>Thành công cuối</th><th>Lỗi cuối</th></tr></thead><tbody>
       ${rows.map((r, i) => { const st = states[i]; return `<tr><td><b>${esc(r.name)}</b><div class="dim mono">${esc(r.slug)}</div></td>
         <td><span class="chip ${st.chip}"><span class="dot ${st.dot}"></span> ${st.label}</span></td>
-        <td>${r.lane === 'browser' ? 'Trình duyệt' : 'Trực tiếp'}</td>
+        <td>${r.lane === 'browser' ? 'Trình duyệt' : r.lane === 'direct' ? 'Trực tiếp' : '—'}</td>
         <td class="mono">${fmt(r.gap_seconds_current)}s <span class="dim">(${fmt(r.gap_seconds_min)}–${fmt(r.gap_seconds_max)})</span></td>
         <td class="mono">${fmt(r.queue.pending)}</td><td class="mono">${fmt(r.queue.claimed)}</td><td class="mono">${fmt(r.queue.done)}</td><td class="mono">${fmt(r.queue.failed)}</td>
         <td class="muted">${r.last_success_at ? ago(r.last_success_at) : '—'}</td>

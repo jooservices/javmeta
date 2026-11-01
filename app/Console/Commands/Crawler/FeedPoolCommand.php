@@ -18,6 +18,7 @@ use App\Services\Crawl\SourceThrottle;
 use App\Support\Crawl\LaravelCrawlQueue;
 use Illuminate\Console\Command;
 use Illuminate\Foundation\Bus\PendingDispatch;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Claims pending crawl_queue rows and dispatches Laravel jobs (buffer → worker pool).
@@ -30,8 +31,25 @@ final class FeedPoolCommand extends Command
 
     protected $description = 'Claim pending crawl_queue rows and dispatch FetchListing/FetchDetail/Performer/Gallery jobs.';
 
-    /** @SuppressWarnings("PHPMD.ExcessiveMethodLength") */
     public function handle(CrawlQueueService $queue, ObservabilityEmitter $observability, SourceThrottle $throttle): int
+    {
+        // Keep depth reads and Redis pushes in one scope, including concurrent manual feeders.
+        $postgres = DB::getDriverName() === 'pgsql';
+        if ($postgres && ! DB::selectOne('SELECT pg_try_advisory_lock(?) AS acquired', [282])->acquired) {
+            $this->components->info('Another feed pool is dispatching.');
+
+            return self::SUCCESS;
+        }
+        try {
+            return $this->feed($queue, $observability, $throttle);
+        } finally {
+            if ($postgres) {
+                DB::select('SELECT pg_advisory_unlock(?)', [282]);
+            }
+        }
+    }
+
+    private function feed(CrawlQueueService $queue, ObservabilityEmitter $observability, SourceThrottle $throttle): int
     {
         $limit = max(1, (int) ($this->option('limit') ?: config('javmeta_queues.feed_pool_limit', 50)));
         $queues = $this->queues();

@@ -43,9 +43,9 @@ final class SourceHealthCommand extends Command
         $report = ['generated_at' => now()->utc()->toIso8601String(), 'summary' => $this->summary($rows), 'rows' => $rows];
 
         if (! $this->option('no-write') && $only === '') {
-            app(CrawlLaneService::class)->recompute();
             $this->write($report);
             $this->recordHistory($report, $channel);
+            app(CrawlLaneService::class)->recompute();
         }
 
         if ($this->option('json')) {

@@ -139,12 +139,20 @@ is a fleet-wide claimed-row cap across every browser source and crawl kind,
 including computed runtime-escalating sources and legacy claims on old queues.
 PostgreSQL serializes claim transactions with an advisory transaction lock so
 concurrent feeders cannot oversubscribe that cap.
+Claims retain their original lane even after a source is pinned or reclassified
+as direct, so existing browser work still consumes the cap. Legacy claims without
+a lane are included through source classification. A separate PostgreSQL session
+lock covers the complete depth-check/dispatch cycle; competing feeders skip the
+run until the active feeder releases it. The database-mode worker also consumes
+all five browser queues, using the same browser worker-count environment value.
+Legacy `JAVMETA_QUEUE_NAMES` lists automatically gain the browser counterpart of
+each configured crawl kind, so existing Compose environments keep consuming work.
 
 ### Two-node rollout and rollback
 
 1. Pause the scheduler's feed-pool invocation and allow existing workers to finish
    active jobs. Keep only one scheduler in the fleet.
-2. Apply the additive `sources.browser_lane` migration on the scheduler node.
+2. Apply the additive `sources.browser_lane` and `crawl_queue.claimed_lane` migrations on the scheduler node.
    Install the release on both nodes; refresh config caches, then gracefully
    restart Horizon on worker nodes first, followed by the scheduler node. Verify
    all direct and browser supervisors are running before resuming dispatch.

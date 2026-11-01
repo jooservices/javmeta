@@ -115,4 +115,20 @@ final class CrawlLaneServiceTest extends TestCase
         $this->assertNotNull($queue->startClaimedRow($row->id, 'listing', 'new-token'));
         $this->assertNull($queue->startClaimedRow($row->id, 'listing', 'new-token'));
     }
+
+    public function test_browser_claims_keep_consuming_the_cap_after_a_source_moves_to_direct(): void
+    {
+        config(['javmeta_queues.browser_inflight' => 1]);
+        $source = Source::factory()->create(['slug' => 'heyzo', 'browser_lane' => true, 'enabled' => true]);
+        $row = CrawlQueue::factory()->create(['source_slug' => 'heyzo', 'kind' => 'listing']);
+        $claims = app(CrawlQueueService::class);
+        $this->assertSame($row->id, $claims->claimNext('first', 'listing', [], 'browser')?->id);
+        $this->assertSame('browser', $row->refresh()->getAttribute('claimed_lane'));
+        $source->forceFill(['browser_lane' => false])->save();
+        config(['javmeta_queues.lane_direct_pins' => ['heyzo']]);
+        CrawlQueue::factory()->create(['source_slug' => 'javbus', 'kind' => 'detail']);
+        $this->assertNull($claims->claimNext('second', 'detail', [], 'browser'));
+        $direct = CrawlQueue::factory()->create(['source_slug' => 'direct', 'kind' => 'detail']);
+        $this->assertSame($direct->id, $claims->claimNext('second', 'detail', [], 'direct')?->id);
+    }
 }

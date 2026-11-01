@@ -53,6 +53,7 @@ final class CrawlLaneTest extends IntegrationTestCase
             $this->assertSame(1, LaravelCrawlQueue::readyDepth($browserQueue));
             $payload = json_decode((string) Redis::connection()->lindex('queues:' . $browserQueue, 0), true);
             $this->assertSame($browserQueue, unserialize($payload['data']['command'])->queue);
+            config(['javmeta_queues.lane_direct_pins' => ['heyzo']]);
             $next = CrawlQueue::factory()->create(['kind' => 'detail', 'source_slug' => 'javbus']);
             $claims = app(CrawlQueueService::class);
             $this->assertNull($claims->claimNext('second', 'detail', [], 'browser'));
@@ -65,5 +66,26 @@ final class CrawlLaneTest extends IntegrationTestCase
                 Redis::connection()->del(['queues:' . $name, 'queues:' . $name . ':notify', 'queues:' . $name . ':delayed', 'queues:' . $name . ':reserved']);
             }
         }
+    }
+
+    public function test_concurrent_feeder_cannot_read_capacity_until_the_first_dispatch_finishes(): void
+    {
+        Queue::fake();
+        config(['database.connections.lane_competitor' => config('database.connections.pgsql')]);
+        $competitor = DB::connection('lane_competitor');
+        $row = CrawlQueue::factory()->create(['source_slug' => 'javbus', 'kind' => 'listing']);
+        $competitor->select('SELECT pg_advisory_lock(?)', [282]);
+        try {
+            $this->artisan('crawler:feed-pool')->expectsOutputToContain('Another feed pool is dispatching.')->assertSuccessful();
+            $this->assertSame('pending', $row->refresh()->status);
+            Queue::assertNothingPushed();
+        } finally {
+            $competitor->select('SELECT pg_advisory_unlock(?)', [282]);
+        }
+        $this->artisan('crawler:feed-pool')->assertSuccessful();
+        $this->assertSame('claimed', $row->refresh()->status);
+        $this->assertTrue($competitor->selectOne('SELECT pg_try_advisory_lock(?) AS acquired', [282])->acquired);
+        $competitor->select('SELECT pg_advisory_unlock(?)', [282]);
+        DB::purge('lane_competitor');
     }
 }
