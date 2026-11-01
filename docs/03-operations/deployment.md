@@ -1,4 +1,47 @@
-# Internal deployment runbook
+# Deployment runbook
+
+## Current native wizard flow
+
+Use the [native install/deploy guide](../../deploy/production/README.md) for
+all new installations and releases. `deploy/install.sh` is interactive;
+production/staging wrappers use the same shared engine. Supply repo, ref and
+target explicitly. Preview is default; `--apply` executes. Credentials come
+from hidden input or a private 0600 answers JSON, never command arguments.
+
+The wizard checks Ubuntu/prerequisites and service authentication, requires
+PostgreSQL UTC, tests Redis prefix isolation, writes private shared env, clones
+the chosen ref, installs Composer dependencies, migrates, initializes settings,
+runs `es:setup` before crawling, syncs sources, creates the owner when there is
+no current release, swaps `current` atomically and verifies readiness after
+role-specific starts. Failure
+restores the previous code/env; database rollback remains an operator decision.
+Every step prints its duration. `--skip-backup-check` is a loud explicit bypass.
+
+### Adding a worker node
+
+Select `--role worker` and a distinct node name/target. Horizon, embedder and node exporter
+are enabled and restarted. Nginx and scheduler are installed but disabled with
+worker-role drop-ins; PHP-FPM is not managed. Workers do not migrate shared data. Keep exactly **one scheduler** in
+the fleet (`onOneServer` is absent). `--start-scheduler` is an explicit primary
+cutover step; `--no-start` installs without starting services.
+
+Horizon needs `JAVMETA_WORKERS_PER_QUEUE` in env; its database setting alone
+cannot change process counts. PostgreSQL's role connection limit **60** and
+shared `max_connections` **150** bound fleet capacity. Browser capacity on
+vm-tools is global, shared by every crawler node. The native Playwright script
+must be under `<root>/current/vendor/jooservices/crawlerx/scripts/`.
+
+For local verification use a disposable shared-service namespace, a local
+repository/ref and `--skip-os-install --no-systemd --no-start`. These flags do
+not establish running-process readiness. Credentials are written mode 0600 to
+the operator-selected file; do not paste them into reports.
+
+## Historical Compose operations
+
+The following sections describe the older Compose deployment and operational
+commands. They are retained for existing environments; the scripts now use the
+native wizard above and do not infer any branch or target.
+
 
 Status: source-driven control deployment verified on 2026-10-02. Crawler-node
 rollout is pending.
@@ -334,8 +377,14 @@ or replace the existing checkout for an upgrade.
 
 ### 5. Build and prepare dependencies
 
-Run the Python script first so the embedder is available. For an existing
-checkout, no environment override is needed:
+Run the Python script first so the embedder is available. Export the selected
+checkout, repository and ref in the same shell (the scripts have no defaults):
+
+```bash
+export JAVMETA_APP_DIR="$CHECKOUT"
+export JAVMETA_REPO_URL="$REPO_URL"
+export JAVMETA_BRANCH="$REF"
+```
 
 ```bash
 /home/joos/javmeta/deploy/python.sh
@@ -460,8 +509,8 @@ Restore it with `setfacl -m m::r .env`. A full crawl queue is reported by the sm
 
 The independent production node uses the operator-only [production kit](../../deploy/production/README.md).
 It provisions `xcrawler` namespaces, provides native Ubuntu/nginx/FPM/systemd files, and deploys only
-`origin/develop` by default, or a full 40-character commit SHA reachable from `origin/develop` with `--ref` through `deploy/production.sh` (dry-run by default).
+an explicitly selected branch, tag or commit SHA using `--ref`, `--repo` and `--target` through `deploy/production.sh` (dry-run by default).
 The script verifies a fresh backup and requires restore-rehearsal attestation before migrations;
 a failure restores the old symlink/services without automatically reversing schema changes.
 No production hosts were contacted while preparing this kit; see its verification limits and bootstrap
-Settings checklist. Staging's names and Docker/runtime deployment path remain unchanged.
+Settings checklist. Staging uses the same wizard; pass the intended repository, ref, target and private service answers explicitly.

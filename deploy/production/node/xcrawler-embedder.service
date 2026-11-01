@@ -2,17 +2,17 @@
 Description=XCrawler embedder
 After=network-online.target
 Wants=network-online.target
-ConditionPathExists=/var/www/xcrawler/current/artisan
+ConditionPathExists=@TARGET_DIR@/current/artisan
 
 [Service]
 Type=simple
-User=xcrawler
-Group=xcrawler
-WorkingDirectory=/var/www/xcrawler/current
-Environment=HOME=/var/www/xcrawler/shared
-Environment=HF_HOME=/var/www/xcrawler/shared/huggingface
+User=@SERVICE_USER@
+Group=@SERVICE_USER@
+WorkingDirectory=@TARGET_DIR@/current
+Environment=HOME=@TARGET_DIR@/shared
+Environment=HF_HOME=@TARGET_DIR@/shared/huggingface
 Environment=HF_HUB_DISABLE_TELEMETRY=1
-ExecStart=/var/www/xcrawler/shared/embedder-venv/bin/uvicorn app:app --app-dir /var/www/xcrawler/current/embedder --host 127.0.0.1 --port 8000
+ExecStart=@TARGET_DIR@/shared/embedder-venv/bin/uvicorn app:app --app-dir @TARGET_DIR@/current/embedder --host @EMBEDDER_BIND@ --port @EMBEDDER_PORT@
 Restart=always
 RestartSec=15
 TimeoutStopSec=240
@@ -22,7 +22,7 @@ UMask=0027
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
-ReadWritePaths=/var/www/xcrawler/shared/storage /var/www/xcrawler/shared/huggingface
+ReadWritePaths=@TARGET_DIR@/shared/storage @TARGET_DIR@/shared/huggingface
 
 [Install]
 WantedBy=multi-user.target

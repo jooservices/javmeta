@@ -27,13 +27,24 @@ systemctl --user stop javmeta-scheduler                       # stops new work b
 systemctl --user stop javmeta-horizon                         # stops the workers
 ```
 
-Deploy a new version with `deploy/staging.sh`. It refuses a dirty clone and takes a backup, then fetches `develop` and runs the UI render smoke on that exact commit in an isolated temporary directory through the shared Node runtime (`scripts/docker/runtime node node ui-tests/render-smoke.mjs`). This happens before updating the served clone or stopping any services; a broken UI leaves the running release untouched. The candidate directory is removed on exit.
+The native `deploy/staging.sh` entry point now delegates to the manifest-driven
+wizard, with no implied repository, branch or target. It does **not** update the
+legacy served WSL clone or manage its user units. Keep that existing topology
+under its operator runbook until a deliberate node migration is approved; the
+wizard does not migrate or restart it automatically.
 
-After that gate passes, the script stops the active workers, fast-forwards to the tested commit, installs dependencies and runs migrations. Immediately after migrations it runs `php artisan settings:import-env` through the same PHP 8.5 runtime as other artisan commands. This idempotent import stores the current environment values once. It then sets up search, clears the path caches without flushing queues, restarts services and runs the existing smoke checks.
+For a new native staging node, prepare private service answers and use:
 
-Finally it waits up to 90 seconds for passing Horizon and scheduler heartbeat checks, using `staging:readiness --no-record` while waiting, then requires a successful `php artisan staging:readiness` report saying `Staging is READY`. The deadline also bounds each readiness invocation. A timeout or non-READY report prints the failing output and exits non-zero through the existing rollback: return code to the previous commit, reinstall its dependencies and start the previously active units. The database backup is restored only if the migration itself did not finish. Read the deploy log before any further recovery.
+```bash
+bash deploy/staging.sh staging --config /private/staging.json --repo "$REPO_URL" --ref "$REF" --target "$RELEASE_ROOT" # preview
+bash deploy/staging.sh staging --config /private/staging.json --repo "$REPO_URL" --ref "$REF" --target "$RELEASE_ROOT" --apply
+```
 
-`deploy/staging.sh --dry-run` prints all three gates, including the wait, without running them. Emergency bypasses must be explicit: `JAVMETA_SKIP_UI_SMOKE=1 deploy/staging.sh` skips only UI smoke; `JAVMETA_SKIP_READINESS=1 deploy/staging.sh` skips only the final readiness gate and wait. Each logs a loud `WARNING` with `BYPASSED`; other values do not bypass anything. Neither skips settings import or the existing deployment smoke checks. These are deployment process overrides, not application settings. Never edit files in the clone by hand: make a Jira ticket, a branch and a pull request.
+Follow the [native installation guide](../../deploy/production/README.md) for
+backup attestation, service checks, role-specific units, an explicit scheduler
+cutover, readiness and code/env rollback. Database migrations are forward-only;
+no automatic database restore is attempted. The former `JAVMETA_SKIP_UI_SMOKE`
+and `JAVMETA_SKIP_READINESS` staging overrides do not apply to the wizard.
 
 ## Is it healthy?
 
