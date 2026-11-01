@@ -169,6 +169,13 @@ final class PruneLegacyStreamsCommandTest extends TestCase
         $this->artisan('observability:prune-legacy-streams', ['--prefix' => 'zzlegacy_', '--min-idle-days' => '0'])->assertSuccessful();
     }
 
+    public function test_forced_run_rejects_zero_idle_days_before_http(): void
+    {
+        $this->artisan('observability:prune-legacy-streams', [...$this->runOptions(), '--min-idle-days' => '0'])
+            ->expectsOutputToContain('min-idle-days of at least 1')->assertFailed();
+        Http::assertNothingSent();
+    }
+
     public function test_empty_and_more_than_200_candidates_are_refused(): void
     {
         $this->streams = [];
@@ -308,7 +315,9 @@ final class PruneLegacyStreamsCommandTest extends TestCase
     public function test_failed_delete_has_no_retry_and_reports_already_deleted(): void
     {
         $this->responses['/api/default/streams/zzlegacy_a'] = 500;
-        $this->artisan('observability:prune-legacy-streams', $this->runOptions())->expectsOutputToContain('HTTP 500')->assertFailed();
+        $this->artisan('observability:prune-legacy-streams', $this->runOptions())
+            ->expectsOutputToContain('HTTP 500')
+            ->expectsOutputToContain('DELETE attempted, removal unverified: logs:zzlegacy_a')->assertFailed();
         self::assertCount(1, Http::recorded(fn(Request $request): bool => $request->method() === 'DELETE'));
         self::assertCount(5, $this->streams);
     }
@@ -324,7 +333,7 @@ final class PruneLegacyStreamsCommandTest extends TestCase
         $this->mode = $mode;
         if ($mode === 'canary-stays') {
             $this->artisan('observability:prune-legacy-streams', $this->runOptions())
-                ->expectsOutputToContain('DELETE accepted but removal unverified: logs:zzlegacy_a')
+                ->expectsOutputToContain('DELETE attempted, removal unverified: logs:zzlegacy_a')
                 ->doesntExpectOutputToContain('Already deleted: logs:zzlegacy_a')->assertFailed();
         } else {
             $this->artisan('observability:prune-legacy-streams', $this->runOptions())
@@ -355,7 +364,7 @@ final class PruneLegacyStreamsCommandTest extends TestCase
         Http::assertNotSent(fn(Request $request): bool => $request->method() === 'DELETE');
     }
 
-    public function test_audit_failure_after_accepted_delete_reports_unverified_not_confirmed(): void
+    public function test_audit_failure_after_delete_request_reports_unverified_not_confirmed(): void
     {
         Log::shouldReceive('channel')->with('single')->andReturnSelf();
         Log::shouldReceive('info')->andReturnUsing(static function (string $message, array $context): void {
@@ -365,7 +374,7 @@ final class PruneLegacyStreamsCommandTest extends TestCase
         });
         $this->artisan('observability:prune-legacy-streams', $this->runOptions())
             ->expectsOutputToContain('Already deleted: ')
-            ->expectsOutputToContain('DELETE accepted but removal unverified: logs:zzlegacy_a')
+            ->expectsOutputToContain('DELETE attempted, removal unverified: logs:zzlegacy_a')
             ->doesntExpectOutputToContain('Already deleted: logs:zzlegacy_a')
             ->doesntExpectOutputToContain('TOP-SECRET')->assertFailed();
         self::assertCount(1, Http::recorded(fn(Request $request): bool => $request->method() === 'DELETE'));

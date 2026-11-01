@@ -15,6 +15,51 @@ use Throwable;
 /** Uses only unique throwaway streams in the local shared OpenObserve. */
 final class PruneLegacyStreamsTest extends IntegrationTestCase
 {
+    /** @var list<array{0: string, 1: string}> */
+    private array $created = [];
+
+    private ?PruneApi $pruneApi = null;
+
+    private string $orgPath = '';
+
+    private string $backupDirectory = '';
+
+    protected function tearDown(): void
+    {
+        try {
+            if ($this->pruneApi !== null && $this->created !== []) {
+                $failures = [];
+                foreach ($this->created as [$name, $type]) {
+                    try {
+                        $exists = array_filter($this->pruneApi->streams(), static fn(array $row): bool => $row['name'] === $name && $row['stream_type'] === $type);
+                        if ($exists !== []) {
+                            $this->pruneApi->request('DELETE', $this->orgPath . '/streams/' . $name . '?type=' . $type . '&delete_all=false');
+                        }
+                    } catch (Throwable) {
+                        $failures[] = $type . ':' . $name;
+                    }
+                }
+
+                try {
+                    $remaining = array_filter($this->pruneApi->streams(), fn(array $row): bool => in_array([$row['name'], $row['stream_type']], $this->created, true));
+                } catch (Throwable) {
+                    $remaining = $this->created;
+                }
+
+                self::assertSame([], $failures, 'Cleanup requests failed for throwaway streams.');
+                self::assertSame([], array_values($remaining), 'Throwaway streams must be absent after cleanup.');
+            }
+        } finally {
+            try {
+                if ($this->backupDirectory !== '') {
+                    File::deleteDirectory($this->backupDirectory);
+                }
+            } finally {
+                parent::tearDown();
+            }
+        }
+    }
+
     public function test_only_legacy_streams_are_exported_and_deleted_and_rerun_is_safe(): void
     {
         self::assertSame('pgsql', getenv('DB_CONNECTION'), 'Integration setup must not leak the feature-test SQLite environment.');
@@ -26,25 +71,30 @@ final class PruneLegacyStreamsTest extends IntegrationTestCase
         $log = $prefix . 'logs';
         $metric = $prefix . 'metric';
         $directory = base_path('.tmp/prune-integration-' . $random);
+        $this->backupDirectory = $directory;
         File::ensureDirectoryExists(dirname($directory), 0700);
         $api = app(PruneApi::class);
+        $this->pruneApi = $api;
         $org = $api->orgPath();
+        $this->orgPath = $org;
         config()->set('openobserve.stream_logs', $sibling);
         $created = [[$log, 'logs'], [$sibling, 'logs'], [$metric, 'metrics']];
+        $oldTimestamp = now()->subDays(30)->getTimestamp();
         try {
             $this->waitForOpenObserve();
+            $this->created = $created;
             foreach ([$log, $sibling] as $name) {
-                $api->request('POST', $org . '/' . $name . '/_json', [['_timestamp' => (int) (microtime(true) * 1_000_000), 'message' => 'throwaway']]);
+                $api->request('POST', $org . '/' . $name . '/_json', [['_timestamp' => $oldTimestamp * 1_000_000, 'message' => 'throwaway']]);
             }
             $api->request('POST', $org . '/v1/metrics', ['resourceMetrics' => [['scopeMetrics' => [['metrics' => [[
-                'name' => $metric, 'gauge' => ['dataPoints' => [['asDouble' => 1.0, 'timeUnixNano' => (string) (int) (microtime(true) * 1_000_000_000)]]],
+                'name' => $metric, 'gauge' => ['dataPoints' => [['asDouble' => 1.0, 'timeUnixNano' => (string) ($oldTimestamp * 1_000_000_000)]]],
             ]]]]]]]);
             $policy = app(StreamPolicy::class);
             $candidates = [];
             $deadline = time() + 90;
             do {
                 $inventory = $api->streams();
-                $candidates = $policy->candidates($inventory, $prefix, ['logs', 'metrics'], 0);
+                $candidates = $policy->candidates($inventory, $prefix, ['logs', 'metrics'], 14);
                 $siblings = array_values(array_filter($inventory, static fn(array $row): bool => $row['name'] === $sibling));
                 if (count($candidates) === 2 && array_sum(array_column($candidates, 'count')) === 2 && ($siblings[0]['stats']['doc_num'] ?? null) === 1) {
                     break;
@@ -54,14 +104,14 @@ final class PruneLegacyStreamsTest extends IntegrationTestCase
             self::assertCount(2, $candidates);
             self::assertSame(2, array_sum(array_column($candidates, 'count')));
             self::assertSame(1, $siblings[0]['stats']['doc_num'] ?? null);
-            $options = ['--prefix' => $prefix, '--min-idle-days' => '0'];
+            $options = ['--prefix' => $prefix, '--min-idle-days' => '14'];
             $dryRunOutput = new BufferedOutput();
             $dryRunStatus = Artisan::call('observability:prune-legacy-streams', $options, $dryRunOutput);
             $dryRunText = $dryRunOutput->fetch();
             self::assertSame(0, $dryRunStatus, $dryRunText);
             self::assertStringContainsString('Manifest SHA256:', $dryRunText);
             $this->artisan('observability:prune-legacy-streams', [...$options, '--force' => true, '--export-dir' => $directory, '--confirm' => str_repeat('0', 64)])->assertFailed();
-            self::assertCount(2, $policy->candidates($api->streams(), $prefix, ['logs', 'metrics'], 0));
+            self::assertCount(2, $policy->candidates($api->streams(), $prefix, ['logs', 'metrics'], 14));
             self::assertDirectoryDoesNotExist($directory);
             $this->artisan('observability:prune-legacy-streams', [...$options, '--force' => true, '--export-dir' => $directory, '--confirm' => $policy->hash($candidates)])->assertSuccessful();
             $manifest = json_decode(file_get_contents($directory . '/manifest.json'), true, flags: JSON_THROW_ON_ERROR);
@@ -70,22 +120,13 @@ final class PruneLegacyStreamsTest extends IntegrationTestCase
                 self::assertSame(1, substr_count(gzdecode(file_get_contents($file['path'])), "\n"));
                 self::assertSame(hash_file('sha256', $file['path']), $file['sha256']);
             }
-            self::assertSame([], $policy->candidates($api->streams(), $prefix, ['logs', 'metrics'], 0));
+            self::assertSame([], $policy->candidates($api->streams(), $prefix, ['logs', 'metrics'], 14));
             $siblings = array_values(array_filter($api->streams(), static fn(array $row): bool => $row['name'] === $sibling));
             self::assertCount(1, $siblings);
             self::assertSame(1, $siblings[0]['stats']['doc_num']);
             $this->artisan('observability:prune-legacy-streams', $options)->expectsOutputToContain('Nothing to do')->assertFailed();
         } finally {
             File::deleteDirectory($directory);
-            // Exact generated identities only; never clean by prefix or touch existing streams.
-            foreach ($created as [$name, $type]) {
-                $exists = array_filter($api->streams(), static fn(array $row): bool => $row['name'] === $name && $row['stream_type'] === $type);
-                if ($exists !== []) {
-                    $api->request('DELETE', $org . '/streams/' . $name . '?type=' . $type . '&delete_all=false');
-                }
-            }
-            $remaining = array_filter($api->streams(), static fn(array $row): bool => in_array([$row['name'], $row['stream_type']], $created, true));
-            self::assertSame([], array_values($remaining), 'Throwaway streams must be absent after cleanup.');
         }
     }
 

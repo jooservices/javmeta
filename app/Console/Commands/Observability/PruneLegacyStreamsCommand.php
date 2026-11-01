@@ -40,8 +40,8 @@ final class PruneLegacyStreamsCommand extends Command
             $prefix = (string) $this->option('prefix');
             $policy->validatePrefix($prefix);
             $types = $this->types();
-            $days = $this->days();
             $real = (bool) $this->option('force');
+            $days = $this->days($real);
             if ($real && ($this->option('dry-run') || ! $this->option('confirm') || ! $this->option('export-dir'))) {
                 throw new RuntimeException('Force requires confirm and export-dir; cannot combine force with dry-run.');
             }
@@ -85,7 +85,7 @@ final class PruneLegacyStreamsCommand extends Command
             // Only our sanitized errors are safe to print; filesystem/JSON errors can contain data.
             $this->error($exception instanceof RuntimeException ? $exception->getMessage() : 'Prune failed; diagnostic contents suppressed.');
             $this->line('Already deleted: ' . implode(', ', $this->deleted));
-            $this->line('DELETE accepted but removal unverified: ' . implode(', ', $this->unverifiedDeletes));
+            $this->line('DELETE attempted, removal unverified: ' . implode(', ', $this->unverifiedDeletes));
 
             return self::FAILURE;
         }
@@ -104,14 +104,19 @@ final class PruneLegacyStreamsCommand extends Command
         return array_values(array_unique($types));
     }
 
-    private function days(): int
+    private function days(bool $real): int
     {
         $value = (string) $this->option('min-idle-days');
         if (preg_match('/\A[0-9]{1,5}\z/D', $value) !== 1) {
             throw new RuntimeException('Invalid min-idle-days.');
         }
 
-        return (int) $value;
+        $days = (int) $value;
+        if ($real && $days < 1) {
+            throw new RuntimeException('Forced runs require min-idle-days of at least 1.');
+        }
+
+        return $days;
     }
 
     /** @param list<array<string, mixed>> $streams
@@ -176,9 +181,9 @@ final class PruneLegacyStreamsCommand extends Command
             $references->check($remaining, fn(string $message) => $this->line($message));
             $this->assertProtected($protected, $this->protectedCounts($current, $policy));
             $this->line(($index === 0 ? 'Canary delete: ' : 'Delete: ') . $candidate['type'] . ':' . $candidate['name']);
-            $api->request('DELETE', $api->orgPath() . '/streams/' . rawurlencode($candidate['name']) . '?type=' . $candidate['type'] . '&delete_all=false');
             $identity = $candidate['type'] . ':' . $candidate['name'];
             $this->unverifiedDeletes[] = $identity;
+            $api->request('DELETE', $api->orgPath() . '/streams/' . rawurlencode($candidate['name']) . '?type=' . $candidate['type'] . '&delete_all=false');
             $current = $api->streams();
             foreach ($current as $stream) {
                 if ($stream['name'] === $candidate['name'] && $stream['stream_type'] === $candidate['type']) {
