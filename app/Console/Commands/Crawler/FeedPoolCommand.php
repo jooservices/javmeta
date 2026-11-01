@@ -57,13 +57,8 @@ final class FeedPoolCommand extends Command
 
         // Pacing: a source may have at most floor(horizon / gap) rows waiting at once, and its rows start one gap apart.
         $horizon = max(1, (int) config('javmeta_queues.pacing_horizon_seconds', 60));
-        $sources = Source::query()->get()->keyBy('slug');
         $waiting = $queue->claimedWaitingBySource();
-        $gapOf = static function (string $slug) use ($sources, $throttle): float {
-            $source = $sources->get($slug);
-
-            return max(1.0, $source instanceof Source ? $throttle->currentGap($source) : 5.0);
-        };
+        $gapOf = $this->sourceGaps($throttle);
         /** @var array<string, int> $budgetUsed */
         $budgetUsed = [];
         $exhausted = $this->exhaustedSources($waiting, $budgetUsed, $horizon, $gapOf);
@@ -92,6 +87,17 @@ final class FeedPoolCommand extends Command
         $this->components->info("Dispatched {$dispatched} crawl job(s).");
 
         return self::SUCCESS;
+    }
+
+    private function sourceGaps(SourceThrottle $throttle): callable
+    {
+        $sources = Source::query()->get()->keyBy('slug');
+
+        return static function (string $slug) use ($sources, $throttle): float {
+            $source = $sources->get($slug);
+
+            return max(1.0, $source instanceof Source ? $throttle->currentGap($source) : 5.0);
+        };
     }
 
     /**
