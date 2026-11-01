@@ -4,19 +4,17 @@ declare(strict_types=1);
 
 namespace Tests\Integration;
 
-use App\Models\Performer;
 use App\Services\Auth\ApiKeyService;
 use App\Services\Dependencies\Probes\MongoProbe;
 
 final class RuntimeDependencyHealthTest extends IntegrationTestCase
 {
-    public function test_mongo_outage_is_soft_for_health_and_postgres_backed_api_routes(): void
+    public function test_mongo_outage_blocks_health_and_postgres_backed_api_routes(): void
     {
         if (getenv('JAVMETA_INTEGRATION_STOP_MONGO') !== '1') {
             $this->markTestSkipped('The integration runner must stop Mongo during this test.');
         }
 
-        $performer = Performer::factory()->create();
         $apiKey = app(ApiKeyService::class)->create(fake()->words(2, true))->plaintext;
         $signalId = getenv('JAVMETA_MONGO_OUTAGE_SIGNAL_ID');
         self::assertIsString($signalId);
@@ -39,13 +37,15 @@ final class RuntimeDependencyHealthTest extends IntegrationTestCase
         self::assertFileExists($stoppedSignal, 'The integration runner did not stop Mongo in time.');
 
         $this->getJson('/api/health')
-            ->assertOk()
+            ->assertServiceUnavailable()
+            ->assertJsonPath('status', 'down')
             ->assertJsonPath('dependencies.mongo.available', false)
-            ->assertJsonPath('dependencies.mongo.hard', false)
+            ->assertJsonPath('dependencies.mongo.hard', true)
             ->assertJsonPath('dependencies.mongo.state', 'down');
 
         $this->getJson('/api/v1/performers', ['X-API-Key' => $apiKey])
-            ->assertOk()
-            ->assertJsonPath('data.0.id', $performer->id);
+            ->assertServiceUnavailable()
+            ->assertJsonPath('status', 'unavailable')
+            ->assertJsonPath('checks.0.service', 'mongo');
     }
 }

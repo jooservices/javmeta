@@ -43,17 +43,40 @@ use Tests\TestCase;
 
 final class E2EStepTest extends TestCase
 {
-    public function test_start_stack_checks_health_contract(): void
+    public function test_start_stack_accepts_degraded_health_when_primary_services_pass(): void
     {
         Http::fake(['https://api.test/api/health' => Http::response([
-            'status' => 'ok',
+            'status' => 'degraded',
             'worker' => ['stale' => false],
+            'dependencies' => [
+                'postgres' => ['hard' => true, 'available' => true],
+                'redis' => ['hard' => true, 'available' => true],
+                'mongo' => ['hard' => true, 'available' => true],
+                'elasticsearch' => ['hard' => true, 'available' => true],
+                'ollama' => ['hard' => false, 'available' => false],
+            ],
             'sources' => [['slug' => 'onejav', 'last_success_at' => '2026-10-16T10:00:00Z']],
         ])]);
 
         $context = (new StartStack())->run($this->context());
 
         self::assertSame(200, $context->lastResponse['status']);
+    }
+
+    public function test_start_stack_rejects_a_degraded_health_report_with_a_down_primary(): void
+    {
+        Http::fake(['https://api.test/api/health' => Http::response([
+            'status' => 'degraded',
+            'worker' => ['stale' => false],
+            'dependencies' => [
+                'postgres' => ['hard' => true, 'available' => true],
+                'redis' => ['hard' => true, 'available' => false],
+                'mongo' => ['hard' => true, 'available' => true],
+            ],
+            'sources' => [['slug' => 'onejav', 'last_success_at' => '2026-10-16T10:00:00Z']],
+        ])]);
+
+        $this->expectStepFailure(new StartStack(), $this->context(), 'primary');
     }
 
     public function test_create_key_keeps_plaintext_only_in_context(): void
