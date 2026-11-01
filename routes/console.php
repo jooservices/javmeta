@@ -20,6 +20,7 @@ if (! app()->runningUnitTests()) {
     Schedule::command('crawler:reclaim')->everyMinute();
     Schedule::command('crawler:seed')->everyMinute();
     Schedule::command('crawler:feed-pool', ['--scheduled' => true])->everyFiveSeconds()->withoutOverlapping();
+    Schedule::command('horizon:reconcile-workers')->everyMinute()->withoutOverlapping();
     Schedule::command('obs:publish-metrics')->everyMinute();
     Schedule::command('javmeta:backup-status', ['--lenient'])->everyMinute();
     Schedule::command('crawler:recrawl-incomplete')->hourly()->withoutOverlapping();

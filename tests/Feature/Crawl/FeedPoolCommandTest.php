@@ -37,7 +37,7 @@ final class FeedPoolCommandTest extends TestCase
         $this->assertInstanceOf(FeedPoolCommand::class, $commands['crawler:feed-pool']);
         $this->assertSame($commands['crawler:feed-pool'], $commands[$legacyAlias]);
         $this->assertNull($commands['crawler:feed-pool']->getDefinition()->getOption('limit')->getDefault());
-        $this->assertNull($commands['crawler:feed-pool']->getDefinition()->getOption('schedule-interval')->getDefault());
+        $this->assertFalse($commands['crawler:feed-pool']->getDefinition()->getOption('scheduled')->getDefault());
         $this->assertSame(50, config('javmeta_queues.feed_pool_limit'));
     }
 
@@ -72,7 +72,7 @@ final class FeedPoolCommandTest extends TestCase
         Queue::fake();
 
         $this->artisan('crawler:feed-pool', ['--scheduled' => true])->assertSuccessful();
-        $this->travel(14)->seconds();
+        $this->travel(9)->seconds();
         config(['javmeta_queues.feed_interval_seconds' => 10]);
         $this->artisan('crawler:feed-pool', ['--scheduled' => true])->expectsOutputToContain('Feed interval has not elapsed.')->assertSuccessful();
         $this->travel(1)->seconds();
@@ -410,11 +410,8 @@ final class FeedPoolCommandTest extends TestCase
 
         for ($run = 0; $run < 6; $run++) {
             $this->travelTo($start->copy()->addSeconds($run * 10));
-            if ($run === 1) {
-                config()->set('javmeta_queues.feed_interval_seconds', 60);
-            }
             $before = CrawlQueue::query()->where('status', CrawlQueue::STATUS_CLAIMED)->count();
-            $this->artisan('crawler:feed-pool', ['--schedule-interval' => 10])->assertSuccessful();
+            $this->artisan('crawler:feed-pool')->assertSuccessful();
             $after = CrawlQueue::query()->where('status', CrawlQueue::STATUS_CLAIMED)->count();
             $dispatchedPerRun[] = $after - $before;
             $this->assertLessThanOrEqual(50, $after);
