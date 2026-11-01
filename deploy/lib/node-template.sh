@@ -21,9 +21,17 @@ configure_node_role() {
     if [[ "$role" == worker ]]; then
       install -d "$(dirname -- "$dropin")"
       printf '[Unit]\nConditionPathExists=%s/shared/primary-role\n' "$target" > "$dropin"
-      systemctl disable --now "$unit"
+      node_control disable --now "$unit"
     else
       rm -f "$dropin"
     fi
   done
+}
+
+node_control() {
+  if [[ "${WIZARD_NO_SYSTEMD:-0}" == 1 ]]; then
+    printf 'UNIT: %s\n' "$*"
+  else
+    systemctl "$@"
+  fi
 }

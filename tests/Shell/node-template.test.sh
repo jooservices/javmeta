@@ -34,3 +34,9 @@ configure_node_role primary "$TARGET_DIR" "$fixture/systemd" custom-nginx custom
 [[ ! -e "$fixture/systemd/custom-scheduler.service.d/worker-role.conf" ]]
 [[ "$(cat "$fixture/systemd/custom-nginx.service.d/operator.conf")" == preserve ]]
 echo 'OK (8 worker role drop-in assertions)'
+
+prior_calls="$(wc -l < "$fixture/units")"
+WIZARD_NO_SYSTEMD=1 node_control daemon-reload > "$fixture/plan"
+grep -Fxq 'UNIT: daemon-reload' "$fixture/plan"
+[[ "$(wc -l < "$fixture/units")" == "$prior_calls" ]]
+echo 'OK (2 no-systemd assertions)'

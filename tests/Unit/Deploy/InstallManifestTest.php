@@ -53,7 +53,7 @@ final class InstallManifestTest extends TestCase
         $roles = file_get_contents(dirname(__DIR__, 3) . '/deploy/lib/node-template.sh');
         $this->assertStringContainsString('worker-role.conf', $roles);
         $this->assertStringContainsString('ConditionPathExists=', $roles);
-        $this->assertStringContainsString('systemctl disable --now "$unit"', $roles);
+        $this->assertStringContainsString('node_control disable --now "$unit"', $roles);
         $engine = file_get_contents(dirname(__DIR__, 3) . '/deploy/lib/install.sh');
         $this->assertStringContainsString('${answers[EXPORTER_UNIT]}', $engine);
     }

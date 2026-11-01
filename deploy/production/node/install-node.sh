@@ -75,7 +75,7 @@ done
 chmod 440 "$sudoers"
 visudo -cf "$sudoers"
 if [[ "$NODE_ROLE" == primary ]]; then nginx -t; fi
-systemctl daemon-reload
+node_control daemon-reload
 # Enable/start is deferred to the wizard after release verification.
 # Application units start only after the wizard creates and verifies a release.
 echo 'Node prerequisites and rendered configuration verified.'
