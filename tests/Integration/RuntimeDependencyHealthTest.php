@@ -6,6 +6,7 @@ namespace Tests\Integration;
 
 use App\Services\Auth\ApiKeyService;
 use App\Services\Dependencies\Probes\MongoProbe;
+use App\Services\Health\StartupHealthSnapshotStore;
 
 final class RuntimeDependencyHealthTest extends IntegrationTestCase
 {
@@ -43,9 +44,17 @@ final class RuntimeDependencyHealthTest extends IntegrationTestCase
             ->assertJsonPath('dependencies.mongo.hard', true)
             ->assertJsonPath('dependencies.mongo.state', 'down');
 
-        $this->getJson('/api/v1/performers', ['X-API-Key' => $apiKey])
-            ->assertServiceUnavailable()
-            ->assertJsonPath('status', 'unavailable')
-            ->assertJsonPath('checks.0.service', 'mongo');
+        $healthPath = tempnam(sys_get_temp_dir(), 'startup-health-');
+        self::assertNotFalse($healthPath);
+        unlink($healthPath);
+        $this->app->instance(StartupHealthSnapshotStore::class, new StartupHealthSnapshotStore($healthPath));
+        try {
+            $this->getJson('/api/v1/performers', ['X-API-Key' => $apiKey])
+                ->assertServiceUnavailable()
+                ->assertJsonPath('status', 'unavailable')
+                ->assertJsonPath('checks.0.service', 'mongo');
+        } finally {
+            @unlink($healthPath);
+        }
     }
 }
