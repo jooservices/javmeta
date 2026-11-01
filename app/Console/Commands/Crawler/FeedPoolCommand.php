@@ -26,7 +26,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class FeedPoolCommand extends Command
 {
-    protected $signature = 'crawler:feed-pool {--limit= : Per-lane jobs for this invocation (defaults to the scaled per-minute setting)}';
+    protected $signature = 'crawler:feed-pool {--limit= : Per-lane jobs for this invocation (defaults to the scaled per-minute setting)} {--schedule-interval= : Interval captured when the scheduler registered this run}';
 
     protected $aliases = ['crawl:dispatch'];
 
@@ -218,7 +218,7 @@ final class FeedPoolCommand extends Command
             $slugs = [];
             foreach (array_keys($waiting + $budgetUsed) as $slug) {
                 $slug = (string) $slug;
-                if (($waiting[$slug] ?? 0) + ($budgetUsed[$slug] ?? 0) >= (int) floor($horizon / $gapOf($slug))) {
+                if (($waiting[$slug] ?? 0) + ($budgetUsed[$slug] ?? 0) >= max(1, (int) floor($horizon / $gapOf($slug)))) {
                     $slugs[] = $slug;
                 }
             }
@@ -229,7 +229,7 @@ final class FeedPoolCommand extends Command
 
     private function scaledRunLimit(int $limitPerMinute): int
     {
-        $interval = (int) config('javmeta_queues.feed_interval_seconds', 10);
+        $interval = (int) ($this->option('schedule-interval') ?? config('javmeta_queues.feed_interval_seconds', 10));
         if (! in_array($interval, [5, 10, 15, 30, 60], true)) {
             $interval = 10;
         }

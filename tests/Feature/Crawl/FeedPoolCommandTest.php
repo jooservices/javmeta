@@ -36,6 +36,7 @@ final class FeedPoolCommandTest extends TestCase
         $this->assertInstanceOf(FeedPoolCommand::class, $commands['crawler:feed-pool']);
         $this->assertSame($commands['crawler:feed-pool'], $commands[$legacyAlias]);
         $this->assertNull($commands['crawler:feed-pool']->getDefinition()->getOption('limit')->getDefault());
+        $this->assertNull($commands['crawler:feed-pool']->getDefinition()->getOption('schedule-interval')->getDefault());
         $this->assertSame(50, config('javmeta_queues.feed_pool_limit'));
     }
 
@@ -321,6 +322,32 @@ final class FeedPoolCommandTest extends TestCase
         $this->assertSame(12, CrawlQueue::query()->where('source_slug', 'paced')->where('status', CrawlQueue::STATUS_CLAIMED)->count());
     }
 
+    public function test_source_with_gap_beyond_horizon_can_dispatch_after_its_old_activity_expires(): void
+    {
+        config([
+            'javmeta_queues.pacing_horizon_seconds' => 60,
+            'javmeta_queues.per_source_inflight' => 4,
+        ]);
+        $this->pacedSource('long-gap', 120.0);
+        CrawlQueue::factory()->create([
+            'source_slug' => 'long-gap',
+            'kind' => CrawlQueue::KIND_DETAIL,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'claimed_at' => now()->subSeconds(120),
+            'started_at' => now()->subSeconds(120),
+        ]);
+        $pending = CrawlQueue::factory()->create([
+            'source_slug' => 'long-gap',
+            'kind' => CrawlQueue::KIND_DETAIL,
+        ]);
+        Queue::fake();
+
+        $this->artisan('crawler:feed-pool')->assertSuccessful();
+
+        Queue::assertPushed(FetchDetailJob::class, 1);
+        $this->assertSame(CrawlQueue::STATUS_CLAIMED, $pending->refresh()->status);
+    }
+
     public function test_per_minute_lane_limit_distributes_a_single_job_across_ten_second_slots(): void
     {
         $start = now()->startOfMinute();
@@ -342,7 +369,7 @@ final class FeedPoolCommandTest extends TestCase
         Queue::assertPushed(FetchListingJob::class, 1);
     }
 
-    public function test_per_minute_lane_limit_is_apportioned_across_six_ten_second_slots(): void
+    public function test_six_scheduled_runs_keep_the_lane_limit_when_the_setting_changes_mid_minute(): void
     {
         $start = now()->startOfMinute();
         config([
@@ -361,10 +388,14 @@ final class FeedPoolCommandTest extends TestCase
 
         for ($run = 0; $run < 6; $run++) {
             $this->travelTo($start->copy()->addSeconds($run * 10));
+            if ($run === 1) {
+                config()->set('javmeta_queues.feed_interval_seconds', 60);
+            }
             $before = CrawlQueue::query()->where('status', CrawlQueue::STATUS_CLAIMED)->count();
-            $this->artisan('crawler:feed-pool')->assertSuccessful();
+            $this->artisan('crawler:feed-pool', ['--schedule-interval' => 10])->assertSuccessful();
             $after = CrawlQueue::query()->where('status', CrawlQueue::STATUS_CLAIMED)->count();
             $dispatchedPerRun[] = $after - $before;
+            $this->assertLessThanOrEqual(50, $after);
         }
 
         $this->assertSame([8, 8, 9, 8, 8, 9], $dispatchedPerRun);

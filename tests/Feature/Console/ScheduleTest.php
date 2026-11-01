@@ -104,6 +104,7 @@ final class ScheduleTest extends TestCase
                 $this->assertNotNull($feed, "Feed pool schedule was not registered for {$interval} seconds.");
                 $this->assertSame($repeatSeconds, $feed->repeatSeconds);
                 $this->assertSame('* * * * *', $feed->expression);
+                $this->assertStringContainsString('--schedule-interval=' . $interval, (string) $feed->command);
             }
         } finally {
             app()->instance('env', $previousEnvironment);

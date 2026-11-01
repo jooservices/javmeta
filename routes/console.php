@@ -23,7 +23,7 @@ if (! app()->runningUnitTests()) {
     if (! in_array($feedInterval, [5, 10, 15, 30, 60], true)) {
         $feedInterval = 10;
     }
-    $feedPool = Schedule::command('crawler:feed-pool')->withoutOverlapping();
+    $feedPool = Schedule::command('crawler:feed-pool --schedule-interval=' . $feedInterval)->withoutOverlapping();
     match ($feedInterval) {
         5 => $feedPool->everyFiveSeconds(),
         10 => $feedPool->everyTenSeconds(),

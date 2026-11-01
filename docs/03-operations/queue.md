@@ -58,7 +58,7 @@ The depth check covers ready jobs. Reserved and delayed Redis jobs do not count 
 
 ## Feed interval and pacing budget
 
-`queue.feed_interval_seconds` controls the scheduled `crawler:feed-pool` cadence. It is database-backed and appears on the Settings page; valid values are 5, 10, 15, 30 and 60 seconds. The default is 10 seconds. The scheduler reads it when each `schedule:run` starts. The single scheduler must run `php artisan schedule:work`, which starts a new `schedule:run` each minute; a saved change takes effect at the next minute without restarting the worker. Set it to `60` on the Settings page to restore the former once-per-minute cadence.
+`queue.feed_interval_seconds` controls the scheduled `crawler:feed-pool` cadence. It is database-backed and appears on the Settings page; valid values are 5, 10, 15, 30 and 60 seconds. The default is 10 seconds. The scheduler captures the setting when it starts and passes that interval to each feeder run, keeping the run allowance aligned with the registered cadence. After changing this setting, restart `php artisan schedule:work` on the main scheduler node to apply it. Set it to `60` on the Settings page to restore the former once-per-minute cadence.
 
 `queue.feed_pool_limit` remains a per-lane, per-minute cap. The feeder apportions that budget across the interval slots using the difference between cumulative minute quotas. For example, 50 jobs per minute at a 10-second interval yields per-run limits of 8, 8, 9, 8, 8 and 9. This preserves the configured minute total while distributing jobs through the minute. An explicit `crawler:feed-pool --limit=N` adds a per-run ceiling but cannot exceed that slot's apportioned allowance.
 
