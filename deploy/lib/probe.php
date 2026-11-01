@@ -9,7 +9,6 @@ use MongoDB\Driver\Manager;
 use PDO;
 use Redis;
 use RedisException;
-use Symfony\Component\Process\Process;
 use RuntimeException;
 use Throwable;
 
@@ -48,7 +47,7 @@ function request(string $url, array $headers = [], ?string $body = null): string
         CURLOPT_HTTPHEADER => $headers,
         CURLOPT_FOLLOWLOCATION => false,
     ]);
-    if (answer('ELASTICSEARCH_CA') !== '' && str_starts_with($url, answer('ELASTICSEARCH_HOST'))) {
+    if ($parts['scheme'] === 'https' && answer('ELASTICSEARCH_CA') !== '' && str_starts_with($url, answer('ELASTICSEARCH_HOST'))) {
         curl_setopt($handle, CURLOPT_CAINFO, answer('ELASTICSEARCH_CA'));
     }
     if ($body !== null) {
@@ -74,16 +73,21 @@ try {
             tcp(answer('DB_HOST'), (int) answer('DB_PORT'));
             $connection = new PDO('pgsql:host=' . answer('DB_HOST') . ';port=' . answer('DB_PORT') . ';dbname=' . answer('DB_DATABASE') . ';sslmode=' . answer('DB_SSLMODE'), answer('DB_USERNAME'), answer('DB_PASSWORD'), [PDO::ATTR_TIMEOUT => 5]);
             $connection->query('SELECT 1')->fetchColumn();
-            $process = new Process(['psql', '-X', '-At', '-c', 'SHOW timezone'], null, [
+            $process = proc_open(['psql', '-X', '-At', '-c', 'SHOW timezone'], [1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'a']], $pipes, null, array_merge(getenv(), [
                 'PGHOST' => answer('DB_HOST'), 'PGPORT' => answer('DB_PORT'),
                 'PGDATABASE' => answer('DB_DATABASE'), 'PGUSER' => answer('DB_USERNAME'),
                 'PGPASSWORD' => answer('DB_PASSWORD'), 'PGSSLMODE' => answer('DB_SSLMODE'), 'PGCONNECT_TIMEOUT' => '5',
-            ]);
-            $process->setTimeout(10);
-            if ($process->run() !== 0) {
+                'PGOPTIONS' => '-c statement_timeout=5000',
+            ]));
+            if (!is_resource($process)) {
                 throw new RuntimeException('PostgreSQL psql validation failed');
             }
-            if (!in_array(trim($process->getOutput()), ['UTC', 'Etc/UTC'], true)) {
+            $timezone = trim((string) stream_get_contents($pipes[1]));
+            fclose($pipes[1]);
+            if (proc_close($process) !== 0) {
+                throw new RuntimeException('PostgreSQL psql validation failed');
+            }
+            if (!in_array($timezone, ['UTC', 'Etc/UTC'], true)) {
                 throw new RuntimeException('Database timezone MUST be UTC; stale claims cannot be reclaimed. Supply runtime admin credentials to repair.');
             }
             break;
@@ -114,8 +118,8 @@ try {
             }
             break;
         case 'elasticsearch':
-            if (!str_starts_with(answer('ELASTICSEARCH_HOST'), 'https://')) {
-                throw new RuntimeException('Elasticsearch requires HTTPS');
+            if (!preg_match('#^https?://#', answer('ELASTICSEARCH_HOST'))) {
+                throw new RuntimeException('Elasticsearch requires HTTP(S)');
             }
             request(rtrim(answer('ELASTICSEARCH_HOST'), '/') . '/_security/_authenticate', ['Authorization: ApiKey ' . answer('ELASTICSEARCH_API_KEY')]);
             break;
@@ -153,7 +157,7 @@ try {
     }
     echo "TCP and protocol probe passed.\n";
 } catch (Throwable $exception) {
-    $safe = ['TCP unavailable', 'Invalid HTTP URL', 'HTTP authentication/response failed', 'Redis ping failed', 'Elasticsearch requires HTTPS', 'Invalid Sentry DSN', 'FlareSolverr invalid response', 'Unknown validator', 'PostgreSQL psql validation failed', 'Database timezone MUST be UTC; stale claims cannot be reclaimed. Supply runtime admin credentials to repair.', 'Redis prefix SET/GET failed', 'Redis ACL must deny keys outside the prefix'];
+    $safe = ['TCP unavailable', 'Invalid HTTP URL', 'HTTP authentication/response failed', 'Redis ping failed', 'Elasticsearch requires HTTP(S)', 'Invalid Sentry DSN', 'FlareSolverr invalid response', 'Unknown validator', 'PostgreSQL psql validation failed', 'Database timezone MUST be UTC; stale claims cannot be reclaimed. Supply runtime admin credentials to repair.', 'Redis prefix SET/GET failed', 'Redis ACL must deny keys outside the prefix'];
     echo in_array($exception->getMessage(), $safe, true) ? $exception->getMessage() : 'Authentication, TLS or required client dependency failed';
     echo "\n";
     exit(1);

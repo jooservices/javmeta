@@ -39,4 +39,20 @@ final class InstallManifestTest extends TestCase
         $this->expectExceptionMessage('Invalid HTTP URL');
         \JavMeta\Deploy\request('file:///etc/passwd');
     }
+    public function test_probe_has_no_dependency_on_composer_before_installation(): void
+    {
+        $probe = file_get_contents(dirname(__DIR__, 3) . '/deploy/lib/probe.php');
+        $this->assertStringNotContainsString('Symfony\\Component', $probe);
+        $this->assertStringContainsString("proc_open(['psql'", $probe);
+    }
+
+    public function test_worker_installer_blocks_web_and_scheduler_and_enables_exporter(): void
+    {
+        $installer = file_get_contents(dirname(__DIR__, 3) . '/deploy/production/node/install-node.sh');
+        $this->assertStringContainsString('worker-role.conf', $installer);
+        $this->assertStringContainsString('ConditionPathExists=', $installer);
+        $this->assertStringContainsString('systemctl disable --now "$unit"', $installer);
+        $this->assertStringContainsString('systemctl enable "$(node_value exporter_unit)"', $installer);
+    }
+
 }

@@ -298,7 +298,9 @@ apply_release() {
   step 'UI render smoke' node ui-tests/render-smoke.mjs
   quiesced=0
   if (( ! no_start )); then quiesced=1; step 'Quiesce scheduler and workers' unit_action stop "${answers[STOP_UNITS]}"; fi
-  step 'Forward migrations' php artisan migrate --force
+  if [[ "${answers[NODE_ROLE]}" == primary ]]; then
+    step 'Forward migrations' php artisan migrate --force
+  else log 'SKIP: worker uses the primary shared env/database; no migrations.'; fi
   # Service answers whose configuration lives in Mongo are applied without argv secrets.
   step 'Import manifest database settings' import_settings
   step 'Import missing database settings' php artisan settings:import-env

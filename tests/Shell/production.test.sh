@@ -55,7 +55,7 @@ for entry in production staging; do
   if bash "$root/deploy/$entry.sh" --non-interactive --ref candidate > "$fixture/log" 2>&1; then fail 'missing deployment answers accepted'; fi
   grep -q 'Missing answers' "$fixture/log" || fail 'entry point is not using shared wizard'
 done
-if bash "$root/deploy/production.sh" > "$fixture/log" 2>&1; then fail 'production wizard accepted missing answers'; fi
+if bash "$root/deploy/production.sh" < /dev/null > "$fixture/log" 2>&1; then fail 'production wizard accepted missing answers'; fi
 grep -q 'Input ended at SERVICE_EMBEDDER_ENABLED' "$fixture/log" || fail 'production entry point did not prompt interactively'
 if bash "$root/deploy/install.sh" --non-interactive --set DB_PASSWORD=fixture > "$fixture/log" 2>&1; then fail 'secret argv accepted'; fi
 grep -q 'must come from private config' "$fixture/log" || fail 'secret argv not diagnosed'

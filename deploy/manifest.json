@@ -917,6 +917,7 @@
       "nodejs",
       "postgresql-client-18"
     ],
+    "exporter_unit": "prometheus-node-exporter",
     "ca_directory": "/usr/local/share/ca-certificates"
   }
 }

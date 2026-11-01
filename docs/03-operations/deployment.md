@@ -502,8 +502,8 @@ Restore it with `setfacl -m m::r .env`. A full crawl queue is reported by the sm
 
 The independent production node uses the operator-only [production kit](../../deploy/production/README.md).
 It provisions `xcrawler` namespaces, provides native Ubuntu/nginx/FPM/systemd files, and deploys only
-`origin/develop` by default, or a full 40-character commit SHA reachable from `origin/develop` with `--ref` through `deploy/production.sh` (dry-run by default).
+an explicitly selected branch, tag or commit SHA using `--ref`, `--repo` and `--target` through `deploy/production.sh` (dry-run by default).
 The script verifies a fresh backup and requires restore-rehearsal attestation before migrations;
 a failure restores the old symlink/services without automatically reversing schema changes.
 No production hosts were contacted while preparing this kit; see its verification limits and bootstrap
-Settings checklist. Staging's names and Docker/runtime deployment path remain unchanged.
+Settings checklist. Staging uses the same wizard; pass the intended repository, ref, target and private service answers explicitly.

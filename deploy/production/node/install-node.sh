@@ -55,12 +55,22 @@ render_node_template "$root/deploy/production/node/xcrawler-fpm.conf" "$(node_va
 render_node_template "$root/deploy/production/node/xcrawler.nginx.conf" "$(node_value nginx_available)/$UNIT_PREFIX"
 ln -sfn "$(node_value nginx_available)/$UNIT_PREFIX" "$(node_value nginx_enabled)/$UNIT_PREFIX"
 fi
-for service in horizon embedder; do
+for service in horizon embedder scheduler; do
   render_node_template "$root/deploy/production/node/xcrawler-$service.service" "$(node_value unit_dir)/$UNIT_PREFIX-$service.service"
 done
-if [[ "$NODE_ROLE" == primary ]]; then
-  render_node_template "$root/deploy/production/node/xcrawler-scheduler.service" "$(node_value unit_dir)/$UNIT_PREFIX-scheduler.service"
-fi
+# A worker must never become a second scheduler or web node after a reboot.
+blocked_units=("$NGINX_UNIT" "$UNIT_PREFIX-scheduler")
+for unit in "${blocked_units[@]}"; do
+  dropin="$(node_value unit_dir)/$unit.service.d/worker-role.conf"
+  if [[ "$NODE_ROLE" == worker ]]; then
+    install -d "$(dirname -- "$dropin")"
+    printf '[Unit]\nConditionPathExists=%s/shared/primary-role\n' "$TARGET_DIR" > "$dropin"
+    systemctl disable --now "$unit"
+  else
+    rm -f "$dropin"
+  fi
+done
+systemctl enable "$(node_value exporter_unit)"
 # Only these complete command vectors can be invoked by the service account.
 sudoers="$(node_value sudoers_dir)/$UNIT_PREFIX-units"
 # Restrict privilege to individual manifest-selected units; scheduler remains opt-in.

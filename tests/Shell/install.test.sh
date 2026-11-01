@@ -104,4 +104,10 @@ sed -n 's/^\([A-Z][A-Z0-9_]*\)=.*/\1/p' "$root/deploy/production/env.production.
 jq -r '.services[].fields[].key' "$root/deploy/manifest.json" | sort -u > "$fixture/manifest"
 [[ -z "$(comm -23 "$fixture/example" "$fixture/manifest")" ]] || fail 'manifest misses example keys'
 if grep -REn --include='*.sh' '^[[:space:]]*[^#[:space:]].*(develop|master|origin/)' "$root/deploy"; then fail 'branch literal in executable logic'; fi
-echo 'OK (22 install wizard scenarios)'
+# A worker must not migrate a database shared with the primary.
+: > "$CALLS"
+bash "$script" --non-interactive --config "$fixture/answers.json" --role worker --skip-os-install --no-systemd --no-start --apply > "$fixture/log" 2>&1
+! grep -q 'artisan migrate' "$CALLS" || fail 'worker ran migrations'
+grep -q 'no migrations' "$fixture/log" || fail 'worker migration skip not disclosed'
+! grep -q 'private-test-value\|private-owner-password' "$fixture/log" || fail 'worker leaked credentials'
+echo 'OK (25 install wizard scenarios)' 

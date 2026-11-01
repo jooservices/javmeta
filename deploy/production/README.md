@@ -47,7 +47,7 @@ password instead of rotating them.
 | PostgreSQL | PDO authentication, `psql SHOW timezone`, require UTC/Etc/UTC |
 | MongoDB | PHP driver ping; build URI with percent-encoded user/password and authSource |
 | Redis | ACL AUTH, SET/GET in the prefix, denial outside it |
-| Elasticsearch | HTTPS/TLS and API-key `_security/_authenticate`; optional CA file |
+| Elasticsearch | HTTP(S) and API-key (TLS verified for HTTPS) `_security/_authenticate`; optional CA file |
 | OpenObserve | Authenticated test ingest into the selected org/log stream |
 | FlareSolverr | HTTP sessions list, require `status=ok` |
 | Playwright | HTTP health endpoint |
@@ -110,8 +110,7 @@ not rolled back automatically. Failed releases remain for private inspection.
 
 ## Adding a worker node
 
-Use a new target/service account/node name with `--role worker`. Only Horizon
-and embedder units are managed; nginx/FPM and scheduler are excluded. Point
+Use a new target/service account/node name with `--role worker`. Horizon, embedder and node exporter are enabled. Nginx and scheduler remain installed but disabled and blocked by a systemd condition drop-in. Workers never run migrations; use the shared env from the primary node. Point
 `media.api_url` at the primary API. Shared service answers must select the same
 application databases/indexes but the appropriate scoped Redis prefix.
 
