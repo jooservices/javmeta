@@ -60,7 +60,11 @@ final class PublishMetricsCommand extends Command
         AlertMetrics $alertMetrics,
         CrawlStatsOperationalSampler $statsSampler,
     ): int {
-        $statsSampler->sample();
+        try {
+            $statsSampler->sample();
+        } catch (Throwable $exception) {
+            Log::warning('Crawl stats sampling failed.', ['exception' => $exception::class]);
+        }
 
         if (! $client->enabled()) {
             $this->components->info('OpenObserve disabled; skipping metrics publish.');

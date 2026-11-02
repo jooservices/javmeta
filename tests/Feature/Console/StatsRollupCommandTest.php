@@ -8,6 +8,8 @@ use App\Services\Crawl\CrawlStatsRollup;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -86,17 +88,29 @@ final class StatsRollupCommandTest extends TestCase
         $this->assertReportGroup('source', 'onejav', $hour);
         $this->assertReportGroup('lane', 'normal', $hour);
         $this->assertReportGroup('hour', $hour->format('Y-m-d H:00'), $hour);
+        $this->artisan('crawler:stats-report --hours=24junk')->assertFailed();
         $this->artisan('crawler:stats-report --by=invalid')->assertFailed();
         $this->artisan('crawler:stats-rollup --since=not-a-date')->assertFailed();
+        $this->artisan('crawler:stats-rollup --since=1900-01-01T00:00:00Z')->assertFailed();
     }
 
     public function test_disabled_setting_skips_rollup(): void
     {
+        $this->freezeTime();
         config()->set('javmeta_stats.enabled', false);
+        config()->set('javmeta_stats.retention_days', 3);
+        DB::table('crawl_stats_hourly')->insert([
+            'hour_at' => now()->utc()->subDays(4)->startOfHour(),
+            'source_slug' => 'expired-source',
+            'lane' => 'normal',
+            'method' => 'http',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         $this->artisan('crawler:stats-rollup')->assertSuccessful();
 
-        $this->assertDatabaseCount('crawl_stats_hourly', 0);
+        $this->assertDatabaseMissing('crawl_stats_hourly', ['source_slug' => 'expired-source']);
     }
 
     public function test_empty_scheduled_rollup_stores_global_hours_but_backfill_needs_attempt_data(): void
@@ -142,6 +156,58 @@ final class StatsRollupCommandTest extends TestCase
             'movies_new' => 7,
             'movies_updated' => 2,
         ]);
+    }
+
+    public function test_backfill_aggregates_fetch_attempts_in_hourly_slices(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
+        config()->set(['javmeta_stats.enabled' => true, 'javmeta_stats.retention_days' => 3]);
+        $hours = [now('UTC')->startOfHour()->subHours(2), now('UTC')->startOfHour()->subHour(), now('UTC')->startOfHour()];
+        foreach ($hours as $hour) {
+            $this->insertAttempt($hour->copy()->addMinutes(10), 'ok', 200, 30, 'http');
+        }
+
+        $attemptQueries = 0;
+        DB::listen(static function (QueryExecuted $query) use (&$attemptQueries): void {
+            if (str_contains($query->sql, 'crawl_fetch_attempts') && str_contains($query->sql, 'source_slug')) {
+                $attemptQueries++;
+            }
+        });
+
+        $this->artisan('crawler:stats-rollup --since=2026-11-02T10:00:00Z')->assertSuccessful();
+
+        self::assertSame(3, $attemptQueries);
+        foreach ($hours as $hour) {
+            $this->assertDatabaseHas('crawl_stats_hourly', [
+                'hour_at' => $hour->toDateTimeString(),
+                'source_slug' => 'onejav',
+                'attempts' => 1,
+                'p90_duration_ms' => 30,
+            ]);
+        }
+    }
+
+    public function test_detail_and_global_rows_roll_back_together_when_global_upsert_fails(): void
+    {
+        $this->freezeTime();
+        config()->set('javmeta_stats.enabled', true);
+        $hour = now('UTC')->startOfHour();
+        $this->insertAttempt($hour->addMinutes(5), 'ok', 200, 30, 'http');
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER reject_global_stats_insert
+            BEFORE INSERT ON crawl_stats_hourly
+            WHEN NEW.source_slug = '__global__'
+            BEGIN
+                SELECT RAISE(ABORT, 'global stats rejected');
+            END;
+            SQL);
+
+        try {
+            app(CrawlStatsRollup::class)->rollup($hour->toImmutable(), now('UTC')->toImmutable());
+            self::fail('The global row upsert should have failed.');
+        } catch (QueryException) {
+            $this->assertDatabaseMissing('crawl_stats_hourly', ['source_slug' => 'onejav']);
+        }
     }
 
     public function test_hourly_schedule_executes_the_registered_rollup_command_through_artisan_kernel(): void

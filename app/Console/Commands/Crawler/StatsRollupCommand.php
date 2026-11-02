@@ -12,6 +12,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use InvalidArgumentException;
 use Throwable;
 
 final class StatsRollupCommand extends Command
@@ -22,6 +23,8 @@ final class StatsRollupCommand extends Command
 
     public function handle(CrawlStatsRollup $rollup, OpenObserveClient $client): int
     {
+        $this->pruneExpired();
+
         if (! (bool) config('javmeta_stats.enabled', true)) {
             $this->components->info('Crawl statistics are disabled.');
 
@@ -39,7 +42,15 @@ final class StatsRollupCommand extends Command
             return self::FAILURE;
         }
 
-        $result = $rollup->rollup($from, $until, $this->option('since') !== null);
+        try {
+            $result = $rollup->rollup($from, $until, $this->option('since') !== null);
+        } catch (InvalidArgumentException) {
+            $retentionDays = max(1, (int) config('javmeta_stats.retention_days', 365));
+            $this->components->error(sprintf('The --since value must be within the last %d days.', $retentionDays));
+
+            return self::FAILURE;
+        }
+
         $this->exportMetrics($client, $until);
         $this->components->info(sprintf(
             'Rolled up %d hours and %d source/lane/method rows in %.2f ms.',
@@ -49,6 +60,18 @@ final class StatsRollupCommand extends Command
         ));
 
         return self::SUCCESS;
+    }
+
+    private function pruneExpired(): void
+    {
+        if (! Schema::hasTable('crawl_stats_hourly')) {
+            return;
+        }
+
+        $retentionDays = max(1, (int) config('javmeta_stats.retention_days', 365));
+        DB::table('crawl_stats_hourly')
+            ->where('hour_at', '<', now('UTC')->subDays($retentionDays))
+            ->delete();
     }
 
     private function exportMetrics(OpenObserveClient $client, CarbonImmutable $until): void

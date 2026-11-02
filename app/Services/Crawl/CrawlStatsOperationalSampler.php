@@ -33,8 +33,8 @@ final class CrawlStatsOperationalSampler
             ['pending', $now, 'pending', $now, 'claimed'],
         )->first();
 
-        $playwrightRatio = 0.0;
-        $flaresolverrRatio = 0.0;
+        $playwrightRatio = null;
+        $flaresolverrRatio = null;
         if (Schema::hasTable('crawl_fetch_attempts')) {
             $durations = DB::table('crawl_fetch_attempts')
                 ->where('created_at', '>=', $now->copy()->subMinute())
@@ -54,8 +54,8 @@ final class CrawlStatsOperationalSampler
             'playwright_busy_ratio_avg' => $playwrightRatio,
             'flaresolverr_busy_ratio_avg' => $flaresolverrRatio,
             'queue_samples' => 1,
-            'playwright_samples' => 1,
-            'flaresolverr_samples' => 1,
+            'playwright_samples' => $playwrightRatio === null ? 0 : 1,
+            'flaresolverr_samples' => $flaresolverrRatio === null ? 0 : 1,
             'postgres_connections_avg' => null,
             'postgres_samples' => 0,
             'created_at' => $now,
@@ -68,8 +68,8 @@ final class CrawlStatsOperationalSampler
             'queue_samples' => DB::raw('crawl_stats_hourly.queue_samples + 1'),
             'playwright_busy_ratio_avg' => DB::raw($this->averageExpression('playwright_busy_ratio_avg', 'playwright_samples')),
             'flaresolverr_busy_ratio_avg' => DB::raw($this->averageExpression('flaresolverr_busy_ratio_avg', 'flaresolverr_samples')),
-            'playwright_samples' => DB::raw('crawl_stats_hourly.playwright_samples + 1'),
-            'flaresolverr_samples' => DB::raw('crawl_stats_hourly.flaresolverr_samples + 1'),
+            'playwright_samples' => DB::raw($this->sampleCountExpression('playwright_busy_ratio_avg', 'playwright_samples')),
+            'flaresolverr_samples' => DB::raw($this->sampleCountExpression('flaresolverr_busy_ratio_avg', 'flaresolverr_samples')),
             'updated_at' => DB::raw('excluded.updated_at'),
         ];
         if (DB::connection()->getDriverName() === 'pgsql') {
@@ -86,7 +86,16 @@ final class CrawlStatsOperationalSampler
     private function averageExpression(string $average, string $samples): string
     {
         return sprintf(
-            'CASE WHEN crawl_stats_hourly.%1$s IS NULL OR crawl_stats_hourly.%2$s = 0 THEN excluded.%1$s ELSE crawl_stats_hourly.%1$s + (1.0 * (excluded.%1$s - crawl_stats_hourly.%1$s) / (crawl_stats_hourly.%2$s + 1)) END',
+            'CASE WHEN excluded.%1$s IS NULL THEN crawl_stats_hourly.%1$s WHEN crawl_stats_hourly.%1$s IS NULL OR crawl_stats_hourly.%2$s = 0 THEN excluded.%1$s ELSE crawl_stats_hourly.%1$s + (1.0 * (excluded.%1$s - crawl_stats_hourly.%1$s) / (crawl_stats_hourly.%2$s + 1)) END',
+            $average,
+            $samples,
+        );
+    }
+
+    private function sampleCountExpression(string $average, string $samples): string
+    {
+        return sprintf(
+            'CASE WHEN excluded.%1$s IS NULL THEN crawl_stats_hourly.%2$s ELSE crawl_stats_hourly.%2$s + 1 END',
             $average,
             $samples,
         );

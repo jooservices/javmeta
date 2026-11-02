@@ -18,8 +18,10 @@ final class StatsReportCommand extends Command
 
     public function handle(): int
     {
-        $hours = (int) $this->option('hours');
-        if ($hours < 1 || $hours > 8760) {
+        $hours = filter_var($this->option('hours'), FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1, 'max_range' => 8760],
+        ]);
+        if ($hours === false) {
             $this->components->error('The --hours value must be between 1 and 8760.');
 
             return self::FAILURE;

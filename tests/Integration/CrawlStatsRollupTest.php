@@ -6,6 +6,7 @@ namespace Tests\Integration;
 
 use App\Services\Crawl\CrawlStatsOperationalSampler;
 use App\Services\Crawl\CrawlStatsRollup;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 final class CrawlStatsRollupTest extends IntegrationTestCase
@@ -66,6 +67,36 @@ final class CrawlStatsRollupTest extends IntegrationTestCase
             ->pluck('indexname')
             ->all();
         self::assertContains('crawl_fetch_attempts_started_at_idx', $indexes);
+    }
+
+    public function test_postgres_global_hour_groups_timezone_aware_timestamps_in_utc(): void
+    {
+        self::assertSame('pgsql', DB::connection()->getDriverName());
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
+        $hour = now('UTC')->startOfHour();
+        $now = now('UTC')->toImmutable();
+        DB::statement("SET TIME ZONE 'Asia/Kolkata'");
+
+        try {
+            DB::table('crawl_runs')->insert([
+                'source_slug' => 'onejav',
+                'started_at' => CarbonImmutable::parse('2026-11-02T12:15:00Z'),
+                'finished_at' => CarbonImmutable::parse('2026-11-02T12:20:00Z'),
+                'status' => 'completed',
+                'movies_new' => 7,
+                'movies_updated' => 2,
+            ]);
+
+            app(CrawlStatsRollup::class)->rollup($hour, $now);
+
+            $row = DB::table('crawl_stats_hourly')->where('source_slug', '__global__')->first();
+            self::assertNotNull($row);
+            self::assertSame(7, (int) $row->movies_new);
+            self::assertSame(2, (int) $row->movies_updated);
+            self::assertSame($hour->toDateTimeString(), CarbonImmutable::parse((string) $row->hour_at)->utc()->toDateTimeString());
+        } finally {
+            DB::statement("SET TIME ZONE 'UTC'");
+        }
     }
 
     private function insertAttempt(\DateTimeInterface $startedAt, string $outcome, int $status, int $duration): void
