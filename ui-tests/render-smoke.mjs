@@ -312,6 +312,7 @@ assert.match(guestStyles, /body\[data-guest-mode="true"\].*\[data-mark\]/);
       setAttribute(k, v) { this.attrs[k] = v; }, addEventListener() {}, focus() { this.focused = true; },
       removeAttribute(k) { if (k === 'src') this.src = ''; },
       querySelector(sel) { return nodes[sel] ??= { ...mk.leaf(), src: 'x' }; },
+      querySelectorAll(sel) { return sel.split(',').map(x => this.querySelector(x.trim())); },
     };
     return el;
   };
@@ -328,6 +329,14 @@ assert.match(guestStyles, /body\[data-guest-mode="true"\].*\[data-mark\]/);
   lb.openLightbox('https://img.test/AAA-001.jpg', 'AAA-001');
   assert.equal(lb.isLightboxOpen(), true);
   assert.equal(fakeBody.style.overflow, 'hidden', 'page scroll is locked while open');
+  const dialog = appended[0];
+  const closeBtn = dialog.querySelector('[data-lb-close]'), openLink = dialog.querySelector('[data-lb-open]');
+  globalThis.document.activeElement = closeBtn;
+  for (const fn of listeners.keydown) fn({ key: 'Tab', shiftKey: false, preventDefault() {} });
+  assert.equal(openLink.focused, true, 'Tab moves focus to the original-image link');
+  globalThis.document.activeElement = openLink; closeBtn.focused = false;
+  for (const fn of listeners.keydown) fn({ key: 'Tab', shiftKey: false, preventDefault() {} });
+  assert.equal(closeBtn.focused, true, 'Tab wraps back to the close button');
   for (const fn of listeners.keydown) fn({ key: 'Escape', preventDefault() {} });
   assert.equal(lb.isLightboxOpen(), false, 'Escape closes the viewer');
   assert.equal(fakeBody.style.overflow, '', 'page scroll is restored');

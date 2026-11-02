@@ -47,7 +47,13 @@ export function initLightbox() {
   document.addEventListener('keydown', e => {
     if (isLightboxOpen()) {
       if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); }
-      else if (e.key === 'Tab') { e.preventDefault(); box.querySelector('[data-lb-close]').focus(); }
+      else if (e.key === 'Tab') {
+        e.preventDefault();
+        const items = [...box.querySelectorAll('[data-lb-close], [data-lb-open]')];
+        const at = items.indexOf(document.activeElement);
+        const next = e.shiftKey ? (at <= 0 ? items.length - 1 : at - 1) : (at === items.length - 1 ? 0 : at + 1);
+        items[next].focus();
+      }
       return;
     }
     const z = e.target.closest && e.target.closest('[data-zoom]');

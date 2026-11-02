@@ -142,7 +142,7 @@ tr.sel td:first-child{box-shadow:inset 2px 0 var(--accent)}
 /* thumbs & cards */
 .th{position:relative;aspect-ratio:16/10;max-width:100%;border-radius:5px;overflow:hidden;background:var(--img,none) center/cover,linear-gradient(135deg,hsl(var(--h) 38% 26%),hsl(calc(var(--h) + 40) 42% 15%))}
 .th::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 55%,rgba(0,0,0,.62))}
-.th.big{aspect-ratio:16/10;cursor:zoom-in}.th.big:has(img){aspect-ratio:auto}.th.big:has(img)::after,.th.big .code{display:none}.th.big img{position:static;height:auto;object-fit:contain;display:block}.th.big:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.th.big{aspect-ratio:16/10;cursor:zoom-in}.th.big:has(img){aspect-ratio:auto}.th.big:has(img)::after,.th.big:has(img) .code{display:none}.th.big img{position:static;height:auto;object-fit:contain;display:block}.th.big:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .th .code{position:absolute;left:6px;bottom:4px;font:500 10px var(--mono);color:rgba(255,255,255,.8);z-index:1}
 .th .bdg{position:absolute;right:4px;top:4px;z-index:1;display:flex;gap:3px}
 .th .bdg2{position:absolute;left:4px;top:4px;z-index:1;display:flex;gap:3px}
