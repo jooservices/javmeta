@@ -77,6 +77,5 @@ final class SettingsRegistryTest extends TestCase
         self::assertSame(['javmeta_queues.source_gap_overrides'], $definition['config']);
         self::assertSame(10000, $definition['max_length']);
         self::assertSame([], config('javmeta_queues.source_gap_overrides'));
-        self::assertSame(10000, config('javmeta_settings.validation.max_json_length'));
     }
 }

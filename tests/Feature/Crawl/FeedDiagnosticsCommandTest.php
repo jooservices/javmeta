@@ -69,9 +69,10 @@ final class FeedDiagnosticsCommandTest extends TestCase
         self::assertSame(0, Artisan::call('crawler:feed-diagnostics', ['--minutes' => 10], $output));
         $display = $output->fetch();
         self::assertStringContainsString('budgeted', $display);
-        self::assertStringContainsString('Effective gap (s)', $display);
+        self::assertStringContainsString('Current effective gap (s)', $display);
         self::assertStringContainsString('20.00', $display);
         self::assertStringContainsString('yes', $display);
+        self::assertStringContainsString('Current adaptive gap (s)', $display);
         self::assertStringContainsString('30.00', $display);
         self::assertStringContainsString('exhausted_budget', $display);
     }

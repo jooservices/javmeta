@@ -21,6 +21,9 @@ final class MigrationsTest extends BaseTestCase
         self::assertSame('pgsql', DB::connection()->getDriverName());
 
         self::assertSame(0, Artisan::call('migrate:fresh', ['--force' => true]), Artisan::output());
+        $this->leaveInvalidPendingKindIndex();
+        $migration = require database_path('migrations/2026_11_02_000002_add_crawl_queue_pending_kind_index.php');
+        $migration->up();
         $this->assertPendingKindIndex();
         foreach (['movies', 'movie_sources', 'movie_observations', 'performers', 'performer_sources', 'performer_identity_events', 'performer_identity_reviews', 'performer_identity_event_movie_links', 'crawl_queue', 'sources'] as $table) {
             self::assertTrue(Schema::hasTable($table), "missing table {$table}");
@@ -130,5 +133,42 @@ final class MigrationsTest extends BaseTestCase
             ['crawl_queue_pending_kind_id_idx'],
         );
         self::assertSame($index->index_oid, $indexAfterRepeat?->index_oid, 'A valid pre-existing index must remain untouched.');
+    }
+
+    private function leaveInvalidPendingKindIndex(): void
+    {
+        DB::statement('DROP INDEX CONCURRENTLY IF EXISTS crawl_queue_pending_kind_id_idx');
+        DB::table('crawl_queue')->insert([
+            [
+                'source_slug' => 'duplicate-source',
+                'url' => 'https://duplicate.test/one',
+                'kind' => 'listing',
+                'status' => 'pending',
+                'attempts' => 0,
+                'max_attempts' => 3,
+            ],
+            [
+                'source_slug' => 'duplicate-source',
+                'url' => 'https://duplicate.test/two',
+                'kind' => 'listing',
+                'status' => 'pending',
+                'attempts' => 0,
+                'max_attempts' => 3,
+            ],
+        ]);
+
+        try {
+            DB::statement('CREATE UNIQUE INDEX CONCURRENTLY crawl_queue_pending_kind_id_idx ON crawl_queue (source_slug)');
+            self::fail('The duplicate source slugs must leave an invalid concurrent index.');
+        } catch (QueryException) {
+            // PostgreSQL keeps an invalid index after a concurrent unique build finds duplicates.
+        }
+
+        $invalid = DB::selectOne(
+            'SELECT CASE WHEN i.indisvalid THEN 1 ELSE 0 END AS is_valid FROM pg_index AS i WHERE i.indexrelid = to_regclass(?)',
+            ['crawl_queue_pending_kind_id_idx'],
+        );
+        self::assertNotNull($invalid, 'PostgreSQL must retain the failed concurrent index.');
+        self::assertSame(0, (int) $invalid->is_valid);
     }
 }

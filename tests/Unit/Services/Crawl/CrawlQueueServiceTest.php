@@ -13,6 +13,8 @@ use Illuminate\Support\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Redis;
+use Mockery;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -57,6 +59,41 @@ final class CrawlQueueServiceTest extends TestCase
         } finally {
             Carbon::setTestNow();
         }
+    }
+
+    public function test_claimed_override_reserves_a_subsecond_request_start_slot(): void
+    {
+        config()->set('javmeta_queues.source_gap_overrides', [
+            'paced-site' => ['min' => 0.25, 'default' => 0.25, 'max' => 0.25],
+        ]);
+        Source::factory()->create([
+            'slug' => 'paced-site',
+            'gap_seconds_min' => 0.25,
+            'gap_seconds_default' => 0.25,
+            'gap_seconds_max' => 0.25,
+            'gap_seconds_current' => 0.25,
+        ]);
+        $row = CrawlQueue::factory()->create([
+            'source_slug' => 'paced-site',
+            'kind' => CrawlQueue::KIND_LISTING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'claimed_at' => now(),
+            'started_at' => null,
+            'locked_by' => null,
+        ]);
+        $redis = Mockery::mock();
+        $redis->shouldReceive('eval')->once()->withArgs(static function (string $script, array $arguments, int $keyCount): bool {
+            return str_contains($script, "redis.call('TIME')")
+                && str_contains($script, 'last + gap')
+                && $keyCount === 1
+                && $arguments === ['javmeta:source-gap:start:paced-site', '250000', '60000'];
+        })->andReturn(0);
+        Redis::shouldReceive('connection')->once()->with('default')->andReturn($redis);
+
+        $started = (new CrawlQueueService())->startClaimedRow($row->id, CrawlQueue::KIND_LISTING, null);
+
+        self::assertSame(CrawlQueue::STATUS_CLAIMED, $started?->status);
+        self::assertNotNull($started?->started_at);
     }
 
     public function test_a_blocked_crawl_is_retried_after_60_then_120_then_180_seconds_then_fails(): void

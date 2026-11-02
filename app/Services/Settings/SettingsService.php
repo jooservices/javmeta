@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Services\Settings;
 
 use App\Events\SettingsApplied;
+use App\Models\Source;
 use InvalidArgumentException;
 use RuntimeException;
 use Illuminate\Support\Env;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Support\ConfigType;
 use Throwable;
@@ -72,9 +74,17 @@ final class SettingsService
                     continue;
                 }
             } else {
-                $value = $isSaved
-                    ? $this->effectiveValue($key, $definition, $this->fromStorage($definition, $saved[$key]))
-                    : $fallback;
+                try {
+                    $value = $isSaved
+                        ? $this->effectiveValue($key, $definition, $this->storedValue($key, $definition, $saved[$key]))
+                        : $fallback;
+                } catch (Throwable $exception) {
+                    Log::warning('Invalid stored setting ignored; using the code default.', [
+                        'key' => $key,
+                        'reason' => $exception->getMessage(),
+                    ]);
+                    $value = $this->default($key);
+                }
             }
             if ($this->urlWarning($key, $definition, $value) !== null) {
                 $value = $this->default($key);
@@ -707,8 +717,9 @@ final class SettingsService
      */
     private function validateJson(string $key, array $definition, mixed $value, callable $fail): array
     {
+        $maxLength = isset($definition['max_length']) ? (int) $definition['max_length'] : null;
         if (is_string($value)) {
-            if (mb_strlen($value) > (int) config('javmeta_settings.validation.max_json_length', 10000)) {
+            if ($maxLength !== null && mb_strlen($value) > $maxLength) {
                 $fail('is too long');
             }
             if (! str_starts_with(ltrim($value), '{')) {
@@ -723,7 +734,7 @@ final class SettingsService
         if (! is_array($value) || (array_is_list($value) && $value !== [])) {
             $fail('must be a JSON object');
         }
-        if (mb_strlen(json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)) > (int) config('javmeta_settings.validation.max_json_length', 10000)) {
+        if ($maxLength !== null && mb_strlen(json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)) > $maxLength) {
             $fail('is too long');
         }
         if (count($value) > (int) config('javmeta_settings.validation.max_json_entries', 50)) {
@@ -766,6 +777,17 @@ final class SettingsService
     }
 
     /** @param array<string, mixed> $definition */
+    private function storedValue(string $key, array $definition, mixed $stored): mixed
+    {
+        $value = $this->fromStorage($definition, $stored);
+        if (($definition['shape'] ?? null) === 'source_gap_override_map') {
+            return $this->validate($key, $definition, $value);
+        }
+
+        return $value;
+    }
+
+    /** @param array<string, mixed> $definition */
     private function storageType(array $definition): string
     {
         if ($definition['nullable'] ?? false) {
@@ -786,9 +808,19 @@ final class SettingsService
     private function validateJsonShape(string $key, string $shape, array $value, callable $fail): void
     {
         if ($shape === 'source_gap_override_map') {
+            $knownSources = array_fill_keys(array_map('strval', array_keys((array) config('javmeta_sources.sources', []))), true);
+            if (Schema::hasTable('sources')) {
+                foreach (Source::query()->pluck('slug') as $sourceSlug) {
+                    $knownSources[(string) $sourceSlug] = true;
+                }
+            }
+
             foreach ($value as $slug => $bounds) {
                 if (! is_string($slug) || preg_match('/^[a-z0-9][a-z0-9_-]*$/', $slug) !== 1 || ! is_array($bounds) || array_is_list($bounds)) {
                     $fail('must map source slugs to min, default, and max gap values');
+                }
+                if (! isset($knownSources[$slug])) {
+                    $fail("references unknown source [{$slug}]");
                 }
                 $fields = array_keys($bounds);
                 sort($fields);

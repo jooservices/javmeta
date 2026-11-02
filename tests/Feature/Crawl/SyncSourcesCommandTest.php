@@ -131,4 +131,35 @@ final class SyncSourcesCommandTest extends TestCase
         self::assertSame(40.0, (float) $source->gap_seconds_max);
         self::assertSame(40.0, (float) $source->gap_seconds_current);
     }
+
+    public function test_sync_applies_an_override_to_a_persisted_source_missing_from_definitions(): void
+    {
+        config()->set('javmeta_sources.sources', [
+            'configured-site' => [
+                'name' => 'Configured site',
+                'base_url' => 'https://configured.test',
+                'priority' => 1,
+            ],
+        ]);
+        config()->set('javmeta_queues.source_gap_overrides', [
+            'retired-site' => ['min' => 20, 'default' => 30, 'max' => 40],
+        ]);
+        $existing = Source::factory()->create([
+            'slug' => 'retired-site',
+            'gap_seconds_min' => 2,
+            'gap_seconds_default' => 5,
+            'gap_seconds_max' => 60,
+            'gap_seconds_current' => 50,
+        ]);
+
+        $this->artisan('crawler:sync-sources')->assertSuccessful();
+
+        $source = $existing->fresh();
+        self::assertInstanceOf(Source::class, $source);
+        self::assertSame(20.0, (float) $source->gap_seconds_min);
+        self::assertSame(30.0, (float) $source->gap_seconds_default);
+        self::assertSame(40.0, (float) $source->gap_seconds_max);
+        self::assertSame(40.0, (float) $source->gap_seconds_current);
+        self::assertSame($existing->name, $source->name);
+    }
 }

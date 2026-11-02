@@ -59,7 +59,7 @@ final class FeedDiagnosticsCommand extends Command
                     $model instanceof Source ? number_format($throttle->currentGap($model), 2) : '-',
                 ];
             }
-            $this->table(['Source', 'Budget', 'Started', 'Waiting', 'Dispatched', 'Effective gap (s)', 'Override', 'Adaptive gap (s)'], $rows);
+            $this->table(['Source', 'Budget', 'Started', 'Waiting', 'Dispatched', 'Current effective gap (s)', 'Override', 'Current adaptive gap (s)'], $rows);
         }
 
         if ($report['stop_reasons'] === []) {

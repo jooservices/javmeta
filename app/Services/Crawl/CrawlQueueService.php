@@ -24,10 +24,12 @@ final class CrawlQueueService
     private const RETRY_BACKOFF_SECONDS = [60, 300, 1800];
 
     private readonly SourceGapPolicy $sourceGapPolicy;
+    private readonly SourceRequestPacer $sourceRequestPacer;
 
-    public function __construct(?SourceGapPolicy $sourceGapPolicy = null)
+    public function __construct(?SourceGapPolicy $sourceGapPolicy = null, ?SourceRequestPacer $sourceRequestPacer = null)
     {
         $this->sourceGapPolicy = $sourceGapPolicy ?? new SourceGapPolicy();
+        $this->sourceRequestPacer = $sourceRequestPacer ?? new SourceRequestPacer();
     }
 
     /**
@@ -467,6 +469,18 @@ final class CrawlQueueService
             $row = $query->first();
             if (! $row instanceof CrawlQueue || $row->started_at !== null) {
                 return null;
+            }
+
+            $sourceSlug = (string) $row->source_slug;
+            if ($this->sourceGapPolicy->isOverridden($sourceSlug)) {
+                $source = Source::query()->find($sourceSlug);
+                if ($source instanceof Source) {
+                    $wait = $this->sourceRequestPacer->reserveStart(
+                        $sourceSlug,
+                        $this->sourceGapPolicy->adaptiveGap($source),
+                    );
+                    $this->sourceRequestPacer->wait($wait);
+                }
             }
 
             $row->forceFill([

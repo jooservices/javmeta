@@ -17,10 +17,8 @@ final class SyncSourcesCommand extends Command
 
     public function handle(SourceGapPolicy $gapPolicy): int
     {
-        $sources = config('javmeta_sources.sources', []);
-        if (! is_array($sources) || $sources === []) {
-            return self::SUCCESS;
-        }
+        $configuredSources = config('javmeta_sources.sources', []);
+        $sources = is_array($configuredSources) ? $configuredSources : [];
 
         foreach ($sources as $slug => $source) {
             if (! is_string($slug) || ! is_array($source)) {
@@ -64,6 +62,26 @@ final class SyncSourcesCommand extends Command
                 'last_error_at' => null,
                 'last_error' => null,
             ]);
+        }
+
+        $overrides = (array) config('javmeta_queues.source_gap_overrides', []);
+        foreach ($overrides as $slug => $override) {
+            if (! is_string($slug) || array_key_exists($slug, $sources) || ! is_array($override)) {
+                continue;
+            }
+
+            $existing = Source::query()->find($slug);
+            if (! $existing instanceof Source) {
+                continue;
+            }
+
+            $gaps = $gapPolicy->describe($slug, $existing)['effective'];
+            $existing->forceFill([
+                'gap_seconds_default' => $gaps['default'],
+                'gap_seconds_min' => $gaps['min'],
+                'gap_seconds_max' => $gaps['max'],
+                'gap_seconds_current' => $gapPolicy->clamp((float) $existing->gap_seconds_current, $gaps),
+            ])->save();
         }
 
         return self::SUCCESS;

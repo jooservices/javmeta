@@ -115,7 +115,7 @@ The gap between requests of one source (`sources.gap_seconds_current`, between i
 feed pool hands out work: a source may have at most `floor(queue.pacing_horizon_seconds / gap)` rows waiting (default
 horizon 60 seconds), and its jobs are delayed so that they start one gap apart. Rows that are still claimed from an
 earlier run count against the budget. The gap adapts to the answers of the site: rate limits, blocks and challenges
-double it up to `queue.gap_blocked_max_seconds` (default 600); timeouts and network errors raise it by half up to the
+double it up to `queue.gap_blocked_max_seconds` (default 600), or the override `max` for an overridden source; timeouts and network errors raise it by half up to the
 source maximum; parse and not-found errors do not change it; every success lowers it by 10 percent of the distance to
 its minimum. The current adaptive gap is in `crawler:sources`, the status API and the metric `javmeta_source_gap_seconds`.
 
@@ -124,9 +124,11 @@ It maps source slugs to `{ "min": 20, "default": 30, "max": 60 }`; every value
 must be from 0.25 to 600 seconds and satisfy `min <= default <= max`. With an
 empty map, source definitions and existing adaptive behavior are unchanged.
 `crawler:sync-sources` applies configured overrides to source rows and clamps
-their current adaptive value to the override bounds. The feeder uses that
-effective adaptive gap for its source budget and job delays. Inspect the source
-definition, override, effective bounds and current adaptive value with
+their current adaptive value to the override bounds, including persisted
+sources that are no longer in the definitions. The feeder uses that effective
+adaptive gap for its source budget and job delays. Workers reserve request start
+slots in shared Redis so sub-second overrides are kept when same-source jobs
+become ready together. Inspect the source definition, override, effective bounds and current adaptive value with
 `php artisan crawler:source-gap [slug] [--json]`.
 
 The PostgreSQL claim path also has the partial index
@@ -140,6 +142,9 @@ statistics. To inspect a representative plan, run `ANALYZE crawl_queue` and
 `EXPLAIN` the production claim predicate on the target database.
 
 ## Feed pool diagnostics
+
+The budget records the last feed run; the displayed effective and adaptive gap
+columns show the current values.
 
 Feed-pool diagnostics are enabled by default through the database setting
 `queue.feed_diagnostics.enabled`. The database setting
