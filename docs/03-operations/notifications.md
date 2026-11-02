@@ -9,17 +9,18 @@ behavior.
 AlertDispatcher messages use one envelope:
 
 ```
-[javmeta:<environment>] [ALERT][<severity>][<OPEN|RESOLVED>] <subject>
+[XCrawler][<LEVEL>] <title>
 <body>
 <context key>: <value>
 ```
 
-Severity defaults to WARNING for an opened alert and INFO for a recovery. The
-Telegram notifier adds the environment prefix and formats scalar context
+The level follows the severity (INFO, NOTICE, WARNING, CRITICAL, default WARNING) and a
+recovery is shown as RESOLVED. Plain messages read `[XCrawler] <title>`. The
+Telegram notifier adds the `[XCrawler]` prefix and formats scalar context
 fields. The same event and context are written to the application activity log.
 
-OpenObserve uses the same project/environment prefix and an [ALERT][WARNING][OPEN]
-marker, followed by the rule name, metric stream, and matching rows. Follow
+OpenObserve uses the same `[XCrawler][WARNING]` or `[XCrawler][CRITICAL]` prefix,
+followed by the rule name, metric stream, and matching rows. Follow
 messages, hourly reports, and interactive bot replies keep their concise,
 product-specific text.
 

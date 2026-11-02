@@ -68,7 +68,7 @@ final class TelegramAlertNotifierTest extends TestCase
         self::assertCount(1, $recorded);
         self::assertStringContainsString('/bottok/sendMessage', (string) $recorded[0]->request->getUri());
         $body = (string) $recorded[0]->request->getBody();
-        self::assertStringContainsString('[javmeta:testing] [ALERT][WARNING][OPEN] Circuit open', $body);
+        self::assertStringContainsString('[XCrawler][WARNING] Circuit open', $body);
         self::assertStringContainsString('source_slug: javdb', $body);
         self::assertStringContainsString('"chat_id":"42"', $body);
     }
@@ -76,6 +76,39 @@ final class TelegramAlertNotifierTest extends TestCase
     /**
      * A recovery keeps its resolved state and informational severity in the Telegram subject.
      */
+    public function test_level_follows_the_severity_and_plain_messages_have_no_level(): void
+    {
+        $cases = [
+            [['alert_state' => 'open', 'severity' => 'notice'], '[XCrawler][NOTICE] Circuit open'],
+            [['alert_state' => 'open', 'severity' => 'critical'], '[XCrawler][CRITICAL] Circuit open'],
+            [['alert_state' => 'open', 'severity' => 'info'], '[XCrawler][INFO] Circuit open'],
+            [['alert_state' => 'open', 'severity' => 'unknown'], '[XCrawler][WARNING] Circuit open'],
+            [[], '[XCrawler][WARNING] Circuit open'],
+        ];
+
+        foreach ($cases as [$context, $expected]) {
+            config([
+                'javmeta_alerts.telegram.bot_token' => 'tok',
+                'javmeta_alerts.telegram.chat_id' => '42',
+                'javmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
+                'laravel-notifications.channels.telegram.bot_token' => 'tok',
+                'laravel-notifications.channels.telegram.chat_id' => '42',
+                'laravel-notifications.channels.telegram.api_base' => 'https://api.telegram.org',
+            ]);
+            ClientBuilder::fake()->respond('POST', '*', (new TestResponseSequence())->push(TestResponse::json(['ok' => true])));
+            $client = ClientBuilder::create()->withBaseUri('https://api.telegram.org/')->build();
+
+            (new TelegramAlertNotifier($client))->notify('Circuit open', 'javdb failed', $context);
+
+            $recorded = ClientBuilder::recorded();
+            $body = (string) end($recorded)->request->getBody();
+            self::assertStringContainsString($expected, $body);
+            self::assertStringNotContainsString('[ALERT]', $body);
+            self::assertStringNotContainsString('OPEN', explode(' Circuit open', $body)[0]);
+            self::assertStringNotContainsString('javmeta:', $body);
+        }
+    }
+
     public function test_preserves_resolved_state_when_posting_a_recovery(): void
     {
         config([
@@ -105,7 +138,7 @@ final class TelegramAlertNotifierTest extends TestCase
 
         $recorded = ClientBuilder::recorded();
         self::assertCount(1, $recorded);
-        self::assertStringContainsString('[javmeta:testing] [ALERT][INFO][RESOLVED] Source recovered', (string) $recorded[0]->request->getBody());
+        self::assertStringContainsString('[XCrawler][RESOLVED] Source recovered', (string) $recorded[0]->request->getBody());
     }
 
     public function test_posts_telegram_message_when_bot_token_contains_colon(): void

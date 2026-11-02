@@ -21,7 +21,7 @@ final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
     public function __construct(private readonly ?HttpClient $httpClient = null) {}
 
     /**
-     * Send an alert, defaulting to an open warning while preserving explicit caller state.
+     * Send an alert, defaulting to a warning while preserving the explicit caller severity and resolved state.
      *
      * @param  array<string, mixed>  $context
      */
@@ -38,12 +38,11 @@ final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
     public function deliver(string $subject, string $body, array $context = []): bool
     {
         if (isset($context['alert_state'])) {
-            $state = strtoupper((string) $context['alert_state']);
+            $resolved = strtoupper((string) $context['alert_state']) === 'RESOLVED';
             $severity = strtoupper((string) ($context['severity'] ?? 'warning'));
-            $state = in_array($state, ['OPEN', 'RESOLVED'], true) ? $state : 'OPEN';
-            $severity = in_array($severity, ['INFO', 'WARNING', 'CRITICAL'], true) ? $severity : 'WARNING';
+            $level = $resolved ? 'RESOLVED' : (in_array($severity, ['INFO', 'NOTICE', 'WARNING', 'CRITICAL'], true) ? $severity : 'WARNING');
             unset($context['alert_state'], $context['severity']);
-            $subject = "[ALERT][{$severity}][{$state}] {$subject}";
+            $subject = "[{$level}] {$subject}";
         }
 
         $token = $this->stringConfig('laravel-notifications.channels.telegram.bot_token')
@@ -67,7 +66,7 @@ final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
 
         $result = $channel->send(
             Message::make(
-                subject: '[javmeta:' . $this->stringConfig('app.env', 'unknown') . '] ' . $subject,
+                subject: $this->prefixed($subject),
                 body: $body,
                 context: $this->scalarContext($context),
             ),
@@ -92,6 +91,12 @@ final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
         }
 
         return true;
+    }
+
+    /** Message envelope: "[XCrawler][LEVEL] title" for alerts and "[XCrawler] title" for plain messages. */
+    private function prefixed(string $subject): string
+    {
+        return '[XCrawler]' . (str_starts_with($subject, '[') ? '' : ' ') . $subject;
     }
 
     private function stringConfig(string $key, string $default = ''): string

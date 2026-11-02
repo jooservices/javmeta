@@ -54,9 +54,8 @@ final class ObservabilityImporter
         $telegram = $this->telegramConfiguration();
         $this->assertConfiguration($telegram);
 
-        $environment = (string) config('app.env', 'unknown');
-        $template = $this->telegramTemplate(self::TELEGRAM_TEMPLATE_NAME, 'WARNING', $telegram['chat_id'], $environment);
-        $criticalTemplate = $this->telegramTemplate(self::TELEGRAM_CRITICAL_TEMPLATE_NAME, 'CRITICAL', $telegram['chat_id'], $environment);
+        $template = $this->telegramTemplate(self::TELEGRAM_TEMPLATE_NAME, 'WARNING', $telegram['chat_id']);
+        $criticalTemplate = $this->telegramTemplate(self::TELEGRAM_CRITICAL_TEMPLATE_NAME, 'CRITICAL', $telegram['chat_id']);
         $destination = $this->telegramDestination($telegram, self::TELEGRAM_TEMPLATE_NAME, self::TELEGRAM_TEMPLATE_NAME);
         $criticalDestination = $this->telegramDestination(
             $telegram,
@@ -239,7 +238,7 @@ final class ObservabilityImporter
     }
 
     /** @return array<string, mixed> */
-    private function telegramTemplate(string $name, string $severity, string $chatId, string $environment): array
+    private function telegramTemplate(string $name, string $severity, string $chatId): array
     {
         return [
             'name' => $name,
@@ -247,7 +246,7 @@ final class ObservabilityImporter
             'type' => 'http',
             'body' => json_encode([
                 'chat_id' => $chatId,
-                'text' => '[javmeta:' . $environment . '] [ALERT][' . $severity . '][OPEN] {alert_name} triggered for {stream_name}. {rows}',
+                'text' => '[XCrawler][' . $severity . '] {alert_name} triggered for {stream_name}. {rows}',
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
         ];
     }
