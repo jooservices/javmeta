@@ -118,6 +118,13 @@ The Horizon and scheduler units use `Restart=on-failure`, so clean exits from
 `systemctl restart <unit-prefix>-horizon` or
 `systemctl restart <unit-prefix>-scheduler` for maintenance reloads.
 
+The installed per-node `*-horizon-reconcile.service` runs
+`node:egress-probe` in `ExecStartPost` after worker reconciliation. The same
+unit template is synchronized for primary and worker roles, so every Horizon
+node refreshes its own cached WAN IP without starting another scheduler. The
+probe is application telemetry; the optional node_exporter textfile probe is
+independent.
+
 ## Adding a worker node
 
 Use a new target/service account/node name with `--role worker`. Horizon, the

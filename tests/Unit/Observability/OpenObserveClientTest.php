@@ -9,6 +9,7 @@ use App\Observability\TelemetrySanitizer;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 final class OpenObserveClientTest extends TestCase
@@ -77,14 +78,14 @@ final class OpenObserveClientTest extends TestCase
 
         Http::assertSent(static function (ClientRequest $request): bool {
             $span = $request->data()['resourceSpans'][0]['scopeSpans'][0]['spans'][0];
+            $attributes = collect($span['attributes'])->keyBy('key');
 
             return $request->url() === 'http://openobserve.test/api/default/v1/traces'
                 && ($span['parentSpanId'] ?? null) === str_repeat('c', 16)
                 && $span['status']['code'] === 2
-                && $span['attributes'] === [[
-                    'key' => 'operation',
-                    'value' => ['stringValue' => 'fetch'],
-                ]];
+                && $attributes->get('operation')['value']['stringValue'] === 'fetch'
+                && is_string($attributes->get('node')['value']['stringValue'] ?? null)
+                && $attributes->get('egress_ip')['value']['stringValue'] === '';
         });
     }
 
@@ -171,6 +172,52 @@ final class OpenObserveClientTest extends TestCase
                 && collect($records)->every(static fn(array $record): bool => ($record['environment'] ?? null) === 'staging'
                     && ($record['role'] ?? null) === 'worker'
                     && ($record['service'] ?? null) === 'javmeta');
+        });
+    }
+
+    public function test_crawl_logs_and_spans_keep_the_active_node_egress_context(): void
+    {
+        config()->set([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.stream_logs' => 'egress-test-logs',
+            'openobserve.trace_sample_rate' => 1,
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response([], 200)]);
+        Log::flushSharedContext();
+        Log::shareContext(['node' => 'xcrawler-test-1', 'egress_ip' => '192.0.2.44']);
+
+        try {
+            $client = new OpenObserveClient(new TelemetrySanitizer());
+            $client->ingestLogs([['event' => 'crawl_event', 'kind' => 'blocked']]);
+            $client->ingestSpan([
+                'name' => 'crawl.fetch',
+                'trace_id' => str_repeat('a', 32),
+                'span_id' => str_repeat('b', 16),
+                'start_ns' => 1,
+                'end_ns' => 2,
+                'attributes' => ['source' => 'ffjav'],
+            ]);
+        } finally {
+            Log::flushSharedContext();
+        }
+
+        Http::assertSent(static function (ClientRequest $request): bool {
+            if (str_contains($request->url(), '/egress-test-logs/_json')) {
+                $record = $request->data()[0] ?? [];
+
+                return ($record['node'] ?? null) === 'xcrawler-test-1'
+                    && ($record['egress_ip'] ?? null) === '192.0.2.44';
+            }
+            if (str_contains($request->url(), '/v1/traces')) {
+                $attributes = collect($request->data()['resourceSpans'][0]['scopeSpans'][0]['spans'][0]['attributes'] ?? [])->keyBy('key');
+
+                return $attributes->get('node')['value']['stringValue'] === 'xcrawler-test-1'
+                    && $attributes->get('egress_ip')['value']['stringValue'] === '192.0.2.44';
+            }
+
+            return false;
         });
     }
 

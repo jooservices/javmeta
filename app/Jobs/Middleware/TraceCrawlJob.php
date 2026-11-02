@@ -8,7 +8,9 @@ use App\Models\CrawlQueue;
 use App\Observability\OpenObserveClient;
 use App\Observability\TraceContext;
 use App\Services\Crawl\WorkerHeartbeat;
+use App\Services\Observability\NodeEgressProbe;
 use Closure;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 final class TraceCrawlJob
@@ -16,6 +18,7 @@ final class TraceCrawlJob
     public function __construct(
         private readonly OpenObserveClient $client,
         private readonly WorkerHeartbeat $heartbeat,
+        private readonly NodeEgressProbe $egressProbe,
     ) {}
 
     /**
@@ -36,6 +39,7 @@ final class TraceCrawlJob
 
         $sourceSlug = null;
         $queueKind = null;
+        $lane = null;
         if (property_exists($job, 'crawlQueueId')) {
             /** @var mixed $queueId */
             $queueId = $job->crawlQueueId;
@@ -44,9 +48,14 @@ final class TraceCrawlJob
                 if ($row instanceof CrawlQueue) {
                     $sourceSlug = $row->source_slug;
                     $queueKind = $row->kind;
+                    $lane = $row->getAttribute('claimed_lane') === 'browser' ? 'browser' : 'direct';
                 }
             }
         }
+
+        $egress = $this->egressProbe->contextForLane($lane);
+        $previousLogContext = Log::sharedContext();
+        Log::shareContext($egress);
 
         $outcome = 'ok';
         $result = null;
@@ -56,21 +65,29 @@ final class TraceCrawlJob
             $outcome = 'error';
             throw $exception;
         } finally {
-            $this->client->ingestSpan([
-                'name' => sprintf('job.%s', $job::class),
-                'trace_id' => $traceId,
-                'span_id' => $spanId,
-                'parent_span_id' => $parentSpanId,
-                'start_ns' => $startNs,
-                'end_ns' => (int) hrtime(true),
-                'status_code' => $outcome === 'ok' ? 200 : 500,
-                'attributes' => [
-                    'source_slug' => $sourceSlug,
-                    'queue.kind' => $queueKind,
-                    'outcome' => $outcome,
-                    'job.class' => $job::class,
-                ],
-            ]);
+            try {
+                $this->client->ingestSpan([
+                    'name' => sprintf('job.%s', $job::class),
+                    'trace_id' => $traceId,
+                    'span_id' => $spanId,
+                    'parent_span_id' => $parentSpanId,
+                    'start_ns' => $startNs,
+                    'end_ns' => (int) hrtime(true),
+                    'status_code' => $outcome === 'ok' ? 200 : 500,
+                    'attributes' => [
+                        'source_slug' => $sourceSlug,
+                        'queue.kind' => $queueKind,
+                        'outcome' => $outcome,
+                        'job.class' => $job::class,
+                        'node' => $egress['node'],
+                        'egress_ip' => $egress['egress_ip'],
+                    ],
+                ]);
+            } finally {
+                Log::withoutContext(['node', 'egress_ip', 'egress_kind']);
+                Log::flushSharedContext();
+                Log::shareContext($previousLogContext);
+            }
         }
 
         return $result;

@@ -114,6 +114,7 @@ TMPDIR="$fixture" sync_node_units "$templates" "$installed" primary "$UNIT_PREFI
 [[ -f "$installed/$UNIT_PREFIX-scheduler.service" ]]
 [[ -f "$installed/$UNIT_PREFIX-horizon-reconcile.service" ]]
 [[ -f "$installed/$UNIT_PREFIX-horizon-reconcile.timer" ]]
+grep -Fq 'artisan node:egress-probe' "$installed/$UNIT_PREFIX-horizon-reconcile.service"
 [[ "$(grep -Fc 'daemon-reload' "$fixture/units")" == 1 ]]
 echo 'OK (initial primary unit refresh uses one daemon-reload)'
 

@@ -311,4 +311,55 @@ table shows the hourly movie and global operational trend.
 - **How much does each method cost?** Run
   `crawler:stats-report --hours=168 --by=method --source=onejav`. Compare
   attempts, average and max-slice p90 milliseconds, and error mix. Method-level
-  byte cost is unavailable until fetch attempts expose response byte counts.
+byte cost is unavailable until fetch attempts expose response byte counts.
+
+## Egress IP attribution (JOOXCR-314)
+
+Each Horizon node checks its public IPv4 using the ordered
+`observability.egress_probe_urls` list (default: ifconfig.me, icanhazip.com,
+checkip.amazonaws.com, api.ipify.org). The request timeout is capped at five
+seconds and proxy environment variables are ignored. The result lives in the
+shared cache at `javmeta:egress:{node}` for twice the configured probe interval;
+workers read this cache while recording an attempt and never wait for a probe.
+The scheduler checks every two minutes, and the per-node Horizon reconcile
+timer also invokes `node:egress-probe`, so worker nodes do not need a scheduler.
+Browser-lane probes navigate to the first echo URL through each configured
+Playwright or FlareSolverr host and cache the address per browser host.
+
+The Cài đặt / Giám sát page owns the probe URL list, node interval (120 seconds),
+browser interval (900 seconds), timeout (5 seconds), `record_egress_ip` switch
+(on by default) and `egress_changes_stream` (default `xcrawler_logs`). The
+system-level node_exporter probe is independent and is not used by the app.
+
+When an address changes, one structured record is sent to the configured change
+stream with `event=egress_ip_changed`, `node`, `host` (browser host when
+applicable), `egress_kind`, `old_ip`, `new_ip` and `changed_at`. Fetch-attempt
+rows store nullable `egress_ip`, `node` and `egress_kind` (`node` or
+`browser_host`). Crawl log records, events and spans include `node` and
+`egress_ip`; an unavailable address remains null in logs/rows and is represented
+as an empty OTLP string attribute on spans.
+
+Run `php artisan crawler:egress-status` to see each cached node and browser
+host address, probe health, last change time and change count. Run
+`php artisan crawler:egress-report --hours=24 --by=egress` to sort IP/source
+pairs by blocked attempts; `--by=source` groups source/IP pairs and `--by=node`
+adds node to the grouping. The report shows attempts, successful outcomes,
+HTTP 403/429 or Cloudflare-mitigated attempts, success ratio and average
+duration in milliseconds. `--hours` accepts 1 through 87600.
+
+`obs:publish-metrics` publishes these points once per minute:
+
+| Metric | Labels | Unit / meaning |
+| --- | --- | --- |
+| `javmeta_node_egress_info` | `node`, `ip` | Gauge 1 while the node has a cached public IP |
+| `javmeta_node_egress_changes_total` | `node` | Cumulative address changes observed by this node |
+| `javmeta_node_egress_probe_ok` | `node` | Gauge 1 for a successful latest probe, else 0 |
+| `javmeta_browser_egress_info` | `host`, `ip` | Gauge 1 while the browser host has a cached public IP |
+| `javmeta_fetch_attempts_by_egress` | `source`, `method`, `egress_ip`, `outcome` | Attempt count in the previous minute; unavailable IP is `unknown` |
+| `javmeta_block_ratio_by_egress` | `egress_ip` | Blocked / non-skipped attempts in the previous minute, from 0 to 1 |
+
+Compare `javmeta_block_ratio_by_egress` and `crawler:egress-report` across
+IPs, sources and methods to see whether blocks follow a particular egress
+address. A healthy active node should report `node_egress_probe_ok=1` and one
+`node_egress_info` point; the browser info point appears after its first
+successful browser-host probe. No fetch attempt is delayed when a probe fails.
