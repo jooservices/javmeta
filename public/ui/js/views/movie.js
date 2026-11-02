@@ -1,4 +1,4 @@
-import { esc, fmt, titleOf } from '../util.js';
+import { esc, fmt, titleOf, codeLabel, isDerivedCode } from '../util.js';
 import { api } from '../api.js';
 import { myMarks, markBtn, downloadsStatus } from '../marks.js';
 import { crumbs, cover, a, href, disk, facetLink, facetChip, performerCard, movieCard, kv, notKnown, errorBox, emptyBox, ic, performerName } from '../components.js';
@@ -24,7 +24,7 @@ export default {
     let content = '';
     if (tab === 'meta') {
       content = kv([
-        ['Mã', `<span class="mono">${esc(m.code)}</span>`],
+        ['Mã', isDerivedCode(m.code) ? `<span class="mono" title="${esc(m.code)}">${esc(codeLabel(m.code))}</span> <span class="chip warn" title="Nguồn chưa cung cấp mã phim chuẩn; đây là khóa nội bộ ổn định">chưa có mã chuẩn</span>` : `<span class="mono">${esc(m.code)}</span>`],
         ['Tên (EN)', m.title_en ? esc(m.title_en) : notKnown()],
         ['Tên (JP)', m.title_jp ? esc(m.title_jp) : notKnown()],
         ['Phát hành', m.release_date ? `<span class="mono">${esc(m.release_date)}</span> ${a(href.facet('year', m.release_date.slice(0, 4)), esc(m.release_date.slice(0, 4)), 'chip')}` : notKnown()],
@@ -54,12 +54,12 @@ export default {
         <div class="panel"><div class="hd"><h2>Nguồn của diễn viên</h2></div>${performers.flatMap(p => (p.sources || []).map(s => `<div class="row-i"><span class="dot"></span><div class="grow">${esc(performerName(p))} <span class="muted">· ${esc(s.source_slug)}</span></div><a class="btn sm" href="${esc(s.source_url)}" target="_blank" rel="noreferrer noopener">${ic('link')} Mở trang</a></div>`)).join('') || '<div class="row-i muted">Chưa có.</div>'}</div>
         <div class="panel"><div class="hd"><h2>Thuộc tính thêm (attrs)</h2></div><div class="bd mono" style="font-size:12px;white-space:pre-wrap;word-break:break-word">${esc(JSON.stringify(m.attrs || {}, null, 2))}</div></div>`;
     }
-    const html = `<div class="wrap" style="overflow-wrap:anywhere">${crumbs([['Phim', '#/movies'], ...(m.maker ? [[m.maker, href.facet('maker', m.maker)]] : []), [m.code]])}
+    const html = `<div class="wrap" style="overflow-wrap:anywhere">${crumbs([['Phim', '#/movies'], ...(m.maker ? [[m.maker, href.facet('maker', m.maker)]] : []), [codeLabel(m.code)]])}
       <div class="cols detail"><div class="col">${cover(m, { dur: true, zoom: true })}</div>
-      <div class="col"><div><div class="mono muted">${esc(m.code)}${m.release_date ? ' · ' + esc(m.release_date) : ''}${m.needs_review ? ' · <span class="chip warn">cần xem lại</span>' : ''}${m.delisted_at ? ' · <span class="chip bad">đã gỡ</span>' : ''}</div><h1 style="font-size:22px">${esc(titleOf(m))}</h1></div>
+      <div class="col"><div><div class="mono muted">${esc(codeLabel(m.code))}${m.release_date ? ' · ' + esc(m.release_date) : ''}${m.needs_review ? ' · <span class="chip warn">cần xem lại</span>' : ''}${m.delisted_at ? ' · <span class="chip bad">đã gỡ</span>' : ''}</div><h1 style="font-size:22px">${esc(titleOf(m))}</h1></div>
         <div class="chips">${(m.genres || []).map(g => facetChip('genre', g)).join('')}${m.series ? facetChip('series', m.series) : ''}${m.maker ? facetChip('maker', m.maker) : ''}${m.runtime_minutes ? `<span class="chip mono">${m.runtime_minutes}′</span>` : ''}${m.community_score !== null ? `<span class="chip mono">★ ${esc(m.community_score)}</span>` : ''}</div>
         <div class="agrid S">${performers.map((p, i) => performerCard(p, i)).join('') || '<span class="muted">Chưa có diễn viên.</span>'}</div>
-        <div class="ibtns">${disk.codes.has(m.code) ? `<a class="btn pri" href="#/player/${encodeURIComponent(m.code)}">Phát</a>` : ''}<button class="btn" data-act="copy" data-v="${esc(m.code)}">${ic('copy')} Sao chép mã</button>${markBtn(marks, 'favourite', 'movie', m.code, '★ Đã yêu thích', '☆ Yêu thích')}${markBtn(marks, 'watch_later', 'movie', m.code, '⏱ Trong danh sách xem sau', '⏱ Xem sau')}${markBtn(marks, 'seen', 'movie', m.code, '✓ Đã xem', '✓ Đánh dấu đã xem')}${dl.enabled && (m.magnets || []).length ? `<button class="btn sm" data-dl="${esc(m.code)}">⬇ Tải về</button>` : ''}</div>
+        <div class="ibtns">${disk.codes.has(m.code) ? `<a class="btn pri" href="#/player/${encodeURIComponent(m.code)}">Phát</a>` : ''}<button class="btn" data-act="copy" data-v="${esc(m.code)}">${ic('copy')} ${isDerivedCode(m.code) ? 'Sao chép mã nội bộ' : 'Sao chép mã'}</button>${markBtn(marks, 'favourite', 'movie', m.code, '★ Đã yêu thích', '☆ Yêu thích')}${markBtn(marks, 'watch_later', 'movie', m.code, '⏱ Trong danh sách xem sau', '⏱ Xem sau')}${markBtn(marks, 'seen', 'movie', m.code, '✓ Đã xem', '✓ Đánh dấu đã xem')}${dl.enabled && (m.magnets || []).length ? `<button class="btn sm" data-dl="${esc(m.code)}">⬇ Tải về</button>` : ''}</div>
         <div class="panel">${tabsHtml}<div class="bd">${content}</div></div></div></div>
       <div class="panel" id="related"><div class="hd"><h2>Phim liên quan</h2><span class="dim">cùng diễn viên, series, maker</span></div><div class="bd"><div class="strip" id="relstrip"><span class="loader"><i></i><i></i><i></i></span></div></div></div></div>`;
     return {
