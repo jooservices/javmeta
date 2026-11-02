@@ -1,0 +1,95 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Integration;
+
+use App\Services\Crawl\CrawlStatsOperationalSampler;
+use App\Services\Crawl\CrawlStatsRollup;
+use Illuminate\Support\Facades\DB;
+
+final class CrawlStatsRollupTest extends IntegrationTestCase
+{
+    public function test_postgres_rollup_is_idempotent_indexed_and_preserves_sampled_averages(): void
+    {
+        $this->freezeTime();
+        config()->set('javmeta_stats.enabled', true);
+        $now = now('UTC')->toImmutable();
+        $hour = $now->startOfHour();
+        $this->insertAttempt($now->copy()->subMinutes(2), 'ok', 200, 120);
+        $this->insertAttempt($now->copy()->subMinute(), 'error', 403, 80);
+        DB::table('crawl_runs')->insert([
+            'source_slug' => 'onejav',
+            'started_at' => $now->copy()->subMinutes(2),
+            'finished_at' => $now->copy()->subMinute(),
+            'status' => 'completed',
+            'movies_new' => 2,
+            'movies_updated' => 3,
+            'proxy_bytes' => 1024,
+        ]);
+        $this->insertQueue('ready-a');
+        $sampler = app(CrawlStatsOperationalSampler::class);
+        $sampler->sample();
+        $this->insertQueue('ready-b');
+        $sampler->sample();
+
+        $startedAt = hrtime(true);
+        $rollup = app(CrawlStatsRollup::class)->rollup($hour, $now);
+        $elapsedMs = (hrtime(true) - $startedAt) / 1_000_000;
+        app(CrawlStatsRollup::class)->rollup($hour, $now);
+
+        $this->assertDatabaseCount('crawl_stats_hourly', 2);
+        $this->assertDatabaseHas('crawl_stats_hourly', [
+            'hour_at' => $hour->toDateTimeString(),
+            'source_slug' => 'onejav',
+            'lane' => 'normal',
+            'method' => 'http',
+            'attempts' => 2,
+            'ok' => 1,
+            'blocked' => 1,
+            'avg_duration_ms' => 100,
+            'p90_duration_ms' => 120,
+        ]);
+        $this->assertDatabaseHas('crawl_stats_hourly', [
+            'source_slug' => '__global__',
+            'movies_new' => 2,
+            'movies_updated' => 3,
+            'bytes_total' => 1024,
+            'queue_ready_avg' => 1.5,
+            'queue_samples' => 2,
+        ]);
+        self::assertSame(1, $rollup['attempt_rows']);
+        self::assertLessThan(1000, $elapsedMs, 'PostgreSQL rollup should finish in under one second.');
+
+        $indexes = DB::table('pg_indexes')
+            ->where('tablename', 'crawl_fetch_attempts')
+            ->pluck('indexname')
+            ->all();
+        self::assertContains('crawl_fetch_attempts_started_at_idx', $indexes);
+    }
+
+    private function insertAttempt(\DateTimeInterface $startedAt, string $outcome, int $status, int $duration): void
+    {
+        DB::table('crawl_fetch_attempts')->insert([
+            'created_at' => $startedAt,
+            'source_slug' => 'onejav',
+            'lane' => 'normal',
+            'url_hash' => hash('sha256', (string) $status),
+            'method' => 'http',
+            'started_at' => $startedAt,
+            'duration_ms' => $duration,
+            'http_status' => $status,
+            'outcome' => $outcome,
+        ]);
+    }
+
+    private function insertQueue(string $url): void
+    {
+        DB::table('crawl_queue')->insert([
+            'source_slug' => 'onejav',
+            'url' => 'https://example.test/' . $url,
+            'kind' => 'detail',
+            'status' => 'pending',
+        ]);
+    }
+}

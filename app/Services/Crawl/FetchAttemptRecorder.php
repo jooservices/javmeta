@@ -39,6 +39,7 @@ final class FetchAttemptRecorder
             $rows[] = [
                 'created_at' => now(),
                 'source_slug' => $queue->source_slug,
+                'lane' => $queue->getAttribute('claimed_lane'),
                 'crawl_queue_id' => $queue->id,
                 'url_hash' => hash('sha256', $queue->url),
                 'method' => mb_substr((string) $attempt['method'], 0, 64),

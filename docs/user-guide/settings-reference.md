@@ -762,6 +762,20 @@ Số thập phân; từ 0 đến 1. Mã mục: `observability.trace_sample_rate`
 
 Số thập phân; từ 0 đến 1. Mã mục: `observability.sentry_traces_sample_rate`.
 
+## Thống kê crawl
+
+### Bật thống kê crawl dài hạn
+
+Lưu số liệu crawl theo giờ và gửi các metric hiệu suất tổng hợp.
+
+Bật/tắt. Mã mục: `stats.enabled`.
+
+### Thời gian lưu thống kê crawl (ngày)
+
+Số ngày giữ số liệu crawl theo giờ trước khi tự dọn.
+
+Số nguyên; từ 1 đến 3650. Mã mục: `stats.retention_days`.
+
 ## Sao lưu
 
 ### Đường dẫn manifest sao lưu

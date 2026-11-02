@@ -135,6 +135,13 @@ Cài đặt / Giám sát exposes **Số ngày giữ lịch sử thử tải** (d
 The per-method report is an operator command, not a new UI screen; see
 [fetch attempts](../03-operations/telemetry.md#fetch-attempts).
 
+## Long-term crawl statistics
+
+Cài đặt → **Thống kê crawl** controls the statistics switch and hourly
+retention period. There is no new UI screen: operators use
+`crawler:stats-report` for source, method, lane and hourly reports. See
+[crawl statistics operations](../03-operations/telemetry.md#long-term-crawl-statistics-jooxcr-305).
+
 Native XCrawler production has independent host/index settings. See the
 [production operator runbook](../../deploy/production/README.md)
 for the Settings-page checklist; restarting Horizon on that node uses `xcrawler-horizon`.

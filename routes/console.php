@@ -39,6 +39,7 @@ if (! app()->runningUnitTests()) {
     $scheduleCommand('search:backfill-embeddings')->hourly()->withoutOverlapping();
     $scheduleCommand('crawler:watchdog')->everyFiveMinutes();
     $scheduleCommand('crawler:prune-fetch-attempts')->daily()->withoutOverlapping();
+    $scheduleCommand('crawler:stats-rollup')->hourly()->withoutOverlapping();
     $scheduleCommand('crawler:source-health')->dailyAt('04:00')->withoutOverlapping(120)->runInBackground();
     $scheduleCommand('staging:readiness')->hourly()->withoutOverlapping();
     $scheduleCommand('telegram:poll')->everyMinute()->withoutOverlapping();
