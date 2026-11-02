@@ -233,10 +233,9 @@ final class CrawlQueueService
         }
 
         $attempts = DB::table('crawl_fetch_attempts')
-            ->leftJoin('crawl_queue', 'crawl_queue.id', '=', 'crawl_fetch_attempts.crawl_queue_id')
-            ->when($lane === 'retry', static fn($query) => $query->where('crawl_queue.claimed_lane', 'retry'))
+            ->when($lane === 'retry', static fn($query) => $query->where('crawl_fetch_attempts.lane', 'retry'))
             ->when($lane !== null && $lane !== 'retry', static fn($query) => $query->where(static function ($nested): void {
-                $nested->whereNull('crawl_queue.id')->orWhereNull('crawl_queue.claimed_lane')->orWhere('crawl_queue.claimed_lane', '!=', 'retry');
+                $nested->whereNull('crawl_fetch_attempts.lane')->orWhere('crawl_fetch_attempts.lane', '!=', 'retry');
             }))
             ->where('crawl_fetch_attempts.created_at', '>=', $since)
             ->where('crawl_fetch_attempts.started_at', '>=', $since)
@@ -356,7 +355,7 @@ final class CrawlQueueService
         }
 
         $rows = CrawlQueue::query()->where('source_slug', $sourceSlug)->where('kind', $kind);
-        if ((clone $rows)->whereIn('status', [CrawlQueue::STATUS_PENDING, CrawlQueue::STATUS_CLAIMED])->exists()
+        if ((clone $rows)->whereIn('status', [CrawlQueue::STATUS_PENDING, CrawlQueue::STATUS_CLAIMED, CrawlQueue::STATUS_RETRY_PENDING])->exists()
             || ! (clone $rows)->exists()) {
             return false;
         }
@@ -365,17 +364,19 @@ final class CrawlQueueService
 
         DB::transaction(function () use ($rows, $sourceSlug, $kind, $seedUrls, $pause): void {
             (clone $rows)->whereNotIn('url', $seedUrls)->where('status', CrawlQueue::STATUS_DONE)->delete();
-            (clone $rows)->whereIn('url', $seedUrls)->update([
-                'status' => CrawlQueue::STATUS_PENDING,
-                'attempts' => 0,
-                'next_attempt_at' => now()->addSeconds($pause),
-                'claimed_at' => null,
-                'started_at' => null,
-                'locked_by' => null,
-                'last_error' => null,
-                'error_code' => null,
-                'last_failed_at' => null,
-            ]);
+            (clone $rows)->whereIn('url', $seedUrls)
+                ->whereNotIn('status', [CrawlQueue::STATUS_PENDING, CrawlQueue::STATUS_CLAIMED, CrawlQueue::STATUS_RETRY_PENDING])
+                ->update([
+                    'status' => CrawlQueue::STATUS_PENDING,
+                    'attempts' => 0,
+                    'next_attempt_at' => now()->addSeconds($pause),
+                    'claimed_at' => null,
+                    'started_at' => null,
+                    'locked_by' => null,
+                    'last_error' => null,
+                    'error_code' => null,
+                    'last_failed_at' => null,
+                ]);
 
             foreach ($seedUrls as $url) {
                 $this->enqueue($url, $sourceSlug, $kind);
@@ -476,13 +477,13 @@ final class CrawlQueueService
         } elseif ($isRetryable && $round < $maxRounds) {
             $nextStatus = CrawlQueue::STATUS_RETRY_PENDING;
             $nextRound = max(1, $round + 1);
-            $nextAttemptAt = now()->addSeconds($this->retryRoundDelay($nextRound));
+            $nextAttemptAt = now()->addSeconds($this->retryRoundDelaySeconds($nextRound, $retryAfterSeconds));
         }
 
         if (! $isRetryLane && $isRetryable && ! $attemptsRemain) {
             $nextStatus = CrawlQueue::STATUS_RETRY_PENDING;
             $nextRound = 1;
-            $nextAttemptAt = now()->addSeconds($this->retryRoundDelay($nextRound));
+            $nextAttemptAt = now()->addSeconds($this->retryRoundDelaySeconds($nextRound, $retryAfterSeconds));
         }
 
 
@@ -496,6 +497,7 @@ final class CrawlQueueService
             'next_attempt_at' => $nextAttemptAt,
             'error_code' => $errorCode->value,
             'last_error' => $safeMessage,
+            'retryable' => $isRetryable,
             'last_failed_at' => now(),
         ])->save();
 
@@ -536,7 +538,13 @@ final class CrawlQueueService
                         $sourceSlug,
                         $this->sourceGapPolicy->adaptiveGap($source) * $retryMultiplier,
                         (string) ($row->claimed_lane ?? 'direct'),
+                        $this->pacingWaitBudgetMicroseconds(),
                     );
+                    if ($wait === null) {
+                        $this->releaseClaimForPacing($row);
+
+                        return null;
+                    }
                     $this->sourceRequestPacer->wait($wait);
                 }
             }
@@ -641,7 +649,7 @@ final class CrawlQueueService
     private function returnUnstartedClaimToPending(CrawlQueue $row): void
     {
         $row->forceFill([
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => $row->claimed_lane === 'retry' ? CrawlQueue::STATUS_RETRY_PENDING : CrawlQueue::STATUS_PENDING,
             'claimed_at' => null,
             'started_at' => null,
             'locked_by' => null,
@@ -650,6 +658,24 @@ final class CrawlQueueService
             'last_error' => 'Worker claim expired before the crawl row started.',
             'last_failed_at' => now(),
         ])->save();
+    }
+
+    private function releaseClaimForPacing(CrawlQueue $row): void
+    {
+        $row->forceFill([
+            'status' => $row->claimed_lane === 'retry' ? CrawlQueue::STATUS_RETRY_PENDING : CrawlQueue::STATUS_PENDING,
+            'claimed_at' => null,
+            'started_at' => null,
+            'locked_by' => null,
+        ])->save();
+    }
+
+    private function pacingWaitBudgetMicroseconds(): int
+    {
+        $workerTimeout = max(1, (int) config('javmeta_queues.worker_timeout', 180));
+        $fetchTimeout = max(0, (int) config('javmeta_queues.fetch_service_timeout_seconds', 45));
+
+        return max(0, $workerTimeout - $fetchTimeout - 1) * 1_000_000;
     }
 
     /** @return list<string> */
@@ -692,6 +718,11 @@ final class CrawlQueueService
         return max(1, (int) ($delays[$round - 1] ?? end($delays) ?: 21600));
     }
 
+    private function retryRoundDelaySeconds(int $round, ?int $retryAfterSeconds): int
+    {
+        return max($this->retryRoundDelay($round), max(0, (int) $retryAfterSeconds));
+    }
+
     public function requeuePermanentFailure(CrawlQueue $row): bool
     {
         $code = CrawlErrorCode::tryFrom((string) $row->error_code);
@@ -699,7 +730,19 @@ final class CrawlQueueService
             return false;
         }
 
-        $row->forceFill([
+        $requiresRetryableFlag = in_array($code, [CrawlErrorCode::Network, CrawlErrorCode::RateLimited], true);
+        if ($requiresRetryableFlag && ! filter_var($row->getAttribute('retryable'), FILTER_VALIDATE_BOOLEAN)) {
+            return false;
+        }
+
+        $query = CrawlQueue::query()->whereKey($row->getKey())
+            ->where('status', CrawlQueue::STATUS_FAILED)
+            ->where('error_code', $code->value);
+        if ($requiresRetryableFlag) {
+            $query->where('retryable', true);
+        }
+
+        return $query->update([
             'status' => CrawlQueue::STATUS_RETRY_PENDING,
             'attempts' => 0,
             'retry_round' => 1,
@@ -707,9 +750,7 @@ final class CrawlQueueService
             'claimed_at' => null,
             'started_at' => null,
             'locked_by' => null,
-        ])->save();
-
-        return true;
+        ]) === 1;
     }
 
     public function requeuePermanentFailuresForSource(string $source): int
@@ -735,28 +776,41 @@ final class CrawlQueueService
             $eligible->where('source_slug', $source);
         }
 
-        $retryableCodes = app(CrawlRetryPolicy::class)->retryableCodeValues();
-        $eligible->whereIn('error_code', $retryableCodes);
+        $this->whereHistoricallyRetryable($eligible);
         if ($dryRun) {
             return $eligible->count();
         }
 
         $imported = 0;
-        $eligible->chunkById($slice, function (Collection $rows) use (&$imported, $cutoff, $retryableCodes): void {
+        $eligible->chunkById($slice, function (Collection $rows) use (&$imported, $cutoff): void {
             $ids = $rows->modelKeys();
-            $imported += CrawlQueue::query()->whereIn('id', $ids)
+            $query = CrawlQueue::query()->whereIn('id', $ids)
                 ->where('status', CrawlQueue::STATUS_FAILED)
-                ->where('last_failed_at', '<=', $cutoff)
-                ->whereIn('error_code', $retryableCodes)
-                ->update([
-                    'status' => CrawlQueue::STATUS_RETRY_PENDING,
-                    'attempts' => 0,
-                    'retry_round' => 1,
-                    'next_attempt_at' => now(),
-                ]);
+                ->where('last_failed_at', '<=', $cutoff);
+            $this->whereHistoricallyRetryable($query);
+            $imported += $query->update([
+                'status' => CrawlQueue::STATUS_RETRY_PENDING,
+                'attempts' => 0,
+                'retry_round' => 1,
+                'next_attempt_at' => now(),
+            ]);
         });
 
         return $imported;
+    }
+
+    private function whereHistoricallyRetryable(Builder $query): Builder
+    {
+        $retryableCodes = app(CrawlRetryPolicy::class)->retryableCodeValues();
+        $requiresExplicitFlag = [CrawlErrorCode::Network->value, CrawlErrorCode::RateLimited->value];
+        $inferredCodes = array_values(array_diff($retryableCodes, $requiresExplicitFlag));
+
+        return $query->where(static function (Builder $nested) use ($inferredCodes, $requiresExplicitFlag): void {
+            $nested->whereIn('error_code', $inferredCodes)
+                ->orWhere(static function (Builder $explicit) use ($requiresExplicitFlag): void {
+                    $explicit->whereIn('error_code', $requiresExplicitFlag)->where('retryable', true);
+                });
+        });
     }
 
     private function nextSourceAttemptAt(?Source $source): Carbon

@@ -220,7 +220,7 @@ final class PublishMetricsCommand extends Command
         ];
 
         $avgAttempts = CrawlQueue::query()
-            ->whereIn('status', [CrawlQueue::STATUS_PENDING, CrawlQueue::STATUS_FAILED])
+            ->whereIn('status', [CrawlQueue::STATUS_PENDING, CrawlQueue::STATUS_RETRY_PENDING, CrawlQueue::STATUS_FAILED])
             ->avg('attempts');
         $points[] = [
             'name' => MetricStreams::NAMES['crawl_queue_avg_attempts'],
@@ -272,7 +272,7 @@ final class PublishMetricsCommand extends Command
     {
         $age = $dispatchHeartbeat->ageSeconds();
         $hasDueWork = CrawlQueue::query()
-            ->where('status', CrawlQueue::STATUS_PENDING)
+            ->whereIn('status', [CrawlQueue::STATUS_PENDING, CrawlQueue::STATUS_RETRY_PENDING])
             ->where(static function ($query): void {
                 $query->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', now());
             })

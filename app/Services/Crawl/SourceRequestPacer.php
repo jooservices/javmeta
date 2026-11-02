@@ -18,11 +18,16 @@ local start = now
 if last then
     start = math.max(now, last + gap)
 end
+local wait = start - now
+local maximum_wait = tonumber(ARGV[3])
+if wait > maximum_wait then
+    return -1
+end
 redis.call('SET', KEYS[1], start, 'PX', ARGV[2])
-return start - now
+return wait
 LUA;
 
-    public function reserveStart(string $sourceSlug, float $gapSeconds, string $lane = 'direct'): int
+    public function reserveStart(string $sourceSlug, float $gapSeconds, string $lane, int $maximumWaitMicroseconds): ?int
     {
         $gapMicroseconds = (int) round($gapSeconds * 1_000_000);
         $ttlMilliseconds = max(60_000, (int) ceil($gapMicroseconds * 2 / 1000));
@@ -32,12 +37,17 @@ LUA;
                 'javmeta:source-gap:start:' . $lane . ':' . rawurlencode($sourceSlug),
                 (string) $gapMicroseconds,
                 (string) $ttlMilliseconds,
+                (string) $maximumWaitMicroseconds,
             ],
             1,
         );
 
-        if (! is_numeric($wait) || $wait < 0) {
+        if (! is_numeric($wait) || $wait < -1) {
             throw new RuntimeException('Unable to reserve a source request start slot.');
+        }
+
+        if ((int) $wait === -1) {
+            return null;
         }
 
         return (int) $wait;

@@ -14,6 +14,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\DB;
 use Mockery;
 use RuntimeException;
 use Tests\TestCase;
@@ -86,7 +87,7 @@ final class CrawlQueueServiceTest extends TestCase
             return str_contains($script, "redis.call('TIME')")
                 && str_contains($script, 'last + gap')
                 && $keyCount === 1
-                && $arguments === ['javmeta:source-gap:start:direct:paced-site', '250000', '60000'];
+                && $arguments === ['javmeta:source-gap:start:direct:paced-site', '250000', '60000', '134000000'];
         })->andReturn(0);
         Redis::shouldReceive('connection')->once()->with('default')->andReturn($redis);
 
@@ -94,6 +95,52 @@ final class CrawlQueueServiceTest extends TestCase
 
         self::assertSame(CrawlQueue::STATUS_CLAIMED, $started?->status);
         self::assertNotNull($started?->started_at);
+    }
+
+    public function test_claimed_retry_is_released_when_reserved_pacing_wait_exceeds_the_worker_budget(): void
+    {
+        config()->set('javmeta_queues.source_gap_overrides', [
+            'paced-retry' => ['min' => 10.0, 'default' => 10.0, 'max' => 10.0],
+        ]);
+        $source = Source::factory()->create([
+            'slug' => 'paced-retry',
+            'gap_seconds_default' => 10,
+            'gap_seconds_min' => 10,
+            'gap_seconds_max' => 10,
+            'gap_seconds_current' => 10,
+        ]);
+        $row = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'kind' => CrawlQueue::KIND_DETAIL,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'claimed_lane' => 'retry',
+            'claimed_at' => now(),
+            'started_at' => null,
+            'locked_by' => 'retry-worker',
+            'attempts' => 1,
+        ]);
+        $redis = Mockery::mock();
+        $redis->shouldReceive('eval')->once()->withArgs(static function (string $script, array $arguments, int $keyCount): bool {
+            $limitCheck = strpos($script, 'if wait > maximum_wait then');
+            $slotWrite = strpos($script, "redis.call('SET'");
+
+            return $keyCount === 1
+                && $arguments[0] === 'javmeta:source-gap:start:retry:paced-retry'
+                && $arguments[3] === '134000000'
+                && is_int($limitCheck)
+                && is_int($slotWrite)
+                && $limitCheck < $slotWrite;
+        })->andReturn(-1);
+        Redis::shouldReceive('connection')->once()->with('default')->andReturn($redis);
+
+        $started = (new CrawlQueueService())->startClaimedRow($row->id, CrawlQueue::KIND_DETAIL, 'retry-worker');
+
+        self::assertNull($started);
+        self::assertSame(CrawlQueue::STATUS_RETRY_PENDING, $row->refresh()->status);
+        self::assertSame(1, $row->attempts);
+        self::assertNull($row->claimed_at);
+        self::assertNull($row->started_at);
+        self::assertNull($row->locked_by);
     }
 
     public function test_a_blocked_crawl_uses_backoff_then_enters_the_separate_retry_lane(): void
@@ -302,18 +349,18 @@ final class CrawlQueueServiceTest extends TestCase
         ]);
         $service = new CrawlQueueService();
 
-        $service->markFailed($row, CrawlErrorCode::Network, 'normal lane failed', true);
+        $service->markFailed($row, CrawlErrorCode::Network, 'normal lane failed', true, 240);
         self::assertSame(CrawlQueue::STATUS_RETRY_PENDING, $row->refresh()->status);
         self::assertSame(1, $row->retry_round);
         self::assertSame(0, $row->attempts);
-        self::assertSame(now()->addSeconds(60)->getTimestamp(), $row->next_attempt_at?->getTimestamp());
+        self::assertSame(now()->addSeconds(240)->getTimestamp(), $row->next_attempt_at?->getTimestamp());
 
         $row->forceFill(['status' => CrawlQueue::STATUS_CLAIMED, 'claimed_lane' => 'retry', 'attempts' => 3])->save();
-        $service->markFailed($row, CrawlErrorCode::Network, 'retry round one failed', true);
+        $service->markFailed($row, CrawlErrorCode::Network, 'retry round one failed', true, 300);
         self::assertSame(CrawlQueue::STATUS_RETRY_PENDING, $row->refresh()->status);
         self::assertSame(2, $row->retry_round);
         self::assertSame(0, $row->attempts);
-        self::assertSame(now()->addSeconds(120)->getTimestamp(), $row->next_attempt_at?->getTimestamp());
+        self::assertSame(now()->addSeconds(300)->getTimestamp(), $row->next_attempt_at?->getTimestamp());
 
         $row->forceFill(['status' => CrawlQueue::STATUS_CLAIMED, 'claimed_lane' => 'retry', 'attempts' => 3])->save();
         $service->markFailed($row, CrawlErrorCode::Network, 'final error retained', true);
@@ -356,6 +403,52 @@ final class CrawlQueueServiceTest extends TestCase
         self::assertSame('direct', $normalClaim?->claimed_lane);
     }
 
+    public function test_listing_loop_does_not_reset_a_retry_pending_seed(): void
+    {
+        $source = Source::factory()->create();
+        $doneSeed = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'kind' => CrawlQueue::KIND_LISTING,
+            'url' => 'https://example.test/listing/1',
+            'status' => CrawlQueue::STATUS_DONE,
+        ]);
+        $retrySeed = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'kind' => CrawlQueue::KIND_LISTING,
+            'url' => 'https://example.test/listing/2',
+            'status' => CrawlQueue::STATUS_RETRY_PENDING,
+            'retry_round' => 1,
+            'next_attempt_at' => now()->addHour(),
+        ]);
+
+        $restarted = (new CrawlQueueService())->restartListingLoopIfFinished(
+            $source->slug,
+            CrawlQueue::KIND_LISTING,
+            [$doneSeed->url, $retrySeed->url],
+        );
+
+        self::assertFalse($restarted);
+        self::assertSame(CrawlQueue::STATUS_DONE, $doneSeed->refresh()->status);
+        self::assertSame(CrawlQueue::STATUS_RETRY_PENDING, $retrySeed->refresh()->status);
+        self::assertSame(1, $retrySeed->retry_round);
+        self::assertSame(now()->addHour()->getTimestamp(), $retrySeed->next_attempt_at?->getTimestamp());
+    }
+
+    public function test_requeue_does_not_overwrite_a_row_that_is_no_longer_failed(): void
+    {
+        $row = CrawlQueue::factory()->create([
+            'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::Network->value,
+            'retryable' => true,
+        ]);
+        DB::table('crawl_queue')->where('id', $row->id)->update(['status' => CrawlQueue::STATUS_PENDING]);
+
+        $requeued = (new CrawlQueueService())->requeuePermanentFailure($row);
+
+        self::assertFalse($requeued);
+        self::assertSame(CrawlQueue::STATUS_PENDING, $row->refresh()->status);
+    }
+
     public function test_historical_import_is_sliced_and_does_not_touch_young_or_terminal_failures(): void
     {
         Carbon::setTestNow('2026-11-02 10:00:00');
@@ -365,6 +458,21 @@ final class CrawlQueueServiceTest extends TestCase
             'source_slug' => $source->slug, 'status' => CrawlQueue::STATUS_FAILED,
             'error_code' => CrawlErrorCode::Timeout->value, 'attempts' => 3,
             'last_failed_at' => now()->subSeconds(61),
+        ]);
+        $retryableNetwork = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug, 'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::Network->value, 'retryable' => true,
+            'attempts' => 3, 'last_failed_at' => now()->subSeconds(61),
+        ]);
+        $unknownNetwork = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug, 'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::Network->value, 'retryable' => null,
+            'attempts' => 3, 'last_failed_at' => now()->subSeconds(61),
+        ]);
+        $nonRetryableRateLimit = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug, 'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::RateLimited->value, 'retryable' => false,
+            'attempts' => 3, 'last_failed_at' => now()->subSeconds(61),
         ]);
         $young = CrawlQueue::factory()->create([
             'source_slug' => $source->slug, 'status' => CrawlQueue::STATUS_FAILED,
@@ -378,10 +486,13 @@ final class CrawlQueueServiceTest extends TestCase
         ]);
         $service = new CrawlQueueService();
 
-        self::assertSame(1, $service->importHistoricalFailures(true, $source->slug));
-        self::assertSame(1, $service->importHistoricalFailures(false, $source->slug));
+        self::assertSame(2, $service->importHistoricalFailures(true, $source->slug));
+        self::assertSame(2, $service->importHistoricalFailures(false, $source->slug));
         self::assertSame(CrawlQueue::STATUS_RETRY_PENDING, $old->refresh()->status);
         self::assertSame(1, $old->retry_round);
+        self::assertSame(CrawlQueue::STATUS_RETRY_PENDING, $retryableNetwork->refresh()->status);
+        self::assertSame(CrawlQueue::STATUS_FAILED, $unknownNetwork->refresh()->status);
+        self::assertSame(CrawlQueue::STATUS_FAILED, $nonRetryableRateLimit->refresh()->status);
         self::assertSame(CrawlQueue::STATUS_FAILED, $young->refresh()->status);
         self::assertSame(CrawlQueue::STATUS_FAILED, $terminal->refresh()->status);
         Carbon::setTestNow();

@@ -29,6 +29,11 @@ return new class extends Migration {
                     $table->string('retry_egress_label', 64)->nullable();
                 });
             }
+            if (! Schema::hasColumn('crawl_queue', 'retryable')) {
+                Schema::table('crawl_queue', function (Blueprint $table): void {
+                    $table->boolean('retryable')->nullable();
+                });
+            }
         });
 
         if (! Schema::hasTable('crawl_retry_metrics')) {
@@ -73,6 +78,11 @@ return new class extends Migration {
         }
 
         Schema::dropIfExists('crawl_retry_metrics');
+        if (Schema::hasColumn('crawl_queue', 'retryable')) {
+            Schema::table('crawl_queue', function (Blueprint $table): void {
+                $table->dropColumn('retryable');
+            });
+        }
         if (Schema::hasColumn('crawl_queue', 'retry_round')) {
             Schema::table('crawl_queue', function (Blueprint $table): void {
                 $table->dropColumn('retry_round');

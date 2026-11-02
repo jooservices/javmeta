@@ -143,6 +143,40 @@ final class SettingsTest extends TestCase
         }
     }
 
+    public function test_retry_fetch_profile_reads_ignore_invalid_stored_values(): void
+    {
+        $default = config('javmeta_queues.retry.fetch_profile');
+        $this->store->set(
+            'settings.retry.fetch_profile',
+            json_encode(['http_proxy_url' => 'https://retry-egress.internal?x=1'], JSON_THROW_ON_ERROR),
+        );
+        $settings = app(SettingsService::class);
+
+        self::assertSame($default, $settings->get('retry.fetch_profile'));
+        $setting = collect($settings->all())->firstWhere('key', 'retry.fetch_profile');
+        self::assertSame($default, $setting['value']);
+        self::assertSame('default', $setting['source']);
+        self::assertNotNull($setting['warning']);
+        self::assertStringNotContainsString('?x=1', json_encode($setting, JSON_THROW_ON_ERROR));
+    }
+
+    public function test_retry_fetch_profile_endpoints_reject_queries_and_fragments(): void
+    {
+        $settings = app(SettingsService::class);
+        $default = config('javmeta_queues.retry.fetch_profile');
+
+        foreach (['flaresolverr_url', 'playwright_url', 'http_proxy_url'] as $field) {
+            foreach (['?mode=test', '#fragment'] as $suffix) {
+                try {
+                    $settings->set('retry.fetch_profile', [$field => 'https://retry-service.internal' . $suffix]);
+                    self::fail("{$field} must reject a query or fragment.");
+                } catch (\InvalidArgumentException) {
+                    self::assertSame($default, config('javmeta_queues.retry.fetch_profile'));
+                }
+            }
+        }
+    }
+
     public function test_crawl_dispatch_alert_thresholds_are_saved_database_settings(): void
     {
         $settings = app(SettingsService::class);

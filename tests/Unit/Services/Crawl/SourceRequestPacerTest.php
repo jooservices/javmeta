@@ -19,16 +19,16 @@ final class SourceRequestPacerTest extends TestCase
                 && str_contains($script, 'last + gap')
                 && $keyCount === 1
                 && in_array($arguments, [
-                    ['javmeta:source-gap:start:direct:fast-site', '250000', '60000'],
-                    ['javmeta:source-gap:start:retry:fast-site', '250000', '60000'],
+                    ['javmeta:source-gap:start:direct:fast-site', '250000', '60000', '1000000'],
+                    ['javmeta:source-gap:start:retry:fast-site', '250000', '60000', '1000000'],
                 ], true);
         })->andReturn(0, 250000, 0);
         Redis::shouldReceive('connection')->times(3)->with('default')->andReturn($redis);
 
         $pacer = new SourceRequestPacer();
 
-        self::assertSame(0, $pacer->reserveStart('fast-site', 0.25));
-        self::assertSame(250000, $pacer->reserveStart('fast-site', 0.25));
-        self::assertSame(0, $pacer->reserveStart('fast-site', 0.25, 'retry'));
+        self::assertSame(0, $pacer->reserveStart('fast-site', 0.25, 'direct', 1_000_000));
+        self::assertSame(250000, $pacer->reserveStart('fast-site', 0.25, 'direct', 1_000_000));
+        self::assertSame(0, $pacer->reserveStart('fast-site', 0.25, 'retry', 1_000_000));
     }
 }

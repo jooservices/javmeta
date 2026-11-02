@@ -220,10 +220,12 @@ reported as `restart-required` and need an operator-managed Horizon restart.
 
 The normal lane gets up to `crawl.max_attempts` attempts per URL. Transient
 failures return to `pending` with the configured `crawl.retry_backoff_seconds`
-(default 60, 300 and 1,800 seconds); a `Retry-After` hint is respected. Once the
-normal attempts are exhausted, the row enters `retry_pending`, round 1, and is
-not eligible for a normal or browser claim. The retry lane waits the configured
-round delay (default 1,800 seconds, then 7,200, then 21,600), uses
+(default 60, 300 and 1,800 seconds); a `Retry-After` hint is respected. When a
+row advances to a retry round, its delay is the greater of the configured round
+delay and the response's `Retry-After` value. Once the normal attempts are
+exhausted, the row enters `retry_pending`, round 1, and is not eligible for a
+normal or browser claim. The retry lane waits the configured round delay
+(default 1,800 seconds, then 7,200, then 21,600), uses
 `retry.attempts_per_round` attempts (default 3), then advances a round or marks
 the row permanently `failed` after `retry.max_rounds` (default 3). The final
 `error_code`, `last_error` and `last_failed_at` remain on the row.
@@ -239,14 +241,19 @@ the row permanently `failed` after `retry.max_rounds` (default 3). The final
 budgets. Retry pacing multiplies each source gap by `retry.pacing_gap_multiplier`
 (default 2), reserves request starts in a separate lane key, and caps retry
 inflight work with `retry.per_source_inflight` (default 1). It cannot consume the
-normal lane's dispatch budget. Retry queue depth defaults to 10 jobs per queue.
+normal lane's dispatch budget. A pacing wait longer than
+`queue.worker_timeout - timeouts.fetch_service_timeout_seconds - 1` releases the
+claim without reserving the Redis start slot; the feed pool can claim the row
+again after the existing source gap has shortened. Retry queue depth defaults to
+10 jobs per queue.
 
 The database setting `retry.fetch_profile` is empty by default. Optional fields
 are `flaresolverr_url`, `playwright_url`, `http_proxy_url`, `egress_label` and
 ordered `preferred_methods`. This lets an operator route retry fetches through
 different browser endpoints or a proxy and identify the egress in metrics without
-deploying. Endpoint URLs must not include credentials. Empty profile values use
-the normal fetch endpoints and method planning.
+deploying. Endpoint URLs must not include credentials, query strings or
+fragments. Empty profile values use the normal fetch endpoints and method
+planning.
 
 Use `php artisan crawler:retry-list [--source=slug] [--round=1]` to inspect
 retry rows, `php artisan crawler:retry-requeue <id>` or
@@ -254,8 +261,11 @@ retry rows, `php artisan crawler:retry-requeue <id>` or
 failures, and `php artisan crawler:retry-import --dry-run` before importing old
 failures. The import only considers transient `failed` rows older than the first
 retry delay and processes them in `retry.import_slice_size` slices (default 100);
-run without `--dry-run` only after reviewing the count. It never changes recent
-rows or terminal parse/SSRF/gone errors. Run `php artisan crawler:retry-stats
+run without `--dry-run` only after reviewing the count. For `network` and
+`rate_limited`, both import and manual requeue require the stored `retryable`
+flag to be true. Older rows have no such flag and are skipped rather than
+assuming retryability. Other retryable-code handling is unchanged. The import
+never changes recent rows or terminal parse/SSRF/gone errors. Run `php artisan crawler:retry-stats
 [--source=slug]` over SSH to read pending counts and cumulative successes and
 permanent failures by retry round and egress label. `javmeta_retry_pending`,
 `javmeta_retry_success_total` and `javmeta_retry_failed_permanent_total` report
