@@ -287,6 +287,24 @@ final class CrawlQueueServiceClaimTest extends TestCase
         $this->assertSame($third->id, $service->claimNext('worker', CrawlQueue::KIND_DETAIL)?->id);
     }
 
+    public function test_claim_next_reports_returned_candidate_rows_and_inflight_stop_reason(): void
+    {
+        config()->set('javmeta_queues.per_source_inflight', 1);
+        $this->source('reported');
+        $pending = $this->row('reported', CrawlQueue::STATUS_PENDING);
+        $diagnostics = [];
+
+        $claimed = app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_DETAIL, [], null, $diagnostics);
+
+        $this->assertSame($pending->id, $claimed?->id);
+        $this->assertSame(['rows_examined' => 1, 'stop_reason' => null], $diagnostics);
+
+        $this->row('reported', CrawlQueue::STATUS_PENDING);
+        $blocked = [];
+        $this->assertNull(app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_DETAIL, [], null, $blocked));
+        $this->assertSame(['rows_examined' => 0, 'stop_reason' => 'per_source_inflight'], $blocked);
+    }
+
     public function test_the_limit_is_shared_across_kinds_for_a_source(): void
     {
         config()->set('javmeta_queues.per_source_inflight', 1);

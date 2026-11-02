@@ -24,9 +24,15 @@ final class CrawlQueueService
     /**
      * @param  list<string>  $excludeSources  sources that must not get a row now (for example their pacing budget is used up)
      */
-    public function claimNext(string $workerId, ?string $kind = null, array $excludeSources = [], ?string $lane = null): ?CrawlQueue
+    /**
+     * @param  array{rows_examined?: int, stop_reason?: ?string}|null  $diagnostics
+     * @param-out  array{rows_examined: int, stop_reason: ?string}  $diagnostics
+     */
+    public function claimNext(string $workerId, ?string $kind = null, array $excludeSources = [], ?string $lane = null, ?array &$diagnostics = null): ?CrawlQueue
     {
-        return DB::transaction(function () use ($workerId, $kind, $excludeSources, $lane): ?CrawlQueue {
+        $diagnostics = ['rows_examined' => 0, 'stop_reason' => null];
+
+        return DB::transaction(function () use ($workerId, $kind, $excludeSources, $lane, &$diagnostics): ?CrawlQueue {
             // Serialize claims across feeder processes so the global browser cap cannot be oversubscribed.
             if (DB::getDriverName() === 'pgsql') {
                 DB::select('SELECT pg_advisory_xact_lock(?)', [281]);
@@ -62,7 +68,8 @@ final class CrawlQueueService
             }
 
             // Fairness: a source waits until its claimed work across every crawl kind has room.
-            $query->whereNotIn('source_slug', $this->sourcesAtInflightLimit());
+            $sourcesAtInflightLimit = $this->sourcesAtInflightLimit();
+            $query->whereNotIn('source_slug', $sourcesAtInflightLimit);
 
             if (DB::getDriverName() === 'pgsql') {
                 $query->lockForUpdate();
@@ -70,8 +77,12 @@ final class CrawlQueueService
 
             $row = $query->first();
             if (! $row instanceof CrawlQueue) {
+                $diagnostics['stop_reason'] = FeedPoolStopReason::forClaim($excludeSources, $sourcesAtInflightLimit);
+
                 return null;
             }
+
+            $diagnostics['rows_examined'] = 1;
 
             $row->forceFill([
                 'status' => CrawlQueue::STATUS_CLAIMED,

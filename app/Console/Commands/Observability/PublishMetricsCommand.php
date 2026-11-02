@@ -16,6 +16,7 @@ use App\Observability\OpenObserveClient;
 use App\Observability\MetricStreams;
 use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Crawl\CrawlerxFetchMethodPlan;
+use App\Services\Crawl\FeedPoolDiagnostics;
 use App\Services\Health\CrawlDispatchHeartbeat;
 use App\Services\Search\ElasticsearchHttpClient;
 use App\Services\Search\ElasticsearchRequestHealth;
@@ -26,6 +27,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Schema;
+use Carbon\CarbonImmutable;
 use Throwable;
 
 final class PublishMetricsCommand extends Command
@@ -47,6 +49,7 @@ final class PublishMetricsCommand extends Command
         SourceScheduleFreshness $sourceFreshness,
         CrawlDispatchHeartbeat $dispatchHeartbeat,
         CrawlerxFetchMethodPlan $fetchMethodPlan,
+        FeedPoolDiagnostics $feedPoolDiagnostics,
     ): int {
         if (! $client->enabled()) {
             $this->components->info('OpenObserve disabled; skipping metrics publish.');
@@ -57,6 +60,7 @@ final class PublishMetricsCommand extends Command
         $points = array_merge(
             $this->sourceMetrics($sourceFreshness),
             $this->queueMetrics(),
+            $feedPoolDiagnostics->metricPointsForMinute(CarbonImmutable::now()->startOfMinute()->subMinute()),
             $this->crawlDispatchMetrics($dispatchHeartbeat),
             $this->crawlEventMetrics(),
             $this->fetchMethodMetrics($fetchMethodPlan),

@@ -25,6 +25,13 @@ environment.
 | `javmeta_crawl_dispatch_age_seconds` | — | Seconds since the feed pool last dispatched a crawl job; `-1` means no dispatch is recorded. |
 | `javmeta_crawl_dispatch_stale` | `severity` | 1 when due crawl work has exceeded the warning or critical dispatch-age threshold; 0 otherwise. Thresholds come from database settings. |
 | `javmeta_crawl_queue_avg_attempts` | — | Average attempts for pending and failed queue rows. |
+| `javmeta_feed_source_budget` | `source_slug` | Per-source `floor(horizon / max(1, gap))` budget from the latest feed run in the previous minute. |
+| `javmeta_feed_source_started` | `source_slug` | Per-source requests started in the pacing horizon, from the latest feed run in the previous minute. |
+| `javmeta_feed_source_waiting` | `source_slug` | Per-source claimed rows without a start time, from the latest feed run in the previous minute. |
+| `javmeta_feed_source_dispatched_1m` | `source_slug` | Per-source rows dispatched by feed-pool runs in the previous minute. |
+| `javmeta_feed_stop_reason_1m` | `queue`, `lane`, `reason` | Number of runs stopped at each queue gate in the previous minute. |
+| `javmeta_feed_run_ms` | — | Average feed-pool run duration in milliseconds for the previous minute. |
+| `javmeta_feed_claim_rows_examined_1m` | — | Claim candidate rows returned by `claimNext` to the feeder in the previous minute. |
 | `javmeta_crawl_events_5m` | `kind` | Crawl events created in the previous five minutes. |
 | `javmeta_fetch_method_attempts` | `source`, `method`, `outcome` | Fetch method attempts completed and recorded in the previous minute. |
 | `javmeta_fetch_method_preference` | `source`, `method` | Current browser-method preference by source (`1` preferred, `0` otherwise); a source is preferred when any observed host has an active FlareSolverr preference. |
@@ -63,6 +70,14 @@ environment.
 
 The seven `javmeta_crawl_run_*_1h` streams are emitted from a fixed suffix list
 in `PublishMetricsCommand`; no other dynamic metric names are generated.
+
+Feed-pool metrics are emitted by `obs:publish-metrics` from the previous
+complete minute's Redis bucket. Budget, started and waiting are the latest
+per-source snapshot in that minute; dispatched and stop reasons are summed for
+the minute. `javmeta_feed_run_ms` is the average duration across runs in that
+minute. Buckets use the database-configured diagnostics retention and TTL. The
+application has no Prometheus text endpoint; these metrics use the existing
+OpenObserve OTLP metrics path.
 
 `javmeta_playwright_slot_busy_ratio` divides the completed Playwright-family
 durations recorded in the previous minute by `queue.browser_inflight` slots and
