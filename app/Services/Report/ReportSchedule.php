@@ -34,7 +34,7 @@ final class ReportSchedule
             return null;
         }
 
-        $lastScheduled = ReportSnapshot::query()->whereNotNull('scheduled_for')->max('scheduled_for');
+        $lastScheduled = ReportSnapshot::query()->where('report_type', 'periodic')->whereNotNull('scheduled_for')->max('scheduled_for');
         if (is_string($lastScheduled) && CarbonImmutable::parse($lastScheduled, 'UTC')->addMinutes($interval)->greaterThan($slot->utc())) {
             return null;
         }

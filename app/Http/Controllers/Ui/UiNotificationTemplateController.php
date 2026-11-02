@@ -36,7 +36,22 @@ final class UiNotificationTemplateController
             'body_template' => ['required', 'string', 'max:30000'],
             'enabled' => ['required', 'boolean'],
             'default_severity' => ['required', 'in:critical,warning,notice,info'],
+            'tier' => ['sometimes', 'required', 'in:critical,warning,notice,info'],
+            'cooldown_minutes' => ['sometimes', 'required', 'integer', 'min:0', 'max:10080'],
+            'escalation_minutes' => ['sometimes', 'required', 'integer', 'min:0', 'max:10080'],
+            'include_in_periodic_report' => ['sometimes', 'required', 'boolean'],
+            'include_in_daily_report' => ['sometimes', 'required', 'boolean'],
+            'send_resolved' => ['sometimes', 'required', 'boolean'],
         ]);
+
+        $policyFields = ['tier', 'cooldown_minutes', 'escalation_minutes', 'include_in_periodic_report', 'include_in_daily_report', 'send_resolved'];
+        $policy = array_intersect_key($data, array_flip($policyFields));
+        if ($policy !== [] && count($policy) !== count($policyFields)) {
+            return response()->json(['message' => 'All notification policy fields must be provided together.'], 422);
+        }
+        if (($policy['escalation_minutes'] ?? null) === 0) {
+            $policy['escalation_minutes'] = null;
+        }
 
         try {
             $template = $templates->save(
@@ -46,6 +61,7 @@ final class UiNotificationTemplateController
                 (bool) $data['enabled'],
                 $data['default_severity'],
                 $request->user()?->id,
+                $policy === [] ? null : $policy,
             );
         } catch (InvalidArgumentException $error) {
             return response()->json(['message' => $error->getMessage()], 422);

@@ -18,6 +18,7 @@ final class AlertMessageFormatter
 
         return match ($rule) {
             'success_rate' => 'crawl.success_rate_low',
+            'success_rate_critical' => 'crawl.success_rate_critical',
             'blocked_ratio' => 'crawl.blocked_ratio_high',
             'postgres_connections' => 'database.connections_high',
             'dispatch_age' => 'crawl.dispatch_delayed',

@@ -21,6 +21,22 @@ Schedule::command('report:send')
         Log::error('Scheduled command failed.', ['command' => 'report:send']);
     });
 
+Schedule::command('report:send-daily')
+    ->dailyAt((string) config('javmeta_report.daily_time', '08:00'))
+    ->timezone((string) config('javmeta_report.daily_timezone', 'America/Mexico_City'))
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->onFailure(static function (): void {
+        Log::error('Scheduled command failed.', ['command' => 'report:send-daily']);
+    });
+
+if ((bool) config('javmeta_report.legacy_hourly_enabled', false) && ! (bool) config('javmeta_report.enabled', true)) {
+    Schedule::command('javmeta:hourly-report')->hourly()->withoutOverlapping()
+        ->onFailure(static function (): void {
+            Log::error('Scheduled command failed.', ['command' => 'javmeta:hourly-report']);
+        });
+}
+
 if (! app()->runningUnitTests()) {
     $scheduleCommand = static function (string $command, array $parameters = []): Event {
         $commandName = explode(' ', trim($command), 2)[0];
