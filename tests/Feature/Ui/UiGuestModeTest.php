@@ -5,10 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Ui;
 
 use App\Http\Controllers\Ui\UiApiController;
-use App\Http\Middleware\AuthenticateApiKey;
-use App\Http\Middleware\EnsureSuperAdministrator;
+use App\Http\Middleware\GuestModeRoutePolicy;
 use App\Http\Middleware\EnsureUiOwnerOrGuest;
-use App\Http\Middleware\OwnerAdminGuard;
 use App\Models\CrawlEvent;
 use App\Models\Movie;
 use App\Models\MovieCode;
@@ -18,12 +16,17 @@ use App\Models\Source;
 use App\Models\User;
 use App\Services\Ui\UiLoginStateRecorder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Route as RouteDefinition;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
+use RuntimeException;
+use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
 
 final class UiGuestModeTest extends TestCase
@@ -129,8 +132,12 @@ final class UiGuestModeTest extends TestCase
         $this->assertStringNotContainsString('10.0.0.7', (string) $sources->getContent());
         $this->assertStringNotContainsString('/srv/javmeta', (string) $sources->getContent());
         $this->getJson('/ui-api/movies?on_disk=1')->assertForbidden();
-        $this->getJson('/ui-api/scenes/search?q=private')->assertForbidden();
+        $this->getJson('/ui-api/scenes/search?q=private')
+            ->assertForbidden()
+            ->assertHeader('X-Robots-Tag', 'noindex, nofollow');
         $bridge = $this->getJson('/ui-api/movies')->assertOk();
+        $bridge->assertHeader('X-Robots-Tag', 'noindex, nofollow');
+        self::assertStringContainsString('no-store', (string) $bridge->headers->get('Cache-Control'));
         self::assertFalse($bridge->headers->has('Set-Cookie'));
     }
 
@@ -143,6 +150,8 @@ final class UiGuestModeTest extends TestCase
                 'crawler_endpoint' => 'http://crawler:8080/internal/status',
                 'api_key' => 'guest-api-key-fixture',
                 'private_key' => 'private-key-fixture',
+                'internal_host' => 'Worker is at 10.0.0.7.',
+                'stack_trace' => 'RuntimeException at /srv/javmeta/private/source.php:42',
             ],
         ]);
         MovieCode::factory()->create([
@@ -174,6 +183,32 @@ final class UiGuestModeTest extends TestCase
         $this->assertStringNotContainsString('private-key-fixture', (string) $response->getContent());
         $this->assertStringNotContainsString('private-signature', (string) $response->getContent());
         $this->assertStringNotContainsString('private-expiry', (string) $response->getContent());
+        $this->assertStringNotContainsString('10.0.0.7', (string) $response->getContent());
+        $this->assertStringNotContainsString('RuntimeException', (string) $response->getContent());
+    }
+
+    public function test_guest_catalog_does_not_return_the_owners_personal_marks_or_searches(): void
+    {
+        $owner = User::factory()->create(['role' => 'super_administrator']);
+        $createdAt = now();
+        DB::table('user_marks')->insert([
+            ['user_id' => $owner->id, 'kind' => 'favourite', 'subject' => 'movie', 'key' => 'owner-private-favourite-canary', 'created_at' => $createdAt],
+            ['user_id' => $owner->id, 'kind' => 'watch_later', 'subject' => 'movie', 'key' => 'owner-private-watch-canary', 'created_at' => $createdAt],
+            ['user_id' => $owner->id, 'kind' => 'saved_search', 'subject' => 'movies', 'key' => 'owner-private-search-canary', 'created_at' => $createdAt],
+        ]);
+
+        foreach (['/ui-api/movies', '/ui-api/performers', '/ui-api/search?q=public+catalog'] as $path) {
+            $response = $this->getJson($path)->assertOk();
+
+            foreach ([
+                'owner-private-favourite-canary',
+                'owner-private-watch-canary',
+                'owner-private-search-canary',
+                'user_marks',
+            ] as $privateValue) {
+                $this->assertStringNotContainsString($privateValue, (string) $response->getContent());
+            }
+        }
     }
 
     public function test_guest_cannot_access_privileged_routes_or_file_endpoints(): void
@@ -263,7 +298,9 @@ final class UiGuestModeTest extends TestCase
 
         $this->withServerVariables(['REMOTE_ADDR' => $ip])->getJson('/ui-api/movies')->assertOk();
         $this->withServerVariables(['REMOTE_ADDR' => $ip])->getJson('/ui-api/movies')->assertOk();
-        $this->withServerVariables(['REMOTE_ADDR' => $ip])->getJson('/ui-api/movies')->assertTooManyRequests();
+        $this->withServerVariables(['REMOTE_ADDR' => $ip])->getJson('/ui-api/movies')
+            ->assertTooManyRequests()
+            ->assertHeader('X-Robots-Tag', 'noindex, nofollow');
     }
 
     public function test_login_state_is_recorded_once_until_the_setting_changes(): void
@@ -279,61 +316,189 @@ final class UiGuestModeTest extends TestCase
         $this->assertSame(2, CrawlEvent::query()->where('kind', CrawlEvent::KIND_UI_LOGIN_STATE_CHANGED)->count());
     }
 
-    public function test_every_registered_route_is_classified_and_guest_bridge_paths_default_to_denied(): void
+    public function test_every_route_matches_the_guest_matrix_and_private_routes_reject_anonymous_requests(): void
     {
-        $this->getJson('/storage/classification-check')->assertUnauthorized();
-        $this->putJson('/storage/classification-check', ['contents' => 'guest write'])->assertUnauthorized();
+        config([
+            'javmeta.ui_login_required' => false,
+            'javmeta_auth.owner_admin_token' => 'owner-token-canary',
+            'javmeta_auth.mcp_api_key' => 'mcp-key-canary',
+            'laravel-controller.status.include_environment' => true,
+            'laravel-controller.status.include_version' => true,
+            'laravel-controller.status.include_maintenance' => true,
+        ]);
 
-        $publicRoutes = [
-            'GET /',
-            'GET login',
-            'POST login',
-            'GET api/health',
-            'GET api/health/live',
-            'GET api/openapi.json',
-            // Package liveness endpoint; remains intentionally public and unchanged.
-            'GET api/v1/status',
-            'GET up',
-        ];
-        $protectionMiddleware = [
-            'auth', 'horizon', 'viewHorizon', EnsureSuperAdministrator::class,
-            AuthenticateApiKey::class, OwnerAdminGuard::class,
-        ];
-        $guestRoutes = [];
-
+        $matrix = $this->documentedRouteMatrix();
+        $actualRoutes = [];
         foreach (Route::getRoutes() as $route) {
-            $middleware = $route->gatherMiddleware();
-            if (in_array(EnsureUiOwnerOrGuest::class, $middleware, true)) {
-                $guestRoutes[] = $route->uri();
-                $this->assertContains($route->uri(), ['app', 'ui-api/{path}']);
-                if ($route->uri() === 'app') {
-                    $this->assertSame(['GET', 'HEAD'], $route->methods());
-                } else {
-                    $this->assertEqualsCanonicalizing(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], $route->methods());
+            $identifier = $this->routeIdentifier($route);
+            $actualRoutes[] = $identifier;
+            $this->assertArrayHasKey($identifier, $matrix, 'Route is missing from the guest matrix: ' . $identifier);
+
+            $allowed = in_array($identifier, GuestModeRoutePolicy::ALLOWED_ROUTES, true);
+            $this->assertSame($allowed, $matrix[$identifier]['guest_allowed'], 'Guest matrix classification differs from code: ' . $identifier);
+
+            if ($allowed) {
+                $this->assertEqualsCanonicalizing(['GET', 'HEAD'], $route->methods(), 'Guest routes must be GET/HEAD only: ' . $identifier);
+                $response = $this->call('GET', $this->routeProbePath($route));
+                $this->assertContains($response->getStatusCode(), [200, 302, 503], 'Guest route did not respond safely: ' . $identifier);
+                $this->assertGuestResponseContainsNoKnownSecrets($response->getContent());
+
+                if (in_array($route->uri(), ['app', 'ui-api/{path}'], true)) {
+                    $response->assertHeader('X-Robots-Tag', 'noindex, nofollow');
+                    self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
                 }
 
                 continue;
             }
 
-            $this->assertNotContains(EnsureUiOwnerOrGuest::class, $middleware);
-            $methods = array_values(array_diff($route->methods(), ['HEAD']));
-            sort($methods);
-            if (in_array(implode('|', $methods) . ' ' . $route->uri(), $publicRoutes, true)) {
-                continue;
-            }
+            foreach ($route->methods() as $method) {
+                $server = ['HTTP_ACCEPT' => 'application/json'];
+                if ($route->uri() === 'login' && $method === 'POST') {
+                    $server = ['HTTP_REFERER' => '/login'];
+                }
 
-            $this->assertNotEmpty(
-                array_intersect($protectionMiddleware, $middleware),
-                'Unclassified route could bypass guest mode: ' . implode('|', $route->methods()) . ' ' . $route->uri(),
-            );
+                $response = $this->call($method, $this->routeProbePath($route), [], [], [], $server);
+                if ($route->uri() === 'login' && $method === 'POST') {
+                    self::assertSame(302, $response->getStatusCode());
+                    self::assertSame('/login', parse_url((string) $response->headers->get('Location'), PHP_URL_PATH));
+
+                    continue;
+                }
+
+                $this->assertContains(
+                    $response->getStatusCode(),
+                    [401, 403],
+                    'Expected anonymous access to be denied for ' . $identifier . ' using ' . $method . '.',
+                );
+            }
         }
 
-        $this->assertEqualsCanonicalizing(['app', 'ui-api/{path}'], $guestRoutes);
+        $this->assertEqualsCanonicalizing(array_keys($matrix), $actualRoutes, 'The route matrix must classify every registered route exactly once.');
+        $documentedGuestRoutes = array_keys(array_filter($matrix, static fn(array $route): bool => $route['guest_allowed']));
+        $this->assertEqualsCanonicalizing(GuestModeRoutePolicy::ALLOWED_ROUTES, $documentedGuestRoutes);
+
+        $guestRoutes = [];
+        foreach (Route::getRoutes() as $route) {
+            if (in_array(EnsureUiOwnerOrGuest::class, $route->gatherMiddleware(), true)) {
+                $guestRoutes[] = $this->routeIdentifier($route);
+            }
+        }
+        $this->assertEqualsCanonicalizing(['GET|HEAD app', 'GET|HEAD ui-api/{path}', 'DELETE|PATCH|POST|PUT ui-api/{path}'], $guestRoutes);
+
         foreach (['movies', 'movies/AAA-001', 'performers', 'search', 'suggest', 'meta/catalog/genres', 'movies/calendar', 'status/summary'] as $path) {
             $this->assertTrue(UiApiController::guestPathAllowed($path), 'Public bridge path is missing: ' . $path);
         }
         foreach (['scenes/search', 'status', 'admin/keys', 'movies:bulk', 'search/parse', 'media/jobs/next'] as $path) {
             $this->assertFalse(UiApiController::guestPathAllowed($path), 'Private bridge path became public: ' . $path);
         }
+    }
+
+    public function test_guest_errors_do_not_return_exception_details_and_remain_noindex(): void
+    {
+        config(['app.debug' => true]);
+        $request = Request::create('/ui-api/movies', 'GET', [], [], [], ['HTTP_ACCEPT' => 'application/json']);
+
+        $response = app(EnsureUiOwnerOrGuest::class)->handle($request, static function (Request $request): Response {
+            throw new RuntimeException('Synthetic failure at /srv/javmeta/private/source.php:42');
+        });
+
+        self::assertSame(500, $response->getStatusCode());
+        self::assertStringNotContainsString('Synthetic failure', (string) $response->getContent());
+        self::assertStringNotContainsString('/srv/javmeta', (string) $response->getContent());
+        self::assertStringNotContainsString('RuntimeException', (string) $response->getContent());
+        self::assertSame('noindex, nofollow', $response->headers->get('X-Robots-Tag'));
+        self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+    }
+
+    public function test_public_package_status_keeps_its_full_payload_when_guest_mode_is_off(): void
+    {
+        config([
+            'javmeta.ui_login_required' => true,
+            'laravel-controller.status.include_environment' => true,
+            'laravel-controller.status.include_version' => true,
+            'laravel-controller.status.include_maintenance' => true,
+        ]);
+
+        $this->getJson('/api/v1/status')->assertOk()
+            ->assertJsonPath('data.environment', 'testing')
+            ->assertJsonPath('data.version', app()->version())
+            ->assertJsonPath('data.maintenance', false);
+    }
+
+    /** @return array<string, array{guest_allowed: bool}> */
+    private function documentedRouteMatrix(): array
+    {
+        $document = file_get_contents(base_path('docs/03-operations/guest-mode.md'));
+        self::assertIsString($document);
+        preg_match_all('/^\|\s*`([^`]+)`\s*\|\s*`([^`]+)`\s*\|\s*(Guest allowed|Login required)\s*\|[^|]+\|$/m', $document, $matches, PREG_SET_ORDER);
+
+        $routes = [];
+        foreach ($matches as $match) {
+            $methods = array_map('trim', explode(',', $match[1]));
+            sort($methods);
+            $identifier = implode('|', $methods) . ' ' . $match[2];
+            $this->assertArrayNotHasKey($identifier, $routes, 'Route is duplicated in the guest matrix: ' . $identifier);
+            $routes[$identifier] = ['guest_allowed' => $match[3] === 'Guest allowed'];
+        }
+
+        return $routes;
+    }
+
+    private function routeIdentifier(RouteDefinition $route): string
+    {
+        $methods = $route->methods();
+        sort($methods);
+
+        return implode('|', $methods) . ' ' . $route->uri();
+    }
+
+    private function routeProbePath(RouteDefinition $route): string
+    {
+        if ($route->uri() === 'ui-api/{path}') {
+            return '/ui-api/movies';
+        }
+
+        $uri = preg_replace_callback(
+            '/\{([A-Za-z_][A-Za-z0-9_]*)(?:\?)?\}/',
+            static fn(array $match): string => match ($match[1]) {
+                'hash' => 'guesthash123',
+                'kind' => 'genres',
+                'path' => 'classification-check',
+                'slug' => 'guest-source',
+                'tag' => 'guest-tag',
+                'type' => 'quality',
+                'view' => 'index',
+                'code' => 'GST-001',
+                default => '1',
+            },
+            $route->uri(),
+        ) ?? $route->uri();
+
+        return '/' . ltrim($uri, '/');
+    }
+
+    private function assertGuestResponseContainsNoKnownSecrets(?string $content): void
+    {
+        $content ??= '';
+        foreach ([
+            'owner-token-canary',
+            'mcp-key-canary',
+            'guest-api-key-fixture',
+            'private-key-fixture',
+            'private-signature',
+            'private-expiry',
+            '10.0.0.7',
+            '/srv/javmeta',
+            '/home/joos/',
+            'APP_KEY=',
+            'DB_PASSWORD=',
+            'testing',
+            '/files/download',
+            '/storage/',
+        ] as $secret) {
+            $this->assertStringNotContainsString($secret, $content);
+        }
+
+        $this->assertDoesNotMatchRegularExpression('/(?:Stack trace:|#0\s+|Illuminate\\\\.*Exception)/i', $content);
     }
 }
