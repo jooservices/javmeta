@@ -51,6 +51,7 @@ const settingsSample = {
       queue: 'Hàng đợi', crawl: 'Vòng lặp crawl', worker: 'Worker', browser: 'Trình duyệt',
       cleanup: 'Dọn dẹp', timeouts: 'Thời gian chờ', telegram: 'Telegram', report: 'Báo cáo',
       follow_notifications: 'Thông báo theo dõi',
+      notifications: 'Chính sách thông báo',
     },
     settings: [
       { key: 'queue.feed_pool_limit', group: 'queue', label: 'Việc nạp mỗi phút', description: 'd', type: 'int', min: 1, max: 5000, restart: null, apply_after_seconds: 30, source: 'database', value: 300, is_set: null },
@@ -58,6 +59,7 @@ const settingsSample = {
       { key: 'crawl.source_gap_overrides', group: 'crawl', label: 'Khoảng request ghi đè theo nguồn (JSON)', description: 'Khoảng gap theo từng nguồn.', type: 'json', shape: 'source_gap_override_map', max_length: 10000, apply_after_seconds: 30, source: 'default', value: {} },
       { key: 'worker.node_overrides', group: 'worker', label: 'Ghi đè node', description: 'JSON worker layout', type: 'json', shape: 'node_worker_map', max_length: 500, apply_after_seconds: 900, source: 'environment', value: { main: { default: 2 } }, is_set: null },
       { key: 'telegram.bot_token', group: 'telegram', label: 'Token <b>x</b>', description: 'd', type: 'secret', min: null, max: null, restart: null, source: 'default', value: null, is_set: true },
+      { key: 'notifications.quiet_mode', group: 'notifications', label: 'Chế độ yên lặng', description: 'Chỉ gửi CRITICAL và sự kiện bảo mật.', type: 'bool', value: false },
       { key: 'report.enabled', group: 'report', label: 'Bật báo cáo định kỳ', description: 'Lịch tự động qua Telegram.', type: 'bool', value: true },
       { key: 'report.interval_minutes', group: 'report', label: 'Chu kỳ gửi báo cáo', description: 'Theo múi giờ đã chọn.', type: 'int', options: [15, 30, 60, 120, 180, 360, 720, 1440], value: 120 },
       { key: 'report.timezone', group: 'report', label: 'Múi giờ báo cáo', description: 'Tên múi giờ IANA.', type: 'string', value: 'America/Mexico_City' },
@@ -76,8 +78,9 @@ const reportSample = {
 };
 const adminSample = u => {
   if (u.includes('/ui-admin/settings')) return settingsSample;
-  if (u.includes('/ui-admin/notifications')) return { data: [{ key: 'crawl.success_rate_low', name: 'Tỷ lệ crawl thành công thấp', usage: 'Gửi khi tỷ lệ thành công xuống dưới ngưỡng.', channel: 'telegram', enabled: true, last_sent_at: '2026-11-02 17:40:00', updated_at: '2026-11-02 17:00:00' }] };
-  if (u.includes('/ui-admin/report/periodic')) return reportSample;
+  if (u === '/ui-admin/notifications') return { data: [{ key: 'crawl.success_rate_low', name: 'Tỷ lệ crawl thành công thấp', usage: 'Gửi khi tỷ lệ thành công xuống dưới ngưỡng.', channel: 'telegram', enabled: true, tier: 'warning', cooldown_minutes: 120, escalation_minutes: 60, include_in_periodic_report: true, include_in_daily_report: true, send_resolved: false, last_sent_at: '2026-11-02 17:40:00', updated_at: '2026-11-02 17:00:00' }] };
+  if (u === '/ui-admin/report/daily') return { ...reportSample, data: { ...reportSample.data, text: 'Daily report preview · last 24 h' } };
+  if (u === '/ui-admin/report/periodic') return reportSample;
   if (u.includes('report/quality')) return { data: { movies: 100, performers: 50, movies_by_source: { javdb: 60 }, core_fields: { code: { filled: 100, percent: 100 }, maker: { filled: 80, percent: 80 } }, movies_with_8_of_11: { count: 70, percent: 70 }, completeness_tiers: { 1: 20, 2: 80 }, needs_review: 3 } };
   return { data: [{ id: 1, prefix: 'jvm_abc', label: 'Key <b>one</b>', status: 'active', abuse_rpm: 60, scopes: ['catalog'], created_at: '2026-10-24T00:00:00Z' }] };
 };
@@ -205,8 +208,9 @@ assert.match(perfSettings, /perf\.warm_enabled/); assert.match(perfSettings, /L�
 
 globalThis.innerWidth = 375;
 const notificationPage = await run('notifications', await load('views/notifications.js'), { params: {}, query: {} });
-assert.match(notificationPage, /Thông báo/); assert.match(notificationPage, /Danh sách thông báo/);
+assert.match(notificationPage, /Chính sách thông báo/); assert.match(notificationPage, /Danh sách thông báo/);
 assert.match(notificationPage, /Tỷ lệ crawl thành công thấp/); assert.match(notificationPage, /Gửi gần nhất/);
+assert.match(notificationPage, /Chế độ yên lặng/); assert.match(notificationPage, /Báo cáo định kỳ/); assert.match(notificationPage, /Báo cáo hằng ngày/);
 assert.ok(!notificationPage.includes('<script>'), 'notification labels are escaped');
 const notificationCss = await readFile(new URL('../public/ui/app.css', import.meta.url), 'utf8');
 assert.match(notificationCss, /@media\(max-width:480px\)/, 'notification editor has a narrow-screen layout');

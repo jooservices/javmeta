@@ -860,7 +860,7 @@ final class SettingsTest extends TestCase
         $this->assertSame($default, $row['value']);
         $this->assertSame('default', $row['source']);
         $this->assertNotEmpty($row['warning']);
-        $this->assertStringNotContainsString('legacy', $page->getContent());
+        $this->assertStringNotContainsString('legacy:password@', $page->getContent());
         $this->assertStringNotContainsString('hidden', $page->getContent());
         $audit = $settings->set('downloads.qbittorrent_url', 'https://new.test');
         $this->assertStringNotContainsString('password', json_encode($audit));

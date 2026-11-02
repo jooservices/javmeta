@@ -102,14 +102,16 @@ final class ReportDataBuilder
         $since = $windowCount
             ? (int) DB::table($table)->whereBetween($dateColumn, [$start, $at])->count()
             : max(0, $total - $lastReportTotal);
-        $last24 = (int) DB::table($table)->where($dateColumn, '>=', $at->subDay())->where($dateColumn, '<=', $at)->count();
+        $last24 = $windowCount && $minutes === 1440
+            ? $since
+            : (int) DB::table($table)->where($dateColumn, '>=', $at->subDay())->where($dateColumn, '<=', $at)->count();
         $buckets = $this->hourBuckets($table, $dateColumn, $start, $at);
         $hours = max(1 / 60, $minutes / 60);
         $scale = $minutes < 60 ? 60 / $minutes : 1;
 
         return [
             'total' => $total,
-            'since_last' => $total - $lastReportTotal,
+            'since_last' => $windowCount ? $since : $total - $lastReportTotal,
             'last_24h' => $last24,
             'avg_per_hour' => round($since / $hours, 2),
             'peak_per_hour' => round(($buckets === [] ? 0 : max($buckets)) * $scale, 2),

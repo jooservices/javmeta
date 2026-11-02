@@ -7,13 +7,17 @@ namespace Tests\Unit\Console;
 use App\Contracts\AlertNotifier;
 use App\Services\Alerts\AlertDispatcher;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
 use Tests\TestCase;
 
 final class BackupStatusCommandTest extends TestCase
 {
+    use RefreshDatabase;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -72,17 +76,30 @@ final class BackupStatusCommandTest extends TestCase
     public function test_it_throttles_the_stale_alert_and_sends_one_recovery_message(): void
     {
         $this->writeManifest(now()->subHours(30)->toIso8601String());
+        $notifications = [];
         $notifier = Mockery::mock(AlertNotifier::class);
-        $notifier->shouldReceive('notify')->once()->withArgs(static fn(string $subject, string $body, array $context): bool => str_contains($subject, 'Database backup is stale') && $context['template_key'] === 'backup.stale');
-        $notifier->shouldReceive('notify')->once()->withArgs(static fn(string $subject, string $body, array $context): bool => str_contains($subject, 'Database backup recovered') && $context['template_key'] === 'backup.recovered');
+        $notifier->shouldReceive('notify')->twice()->andReturnUsing(static function (string $subject, string $body, array $context) use (&$notifications): void {
+            $notifications[] = [$subject, $body, $context];
+        });
         $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
 
         $this->artisan('javmeta:backup-status')->assertFailed();
+        $state = DB::table('notification_policy_events')->where('notification_key', 'backup.stale')->first();
+        self::assertNotNull($state);
+        self::assertNotNull($state->last_sent_at);
+        self::assertNotNull($state->critical_sent_at);
         $this->artisan('javmeta:backup-status')->assertFailed();
+        self::assertSame(1, DB::table('notification_policy_events')->where('notification_key', 'backup.stale')->count());
 
         $this->writeManifest(now()->subHour()->toIso8601String());
         $this->artisan('javmeta:backup-status')->assertSuccessful();
         $this->artisan('javmeta:backup-status')->assertSuccessful();
+
+        self::assertCount(2, $notifications);
+        self::assertStringContainsString('Database backup is stale', $notifications[0][0]);
+        self::assertSame('backup.stale', $notifications[0][2]['template_key']);
+        self::assertStringContainsString('Database backup recovered', $notifications[1][0]);
+        self::assertSame('backup.recovered', $notifications[1][2]['template_key']);
     }
 
     public function test_it_publishes_the_missing_sentinel_when_the_manifest_has_no_created_at(): void

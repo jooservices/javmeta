@@ -98,6 +98,7 @@ session or API credential.
 | `POST` | `ui-admin/notifications/{key}/revisions/{revision}/restore` | Login required | Requires an authenticated super-administrator and restores a selected revision. |
 | `GET, HEAD` | `ui-admin/report/{type}` | Login required | Requires an authenticated super-administrator; returns reports. |
 | `GET, HEAD` | `ui-admin/report/periodic` | Login required | Requires an authenticated super-administrator; returns the periodic report preview and history. |
+| `GET, HEAD` | `ui-admin/report/daily` | Login required | Requires an authenticated super-administrator; returns the daily report preview and history. |
 | `POST` | `ui-admin/report/periodic/send-now` | Login required | Requires an authenticated super-administrator and CSRF token. |
 | `GET, HEAD` | `ui-admin/settings` | Login required | Requires an authenticated super-administrator; may return settings values. |
 | `PUT` | `ui-admin/settings` | Login required | Requires an authenticated super-administrator and changes settings. |
