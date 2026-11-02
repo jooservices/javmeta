@@ -33,11 +33,11 @@ final class ProductionKitTest extends TestCase
         $root = dirname(__DIR__, 2);
         $installer = (string) file_get_contents($root . '/deploy/production/node/install-node.sh');
         preg_match_all('/"\$root\/([^"\n]+)"/', $installer, $matches);
-        self::assertCount(9, $matches[1]);
+        self::assertContains('deploy/lib/node-template.sh', $matches[1]);
+        self::assertContains('deploy/production/node', $matches[1]);
         foreach ($matches[1] as $path) {
-            foreach (['horizon', 'scheduler', 'embedder'] as $service) {
-                self::assertFileExists($root . '/' . str_replace('$service', $service, $path));
-            }
+            $source = $root . '/' . $path;
+            self::assertTrue(is_file($source) || is_dir($source), "Missing installer source: {$path}");
         }
     }
 
@@ -48,8 +48,11 @@ final class ProductionKitTest extends TestCase
             $unit = (string) file_get_contents($root . '/deploy/production/node/xcrawler-' . $service . '.service');
             self::assertStringContainsString('TimeoutStartSec=660', $unit);
             self::assertStringContainsString('ExecStartPre=@PHP_BINARY@ artisan health:startup', $unit);
+            self::assertDoesNotMatchRegularExpression('/^ExecStartPre=.*--wait=/m', $unit);
+            self::assertStringContainsString('StartLimitIntervalSec=0', $unit);
+            self::assertStringContainsString('StartLimitBurst=5', $unit);
             self::assertStringContainsString('Restart=on-failure', $unit);
-            self::assertStringContainsString('RestartSec=15', $unit);
+            self::assertStringContainsString('RestartSec=15s', $unit);
         }
     }
 

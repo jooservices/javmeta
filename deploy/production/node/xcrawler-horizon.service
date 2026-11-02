@@ -1,5 +1,7 @@
 [Unit]
 Description=XCrawler horizon
+StartLimitIntervalSec=0
+StartLimitBurst=5
 After=network-online.target
 Wants=network-online.target
 ConditionPathExists=@TARGET_DIR@/current/artisan
@@ -15,7 +17,7 @@ Environment=HF_HUB_DISABLE_TELEMETRY=1
 ExecStartPre=@PHP_BINARY@ artisan health:startup --role=worker
 ExecStart=@PHP_BINARY@ artisan horizon
 Restart=on-failure
-RestartSec=15
+RestartSec=15s
 TimeoutStopSec=240
 KillSignal=SIGTERM
 KillMode=mixed

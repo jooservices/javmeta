@@ -27,6 +27,25 @@ final class StartupHealthServiceTest extends TestCase
         self::assertSame('secondary', $this->row($report, 'sentry')['class']);
     }
 
+    public function test_all_optional_worker_dependencies_warn_without_blocking_startup(): void
+    {
+        $fixture = StartupHealthTestFixture::bind([
+            'elasticsearch' => false,
+            'embedder' => false,
+            'observability' => false,
+            'browser' => false,
+            'sentry' => false,
+        ]);
+
+        $report = $fixture['health']->run('worker', 0);
+
+        self::assertFalse($report['blocking']);
+        foreach (['elasticsearch', 'embedder', 'observability', 'browser', 'sentry'] as $dependency) {
+            self::assertSame('warn', $this->row($report, $dependency)['status']);
+            self::assertSame('secondary', $this->row($report, $dependency)['class']);
+        }
+    }
+
     public function test_elasticsearch_is_primary_for_web_and_secondary_for_worker_by_default(): void
     {
         $fixture = StartupHealthTestFixture::bind(['elasticsearch' => false]);

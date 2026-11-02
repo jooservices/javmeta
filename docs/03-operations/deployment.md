@@ -12,16 +12,24 @@ The wizard checks Ubuntu/prerequisites and service authentication, requires
 PostgreSQL UTC, tests Redis prefix isolation, writes private shared env, clones
 the chosen ref, installs Composer dependencies, migrates, initializes settings,
 runs `es:setup` before crawling, syncs sources, creates the owner when there is
-no current release, swaps `current` atomically and verifies readiness after
-role-specific starts. Failure
-restores the previous code/env; database rollback remains an operator decision.
-Every step prints its duration. `--skip-backup-check` is a loud explicit bypass.
+no current release, and checks staged startup health. It then refreshes the
+rendered systemd units from `deploy/production/node/` before stopping any
+running application units. Main (`primary`) nodes receive the scheduler unit;
+workers do not. The helper prints a unified diff, atomically replaces only
+changed generated unit files, and runs `systemctl daemon-reload` once if any
+file changed. Unchanged files skip the reload. The regular wizard dry-run
+prints the same proposed diff without writing files or reloading systemd.
+Finally, the wizard swaps `current` atomically and verifies readiness after
+role-specific starts. Failure restores the previous code/env; database rollback
+remains an operator decision. Every step prints its duration.
+`--skip-backup-check` is a loud explicit bypass.
 
 ### Adding a worker node
 
 Select `--role worker` and a distinct node name/target. Horizon, embedder and node exporter
-are enabled and restarted. Nginx and scheduler are installed but disabled with
-worker-role drop-ins; PHP-FPM is not managed. Workers do not migrate shared data. Keep exactly **one scheduler** in
+are enabled and restarted. Nginx is disabled with a worker-role drop-in; the
+scheduler unit is not installed on workers. PHP-FPM is not managed. Workers do
+not migrate shared data. Keep exactly **one scheduler** in
 the fleet (`onOneServer` is absent). `--start-scheduler` is an explicit primary
 cutover step; `--no-start` installs without starting services.
 

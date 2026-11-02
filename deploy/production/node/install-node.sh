@@ -10,7 +10,7 @@ command -v jq >/dev/null || { echo 'Bootstrap jq with the OS package manager fir
 source "$root/deploy/lib/node-template.sh"
 node_value() { jq -er --arg key "$1" '.node[$key]' "$manifest"; }
 : "${EXPORTER_UNIT:?}" "${NGINX_UNIT:?}" "${NODE_ROLE:?}" "${TARGET_DIR:?}" "${SERVICE_USER:?}" "${UNIT_PREFIX:?}" "${GATEKEEPER_ADDRESS:?}" "${UI_HOST:?}" "${CC_HOST:?}" "${PHP_BINARY:?}" "${FPM_UNIT:?}" "${EMBEDDER_BIND:?}" "${EMBEDDER_PORT:?}"
-[[ "$TARGET_DIR" =~ ^/[a-zA-Z0-9_./-]+$ && "$TARGET_DIR" != / && "$SERVICE_USER" =~ ^[a-z_][a-z0-9_-]*$ && "$UNIT_PREFIX" =~ ^[a-zA-Z0-9_-]+$ ]] || exit 1
+[[ "$TARGET_DIR" =~ ^/[a-zA-Z0-9_./-]+$ && "$TARGET_DIR" != / && "$SERVICE_USER" =~ ^[a-z_][a-z0-9_-]*$ && "$SERVICE_USER" != root && "$UNIT_PREFIX" =~ ^[a-zA-Z0-9_-]+$ ]] || exit 1
 # shellcheck source=/dev/null
 source "$(node_value os_release)"
 [[ "$ID" == ubuntu && "${VERSION_ID%%.*}" -ge "$(node_value minimum_ubuntu)" ]] || { echo 'Unsupported Ubuntu version.' >&2; exit 1; }
@@ -55,14 +55,6 @@ render_node_template "$root/deploy/production/node/xcrawler-fpm.conf" "$(node_va
 render_node_template "$root/deploy/production/node/xcrawler.nginx.conf" "$(node_value nginx_available)/$UNIT_PREFIX"
 ln -sfn "$(node_value nginx_available)/$UNIT_PREFIX" "$(node_value nginx_enabled)/$UNIT_PREFIX"
 fi
-for service in horizon embedder; do
-  render_node_template "$root/deploy/production/node/xcrawler-$service.service" "$(node_value unit_dir)/$UNIT_PREFIX-$service.service"
-done
-render_node_template "$root/deploy/production/node/xcrawler-scheduler.service" "$(node_value unit_dir)/$UNIT_PREFIX-scheduler.service"
-render_node_template "$root/deploy/production/node/xcrawler-horizon-reconcile.service" "$(node_value unit_dir)/$UNIT_PREFIX-horizon-reconcile.service"
-render_node_template "$root/deploy/production/node/xcrawler-horizon-reconcile.timer" "$(node_value unit_dir)/$UNIT_PREFIX-horizon-reconcile.timer"
-# A worker must never become a second scheduler or web node after a reboot.
-configure_node_role "$NODE_ROLE" "$TARGET_DIR" "$(node_value unit_dir)" "$NGINX_UNIT" "$UNIT_PREFIX-scheduler"
 # Only these complete command vectors can be invoked by the service account.
 sudoers="$(node_value sudoers_dir)/$UNIT_PREFIX-units"
 # Restrict privilege to individual manifest-selected units; scheduler remains opt-in.
@@ -77,7 +69,11 @@ done
 chmod 440 "$sudoers"
 visudo -cf "$sudoers"
 if [[ "$NODE_ROLE" == primary ]]; then nginx -t; fi
-node_control daemon-reload
+unit_changes="$(sync_node_units "$root/deploy/production/node" "$(node_value unit_dir)" "$NODE_ROLE" "$UNIT_PREFIX" apply 0)"
+printf '%s\n' "$unit_changes"
+# A worker must never become a second scheduler or web node after a reboot.
+configure_node_role "$NODE_ROLE" "$TARGET_DIR" "$(node_value unit_dir)" "$NGINX_UNIT" "$UNIT_PREFIX-scheduler"
+if (( NODE_ROLE_CHANGED )) || grep -Eq '^(UPDATE|REMOVE):' <<< "$unit_changes"; then node_control daemon-reload; fi
 # Enable/start is deferred to the wizard after release verification.
 # Application units start only after the wizard creates and verifies a release.
 echo 'Node prerequisites and rendered configuration verified.'

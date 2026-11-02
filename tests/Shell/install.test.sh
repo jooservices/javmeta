@@ -65,6 +65,7 @@ printf backup > "$fixture/node.dump"
 for ref in candidate v-test "$sha"; do
   bash "$script" --non-interactive --config "$fixture/answers.json" --ref "$ref" > "$fixture/log" 2>&1
   grep -q 'DRY RUN' "$fixture/log" || fail 'missing dry run plan'
+  grep -q 'DRY RUN: systemd unit' "$fixture/log" || fail 'dry run omitted the systemd unit diff plan'
   [[ ! -e "$fixture/node" && ! -e "$CALLS" ]] || fail 'dry run changed state or contacted a service'
 done
 ! grep -q 'private-test-value' "$fixture/log" || fail 'secret in output'
@@ -94,11 +95,17 @@ for failure in startup ui migrate import restart readiness horizon; do
   fi
   ! grep -q 'private-test-value' "$fixture/log" || fail 'secret leaked on failure'
 done
+: > "$CALLS"
 rm -- "$fixture/node/current"
 bash "$script" --non-interactive --config "$fixture/answers.json" --skip-os-install --apply > "$fixture/log" 2>&1
 [[ "$(readlink "$fixture/node/current")" != "$fixture/node/releases/old" ]] || fail 'release not activated'
 grep -q 'artisan health:startup --role=web' "$CALLS" || fail 'primary startup health omitted web role'
 grep -q 'artisan health:startup --role=worker' "$CALLS" || fail 'primary startup health omitted worker role'
+startup_line="$(grep -n 'health:startup --role=web' "$CALLS" | head -1 | cut -d: -f1)"
+refresh_line="$(grep -n 'refresh-units.sh' "$CALLS" | head -1 | cut -d: -f1)"
+stop_line="$(grep -n '/usr/bin/systemctl stop' "$CALLS" | head -1 | cut -d: -f1)"
+[[ -n "$refresh_line" && -n "$stop_line" ]] || fail 'deploy omitted systemd unit refresh or quiesce'
+(( startup_line < refresh_line && refresh_line < stop_line )) || fail 'unit refresh must follow staged health and precede unit stops'
 [[ "$(stat -c '%a' "$fixture/node/shared/.env")" == 640 ]] || fail 'unsafe env mode'
 ! grep -q '^JAVMETA_UI_LOGIN_REQUIRED=' "$fixture/node/shared/.env" || fail 'database-backed UI login setting leaked into env'
 [[ "$(stat -c '%a' "$fixture/node.credentials")" == 600 ]] || fail 'unsafe credentials mode'
@@ -124,11 +131,11 @@ if bash "$script" --non-interactive --config "$fixture/answers.json" --ci-check 
 grep -q 'requires CI_CHECKS' "$fixture/log" || fail 'missing CI gate diagnostic'
 if bash "$script" --non-interactive --config "$fixture/answers.json" --no-systemd --apply > "$fixture/log" 2>&1; then fail 'simulated units counted as readiness'; fi
 grep -q 'requires --no-start' "$fixture/log" || fail 'missing unit simulation diagnostic'
-if FAIL_STEP=scheduler bash "$script" --non-interactive --config "$fixture/answers.json" --start-scheduler --apply > "$fixture/log" 2>&1; then fail 'unhealthy scheduler accepted'; fi
+if FAIL_STEP=scheduler bash "$script" --non-interactive --config "$fixture/answers.json" --skip-os-install --start-scheduler --apply > "$fixture/log" 2>&1; then fail 'unhealthy scheduler accepted'; fi
 grep -q 'artisan health:startup --role=scheduler' "$CALLS" || fail 'scheduler startup health was omitted when the scheduler was enabled'
 # The wizard stops before promoting the candidate env when the scheduler-only policy fails.
 env_before_scheduler_health="$(sha256sum "$fixture/node/shared/.env")"
-if FAIL_STEP=startup-scheduler bash "$script" --non-interactive --config "$fixture/answers.json" --start-scheduler --apply > "$fixture/log" 2>&1; then fail 'failed scheduler health accepted'; fi
+if FAIL_STEP=startup-scheduler bash "$script" --non-interactive --config "$fixture/answers.json" --skip-os-install --start-scheduler --apply > "$fixture/log" 2>&1; then fail 'failed scheduler health accepted'; fi
 grep -q 'shared-env=present' "$CALLS" || fail 'scheduler health did not preserve the active shared env'
 [[ "$(sha256sum "$fixture/node/shared/.env")" == "$env_before_scheduler_health" ]] || fail 'failed scheduler health changed the active shared env'
 # Default credentials stay with the service-owned release target after sudo handoff.

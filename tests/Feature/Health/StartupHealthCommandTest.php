@@ -6,29 +6,54 @@ namespace Tests\Feature\Health;
 
 use App\Services\Health\StartupHealthService;
 use Illuminate\Console\Command;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\StartupHealthTestFixture;
 use Tests\TestCase;
 
 final class StartupHealthCommandTest extends TestCase
 {
-    public function test_it_exits_successfully_when_primary_dependencies_pass_even_if_a_secondary_fails(): void
+    #[DataProvider('secondaryDependencies')]
+    public function test_it_exits_successfully_when_a_secondary_dependency_fails(string $dependency): void
     {
-        $fixture = StartupHealthTestFixture::bind(['sentry' => false]);
+        $fixture = StartupHealthTestFixture::bind([$dependency => false]);
         $this->app->instance(StartupHealthService::class, $fixture['health']);
 
         $this->artisan('health:startup', ['--role' => 'worker', '--wait' => 0])
-            ->expectsOutputToContain('sentry')
+            ->expectsOutputToContain($dependency)
             ->assertExitCode(Command::SUCCESS);
     }
 
-    public function test_it_exits_with_failure_when_a_primary_dependency_is_down(): void
+    #[DataProvider('primaryDependencies')]
+    public function test_it_exits_with_failure_when_a_primary_dependency_is_down(string $dependency): void
     {
-        $fixture = StartupHealthTestFixture::bind(['postgres' => false]);
+        $fixture = StartupHealthTestFixture::bind([$dependency => false]);
         $this->app->instance(StartupHealthService::class, $fixture['health']);
 
         $this->artisan('health:startup', ['--role' => 'worker', '--wait' => 0])
             ->expectsOutputToContain('Startup blocked')
             ->assertExitCode(Command::FAILURE);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function primaryDependencies(): array
+    {
+        return [
+            'postgres' => ['postgres'],
+            'redis' => ['redis'],
+            'mongo' => ['mongo'],
+        ];
+    }
+
+    /** @return array<string, array{string}> */
+    public static function secondaryDependencies(): array
+    {
+        return [
+            'elasticsearch on a worker' => ['elasticsearch'],
+            'embedder' => ['embedder'],
+            'observability' => ['observability'],
+            'browser' => ['browser'],
+            'sentry' => ['sentry'],
+        ];
     }
 
     public function test_it_rejects_an_invalid_role_or_wait_value(): void
