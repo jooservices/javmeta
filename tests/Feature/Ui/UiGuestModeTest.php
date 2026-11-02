@@ -145,12 +145,13 @@ final class UiGuestModeTest extends TestCase
     {
         $movie = Movie::factory()->create([
             'display_code' => 'GUEST-001',
+            'description' => 'Private endpoint is 10.0.0.8:8191.',
             'attrs' => [
                 'disk_path' => '/srv/javmeta/private/video.mp4',
                 'crawler_endpoint' => 'http://crawler:8080/internal/status',
                 'api_key' => 'guest-api-key-fixture',
                 'private_key' => 'private-key-fixture',
-                'internal_host' => 'Worker is at 10.0.0.7.',
+                'internal_host' => 'Worker is at 10.0.0.7. Service listens on 10.0.0.8:8191.',
                 'stack_trace' => 'RuntimeException at /srv/javmeta/private/source.php:42',
             ],
         ]);
@@ -184,6 +185,8 @@ final class UiGuestModeTest extends TestCase
         $this->assertStringNotContainsString('private-signature', (string) $response->getContent());
         $this->assertStringNotContainsString('private-expiry', (string) $response->getContent());
         $this->assertStringNotContainsString('10.0.0.7', (string) $response->getContent());
+        $this->assertStringNotContainsString('10.0.0.8', (string) $response->getContent());
+        $this->assertStringContainsString(':8191', (string) $response->getContent());
         $this->assertStringNotContainsString('RuntimeException', (string) $response->getContent());
     }
 

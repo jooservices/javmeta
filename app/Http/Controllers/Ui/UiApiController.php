@@ -183,6 +183,22 @@ final class UiApiController
 
     private function redactInternalIpAddresses(string $value): string
     {
+        $value = preg_replace_callback(
+            '/(?<![A-Za-z0-9:.])((?:\d{1,3}\.){3}\d{1,3}):(\d{1,5})(?![A-Za-z0-9:])/',
+            static function (array $match): string {
+                if (filter_var($match[1], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
+                    return $match[0];
+                }
+
+                if (filter_var($match[1], FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+                    return '[redacted internal IP]:' . $match[2];
+                }
+
+                return $match[0];
+            },
+            $value,
+        ) ?? $value;
+
         return preg_replace_callback(
             '/(?<![A-Za-z0-9:])[0-9A-Fa-f:.]+(?![A-Za-z0-9:])/',
             static function (array $match): string {
