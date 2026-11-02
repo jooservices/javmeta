@@ -9,7 +9,9 @@ use App\Models\Source;
 use App\Jobs\FetchDetailJob;
 use App\Services\Crawl\CrawlLaneService;
 use App\Services\Crawl\CrawlQueueService;
+use App\Services\Crawl\FeedPoolMetrics;
 use App\Support\Crawl\LaravelCrawlQueue;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Redis;
@@ -71,6 +73,10 @@ final class CrawlLaneTest extends IntegrationTestCase
 
     public function test_concurrent_feeder_cannot_read_capacity_until_the_first_dispatch_finishes(): void
     {
+        config(['cache.default' => 'array']);
+        Cache::store('array')->flush();
+        $start = now()->startOfMinute();
+        $this->travelTo($start->copy()->addSeconds(10));
         Queue::fake();
         config(['database.connections.lane_competitor' => config('database.connections.pgsql')]);
         $competitor = DB::connection('lane_competitor');
@@ -80,6 +86,8 @@ final class CrawlLaneTest extends IntegrationTestCase
             $this->artisan('crawler:feed-pool')->expectsOutputToContain('Another feed pool is dispatching.')->assertSuccessful();
             $this->assertSame('pending', $row->refresh()->status);
             Queue::assertNothingPushed();
+            $this->travelTo($start->copy()->addMinute());
+            $this->assertSame(1, app(FeedPoolMetrics::class)->stoppedPreviousMinute('javbus', 'advisory_lock'));
         } finally {
             $competitor->select('SELECT pg_advisory_unlock(?)', [282]);
         }

@@ -7,6 +7,7 @@ namespace Tests\Unit\Services\Crawl;
 use App\Models\Source;
 use App\Services\Crawl\SourceThrottle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 final class SourceThrottleTest extends TestCase
@@ -48,6 +49,37 @@ final class SourceThrottleTest extends TestCase
         $source = Source::factory()->create(['gap_seconds_current' => 12.5]);
 
         $this->assertSame(12.5, (new SourceThrottle())->currentGap($source->slug));
+    }
+
+    public function test_effective_gap_uses_a_database_configurable_floor_and_reserves_fractional_start_slots(): void
+    {
+        config(['cache.default' => 'array']);
+        Cache::store('array')->flush();
+        $source = $this->sourceWithGap(0.5, 0.25, 10.0);
+        $throttle = new SourceThrottle();
+
+        $this->assertSame(1.0, $throttle->effectiveGap($source));
+
+        config()->set('javmeta_queues.min_effective_gap_seconds', 0.5);
+
+        $this->assertSame(0.5, $throttle->effectiveGap($source));
+        $this->assertSame(0, $throttle->requestStartDelayMicroseconds($source, 1_000_000));
+        $this->assertSame(500_000, $throttle->requestStartDelayMicroseconds($source, 1_000_000));
+        $this->assertSame(0, $throttle->requestStartDelayMicroseconds($source, 1_500_000));
+    }
+
+    public function test_start_slot_survives_a_later_adaptive_backoff_that_exceeds_the_initial_gap(): void
+    {
+        config(['cache.default' => 'array', 'javmeta_queues.gap_blocked_max_seconds' => 600]);
+        Cache::store('array')->flush();
+        $source = $this->sourceWithGap(1.0, 0.5, 60.0);
+        $throttle = new SourceThrottle();
+
+        $this->assertSame(0, $throttle->requestStartDelayMicroseconds($source, 1_000_000));
+        $source->forceFill(['gap_seconds_current' => 600.0])->save();
+        $this->travel(121)->seconds();
+
+        $this->assertSame(479_000_000, $throttle->requestStartDelayMicroseconds($source->slug, 122_000_000));
     }
 
     private function sourceWithGap(float $gap, float $min = 4.0, float $max = 60.0): Source

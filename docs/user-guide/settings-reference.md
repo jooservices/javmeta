@@ -16,13 +16,13 @@ Số nguyên; từ 1 đến 100000. Mã mục: `queue.depth_limit`.
 
 ### Việc đồng thời mỗi nguồn
 
-Tối đa số việc của một nguồn được chạy cùng lúc.
+Giới hạn số dòng đã nhận của một nguồn trên mọi loại crawl; cần đủ chỗ đệm cho nhịp request.
 
 Số nguyên; từ 1 đến 64. Mã mục: `queue.per_source_inflight`.
 
-### Việc nạp mỗi lượt
+### Giới hạn nạp mỗi phút
 
-Tối đa số dòng crawl_queue được nạp trong một lượt feed pool.
+Tối đa số dòng crawl_queue được nạp mỗi phút cho từng lane, sau đó chia theo chu kỳ feeder.
 
 Số nguyên; từ 1 đến 5000. Mã mục: `queue.feed_pool_limit`.
 
@@ -37,6 +37,12 @@ Số nguyên; từ 5 đến 60; chọn: 5, 10, 15, 30, 60. Mã mục: `queue.fee
 Cửa sổ dùng để chia nhịp request của mỗi nguồn.
 
 Số nguyên; từ 1 đến 3600. Mã mục: `queue.pacing_horizon_seconds`.
+
+### Khoảng cách request tối thiểu (giây)
+
+Gap hiệu lực tối thiểu giữa hai request cùng nguồn; mặc định 1 giây để giữ mức tải hiện tại.
+
+Số thập phân; từ 0.25 đến 60. Mã mục: `queue.min_effective_gap_seconds`.
 
 ### Khoảng nghỉ tối đa khi bị chặn (giây)
 

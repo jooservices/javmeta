@@ -52,21 +52,23 @@ return [
     'depth_limit' => 100,
 
     /**
-     * Fairness: at most this many rows per source and kind may be claimed and unfinished at the same time, so one
-     * source with thousands of older rows cannot fill the worker queue and starve the others.
+     * Fairness: bound claimed rows per source across crawl kinds, while leaving enough lookahead for paced starts.
      */
-    'per_source_inflight' => 4,
+    'per_source_inflight' => 16,
 
-    /** Per-minute budget is scaled over scheduled five-second checks; the source throttle keeps each site polite. */
+    /** Per-minute budget is scaled over scheduled checks; the source throttle keeps each site polite. */
     // Sources that need the browser services, and how many of their rows may be claimed at the same time (0 = no cap).
     // Both are settings in the database (docs/03-operations/settings.md).
     'browser_sources' => ['javlibrary', 'javbus', 'missav', 'jable', 'warashi', 'javdatabase'],
     'browser_inflight' => 8,
-    'feed_pool_limit' => 50,
+    'feed_pool_limit' => 60,
     'feed_interval_seconds' => 10,
 
     /** Seconds of work a source may have queued at once; with its gap this gives its per-minute budget (floor(horizon / gap)). */
     'pacing_horizon_seconds' => 60,
+
+    /** Lowest effective source gap used by the feed pool and request-start gate. */
+    'min_effective_gap_seconds' => 1.0,
 
     /** Highest gap (seconds) the throttle may reach after rate limits, blocks and challenges. */
     'gap_blocked_max_seconds' => 600,

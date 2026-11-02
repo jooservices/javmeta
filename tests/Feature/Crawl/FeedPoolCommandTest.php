@@ -14,6 +14,9 @@ use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Services\Health\CrawlDispatchHeartbeat;
 use App\Services\Settings\SettingsService;
+use App\Services\Crawl\SourceThrottle;
+use App\Services\Crawl\FeedPoolMetrics;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
@@ -41,7 +44,8 @@ final class FeedPoolCommandTest extends TestCase
         $this->assertSame($commands['crawler:feed-pool'], $commands[$legacyAlias]);
         $this->assertNull($commands['crawler:feed-pool']->getDefinition()->getOption('limit')->getDefault());
         $this->assertFalse($commands['crawler:feed-pool']->getDefinition()->getOption('scheduled')->getDefault());
-        $this->assertSame(50, config('javmeta_queues.feed_pool_limit'));
+        $this->assertSame(60, config('javmeta_queues.feed_pool_limit'));
+        $this->assertSame(16, config('javmeta_queues.per_source_inflight'));
     }
 
     public function test_feed_pool_claims_and_dispatches_only_up_to_the_requested_limit(): void
@@ -440,6 +444,193 @@ final class FeedPoolCommandTest extends TestCase
         $this->assertSame([8, 8, 9, 8, 8, 9], $dispatchedPerRun);
         $this->assertSame(50, CrawlQueue::query()->where('status', CrawlQueue::STATUS_CLAIMED)->count());
         Queue::assertPushed(FetchListingJob::class, 50);
+    }
+
+    public function test_large_backlog_reaches_at_least_ninety_percent_of_the_per_source_start_budget(): void
+    {
+        config([
+            'cache.default' => 'array',
+            'javmeta_queues.feed_interval_seconds' => 10,
+            'javmeta_queues.pacing_horizon_seconds' => 60,
+            'javmeta_queues.min_effective_gap_seconds' => 1.0,
+        ]);
+        Cache::store('array')->flush();
+        $start = now()->startOfMinute();
+        $this->travelTo($start);
+        $this->pacedSource('steady', 1.0);
+        CrawlQueue::factory()->count(100)->create(['source_slug' => 'steady', 'kind' => CrawlQueue::KIND_DETAIL]);
+        Queue::fake();
+
+        $events = [];
+        $completions = [];
+        $startedAt = [];
+        for ($run = 0; $run < 6; $run++) {
+            $runAt = $start->copy()->addSeconds($run * 10);
+            $this->simulatePacedJobsUntil($events, $completions, $startedAt, $runAt->timestamp * 1_000_000);
+            $this->travelTo($runAt);
+            $before = Queue::pushed(FetchDetailJob::class)->count();
+            $this->artisan('crawler:feed-pool', ['--scheduled' => true])->assertSuccessful();
+
+            foreach (Queue::pushed(FetchDetailJob::class)->slice($before) as $job) {
+                $events[] = [
+                    'at' => $runAt->timestamp * 1_000_000 + ((int) ($job->delay ?? 0) * 1_000_000),
+                    'row_id' => $job->crawlQueueId,
+                ];
+            }
+        }
+
+        $this->simulatePacedJobsUntil($events, $completions, $startedAt, $start->copy()->addMinute()->timestamp * 1_000_000);
+
+        $budget = (int) floor(60 / app(SourceThrottle::class)->effectiveGap('steady'));
+        $this->assertGreaterThanOrEqual((int) ceil($budget * 0.9), count($startedAt));
+        $this->assertSame(60, count($startedAt));
+
+        config()->set([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.email' => 'root@javmeta.local',
+            'openobserve.password' => 'secret',
+            'openobserve.timeout' => 1,
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
+        $this->travelTo($start->copy()->addMinute());
+        $this->artisan('obs:publish-metrics')->assertSuccessful();
+
+        Http::assertSent(static function ($request): bool {
+            if (! str_contains($request->url(), '/v1/metrics')) {
+                return false;
+            }
+
+            $sourceValues = [];
+            $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [];
+            foreach ($metrics as $metric) {
+                if (! in_array($metric['name'] ?? '', ['javmeta_feed_source_budget', 'javmeta_feed_source_started'], true)) {
+                    continue;
+                }
+
+                $point = $metric['gauge']['dataPoints'][0] ?? [];
+                foreach ($point['attributes'] ?? [] as $attribute) {
+                    if (($attribute['key'] ?? null) === 'source_slug' && ($attribute['value']['stringValue'] ?? null) === 'steady') {
+                        $sourceValues[$metric['name']] = $point['asDouble'] ?? null;
+                    }
+                }
+            }
+
+            $budget = $sourceValues['javmeta_feed_source_budget'] ?? 0.0;
+            $started = $sourceValues['javmeta_feed_source_started'] ?? 0.0;
+
+            return $budget === 60.0 && $started >= 54.0 && $started / $budget >= 0.9;
+        });
+    }
+
+    public function test_feed_pool_counts_global_cap_stops_per_source(): void
+    {
+        config([
+            'cache.default' => 'array',
+            'javmeta_queues.feed_interval_seconds' => 10,
+            'javmeta_queues.feed_pool_limit' => 60,
+            'javmeta_queues.per_source_inflight' => 16,
+        ]);
+        Cache::store('array')->flush();
+        $start = now()->startOfMinute()->addSeconds(20);
+        $this->travelTo($start);
+        $this->pacedSource('global-cap', 1.0);
+        CrawlQueue::factory()->count(2)->create(['source_slug' => 'global-cap', 'kind' => CrawlQueue::KIND_DETAIL]);
+        Queue::fake();
+
+        $this->artisan('crawler:feed-pool', ['--limit' => 1])->assertSuccessful();
+        $this->travelTo($start->copy()->addMinute());
+
+        $this->assertSame(1, app(FeedPoolMetrics::class)->stoppedPreviousMinute('global-cap', 'global_cap'));
+    }
+
+    public function test_feed_pool_counts_queue_depth_stops_per_source(): void
+    {
+        config([
+            'cache.default' => 'array',
+            'queue.default' => 'database',
+            'javmeta_queues.depth_limit' => 1,
+            'javmeta_queues.feed_interval_seconds' => 10,
+            'javmeta_queues.feed_pool_limit' => 60,
+        ]);
+        Cache::store('array')->flush();
+        $start = now()->startOfMinute()->addSeconds(20);
+        $this->travelTo($start);
+        $this->pacedSource('depth-stop', 1.0);
+        CrawlQueue::factory()->create(['source_slug' => 'depth-stop', 'kind' => CrawlQueue::KIND_DETAIL]);
+        DB::table('jobs')->insert([
+            'queue' => config('javmeta_queues.names.detail'),
+            'payload' => '{}',
+            'attempts' => 0,
+            'reserved_at' => null,
+            'available_at' => now()->timestamp,
+            'created_at' => now()->timestamp,
+        ]);
+        Queue::fake();
+
+        $this->artisan('crawler:feed-pool')->assertSuccessful();
+        $this->travelTo($start->copy()->addMinute());
+
+        $this->assertSame(1, app(FeedPoolMetrics::class)->stoppedPreviousMinute('depth-stop', 'depth'));
+    }
+
+    /**
+     * @param  list<array{at: int, row_id: int}>  $events
+     * @param  list<array{at: int, row_id: int}>  $completions
+     * @param  list<int>  $startedAt
+     */
+    private function simulatePacedJobsUntil(array &$events, array &$completions, array &$startedAt, int $until): void
+    {
+        while ($events !== []) {
+            usort($events, static fn(array $first, array $second): int => $first['at'] <=> $second['at']);
+            $event = array_shift($events);
+            if ($event['at'] > $until) {
+                $events[] = $event;
+
+                break;
+            }
+
+            $delay = app(SourceThrottle::class)->requestStartDelayMicroseconds('steady', $event['at']);
+            if ($delay > 0) {
+                $event['at'] += $delay;
+                $events[] = $event;
+
+                continue;
+            }
+
+            $startedAt[] = $event['at'];
+            $timestamp = CarbonImmutable::createFromTimestamp((int) floor($event['at'] / 1_000_000))
+                ->addMicroseconds($event['at'] % 1_000_000);
+            $row = CrawlQueue::query()->findOrFail($event['row_id']);
+            $row->forceFill(['started_at' => $timestamp, 'claimed_at' => $timestamp])->save();
+            DB::table('crawl_fetch_attempts')->insert([
+                'created_at' => $timestamp,
+                'source_slug' => 'steady',
+                'crawl_queue_id' => $row->id,
+                'url_hash' => hash('sha256', (string) $row->id),
+                'method' => 'http',
+                'started_at' => $timestamp,
+                'duration_ms' => 4_700,
+                'outcome' => 'ok',
+            ]);
+            $completions[] = ['at' => $event['at'] + 4_700_000, 'row_id' => $row->id];
+        }
+
+        foreach ($completions as $index => $completion) {
+            if ($completion['at'] > $until) {
+                continue;
+            }
+
+            CrawlQueue::query()->whereKey($completion['row_id'])->update([
+                'status' => CrawlQueue::STATUS_DONE,
+                'started_at' => null,
+                'claimed_at' => null,
+                'locked_by' => null,
+            ]);
+            unset($completions[$index]);
+        }
+        $completions = array_values($completions);
     }
 
     public function test_requested_run_limit_cannot_exceed_the_scaled_per_minute_lane_cap(): void

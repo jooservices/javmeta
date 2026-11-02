@@ -9,6 +9,7 @@ Import worker environment defaults on the primary before adding or restarting wo
 nodes. The worker installer checks that the required valid database settings exist
 and fails before stopping worker units when the primary import has not completed.
 
+- **Queue pacing:** `queue.min_effective_gap_seconds` defaults to 1 second and is the minimum request-start gap after combining it with the source's adaptive gap. Lower it only when the source's stored minimum gap and the target site's policy allow a faster rate. `queue.feed_pool_limit` is per minute per lane; `queue.per_source_inflight` supplies lookahead across crawl kinds. See [queue pacing and metrics](queue.md#reading-feed-pool-pacing-metrics) before changing these values.
 - **Secrets and audit:** secrets such as Telegram credentials are encrypted at rest, write-only in the UI and redacted from `setting_changed`. Every successful edit emits the ops event `setting_changed` with the key, user and non-secret old/new value.
 - **Validation and API:** invalid values return 422 per setting. Client deadlines must exceed their service deadlines: fetch worker timeout > fetch service timeout, Redis `retry_after` > worker timeout, browser gateway wait > Playwright/FlareSolverr service timeout, and gateway client timeout > gateway wait.
 

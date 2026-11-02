@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Crawl;
 
 use App\Models\Source;
+use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
 
 final class SourceThrottle
@@ -14,6 +15,53 @@ final class SourceThrottle
         $model = $this->source($source);
 
         return (float) ($model->gap_seconds_current ?? $model->gap_seconds_default);
+    }
+
+    public function effectiveGap(Source|string $source): float
+    {
+        $minimum = max(0.25, (float) config('javmeta_queues.min_effective_gap_seconds', 1.0));
+
+        return max($minimum, $this->currentGap($source));
+    }
+
+    public function waitForRequestStart(Source|string $source): void
+    {
+        if (app()->runningUnitTests()) {
+            return;
+        }
+
+        $slug = $source instanceof Source ? (string) $source->slug : $source;
+        while (($delay = $this->requestStartDelayMicroseconds($slug, (int) floor(microtime(true) * 1_000_000))) > 0) {
+            usleep($delay);
+        }
+    }
+
+    public function requestStartDelayMicroseconds(Source|string $source, int $nowMicroseconds): int
+    {
+        $model = $this->source($source);
+        $gapMicroseconds = (int) ceil($this->effectiveGap($model) * 1_000_000);
+        $key = 'javmeta:crawl:source-last-start:' . $model->slug;
+        $lock = Cache::lock($key . ':lock', 5);
+        $lock->block(5);
+
+        try {
+            $lastStart = (int) Cache::get($key, 0);
+            $nextStart = $lastStart > 0 ? $lastStart + $gapMicroseconds : $nowMicroseconds;
+            if ($nowMicroseconds < $nextStart) {
+                return $nextStart - $nowMicroseconds;
+            }
+
+            $retentionSeconds = max(
+                120,
+                (int) ceil((float) ($model->gap_seconds_max ?? 0)) + 2,
+                (int) ceil((float) config('javmeta_queues.gap_blocked_max_seconds', 600)) + 2,
+            );
+            Cache::put($key, $nowMicroseconds, $retentionSeconds);
+
+            return 0;
+        } finally {
+            $lock->release();
+        }
     }
 
     public function onSuccess(Source|string $source): Source
