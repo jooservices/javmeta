@@ -7,6 +7,7 @@ namespace App\Providers;
 use App\Contracts\AlertNotifier;
 use App\Contracts\ReportChannel;
 use App\Http\Middleware\EnsureSuperAdministrator;
+use App\Http\Middleware\GuestSafeStatusResponse;
 use App\Logging\ArrayLogStore;
 use App\Notifications\ActivityLogAlertNotifier;
 use App\Notifications\CompositeAlertNotifier;
@@ -41,6 +42,11 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(RouteMatched::class, static function (RouteMatched $event): void {
             if (in_array($event->route->getName(), ['storage.local', 'storage.local.upload'], true)) {
                 $event->route->middleware(['auth', EnsureSuperAdministrator::class]);
+            }
+
+            if ($event->route->uri() === 'api/v1/status'
+                && ! in_array(GuestSafeStatusResponse::class, $event->route->middleware(), true)) {
+                $event->route->middleware(GuestSafeStatusResponse::class);
             }
         });
 

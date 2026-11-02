@@ -28,7 +28,7 @@ final class UiApiController
     public function __invoke(Request $request, string $path): Response
     {
         $guest = (bool) $request->attributes->get('javmeta.guest_mode', false);
-        if (! $request->isMethod('GET')) {
+        if (! $request->isMethod('GET') && ! $request->isMethod('HEAD')) {
             abort_if($guest, 403);
 
             abort(404);
@@ -139,7 +139,7 @@ final class UiApiController
     {
         foreach ($value as $key => $item) {
             $normalizedKey = strtolower((string) $key);
-            if (preg_match('/(?:api.?key|(?:private|access|secret|signing|encryption|client).?key|key.?hash|token|password|secret|credential|cookie|authorization|headers|last.?error|internal|base.?url|file.?path|local.?path|storage.?path|library.?file.?id|file.?id|magnet|hls|stream.?url|play.?url|download.?url|gallery|photos|path|marks?|saved.?search|follows?|signature|expires)/', $normalizedKey) === 1) {
+            if (preg_match('/(?:api.?key|(?:private|access|secret|signing|encryption|client).?key|key.?hash|token|password|secret|credential|cookie|authorization|headers|last.?error|internal|base.?url|file.?path|local.?path|storage.?path|library.?file.?id|file.?id|magnet|hls|stream.?url|play.?url|download.?url|gallery|photos|path|marks?|saved.?search|follows?|signature|expires|stack|trace|exception)/', $normalizedKey) === 1) {
                 unset($value[$key]);
             } elseif (is_array($item)) {
                 $value[$key] = $this->redactPrivateFields($item);
@@ -181,6 +181,25 @@ final class UiApiController
         return false;
     }
 
+    private function redactInternalIpAddresses(string $value): string
+    {
+        return preg_replace_callback(
+            '/(?<![A-Za-z0-9:])[0-9A-Fa-f:.]+(?![A-Za-z0-9:])/',
+            static function (array $match): string {
+                if (filter_var($match[0], FILTER_VALIDATE_IP) === false) {
+                    return $match[0];
+                }
+
+                if (filter_var($match[0], FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+                    return '[redacted internal IP]';
+                }
+
+                return $match[0];
+            },
+            $value,
+        ) ?? $value;
+    }
+
     private function redactInternalReferences(string $value): ?string
     {
         if (preg_match('/(?:file:\/\/|[?&](?:x-amz-)?(?:signature|sig|token|expires|credential|api[_-]?key|x-api-key|authorization|hmac)=|\/files\/download(?:\/|\?|$)|\/storage\/)/i', $value) === 1) {
@@ -191,6 +210,7 @@ final class UiApiController
             return null;
         }
 
+        $value = $this->redactInternalIpAddresses($value);
         $value = preg_replace_callback(
             '~https?://[^\s"\'<>]+~i',
             fn(array $match): string => $this->isInternalUrl($match[0]) ? '[redacted internal URL]' : $match[0],

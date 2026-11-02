@@ -35,11 +35,17 @@ Route::get('/app', UiShellController::class)
     ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class])
     ->name('ui.index');
 
-Route::match(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], '/ui-api/{path}', UiApiController::class)
+Route::get('/ui-api/{path}', UiApiController::class)
     ->where('path', '.*')
     ->middleware([EnsureUiOwnerOrGuest::class, ThrottleGuestUiApi::class])
     ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class])
     ->name('ui.api');
+
+Route::match(['POST', 'PUT', 'PATCH', 'DELETE'], '/ui-api/{path}', UiApiController::class)
+    ->where('path', '.*')
+    ->middleware([EnsureUiOwnerOrGuest::class, ThrottleGuestUiApi::class])
+    ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class])
+    ->name('ui.api.write');
 
 Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static function (): void {
     Route::get('/ops', [DashboardController::class, 'index'])->name('operations.index');
