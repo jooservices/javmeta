@@ -143,6 +143,61 @@ final class HorizonWorkerReconcileTest extends IntegrationTestCase
         self::assertSame([], $this->commands->pending($master . ':crawler-listing'));
     }
 
+    public function test_snapshot_event_resolves_its_repository_and_reports_unobserved_supervisors_as_zero(): void
+    {
+        $node = 'joo-xcr-301-snapshot';
+        $master = 'worker-joo-xcr-301-snapshot-master';
+        $running = $this->seedSnapshot($node, $master);
+        $repository = Mockery::mock(SupervisorRepository::class);
+        $repository->shouldReceive('all')->once()->andReturn([(object) [
+            'name' => $master . ':crawler-listing',
+            'master' => $master,
+            'processes' => ['redis:listing' => 2],
+        ]]);
+        $this->app->instance(SupervisorRepository::class, $repository);
+        $masterSupervisor = new MasterSupervisor();
+        $masterSupervisor->name = $master;
+
+        app(HorizonLayoutSnapshot::class)->handle(new MasterSupervisorLooped($masterSupervisor));
+
+        $payload = json_decode(
+            (string) Redis::connection($this->redisConnection)->get(HorizonLayoutSnapshot::key((string) $running['node'])),
+            true,
+        );
+        $snapshot = $payload['snapshot'];
+        self::assertSame(2, $snapshot['supervisors']['crawler-listing']['maxProcesses']);
+        self::assertSame(0, $snapshot['supervisors']['crawler-detail']['maxProcesses']);
+        self::assertNotSame($running['hash'], $snapshot['hash']);
+    }
+
+    public function test_fleet_lock_remains_after_a_scale_command_was_queued_before_a_later_failure(): void
+    {
+        $node = 'joo-xcr-301-partial-scale';
+        $master = 'worker-joo-xcr-301-partial-scale-master';
+        $this->seedSnapshot($node, $master);
+        SettingsService::forgetDefaults();
+        app(SettingsService::class)->set('queue.workers_per_queue', 4);
+        $queued = 0;
+        $commands = Mockery::mock(HorizonCommandQueue::class);
+        $commands->shouldReceive('push')->twice()->andReturnUsing(static function () use (&$queued): void {
+            $queued++;
+            if ($queued === 2) {
+                throw new \RuntimeException('Second scale command failed.');
+            }
+        });
+        $this->app->instance(HorizonCommandQueue::class, $commands);
+
+        try {
+            app(HorizonWorkerReconciler::class)->reconcile();
+            self::fail('Expected the second queued scale command to fail.');
+        } catch (\RuntimeException $exception) {
+            self::assertSame('Second scale command failed.', $exception->getMessage());
+        }
+
+        self::assertSame(2, $queued);
+        self::assertNotFalse(Redis::connection($this->redisConnection)->get(HorizonLayoutSnapshot::FLEET_RECONCILE_LOCK));
+    }
+
     public function test_node_jitter_and_fleet_lock_serialize_worker_changes(): void
     {
         $hostA = $this->hostWithPositiveJitter();

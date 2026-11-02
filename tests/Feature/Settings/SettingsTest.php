@@ -341,6 +341,37 @@ final class SettingsTest extends TestCase
         $this->assertSame($before, $this->store->group('settings'));
     }
 
+    public function test_worker_bootstrap_check_blocks_until_primary_settings_are_imported(): void
+    {
+        $settings = app(SettingsService::class);
+        $missing = $settings->missingWorkerBootstrapSettings();
+
+        $this->assertContains('queue.workers_per_queue', $missing);
+        $this->assertSame(1, Artisan::call('settings:assert-worker-bootstrap'));
+        $this->assertStringContainsString('queue.workers_per_queue', Artisan::output());
+
+        $settings->importDefaults();
+
+        $this->assertSame([], $settings->missingWorkerBootstrapSettings());
+        $this->assertSame(0, Artisan::call('settings:assert-worker-bootstrap'));
+    }
+
+    public function test_invalid_stored_worker_json_is_ignored_and_shown_with_a_warning(): void
+    {
+        $invalid = '{"listing":oops';
+        $this->store->set('settings.worker.queue_overrides', $invalid, 'string');
+        $settings = app(SettingsService::class);
+
+        $this->assertTrue($settings->apply());
+        $this->assertContains('worker.queue_overrides', $settings->invalidWorkerSettings());
+        $this->assertSame([], config('javmeta_queues.worker_queue_overrides'));
+
+        $row = collect($settings->all())->firstWhere('key', 'worker.queue_overrides');
+        $this->assertSame('database', $row['source']);
+        $this->assertSame($invalid, $row['value']);
+        $this->assertStringContainsString('không hợp lệ', $row['warning']);
+    }
+
     public function test_import_env_skips_release_paths_in_code_defaults(): void
     {
         config([
@@ -431,6 +462,69 @@ final class SettingsTest extends TestCase
         $settings->set('queue.worker_timeout', 200);
         $this->assertSame(240, $settings->get('worker.stop_grace_seconds'));
         $this->assertSame(200, $settings->get('queue.worker_timeout'));
+    }
+
+    public function test_apply_validates_stored_worker_timeout_pair_using_both_saved_values(): void
+    {
+        config([
+            'javmeta_queues.worker_timeout' => 240,
+            'javmeta_queues.stop_grace_seconds' => 200,
+        ]);
+        $this->store->set('settings.worker.stop_grace_seconds', 220, 'int');
+        $this->store->set('settings.queue.worker_timeout', 210, 'int');
+        SettingsService::forgetDefaults();
+        $settings = app(SettingsService::class);
+
+        $this->assertTrue($settings->apply());
+        $this->assertSame(210, config('javmeta_queues.worker_timeout'));
+        $this->assertSame(220, config('javmeta_queues.stop_grace_seconds'));
+        $this->assertSame([], $settings->invalidWorkerSettings());
+    }
+
+    public function test_import_env_rejects_timeout_values_that_violate_the_stored_pair(): void
+    {
+        $names = [
+            'JAVMETA_QUEUE_TIMEOUT' => '240',
+            'JAVMETA_QUEUE_STOP_GRACE' => '200',
+            'REDIS_QUEUE_RETRY_AFTER' => '500',
+        ];
+        $previous = [];
+        foreach ($names as $name => $value) {
+            $previous[$name] = [$_ENV[$name] ?? null, $_SERVER[$name] ?? null, getenv($name)];
+            $_ENV[$name] = $value;
+            $_SERVER[$name] = $value;
+            putenv($name . '=' . $value);
+        }
+
+        try {
+            SettingsService::forgetDefaults();
+            $settings = app(SettingsService::class);
+            try {
+                $settings->importDefaults();
+                $this->fail('Invalid worker timeout pair should be refused before writes.');
+            } catch (\InvalidArgumentException $exception) {
+                $this->assertStringContainsString('worker.stop_grace_seconds', $exception->getMessage());
+            }
+            $this->assertSame([], $this->store->group('settings'));
+        } finally {
+            foreach ($previous as $name => [$env, $server, $process]) {
+                if ($env === null) {
+                    unset($_ENV[$name]);
+                } else {
+                    $_ENV[$name] = $env;
+                }
+                if ($server === null) {
+                    unset($_SERVER[$name]);
+                } else {
+                    $_SERVER[$name] = $server;
+                }
+                if ($process === false) {
+                    putenv($name);
+                } else {
+                    putenv($name . '=' . $process);
+                }
+            }
+        }
     }
 
     public function test_import_env_removes_partial_writes_when_a_store_write_fails(): void

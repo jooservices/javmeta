@@ -16,14 +16,16 @@ final class HorizonLayoutSnapshot
 
     public const NODE_REGISTRY_KEY = 'javmeta:horizon:worker-layout:nodes';
 
-    public function handle(MasterSupervisorLooped $event, SupervisorRepository $supervisors): void
+    public function handle(MasterSupervisorLooped $event, ?SupervisorRepository $supervisors = null): void
     {
+        $supervisors ??= app(SupervisorRepository::class);
         $snapshot = config('javmeta_workers.booted_layout');
         if (! is_array($snapshot) || ! isset($snapshot['hash'])) {
             return;
         }
 
         $master = $event->master->name;
+        $observed = [];
         foreach ($supervisors->all() as $supervisor) {
             if (! is_object($supervisor) || ($supervisor->master ?? null) !== $master) {
                 continue;
@@ -37,11 +39,15 @@ final class HorizonLayoutSnapshot
             if ($name === '' || ! isset($snapshot['supervisors'][$name])) {
                 continue;
             }
+            $observed[$name] = true;
             $queue = $snapshot['supervisors'][$name]['queue'][0] ?? null;
             $processes = (array) ($supervisor->processes ?? []);
             $count = is_string($queue) ? ($processes['redis:' . $queue] ?? null) : null;
-            if (is_numeric($count)) {
-                $snapshot['supervisors'][$name]['maxProcesses'] = max(0, (int) $count);
+            $snapshot['supervisors'][$name]['maxProcesses'] = is_numeric($count) ? max(0, (int) $count) : 0;
+        }
+        foreach (array_keys($snapshot['supervisors']) as $name) {
+            if (! isset($observed[$name])) {
+                $snapshot['supervisors'][$name]['maxProcesses'] = 0;
             }
         }
         $snapshot['master'] = $master;

@@ -60,13 +60,9 @@ final class SettingsService
             if (! $isSaved && $source !== 'environment') {
                 continue;
             }
-            $value = $isSaved
-                ? $this->effectiveValue($key, $definition, $this->fromStorage($definition, $saved[$key]))
-                : $fallback;
             if ($isSaved && $this->isWorkerSetting($key, $definition)) {
                 try {
-                    $value = $this->validate($key, $definition, $value);
-                    $this->assertStoredWorkerGrace($key, $value);
+                    $value = $this->storedWorkerValue($key, $definition, $saved[$key], $saved);
                 } catch (Throwable $exception) {
                     Log::warning('Invalid stored worker setting ignored; keeping the current layout.', [
                         'key' => $key,
@@ -75,6 +71,10 @@ final class SettingsService
                     $this->invalidWorkerSettings[] = $key;
                     continue;
                 }
+            } else {
+                $value = $isSaved
+                    ? $this->effectiveValue($key, $definition, $this->fromStorage($definition, $saved[$key]))
+                    : $fallback;
             }
             if ($this->urlWarning($key, $definition, $value) !== null) {
                 $value = $this->default($key);
@@ -133,20 +133,29 @@ final class SettingsService
             $isSecret = $definition['type'] === 'secret';
             $inDatabase = array_key_exists($key, $saved);
             [$fallback, $source] = $inDatabase ? [null, 'database'] : $this->fallbackValue($key, $definition);
-            $current = $inDatabase
-                ? $this->effectiveValue($key, $definition, $this->fromStorage($definition, $saved[$key]))
-                : $fallback;
+            $warning = null;
             if ($inDatabase && $this->isWorkerSetting($key, $definition)) {
                 try {
-                    $current = $this->validate($key, $definition, $current);
-                } catch (Throwable) {
-                    $current = $this->default($key);
-                    $inDatabase = false;
-                    $source = 'default';
+                    $current = $this->storedWorkerValue($key, $definition, $saved[$key], $saved);
+                } catch (Throwable $exception) {
+                    Log::warning('Invalid stored worker setting shown with a warning.', [
+                        'key' => $key,
+                        'reason' => $exception->getMessage(),
+                    ]);
+                    $warning = 'Giá trị đã lưu không hợp lệ; worker đang giữ cấu hình hiện tại. Hãy lưu lại giá trị hợp lệ.';
+                    try {
+                        $current = $this->effectiveValue($key, $definition, $this->fromStorage($definition, $saved[$key]));
+                    } catch (Throwable) {
+                        $current = $saved[$key];
+                    }
                 }
+            } else {
+                $current = $inDatabase
+                    ? $this->effectiveValue($key, $definition, $this->fromStorage($definition, $saved[$key]))
+                    : $fallback;
             }
-            $warning = $this->urlWarning($key, $definition, $current);
-            if ($warning !== null) {
+            $warning ??= $this->urlWarning($key, $definition, $current);
+            if ($warning !== null && ! $this->isWorkerSetting($key, $definition)) {
                 $current = $this->default($key);
                 $inDatabase = false;
                 $source = 'default';
@@ -287,6 +296,31 @@ final class SettingsService
         return $rows;
     }
 
+    /** @return list<string> */
+    public function missingWorkerBootstrapSettings(): array
+    {
+        $saved = $this->store->group(self::GROUP);
+        $missing = [];
+        foreach ($this->definitions() as $key => $definition) {
+            $workerSetting = in_array(($definition['group'] ?? null), ['worker', 'queue', 'timeouts'], true);
+            if (! $workerSetting || ($definition['bootstrap_only'] ?? false) !== true || ($definition['legacy_env'] ?? []) === []) {
+                continue;
+            }
+            if (! array_key_exists($key, $saved)) {
+                $missing[] = $key;
+
+                continue;
+            }
+            try {
+                $this->storedWorkerValue($key, $definition, $saved[$key], $saved);
+            } catch (Throwable) {
+                $missing[] = $key;
+            }
+        }
+
+        return $missing;
+    }
+
     public function get(string $key): mixed
     {
         $definition = $this->definitions()[$key] ?? throw new InvalidArgumentException("Unknown setting {$key}.");
@@ -305,10 +339,9 @@ final class SettingsService
 
         $inDatabase = array_key_exists($key, $saved);
         [$fallback] = $inDatabase ? [null, 'database'] : $this->fallbackValue($key, $definition);
-        $value = $this->effectiveValue($key, $definition, $inDatabase ? $this->fromStorage($definition, $saved[$key]) : $fallback);
         if ($inDatabase && $this->isWorkerSetting($key, $definition)) {
             try {
-                $value = $this->validate($key, $definition, $value);
+                return $this->storedWorkerValue($key, $definition, $saved[$key], $saved);
             } catch (Throwable $exception) {
                 Log::warning('Invalid stored worker setting ignored; using the code default.', [
                     'key' => $key,
@@ -318,6 +351,7 @@ final class SettingsService
                 return $this->default($key);
             }
         }
+        $value = $this->effectiveValue($key, $definition, $inDatabase ? $this->fromStorage($definition, $saved[$key]) : $fallback);
 
         return $this->urlWarning($key, $definition, $value) === null ? $value : $this->default($key);
     }
@@ -410,14 +444,39 @@ final class SettingsService
         return ($definition['group'] ?? null) === 'worker' || $key === 'queue.worker_timeout';
     }
 
-    private function assertStoredWorkerGrace(string $key, mixed $value): void
+    /** @param array<string, mixed> $saved */
+    private function storedWorkerValue(string $key, array $definition, mixed $stored, array $saved): mixed
     {
-        if ($key === 'worker.stop_grace_seconds' && (int) $value < (int) config('javmeta_queues.worker_timeout')) {
+        $value = $this->effectiveValue($key, $definition, $this->fromStorage($definition, $stored));
+        $value = $this->validate($key, $definition, $value);
+        if (in_array($key, ['queue.worker_timeout', 'worker.stop_grace_seconds'], true)) {
+            $this->assertStoredWorkerGrace($saved);
+        }
+
+        return $value;
+    }
+
+    /** @param array<string, mixed> $saved */
+    private function assertStoredWorkerGrace(array $saved): void
+    {
+        $timeout = $this->storedOrDefaultWorkerValue('queue.worker_timeout', $saved);
+        $grace = $this->storedOrDefaultWorkerValue('worker.stop_grace_seconds', $saved);
+        if ((int) $grace < (int) $timeout) {
             throw new InvalidArgumentException('worker.stop_grace_seconds must be at least queue.worker_timeout.');
         }
-        if ($key === 'queue.worker_timeout' && (int) $value > (int) config('javmeta_queues.stop_grace_seconds')) {
-            throw new InvalidArgumentException('queue.worker_timeout must not exceed worker.stop_grace_seconds.');
+    }
+
+    /** @param array<string, mixed> $saved */
+    private function storedOrDefaultWorkerValue(string $key, array $saved): mixed
+    {
+        $definition = $this->definitions()[$key];
+        if (! array_key_exists($key, $saved)) {
+            return $this->default($key);
         }
+
+        $value = $this->effectiveValue($key, $definition, $this->fromStorage($definition, $saved[$key]));
+
+        return $this->validate($key, $definition, $value);
     }
 
     /** @return array{rows: list<array{key: string, value: mixed, display: mixed, source: string}>, skipped: list<array{key: string, environment: string, reason: string}>} */
@@ -461,6 +520,11 @@ final class SettingsService
                 'display' => $definition['type'] === 'secret' ? '[redacted]' : $value,
                 'source' => $source,
             ];
+        }
+
+        $imported = array_column($rows, 'value', 'key');
+        if (array_key_exists('queue.worker_timeout', $imported) || array_key_exists('worker.stop_grace_seconds', $imported)) {
+            $this->assertTimeoutRelationshipsForValues($imported, $saved);
         }
 
         return ['rows' => $rows, 'skipped' => $skipped];
@@ -767,7 +831,29 @@ final class SettingsService
 
     private function assertTimeoutRelationships(string $key, mixed $value): void
     {
-        $candidate = fn(string $setting): mixed => $setting === $key ? $value : $this->get($setting);
+        $this->assertTimeoutRelationshipsForValues([$key => $value]);
+    }
+
+    /**
+     * @param array<string, mixed> $overrides
+     * @param array<string, mixed>|null $saved
+     */
+    private function assertTimeoutRelationshipsForValues(array $overrides, ?array $saved = null): void
+    {
+        $candidate = function (string $setting) use ($overrides, $saved): mixed {
+            if (array_key_exists($setting, $overrides)) {
+                return $overrides[$setting];
+            }
+            if ($saved === null) {
+                return $this->get($setting);
+            }
+            if (! array_key_exists($setting, $saved)) {
+                return $this->default($setting);
+            }
+            $definition = $this->definitions()[$setting];
+
+            return $this->validate($setting, $definition, $this->effectiveValue($setting, $definition, $this->fromStorage($definition, $saved[$setting])));
+        };
         $fetchClient = (int) $candidate('queue.worker_timeout');
         $fetchService = (int) $candidate('timeouts.fetch_service_seconds');
         if ($fetchClient <= $fetchService) {

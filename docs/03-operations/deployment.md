@@ -44,6 +44,11 @@ operator-managed restart. PostgreSQL's role connection limit **60** and shared
 global, shared by every crawler node. The native Playwright script must be
 under `<root>/current/vendor/jooservices/crawlerx/scripts/`.
 
+Run `settings:import-env` on the primary before upgrading or adding worker
+nodes. The worker installer checks that the primary imported the valid
+environment-backed worker settings before it stops or restarts worker units;
+it fails safely when those database values are missing.
+
 For local verification use a disposable shared-service namespace, a local
 repository/ref and `--skip-os-install --no-systemd --no-start`. These flags do
 not establish running-process readiness. Credentials are written mode 0600 to

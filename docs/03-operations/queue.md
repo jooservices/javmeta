@@ -174,11 +174,12 @@ reconciler logs the problem and leaves the running layout unchanged.
 2. In Cài đặt, set `worker.node_overrides` for that exact `worker@hostname` and
    set only the target queue to a different count. Keep the value between 1 and
    32. This scopes the canary to that node and queue.
-3. Wait for the per-node reconciliation timer (normally within the 10-minute
-   cooldown; allow up to 15 minutes for the timer and configured jitter). Check
-   the Horizon process count, the metric, and the `Horizon worker counts
-   reconciled.` log entry. Confirm the Horizon master PID did not change and
-   that other nodes retain their previous counts.
+3. Wait for the next per-node timer. Allow the remaining configured cooldown,
+   then the node's jitter delay and one timer interval. A peer holding the fleet
+   lock can extend the wait until its grace window or lock TTL expires. Check the
+   Horizon process count, metric and `Horizon worker counts reconciled.` log
+   entry. Confirm the Horizon master PID did not change and other nodes retain
+   their previous counts.
 4. Restore the original node override or remove the canary entry, then verify
    the queue returns to its recorded count. Do not use this procedure on a
    production node.

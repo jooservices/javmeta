@@ -39,6 +39,7 @@ if [[ "${0##*/}" == sudo && "${FAIL_STEP:-}" == restart && "$*" == *restart* ]];
 if [[ "${0##*/}" == curl && "${FAIL_STEP:-}" == readiness ]]; then exit 1; fi
 if [[ "${0##*/}" == node && "${FAIL_STEP:-}" == ui ]]; then exit 1; fi
 if [[ "${0##*/}" == php && "${FAIL_STEP:-}" == import && "$*" == *settings:import-env* ]]; then exit 1; fi
+if [[ "${0##*/}" == php && "${FAIL_STEP:-}" == worker-bootstrap && "$*" == *settings:assert-worker-bootstrap* ]]; then exit 1; fi
 if [[ "${0##*/}" == pg_restore ]]; then printf ';     dbname: fixture\n'; fi
 STUB
 chmod +x "$fixture/bin/stub"
@@ -153,8 +154,15 @@ if grep -REn --include='*.sh' '^[[:space:]]*[^#[:space:]].*(develop|master|origi
 : > "$CALLS"
 bash "$script" --non-interactive --config "$fixture/answers.json" --role worker --skip-os-install --no-systemd --no-start --apply > "$fixture/log" 2>&1
 ! grep -Eq 'artisan (migrate|es:setup|settings:import-env|crawler:sync-sources|operations:make-super-admin)' "$CALLS" || fail 'worker ran migrations'
+grep -q 'artisan settings:assert-worker-bootstrap' "$CALLS" || fail 'worker did not verify primary worker settings'
 grep -q 'no migrations' "$fixture/log" || fail 'worker migration skip not disclosed'
 ! grep -q 'private-test-value\|private-owner-password' "$fixture/log" || fail 'worker leaked credentials'
+current_before_worker_check="$(readlink "$fixture/node/current")"
+: > "$CALLS"
+if FAIL_STEP=worker-bootstrap bash "$script" --non-interactive --config "$fixture/answers.json" --role worker --skip-os-install --apply > "$fixture/log" 2>&1; then fail 'worker restarted without imported primary settings'; fi
+grep -q 'artisan settings:assert-worker-bootstrap' "$CALLS" || fail 'worker bootstrap gate was not called'
+if grep -q 'systemctl stop' "$CALLS"; then fail 'worker units stopped before bootstrap was verified'; fi
+[[ "$(readlink "$fixture/node/current")" == "$current_before_worker_check" ]] || fail 'worker bootstrap gate switched current release'
 if bash "$script" --non-interactive --config "$fixture/answers.json" --role worker --target "$fixture/fresh-worker" > "$fixture/log" 2>&1; then fail 'new worker accepted without primary APP_KEY'; fi
 grep -q 'copy the primary shared env/key' "$fixture/log" || fail 'missing worker key diagnostic'
 echo 'OK (34 install wizard scenarios)'

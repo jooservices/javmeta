@@ -70,12 +70,13 @@ final class HorizonWorkerReconciler
             return ['status' => 'locked', 'old' => $old, 'new' => $desired];
         }
 
+        $commandMayBeQueued = false;
         try {
             if ($this->deploymentLocked()) {
                 return ['status' => 'deploy-locked', 'old' => $old, 'new' => $desired];
             }
 
-            return $this->applyAfterJitter($redis, $node, $old, $desired, (string) $master);
+            return $this->applyAfterJitter($redis, $node, $old, $desired, (string) $master, $commandMayBeQueued);
         } finally {
             // Release only this invocation's token; expiry remains the recovery path after a crash.
             $redis->command('eval', [
@@ -96,6 +97,7 @@ final class HorizonWorkerReconciler
         array $old,
         array $desired,
         string $master,
+        bool &$commandMayBeQueued,
     ): array {
         $cooldownKey = $this->cooldownKey($node);
         if ($redis->exists($cooldownKey)) {
@@ -134,7 +136,7 @@ final class HorizonWorkerReconciler
                 'detail' => ['node' => $node, 'old' => $old, 'new' => $desired],
                 'created_at' => now(),
             ]);
-            $this->scaleWorkers($master, $old, $desired);
+            $this->scaleWorkers($master, $old, $desired, $commandMayBeQueued);
             Log::info('Horizon worker counts reconciled.', [
                 'node' => $node,
                 'workers' => HorizonWorkerLayout::workerCounts($desired['supervisors']),
@@ -143,11 +145,13 @@ final class HorizonWorkerReconciler
             $redis->setex($cooldownKey, $cooldown, (string) now()->timestamp);
             $redis->del($mismatchKey);
         } catch (\Throwable $exception) {
-            $redis->command('eval', [
-                "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
-                [HorizonLayoutSnapshot::FLEET_RECONCILE_LOCK, $fleetValue],
-                1,
-            ]);
+            if (! $commandMayBeQueued) {
+                $redis->command('eval', [
+                    "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+                    [HorizonLayoutSnapshot::FLEET_RECONCILE_LOCK, $fleetValue],
+                    1,
+                ]);
+            }
             throw $exception;
         }
 
@@ -200,13 +204,14 @@ final class HorizonWorkerReconciler
     /** @param array<string, mixed> $old
      *  @param array<string, mixed> $desired
      */
-    private function scaleWorkers(string $master, array $old, array $desired): void
+    private function scaleWorkers(string $master, array $old, array $desired, bool &$commandMayBeQueued): void
     {
         foreach ($desired['supervisors'] as $name => $supervisor) {
             $previous = $old['supervisors'][$name] ?? [];
             if (($previous['maxProcesses'] ?? null) === ($supervisor['maxProcesses'] ?? null)) {
                 continue;
             }
+            $commandMayBeQueued = true;
             $this->commands->push($master . ':' . $name, ReconcileHorizonScale::class, [
                 'scale' => max(1, (int) $supervisor['maxProcesses']),
             ]);

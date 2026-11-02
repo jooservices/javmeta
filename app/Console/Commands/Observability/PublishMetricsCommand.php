@@ -125,9 +125,13 @@ final class PublishMetricsCommand extends Command
                 if (! is_string($node) || $node === '') {
                     continue;
                 }
-                $payload = json_decode((string) $redis->get(HorizonLayoutSnapshot::key($node)), true);
-                if (is_array($payload['snapshot'] ?? null)) {
-                    $snapshots[] = $payload['snapshot'];
+                try {
+                    $payload = json_decode((string) $redis->get(HorizonLayoutSnapshot::key($node)), true);
+                    if (is_array($payload['snapshot'] ?? null)) {
+                        $snapshots[] = $payload['snapshot'];
+                    }
+                } catch (Throwable) {
+                    continue;
                 }
             }
 

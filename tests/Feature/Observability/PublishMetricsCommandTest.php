@@ -92,7 +92,8 @@ final class PublishMetricsCommandTest extends TestCase
             ],
         ];
         $redis = Mockery::mock();
-        $redis->shouldReceive('smembers')->once()->with(HorizonLayoutSnapshot::NODE_REGISTRY_KEY)->andReturn(['worker-node-one']);
+        $redis->shouldReceive('smembers')->once()->with(HorizonLayoutSnapshot::NODE_REGISTRY_KEY)->andReturn(['unavailable-node', 'worker-node-one']);
+        $redis->shouldReceive('get')->once()->with(HorizonLayoutSnapshot::key('unavailable-node'))->andThrow(new \RuntimeException('Node snapshot unavailable.'));
         $redis->shouldReceive('get')->once()->with(HorizonLayoutSnapshot::key('worker-node-one'))->andReturn(json_encode(['snapshot' => $snapshot], JSON_THROW_ON_ERROR));
         Redis::shouldReceive('connection')->once()->with('default')->andReturn($redis);
 
