@@ -661,5 +661,11 @@ final class SettingsService
         if ($gatewayClient <= $gatewayWait) {
             throw new InvalidArgumentException('browser.gateway_client_timeout_ms must exceed browser.gateway_wait_timeout_ms.');
         }
+
+        $dispatchWarning = (int) $candidate('alerts.crawl_dispatch_warning_seconds');
+        $dispatchCritical = (int) $candidate('alerts.crawl_dispatch_critical_seconds');
+        if ($dispatchCritical < $dispatchWarning) {
+            throw new InvalidArgumentException('alerts.crawl_dispatch_critical_seconds must be at least alerts.crawl_dispatch_warning_seconds.');
+        }
     }
 }

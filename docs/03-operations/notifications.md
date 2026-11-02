@@ -32,10 +32,11 @@ product-specific text.
 | Crawl stalled/recovered | Due pending work and no source success for 30 minutes | Telegram + activity log |
 | Claimed queue stuck/recovered | Claimed crawl item older than 30 minutes | Telegram + activity log |
 | Due crawl backlog high/recovered | At least `cleanup.pending_queue_limit` due pending rows; default 1,000 | Telegram + activity log |
+| Crawl dispatch delayed | Due crawl rows remain pending without a recent feed-pool dispatch; warning after `alerts.crawl_dispatch_warning_seconds` (60 seconds), critical after `alerts.crawl_dispatch_critical_seconds` (180 seconds); checked every minute | OpenObserve alert rules; separate warning and critical Telegram labels |
 | Backup missing/stale/recovered | Manifest missing or older than 26 hours; checked every minute, one message per cause per hour | Telegram + activity log |
 | Consumer lookup miss | Query not in the catalogue; per normalized query, one message per hour | Telegram + activity log |
 | Source quality alert | Source stale, soft-404, or repeated title-needs-review signals | Telegram + activity log |
-| OpenObserve rules | API error rate >=5%, API p95 >1.5s, dependency down, claimed age >30m, >20 source failures/hour, schedule-aware source stale, PostgreSQL connections >=85% for 5m | Telegram destination; rule-specific silence windows |
+| OpenObserve rules | API error rate >=5%, API p95 >1.5s, dependency down, claimed age >30m, >20 source failures/hour, schedule-aware source stale, crawl dispatch warning/critical, PostgreSQL connections >=85% for 5m | Telegram destination; rule-specific silence windows |
 | Staging readiness | New or changed failing checks; checked hourly; an explicit READY message follows a failure | Telegram |
 | Source health | Newly blocked and recovered sources; checked daily at 04:00 | Telegram |
 | Hourly catalog report | Movie and performer totals and change since the prior successful report | Telegram, hourly |

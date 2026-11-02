@@ -36,6 +36,8 @@ return [
         'crawl_stall_seconds' => 1800,
         'queue_stuck_seconds' => 1800,
         'pending_queue_limit' => 1000,
+        'crawl_dispatch_warning_seconds' => 60,
+        'crawl_dispatch_critical_seconds' => 180,
         'stall_after_minutes' => 45,
         'temp_data_max_age_hours' => 24,
     ],

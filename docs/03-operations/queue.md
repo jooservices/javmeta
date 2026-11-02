@@ -4,6 +4,13 @@
 
 `crawl_queue` is the source of truth for crawl work. The feed-pool command claims rows only when the matching Laravel queue has capacity; workers complete the job and update the same crawl row.
 
+The scheduler checks `crawler:feed-pool --scheduled` every five seconds. The
+command reads the current `queue.feed_interval_seconds` database setting on
+each run, so edits apply without restarting the scheduler. Successful dispatches
+update a shared-cache heartbeat; `obs:publish-metrics` exports its age and
+warning/critical state while due crawl rows remain pending. Scheduled Artisan
+command failures are written to the application log.
+
 ```mermaid
 flowchart LR
     A[Pending crawl_queue rows] --> B[crawler:feed-pool]

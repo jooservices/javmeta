@@ -440,6 +440,18 @@ Một phim lỗi quá số lần này sẽ được cảnh báo.
 
 Số nguyên; từ 1 đến 100. Mã mục: `alerts.title_failure_threshold`.
 
+### Cảnh báo khi chưa nạp việc crawl (giây)
+
+Cảnh báo khi còn việc đến hạn nhưng chưa có job crawl mới được đẩy vào hàng đợi trong khoảng này.
+
+Số nguyên; từ 30 đến 3600. Mã mục: `alerts.crawl_dispatch_warning_seconds`.
+
+### Báo động khi chưa nạp việc crawl (giây)
+
+Gửi cảnh báo mức cao khi còn việc đến hạn nhưng chưa có job crawl mới được đẩy vào hàng đợi trong khoảng này.
+
+Số nguyên; từ 30 đến 3600. Mã mục: `alerts.crawl_dispatch_critical_seconds`.
+
 ## Telegram
 
 ### Token của bot

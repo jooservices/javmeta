@@ -16,6 +16,8 @@ final class MetricStreams
         'crawl_queue_depth' => self::PREFIX . 'crawl_queue_depth',
         'crawl_queue_claimed_age_seconds' => self::PREFIX . 'crawl_queue_claimed_age_seconds',
         'crawl_queue_avg_attempts' => self::PREFIX . 'crawl_queue_avg_attempts',
+        'crawl_dispatch_age_seconds' => self::PREFIX . 'crawl_dispatch_age_seconds',
+        'crawl_dispatch_stale' => self::PREFIX . 'crawl_dispatch_stale',
         'crawl_events_5m' => self::PREFIX . 'crawl_events_5m',
         'api_requests_1m' => self::PREFIX . 'api_requests_1m',
         'api_error_rate_1m' => self::PREFIX . 'api_error_rate_1m',

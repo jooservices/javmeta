@@ -15,6 +15,7 @@ use App\Models\Source;
 use App\Observability\OpenObserveClient;
 use App\Observability\MetricStreams;
 use App\Services\Archive\MongoArchiveWriteHealth;
+use App\Services\Health\CrawlDispatchHeartbeat;
 use App\Services\Search\ElasticsearchHttpClient;
 use App\Services\Search\ElasticsearchRequestHealth;
 use App\Services\Health\SourceScheduleFreshness;
@@ -41,6 +42,7 @@ final class PublishMetricsCommand extends Command
         ElasticsearchHttpClient $elasticsearch,
         ElasticsearchRequestHealth $elasticsearchHealth,
         SourceScheduleFreshness $sourceFreshness,
+        CrawlDispatchHeartbeat $dispatchHeartbeat,
     ): int {
         if (! $client->enabled()) {
             $this->components->info('OpenObserve disabled; skipping metrics publish.');
@@ -51,6 +53,7 @@ final class PublishMetricsCommand extends Command
         $points = array_merge(
             $this->sourceMetrics($sourceFreshness),
             $this->queueMetrics(),
+            $this->crawlDispatchMetrics($dispatchHeartbeat),
             $this->crawlEventMetrics(),
             $this->apiMetrics(),
             $this->qualityMetrics(),
@@ -147,6 +150,42 @@ final class PublishMetricsCommand extends Command
         ];
 
         return $points;
+    }
+
+    /**
+     * @return list<array{name: string, value: float|int, labels?: array<string, string>}>
+     */
+    private function crawlDispatchMetrics(CrawlDispatchHeartbeat $dispatchHeartbeat): array
+    {
+        $age = $dispatchHeartbeat->ageSeconds();
+        $hasDueWork = CrawlQueue::query()
+            ->where('status', CrawlQueue::STATUS_PENDING)
+            ->where(static function ($query): void {
+                $query->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', now());
+            })
+            ->exists();
+        $warningThreshold = max(1, (int) config('javmeta_alerts.watchdog.crawl_dispatch_warning_seconds', 60));
+        $criticalThreshold = max(
+            $warningThreshold,
+            (int) config('javmeta_alerts.watchdog.crawl_dispatch_critical_seconds', 180),
+        );
+
+        return [
+            [
+                'name' => MetricStreams::NAMES['crawl_dispatch_age_seconds'],
+                'value' => $age ?? -1,
+            ],
+            [
+                'name' => MetricStreams::NAMES['crawl_dispatch_stale'],
+                'value' => $hasDueWork && ($age === null || $age >= $warningThreshold) ? 1 : 0,
+                'labels' => ['severity' => 'warning'],
+            ],
+            [
+                'name' => MetricStreams::NAMES['crawl_dispatch_stale'],
+                'value' => $hasDueWork && ($age === null || $age >= $criticalThreshold) ? 1 : 0,
+                'labels' => ['severity' => 'critical'],
+            ],
+        ];
     }
 
     /**
