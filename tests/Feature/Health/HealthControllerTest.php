@@ -59,6 +59,34 @@ final class HealthControllerTest extends TestCase
         $this->assertArrayNotHasKey('titles', $response->json());
     }
 
+    public function test_guest_health_exposes_only_status_and_check_time(): void
+    {
+        config([
+            'javmeta.ui_login_required' => false,
+            'javmeta_health.startup.flaresolverr_url' => 'http://10.0.0.7:8191',
+        ]);
+        Source::query()->create([
+            'slug' => 'private-source',
+            'name' => 'Private source',
+            'base_url' => 'http://10.0.0.7',
+            'enabled' => true,
+            'priority' => 10,
+            'needs_proxy' => false,
+            'gap_seconds_default' => 20,
+            'gap_seconds_min' => 20,
+            'gap_seconds_max' => 60,
+            'gap_seconds_current' => 20,
+            'last_success_at' => now(),
+        ]);
+
+        $response = $this->getJson('/api/health')->assertOk();
+
+        self::assertEqualsCanonicalizing(['status', 'checked_at'], array_keys($response->json()));
+        $this->assertStringNotContainsString('10.0.0.7', (string) $response->getContent());
+        $this->assertStringNotContainsString('private-source', (string) $response->getContent());
+        $this->assertStringNotContainsString('testing', (string) $response->getContent());
+    }
+
     public function test_health_marks_degraded_when_worker_stale(): void
     {
         Cache::forget(WorkerHeartbeat::CACHE_KEY);
