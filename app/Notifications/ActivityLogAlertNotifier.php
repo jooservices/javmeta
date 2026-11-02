@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Notifications;
 
 use App\Contracts\AlertNotifier;
+use App\Observability\TelemetrySanitizer;
 use JOOservices\LaravelLogging\Facades\ActivityLog;
 use Throwable;
 
@@ -21,6 +22,10 @@ final class ActivityLogAlertNotifier implements AlertNotifier
      */
     public function notify(string $subject, string $body, array $context = []): void
     {
+        $sanitizer = app(TelemetrySanitizer::class);
+        $subject = $sanitizer->sanitizeText($subject) ?? '';
+        $body = $sanitizer->sanitizeText($body) ?? '';
+        $context = $sanitizer->sanitizeContext($context);
         $resolved = strtolower((string) ($context['alert_state'] ?? 'open')) === 'resolved';
         $severity = strtolower((string) ($context['severity'] ?? ($resolved ? 'info' : 'warning')));
         $level = match ($severity) {

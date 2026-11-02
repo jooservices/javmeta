@@ -77,5 +77,6 @@ final class MetricStreams
         'feed_claim_rows_examined_1m' => self::PREFIX . 'feed_claim_rows_examined_1m',
         'alert_firing' => self::PREFIX . 'alert_firing',
         'alert_event_count' => self::PREFIX . 'alert_event_count',
+        'notification_sent_total' => self::PREFIX . 'notification_sent_total',
     ];
 }

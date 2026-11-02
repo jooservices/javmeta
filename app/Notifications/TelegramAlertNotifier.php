@@ -6,10 +6,13 @@ namespace App\Notifications;
 
 use App\Contracts\AlertNotifier;
 use App\Contracts\ReportChannel;
+use App\Observability\TelemetrySanitizer;
+use App\Services\Notifications\NotificationRenderer;
 use Illuminate\Support\Facades\Log;
+use JOOservices\Client\Client\ClientBuilder;
 use JOOservices\Client\Client\HttpClient;
-use JOOservices\LaravelNotifications\Channels\TelegramChannel;
-use JOOservices\LaravelNotifications\Message;
+use JOOservices\Client\Response\Response;
+use Throwable;
 
 /**
  * App-facing alert adapter: renders javmeta context into a package Message and
@@ -18,7 +21,10 @@ use JOOservices\LaravelNotifications\Message;
  */
 final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
 {
-    public function __construct(private readonly ?HttpClient $httpClient = null) {}
+    public function __construct(
+        private readonly ?HttpClient $httpClient = null,
+        private readonly ?NotificationRenderer $renderer = null,
+    ) {}
 
     /**
      * Send an alert, defaulting to a warning while preserving the explicit caller severity and resolved state.
@@ -37,12 +43,34 @@ final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
      */
     public function deliver(string $subject, string $body, array $context = []): bool
     {
+        $templateKey = is_string($context['template_key'] ?? null) ? $context['template_key'] : null;
+        if ($templateKey !== null && ! ($context['template_rendered'] ?? false)) {
+            $rendered = ($this->renderer ?? app(NotificationRenderer::class))->render($templateKey, $context);
+            $subject = $rendered['title'];
+            $body = $rendered['body'];
+        }
+        $templateRendered = (bool) ($context['template_rendered'] ?? false) || $templateKey !== null;
+
         if (isset($context['alert_state'])) {
-            $resolved = strtoupper((string) $context['alert_state']) === 'RESOLVED';
-            $severity = strtoupper((string) ($context['severity'] ?? 'warning'));
-            $level = $resolved ? 'RESOLVED' : (in_array($severity, ['INFO', 'NOTICE', 'WARNING', 'CRITICAL'], true) ? $severity : 'WARNING');
-            unset($context['alert_state'], $context['severity']);
-            $subject = "[{$level}] {$subject}";
+            if (! $templateRendered) {
+                $resolved = strtoupper((string) $context['alert_state']) === 'RESOLVED';
+                $severity = strtoupper((string) ($context['severity'] ?? 'warning'));
+                $level = $resolved ? 'RESOLVED' : (in_array($severity, ['INFO', 'NOTICE', 'WARNING', 'CRITICAL'], true) ? $severity : 'WARNING');
+                $subject = "[{$level}] {$subject}";
+            }
+            unset($context['alert_state'], $context['severity'], $context['template_rendered']);
+        }
+        if (! $templateRendered) {
+            $sanitizer = app(TelemetrySanitizer::class);
+            $subject = $sanitizer->sanitizeText($subject) ?? '';
+            $body = $sanitizer->sanitizeText($body) ?? '';
+            $subject = htmlspecialchars($subject, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $body = htmlspecialchars($body, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            foreach ($this->scalarContext($context) as $key => $value) {
+                $safeValue = $sanitizer->sanitizeText($value === null ? 'null' : (string) $value) ?? '';
+                $body .= "\n" . htmlspecialchars((string) $key, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . ': '
+                    . htmlspecialchars($safeValue, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            }
         }
 
         $token = $this->stringConfig('laravel-notifications.channels.telegram.bot_token')
@@ -56,38 +84,47 @@ final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
             ?? config('javmeta_alerts.telegram.timeout', 5)
         );
 
-        $channel = new TelegramChannel(
-            botToken: $token,
-            chatId: $chatId,
-            apiBase: $apiBase !== '' ? $apiBase : 'https://api.telegram.org',
-            timeout: $timeout > 0 ? $timeout : 5.0,
-            client: $this->httpClient,
-        );
-
-        $result = $channel->send(
-            Message::make(
-                subject: $this->prefixed($subject),
-                body: $body,
-                context: $this->scalarContext($context),
-            ),
-        );
-
-        if ($result->isSkipped()) {
+        if ($token === '' || $chatId === '') {
             Log::warning('javmeta.telegram_skipped', [
-                'reason' => $result->reason ?? 'skipped',
-                'subject' => $subject,
+                'reason' => 'TELEGRAM bot token or chat id missing',
             ]);
 
             return false;
         }
 
-        if ($result->isFailed()) {
+        try {
+            $client = $this->httpClient ?? ClientBuilder::create()
+                ->withBaseUri(rtrim($apiBase !== '' ? $apiBase : 'https://api.telegram.org', '/') . '/')
+                ->withTimeout($timeout > 0 ? $timeout : 5.0)
+                ->build();
+            $message = ($templateRendered ? $subject : $this->prefixed($subject)) . "\n" . $body;
+            $prepared = $client->requestBuilder()
+                ->post('/bot' . $token . '/sendMessage')
+                ->withJson([
+                    'chat_id' => $chatId,
+                    'text' => $message,
+                    'parse_mode' => 'HTML',
+                    'disable_web_page_preview' => true,
+                ])
+                ->build();
+            $response = Response::from($client->sendRequest($prepared->toPsr()));
+            if (! $response->successful()) {
+                Log::warning('javmeta.telegram_failed', [
+                    'reason' => 'Telegram API returned HTTP ' . $response->status(),
+                ]);
+
+                return false;
+            }
+        } catch (Throwable) {
             Log::warning('javmeta.telegram_failed', [
-                'reason' => $result->reason ?? 'failed',
-                'subject' => $subject,
+                'reason' => 'Telegram transport failed.',
             ]);
 
             return false;
+        }
+
+        if ($templateKey !== null && ! ($context['test_send'] ?? false)) {
+            ($this->renderer ?? app(NotificationRenderer::class))->markSent($templateKey);
         }
 
         return true;
@@ -106,20 +143,16 @@ final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
         return is_string($value) ? $value : $default;
     }
 
-    /**
-     * @param  array<string, mixed>  $context
-     * @return array<string, string|int|float|bool|null>
+    /** @param array<string, mixed> $context
+     *  @return array<string, string|int|float|bool|null>
      */
     private function scalarContext(array $context): array
     {
         $scalars = [];
-
         foreach ($context as $key => $value) {
-            if (! is_scalar($value) && $value !== null) {
-                continue;
+            if (is_scalar($value) || $value === null) {
+                $scalars[$key] = $value;
             }
-
-            $scalars[$key] = $value;
         }
 
         return $scalars;

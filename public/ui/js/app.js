@@ -12,6 +12,7 @@ import facet from './views/facet.js';
 import crawl from './views/crawl.js';
 import search from './views/search.js';
 import settings from './views/settings.js';
+import notifications from './views/notifications.js';
 import catalog from './views/catalog.js';
 import calendar from './views/calendar.js';
 import adminView from './views/admin.js';
@@ -46,6 +47,7 @@ const ROUTES = [
   [/^bio$/, bio, 'bio'],
   [/^stats$/, stats, 'stats'],
   [/^crawl$/, crawl, 'crawl'],
+  [/^settings\/notifications$/, notifications, 'settings'],
   [/^settings$/, settings, 'settings'],
 ];
 

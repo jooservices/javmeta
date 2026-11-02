@@ -64,8 +64,8 @@ final class HourlyReportTest extends TestCase
         $this->artisan('javmeta:hourly-report')->assertSuccessful();
 
         $this->assertCount(1, $this->sent);
-        $this->assertStringContainsString('Movies: 3', $this->sent[0]['body']);
-        $this->assertStringContainsString('Performers: 2', $this->sent[0]['body']);
+        $this->assertStringContainsString('Movies       3 (no previous value', $this->sent[0]['body']);
+        $this->assertStringContainsString('Performers   2 (no previous value)', $this->sent[0]['body']);
         $this->assertStringContainsString('First report', $this->sent[0]['body']);
         $this->assertFileExists($this->state);
     }
@@ -81,8 +81,8 @@ final class HourlyReportTest extends TestCase
         $this->artisan('javmeta:hourly-report')->assertSuccessful();
 
         $this->assertCount(2, $this->sent);
-        $this->assertStringContainsString('Movies: 8 (+5 in ', $this->sent[1]['body']);
-        $this->assertStringContainsString('Performers: 3 (+1)', $this->sent[1]['body']);
+        $this->assertStringContainsString('Movies       8 (+5 in ', $this->sent[1]['body']);
+        $this->assertStringContainsString('Performers   3 (+1)', $this->sent[1]['body']);
     }
 
     public function test_no_change_is_reported_as_plus_zero(): void
@@ -91,8 +91,8 @@ final class HourlyReportTest extends TestCase
         $this->artisan('javmeta:hourly-report')->assertSuccessful();
         $this->artisan('javmeta:hourly-report')->assertSuccessful();
 
-        $this->assertStringContainsString('Movies: 2 (+0 in ', $this->sent[1]['body']);
-        $this->assertStringContainsString('Performers: 0 (+0)', $this->sent[1]['body']);
+        $this->assertStringContainsString('Movies       2 (+0 in ', $this->sent[1]['body']);
+        $this->assertStringContainsString('Performers   0 (+0)', $this->sent[1]['body']);
     }
 
     public function test_a_failed_send_keeps_the_old_values_so_the_next_hour_reports_the_full_increase(): void
@@ -108,7 +108,7 @@ final class HourlyReportTest extends TestCase
 
         $this->deliver = true;
         $this->artisan('javmeta:hourly-report')->assertSuccessful();
-        $this->assertStringContainsString('Movies: 6 (+4 in ', $this->sent[1]['body']);
+        $this->assertStringContainsString('Movies       6 (+4 in ', $this->sent[1]['body']);
     }
 
     public function test_dry_run_prints_the_message_and_sends_nothing(): void
@@ -116,7 +116,7 @@ final class HourlyReportTest extends TestCase
         Movie::factory()->count(1)->create();
 
         $this->artisan('javmeta:hourly-report', ['--dry-run' => true])
-            ->expectsOutputToContain('Movies: 1')
+            ->expectsOutputToContain('Movies       1')
             ->assertSuccessful();
 
         $this->assertSame([], $this->sent);

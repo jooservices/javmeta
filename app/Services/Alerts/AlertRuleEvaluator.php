@@ -32,6 +32,7 @@ final class AlertRuleEvaluator
                 'context' => [
                     'idle' => ! $snapshot['has_due_work'],
                     'missing' => $snapshot['has_due_work'] && $snapshot['dispatch_age_seconds'] === null,
+                    'due_items' => array_sum($snapshot['due_by_source']),
                 ],
             ],
             'backlog_depth' => $source === null || ! in_array($source, $snapshot['hot_sources'], true) ? null : [
@@ -90,7 +91,11 @@ final class AlertRuleEvaluator
 
             $rate = $this->percentage($stats['successes'], $stats['attempts']);
             if ($rate < $threshold) {
-                $rules['source_success_rate:' . $source] = $this->condition($rate, $threshold, ['source_slug' => $source]);
+                $rules['source_success_rate:' . $source] = $this->condition($rate, $threshold, [
+                    'source_slug' => $source,
+                    'window_minutes' => max(1, (int) config('javmeta_alerts.window_minutes', 15)),
+                    'attempts' => $stats['attempts'],
+                ]);
             }
         }
     }
@@ -110,7 +115,10 @@ final class AlertRuleEvaluator
         $dispatchAge = $snapshot['dispatch_age_seconds'];
         $dispatchThreshold = max(1, (int) config('javmeta_alerts.dispatch_age_max_seconds', 60));
         if ($snapshot['has_due_work'] && ($dispatchAge === null || $dispatchAge > $dispatchThreshold)) {
-            $rules['dispatch_age'] = $this->condition($dispatchAge ?? -1, $dispatchThreshold, ['missing' => $dispatchAge === null]);
+            $rules['dispatch_age'] = $this->condition($dispatchAge ?? -1, $dispatchThreshold, [
+                'missing' => $dispatchAge === null,
+                'due_items' => array_sum($snapshot['due_by_source']),
+            ]);
         }
     }
 
@@ -183,7 +191,11 @@ final class AlertRuleEvaluator
         return [
             'value' => $this->percentage($stats['successes'], $stats['attempts']),
             'threshold' => (float) config('javmeta_alerts.success_rate_min_percent', 85),
-            'context' => ['source_slug' => $source],
+            'context' => [
+                'source_slug' => $source,
+                'window_minutes' => max(1, (int) config('javmeta_alerts.window_minutes', 15)),
+                'attempts' => $stats['attempts'],
+            ],
         ];
     }
 
@@ -194,16 +206,27 @@ final class AlertRuleEvaluator
     private function rateContext(array $snapshot, int $minimumAttempts): array
     {
         $sources = [];
+        $attempts = array_sum(array_column($snapshot['attempts_by_source'], 'attempts'));
+        $blocked = array_sum(array_column($snapshot['attempts_by_source'], 'blocked'));
         foreach ($snapshot['attempts_by_source'] as $source => $stats) {
             if ($stats['attempts'] >= $minimumAttempts) {
                 $sources[$source] = $this->percentage($stats['successes'], $stats['attempts']);
             }
         }
         asort($sources, SORT_NUMERIC);
+        $worstSources = array_slice($sources, 0, 5, true);
+        $worstSourceLabels = [];
+        foreach ($worstSources as $source => $rate) {
+            $worstSourceLabels[] = $source . ' ' . number_format($rate, 1, '.', ',') . '%';
+        }
 
         return [
             'window_minutes' => max(1, (int) config('javmeta_alerts.window_minutes', 15)),
             'top_sources' => array_slice(array_map('strval', array_keys($sources)), 0, 3),
+            'attempts' => $attempts,
+            'blocked_ratio' => $blocked * 100 / max(1, $attempts),
+            'maximum_blocked_ratio' => (float) config('javmeta_alerts.blocked_ratio_max_percent', 10),
+            'worst_sources' => implode(', ', $worstSourceLabels),
         ];
     }
 }

@@ -37,7 +37,7 @@ final class WatchdogCommand extends Command
             ]));
             $this->warn('Worker heartbeat stale.');
         } else {
-            $alerts->resolve('watchdog:worker_stale', 'Worker heartbeat recovered', 'A crawl worker heartbeat is back within the configured window.');
+            $alerts->resolveTemplate('watchdog:worker_stale', 'crawl.heartbeat_recovered');
             $this->info('Worker heartbeat ok.');
         }
 
@@ -65,10 +65,9 @@ final class WatchdogCommand extends Command
         $previous = (array) Cache::get(self::STALE_SOURCES_CACHE_KEY, []);
 
         foreach (array_diff($previous, $current) as $slug) {
-            $alerts->resolve(
+            $alerts->resolveTemplate(
                 CrawlSourceUnhealthy::keyFor((string) $slug, 'source_stale'),
-                "Source recovered: {$slug}",
-                'The source succeeded again or is no longer monitored.',
+                'crawl.source_recovered',
                 ['source_slug' => (string) $slug],
             );
         }

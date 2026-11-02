@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Observability;
 
+use App\Services\Notifications\NotificationRenderer;
 use JOOservices\Client\Client\ClientBuilder;
 use JOOservices\Client\Client\HttpClient;
 use JOOservices\Client\Response\Response;
@@ -17,6 +18,8 @@ final class ObservabilityImporter
     private const TELEGRAM_CRITICAL_TEMPLATE_NAME = 'javmeta_telegram_critical';
 
     private ?HttpClient $client = null;
+
+    public function __construct(private readonly ?NotificationRenderer $notificationRenderer = null) {}
 
     /**
      * @return array{dry_run: true, dashboards: int, alerts: int}|array{
@@ -240,13 +243,18 @@ final class ObservabilityImporter
     /** @return array<string, mixed> */
     private function telegramTemplate(string $name, string $severity, string $chatId): array
     {
+        $key = $severity === 'CRITICAL' ? 'openobserve.telegram_critical' : 'openobserve.telegram_warning';
+        $templates = ($this->notificationRenderer ?? app(NotificationRenderer::class))->templates($key);
+        $text = $templates['title_template'] . "\n" . $templates['body_template'];
+        $text = preg_replace_callback('/\{([a-z][a-z0-9_]*)\}/', static fn(array $match): string => '{{.' . $match[1] . '}}', $text) ?? $text;
+
         return [
             'name' => $name,
             'title' => 'JAVMETA Telegram ' . strtolower($severity) . ' alert',
             'type' => 'http',
             'body' => json_encode([
                 'chat_id' => $chatId,
-                'text' => '[XCrawler][' . $severity . '] {alert_name} triggered for {stream_name}. {rows}',
+                'text' => $text,
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
         ];
     }

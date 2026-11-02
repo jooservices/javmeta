@@ -76,9 +76,18 @@ environment.
 | `javmeta_elasticsearch_request_failures` | — | Cumulative count of failed Elasticsearch requests since the cache counter was created. |
 | `javmeta_search_embedding_backfill_missing` | `entity` | Movie or performer documents found missing from Elasticsearch or without an embedding during the latest backfill run. |
 | `javmeta_search_embedding_backfill_fixed` | `entity` | Movie or performer documents successfully indexed with an embedding during the latest backfill run. |
+| `javmeta_notification_sent_total` | `notification_key`, `channel` | Cumulative count of successful sends for each registered template. Unit: messages. Latest gauge is the total since the template row was created; use a difference between samples for sends during an interval. `environment` and `role` are attached by the shared metrics client. |
 
 The seven `javmeta_crawl_run_*_1h` streams are emitted from a fixed suffix list
 in `PublishMetricsCommand`; no other dynamic metric names are generated.
+
+`javmeta_notification_sent_total` is a cumulative gauge snapshot emitted by
+`obs:publish-metrics` from `notification_templates.sent_count`. Each point has
+`notification_key` and `channel` labels in addition to the shared `environment`
+and `role` labels. Its unit is successfully delivered messages. Group by key and
+channel, then compare the latest value with an earlier sample to count sends in
+that interval. Failed or skipped Telegram delivery does not increment it; a key
+with no point yet has had no successful delivery.
 
 Feed-pool metrics are emitted by `obs:publish-metrics` from the previous
 complete minute's Redis bucket. Budget, started and waiting are the latest

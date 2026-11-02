@@ -205,7 +205,7 @@ return [
 
         'telegram.bot_enabled' => ['group' => 'telegram', 'label' => 'Bật bot hỏi đáp', 'description' => 'Bot trả lời tin của chủ sở hữu: tìm phim, diễn viên, trạng thái, theo dõi. Bot token và chat ID được cấu hình riêng trong runtime secrets.', 'type' => 'bool', 'config' => ['javmeta_notifications.bot.enabled']],
         'telegram.bot_max_results' => ['group' => 'telegram', 'label' => 'Số kết quả bot trả mỗi nhóm', 'description' => 'Tối đa 10.', 'type' => 'int', 'config' => ['javmeta_notifications.bot.max_results'], 'min' => 1, 'max' => 10],
-        'report.timezone' => ['group' => 'report', 'label' => 'Múi giờ báo cáo', 'description' => 'Ví dụ Asia/Ho_Chi_Minh.', 'type' => 'string', 'legacy_env' => ['JAVMETA_REPORT_TIMEZONE'], 'config' => ['javmeta_alerts.hourly_report.timezone']],
+        'report.timezone' => ['group' => 'report', 'label' => 'Múi giờ báo cáo', 'description' => 'Múi giờ cho báo cáo và footer thông báo, ví dụ America/Mexico_City.', 'type' => 'string', 'legacy_env' => ['JAVMETA_REPORT_TIMEZONE'], 'config' => ['javmeta_alerts.hourly_report.timezone']],
         'report.state_path' => ['group' => 'report', 'label' => 'Tệp trạng thái báo cáo', 'description' => 'Đường dẫn tệp lưu mốc gửi báo cáo hằng giờ.', 'type' => 'string', 'legacy_env' => ['JAVMETA_REPORT_STATE_PATH'], 'config' => ['javmeta_alerts.hourly_report.state_path']],
 
         'readiness.max_newest_movie_age_minutes' => ['group' => 'readiness', 'label' => 'Phim mới nhất không cũ quá (phút)', 'description' => 'Cũ hơn mức này nghĩa là crawl không chạy.', 'type' => 'int', 'config' => ['javmeta_readiness.max_newest_movie_age_minutes'], 'legacy_env' => ['JAVMETA_READINESS_NEWEST_MOVIE_MINUTES'], 'min' => 1, 'max' => 10080],
