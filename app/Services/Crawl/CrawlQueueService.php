@@ -23,6 +23,15 @@ final class CrawlQueueService
     /** Retry delay by attempt number when crawlerx gives no Retry-After hint. */
     private const RETRY_BACKOFF_SECONDS = [60, 300, 1800];
 
+    private readonly SourceGapPolicy $sourceGapPolicy;
+    private readonly SourceRequestPacer $sourceRequestPacer;
+
+    public function __construct(?SourceGapPolicy $sourceGapPolicy = null, ?SourceRequestPacer $sourceRequestPacer = null)
+    {
+        $this->sourceGapPolicy = $sourceGapPolicy ?? new SourceGapPolicy();
+        $this->sourceRequestPacer = $sourceRequestPacer ?? new SourceRequestPacer();
+    }
+
     /**
      * @param  list<string>  $excludeSources  sources that must not get a row now (for example their pacing budget is used up)
      */
@@ -301,7 +310,7 @@ final class CrawlQueueService
                 'status' => CrawlQueue::STATUS_PENDING,
                 'attempts' => 0,
                 'max_attempts' => $configuredMaxAttempts,
-                'next_attempt_at' => now()->addSeconds((int) ($source->gap_seconds_current ?? 0)),
+                'next_attempt_at' => $this->nextSourceAttemptAt($source),
                 'claimed_at' => null,
                 'started_at' => null,
                 'locked_by' => null,
@@ -386,7 +395,7 @@ final class CrawlQueueService
             }
 
             $source = Source::query()->find($sourceSlug);
-            $nextAttemptAt = now()->addSeconds((int) ($source->gap_seconds_current ?? 0));
+            $nextAttemptAt = $this->nextSourceAttemptAt($source);
             $refreshed = 0;
 
             foreach ($rows as $row) {
@@ -460,6 +469,18 @@ final class CrawlQueueService
             $row = $query->first();
             if (! $row instanceof CrawlQueue || $row->started_at !== null) {
                 return null;
+            }
+
+            $sourceSlug = (string) $row->source_slug;
+            if ($this->sourceGapPolicy->isOverridden($sourceSlug)) {
+                $source = Source::query()->find($sourceSlug);
+                if ($source instanceof Source) {
+                    $wait = $this->sourceRequestPacer->reserveStart(
+                        $sourceSlug,
+                        $this->sourceGapPolicy->adaptiveGap($source),
+                    );
+                    $this->sourceRequestPacer->wait($wait);
+                }
             }
 
             $row->forceFill([
@@ -611,5 +632,21 @@ final class CrawlQueueService
         $index = min(max($row->attempts, 1), count(self::RETRY_BACKOFF_SECONDS)) - 1;
 
         return now()->addSeconds(self::RETRY_BACKOFF_SECONDS[$index]);
+    }
+
+    private function nextSourceAttemptAt(?Source $source): Carbon
+    {
+        if (! $source instanceof Source) {
+            return now();
+        }
+
+        $current = (float) ($source->gap_seconds_current ?? 0);
+        if (! $this->sourceGapPolicy->isOverridden((string) $source->getKey())) {
+            return now()->addSeconds((int) $current);
+        }
+
+        $milliseconds = (int) round($this->sourceGapPolicy->adaptiveGap($source) * 1000);
+
+        return now()->addMilliseconds($milliseconds);
     }
 }

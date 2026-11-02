@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Services\Settings;
 
 use App\Events\SettingsApplied;
+use App\Models\Source;
 use InvalidArgumentException;
 use RuntimeException;
 use Illuminate\Support\Env;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Support\ConfigType;
 use Throwable;
@@ -72,9 +74,17 @@ final class SettingsService
                     continue;
                 }
             } else {
-                $value = $isSaved
-                    ? $this->effectiveValue($key, $definition, $this->fromStorage($definition, $saved[$key]))
-                    : $fallback;
+                try {
+                    $value = $isSaved
+                        ? $this->effectiveValue($key, $definition, $this->storedValue($key, $definition, $saved[$key]))
+                        : $fallback;
+                } catch (Throwable $exception) {
+                    Log::warning('Invalid stored setting ignored; using the code default.', [
+                        'key' => $key,
+                        'reason' => $exception->getMessage(),
+                    ]);
+                    $value = $this->default($key);
+                }
             }
             if ($this->urlWarning($key, $definition, $value) !== null) {
                 $value = $this->default($key);
@@ -172,7 +182,7 @@ final class SettingsService
                 'restart' => $definition['restart'] ?? null,
                 'apply_after_seconds' => (int) ($definition['apply_after_seconds'] ?? 30),
                 'shape' => $definition['shape'] ?? null,
-                'max_length' => (int) config('javmeta_settings.validation.max_text_length', 500),
+                'max_length' => (int) ($definition['max_length'] ?? config('javmeta_settings.validation.max_text_length', 500)),
                 'source' => $inDatabase ? 'database' : $source,
                 'value' => $isSecret ? null : $current,
                 'is_set' => $isSecret ? (is_string($current) && $current !== '') : null,
@@ -707,7 +717,11 @@ final class SettingsService
      */
     private function validateJson(string $key, array $definition, mixed $value, callable $fail): array
     {
+        $maxLength = isset($definition['max_length']) ? (int) $definition['max_length'] : null;
         if (is_string($value)) {
+            if ($maxLength !== null && mb_strlen($value) > $maxLength) {
+                $fail('is too long');
+            }
             if (! str_starts_with(ltrim($value), '{')) {
                 $fail('must be a JSON object');
             }
@@ -719,6 +733,9 @@ final class SettingsService
         }
         if (! is_array($value) || (array_is_list($value) && $value !== [])) {
             $fail('must be a JSON object');
+        }
+        if ($maxLength !== null && mb_strlen(json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)) > $maxLength) {
+            $fail('is too long');
         }
         if (count($value) > (int) config('javmeta_settings.validation.max_json_entries', 50)) {
             $fail('has too many entries');
@@ -760,6 +777,17 @@ final class SettingsService
     }
 
     /** @param array<string, mixed> $definition */
+    private function storedValue(string $key, array $definition, mixed $stored): mixed
+    {
+        $value = $this->fromStorage($definition, $stored);
+        if (($definition['shape'] ?? null) === 'source_gap_override_map') {
+            return $this->validate($key, $definition, $value);
+        }
+
+        return $value;
+    }
+
+    /** @param array<string, mixed> $definition */
     private function storageType(array $definition): string
     {
         if ($definition['nullable'] ?? false) {
@@ -779,6 +807,38 @@ final class SettingsService
      */
     private function validateJsonShape(string $key, string $shape, array $value, callable $fail): void
     {
+        if ($shape === 'source_gap_override_map') {
+            $knownSources = array_fill_keys(array_map('strval', array_keys((array) config('javmeta_sources.sources', []))), true);
+            if (Schema::hasTable('sources')) {
+                foreach (Source::query()->pluck('slug') as $sourceSlug) {
+                    $knownSources[(string) $sourceSlug] = true;
+                }
+            }
+
+            foreach ($value as $slug => $bounds) {
+                if (! is_string($slug) || preg_match('/^[a-z0-9][a-z0-9_-]*$/', $slug) !== 1 || ! is_array($bounds) || array_is_list($bounds)) {
+                    $fail('must map source slugs to min, default, and max gap values');
+                }
+                if (! isset($knownSources[$slug])) {
+                    $fail("references unknown source [{$slug}]");
+                }
+                $fields = array_keys($bounds);
+                sort($fields);
+                if ($fields !== ['default', 'max', 'min']) {
+                    $fail('each source must define only min, default, and max');
+                }
+                foreach ($bounds as $gap) {
+                    if ((! is_int($gap) && ! is_float($gap)) || ! is_finite((float) $gap) || $gap < 0.25 || $gap > 600) {
+                        $fail('gap values must be numbers from 0.25 to 600 seconds');
+                    }
+                }
+                if ($bounds['min'] > $bounds['default'] || $bounds['default'] > $bounds['max']) {
+                    $fail('each source must satisfy min <= default <= max');
+                }
+            }
+
+            return;
+        }
         if ($shape === 'queue_worker_map') {
             $queues = (array) config('javmeta_queues.horizon_names', []);
             foreach ($value as $queue => $workers) {

@@ -9,24 +9,45 @@ use InvalidArgumentException;
 
 final class SourceThrottle
 {
+    private readonly SourceGapPolicy $gapPolicy;
+
+    public function __construct(?SourceGapPolicy $gapPolicy = null)
+    {
+        $this->gapPolicy = $gapPolicy ?? new SourceGapPolicy();
+    }
+
     public function currentGap(Source|string $source): float
     {
         $model = $this->source($source);
 
-        return (float) ($model->gap_seconds_current ?? $model->gap_seconds_default);
+        return $this->gapPolicy->adaptiveGap($model);
+    }
+
+    public function isOverridden(Source|string $source): bool
+    {
+        $model = $this->source($source);
+
+        return $this->gapPolicy->isOverridden((string) $model->getKey());
     }
 
     public function onSuccess(Source|string $source): Source
     {
         $model = $this->source($source);
-        $minimum = (float) ($model->gap_seconds_min ?? $model->gap_seconds_default);
+        $overridden = $this->gapPolicy->isOverridden((string) $model->getKey());
+        $minimum = $overridden
+            ? $this->gapPolicy->describe((string) $model->getKey(), $model)['effective']['min']
+            : (float) ($model->gap_seconds_min ?? $model->gap_seconds_default);
         $current = $this->currentGap($model);
         // Recover quickly from a big gap: 10 percent of the distance to the minimum (at least the old fixed step).
         $step = max(0.5, $minimum * 0.10, ($current - $minimum) * 0.10);
 
-        $model->forceFill([
-            'gap_seconds_current' => max($minimum, $current - $step),
-        ])->save();
+        $next = max($minimum, $current - $step);
+        if ($overridden) {
+            $bounds = $this->gapPolicy->describe((string) $model->getKey(), $model)['effective'];
+            $next = $this->gapPolicy->clamp($next, $bounds);
+        }
+
+        $model->forceFill(['gap_seconds_current' => $next])->save();
 
         return $model->refresh();
     }
@@ -38,18 +59,32 @@ final class SourceThrottle
     public function onFailure(Source|string $source, ?string $errorCode = null): Source
     {
         $model = $this->source($source);
-        $maximum = (float) ($model->gap_seconds_max ?? $model->gap_seconds_default);
-        $current = max($this->currentGap($model), 1.0);
+        $overridden = $this->gapPolicy->isOverridden((string) $model->getKey());
+        $bounds = $this->gapPolicy->describe((string) $model->getKey(), $model)['effective'];
+        $maximum = $overridden
+            ? $bounds['max']
+            : (float) ($model->gap_seconds_max ?? $model->gap_seconds_default);
+        $current = $this->currentGap($model);
+        if (! $overridden) {
+            $current = max($current, 1.0);
+        }
+        $blockedMaximum = $overridden
+            ? $maximum
+            : max($maximum, (float) config('javmeta_queues.gap_blocked_max_seconds', 600));
 
         $next = match (true) {
             in_array($errorCode, ['rate_limited', 'blocked', 'challenge'], true) => min(
-                max($maximum, (float) config('javmeta_queues.gap_blocked_max_seconds', 600)),
+                $blockedMaximum,
                 $current * 2,
             ),
             in_array($errorCode, ['timeout', 'network'], true) => min($maximum, $current * 1.5),
             in_array($errorCode, ['parse_failed', 'normalization_failed', 'not_found', 'soft404', 'gone', 'unsupported_url', 'ambiguous_url', 'adapter_not_found'], true) => $current,
             default => min($maximum, $current * 2),
         };
+
+        if ($overridden) {
+            $next = $this->gapPolicy->clamp($next, $bounds);
+        }
 
         $model->forceFill(['gap_seconds_current' => $next])->save();
 

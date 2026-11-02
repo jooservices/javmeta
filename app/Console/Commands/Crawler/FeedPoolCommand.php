@@ -99,7 +99,7 @@ final class FeedPoolCommand extends Command
                 $slug = (string) $slug;
                 $sourceActivity = $activity[$slug] ?? ['waiting' => 0, 'started' => 0];
                 $sourceSnapshots[$slug] = [
-                    'budget' => max(1, (int) floor($horizon / max(1.0, $gapOf($slug)))),
+                    'budget' => max(1, (int) floor($horizon / $gapOf($slug))),
                     'started' => (int) $sourceActivity['started'],
                     'waiting' => (int) $sourceActivity['waiting'],
                 ];
@@ -234,7 +234,8 @@ final class FeedPoolCommand extends Command
     {
         $sources = Source::query()->get()->keyBy('slug');
         foreach ($sources as $slug => $source) {
-            $sourceGaps[(string) $slug] = max(1.0, $throttle->currentGap($source));
+            $gap = $throttle->currentGap($source);
+            $sourceGaps[(string) $slug] = $throttle->isOverridden($source) ? $gap : max(1.0, $gap);
         }
 
         return static function (string $slug) use (&$sourceGaps): float {

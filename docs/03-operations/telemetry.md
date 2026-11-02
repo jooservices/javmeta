@@ -17,7 +17,8 @@ environment.
 
 | Metric stream | Labels | Emitted data |
 | --- | --- | --- |
-| `javmeta_source_gap_seconds` | `source_slug` | Current configured source gap. |
+| `javmeta_source_gap_seconds` | `source_slug`, `gap_source` | Current adaptive source gap in seconds, clamped to active override bounds. `gap_source` is `override` or `definition`. |
+| `javmeta_source_gap_effective_seconds` | `source_slug`, `gap_source` | Effective default gap in seconds after applying `crawl.source_gap_overrides`; compare with the adaptive gauge to see recovery or backoff. |
 | `javmeta_source_last_success_age_seconds` | `source_slug` | Age in seconds since the source's last successful crawl; `-1` means no success is recorded. |
 | `javmeta_source_past_due` | `source_slug` | 1 when an enabled source exceeded its manifest cycle plus one scheduler sweep, or global fallback; otherwise 0. |
 | `javmeta_crawl_queue_depth` | `status` | Current queue rows by state. |
@@ -25,7 +26,7 @@ environment.
 | `javmeta_crawl_dispatch_age_seconds` | — | Seconds since the feed pool last dispatched a crawl job; `-1` means no dispatch is recorded. |
 | `javmeta_crawl_dispatch_stale` | `severity` | 1 when due crawl work has exceeded the warning or critical dispatch-age threshold; 0 otherwise. Thresholds come from database settings. |
 | `javmeta_crawl_queue_avg_attempts` | — | Average attempts for pending and failed queue rows. |
-| `javmeta_feed_source_budget` | `source_slug` | Per-source `max(1, floor(horizon / max(1, gap)))` budget from the latest feed run in the previous minute. |
+| `javmeta_feed_source_budget` | `source_slug` | Per-source budget from the latest feed run in the previous minute: `max(1, floor(horizon / gap))`; the one-second minimum applies when no override is active. |
 | `javmeta_feed_source_started` | `source_slug` | Per-source requests started in the pacing horizon, from the latest feed run in the previous minute. |
 | `javmeta_feed_source_waiting` | `source_slug` | Per-source claimed rows without a start time, from the latest feed run in the previous minute. |
 | `javmeta_feed_source_dispatched_1m` | `source_slug` | Per-source rows dispatched by feed-pool runs in the previous minute. |

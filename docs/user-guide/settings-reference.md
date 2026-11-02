@@ -396,6 +396,12 @@ Cứ mỗi số request này, thử Playwright trước để phát hiện khi n
 
 Số nguyên; từ 1 đến 1000. Mã mục: `crawl.fetch_method_probe_interval`.
 
+### Khoảng request ghi đè theo nguồn (JSON)
+
+Ánh xạ mã nguồn đã cấu hình hoặc đã lưu sang min, default và max từ 0,25 đến 600 giây; để trống thì giữ nhịp mặc định.
+
+Đối tượng JSON; cấu trúc do ứng dụng quy định. Mã mục: `crawl.source_gap_overrides`.
+
 ### Thời gian chờ khi bị chặn (giây, cách nhau bằng dấu phẩy)
 
 Mỗi lần bị chặn chờ theo từng giá trị; hết danh sách thì việc thất bại.

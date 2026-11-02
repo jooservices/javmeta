@@ -143,6 +143,7 @@ changes made in **Settings** remain authoritative across deployments.
 
 The Crawl & sources table shows each source’s effective lane (Trực tiếp or Trình duyệt). Configure lane thresholds, pins and the split switch in Cài đặt → Hàng đợi crawl.
 The same group exposes **Feed interval (seconds)** (`queue.feed_interval_seconds`), with choices 5, 10, 15, 30 and 60. The default is 10 seconds; 60 restores the former once-per-minute cadence. Changes apply on the next scheduler minute.
+The **Vòng lặp crawl** group exposes **Khoảng request ghi đè theo nguồn** (`crawl.source_gap_overrides`), a validated JSON map of per-source min/default/max gaps. Operators can inspect the effective and adaptive values with `crawler:source-gap` and `crawler:feed-diagnostics`.
 
 Product-code recovery for javbtc, ffjav, tokyohot and 141jav preserves source
 product identifiers and uses a stable source-scoped URL identity when needed.

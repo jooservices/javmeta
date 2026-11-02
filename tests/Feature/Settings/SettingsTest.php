@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Settings;
 
+use App\Models\Source;
 use App\Models\User;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Monolog\Logger;
@@ -170,6 +171,62 @@ final class SettingsTest extends TestCase
         }
         $settings->set('worker.node_overrides', ['main' => ['default' => 2, 'queues' => ['listing' => 3]]]);
         $this->assertSame(['main' => ['default' => 2, 'queues' => ['listing' => 3]]], config('javmeta_queues.worker_node_overrides'));
+    }
+
+    public function test_source_gap_override_map_accepts_valid_values_and_rejects_invalid_bounds(): void
+    {
+        $settings = app(SettingsService::class);
+        $overrides = ['javdb' => ['min' => 1.25, 'default' => 8, 'max' => 60]];
+
+        $settings->set('crawl.source_gap_overrides', $overrides);
+
+        self::assertSame($overrides, config('javmeta_queues.source_gap_overrides'));
+        self::assertSame($overrides, $settings->get('crawl.source_gap_overrides'));
+        foreach ([
+            ['javdb' => ['min' => 1, 'default' => 8]],
+            ['javdb' => ['min' => 8, 'default' => 1, 'max' => 60]],
+            ['javdb' => ['min' => 0.1, 'default' => 1, 'max' => 60]],
+            ['javdb' => ['min' => 1, 'default' => 8, 'max' => 601]],
+            ['bad slug!' => ['min' => 1, 'default' => 8, 'max' => 60]],
+            ['javd' => ['min' => 1, 'default' => 8, 'max' => 60]],
+            ['javdb' => ['min' => '1', 'default' => 8, 'max' => 60]],
+            '{' . str_repeat(' ', 10000) . '}',
+        ] as $invalid) {
+            try {
+                $settings->set('crawl.source_gap_overrides', $invalid);
+                self::fail('Invalid source gap overrides must be rejected.');
+            } catch (\InvalidArgumentException) {
+                self::assertSame($overrides, config('javmeta_queues.source_gap_overrides'));
+            }
+        }
+
+        Source::factory()->create(['slug' => 'persisted-site']);
+        $persistedOverride = ['persisted-site' => ['min' => 2, 'default' => 5, 'max' => 10]];
+        $settings->set('crawl.source_gap_overrides', $persistedOverride);
+        self::assertSame($persistedOverride, $settings->get('crawl.source_gap_overrides'));
+    }
+
+    public function test_malformed_stored_source_gap_json_uses_the_code_default(): void
+    {
+        $this->store->set('settings.crawl.source_gap_overrides', '{');
+        $settings = app(SettingsService::class);
+
+        self::assertTrue($settings->apply());
+        self::assertSame([], config('javmeta_queues.source_gap_overrides'));
+    }
+
+    public function test_json_settings_without_a_declared_max_length_keep_their_existing_limit(): void
+    {
+        $settings = app(SettingsService::class);
+        $overrides = [];
+        for ($index = 0; $index < 50; $index++) {
+            $overrides['worker@' . str_repeat('a', 180) . $index] = ['default' => 2];
+        }
+        self::assertGreaterThan(10000, mb_strlen(json_encode($overrides, JSON_THROW_ON_ERROR)));
+
+        $settings->set('worker.node_overrides', $overrides);
+
+        self::assertSame($overrides, $settings->get('worker.node_overrides'));
     }
 
     public function test_startup_health_settings_are_database_backed_and_validate_role_members(): void
@@ -568,11 +625,17 @@ final class SettingsTest extends TestCase
         $page = $this->getJson('/ui-admin/settings')->assertOk();
         $this->assertArrayHasKey('queue', $page->json('data.groups'));
         $this->assertNotEmpty($page->json('data.settings'));
+        $sourceGapSetting = collect($page->json('data.settings'))->firstWhere('key', 'crawl.source_gap_overrides');
+        $this->assertSame('json', $sourceGapSetting['type']);
+        $this->assertSame(10000, $sourceGapSetting['max_length']);
 
         $this->putJson('/ui-admin/settings', ['settings' => ['queue.feed_pool_limit' => 120, 'alerts.enabled' => false]])->assertOk()->assertJsonPath('data.applied.0', 'queue.feed_pool_limit')->assertJsonPath('data.apply_after_seconds', 30);
         $this->assertSame(120, collect($this->getJson('/ui-admin/settings')->json('data.settings'))->firstWhere('key', 'queue.feed_pool_limit')['value']);
 
         $this->putJson('/ui-admin/settings', ['settings' => ['queue.feed_pool_limit' => -5]])->assertStatus(422)->assertJsonStructure(['data' => ['errors' => ['queue.feed_pool_limit']]]);
+        $this->putJson('/ui-admin/settings', ['settings' => ['crawl.source_gap_overrides' => ['javdb' => ['min' => 5, 'default' => 2, 'max' => 60]]]])
+            ->assertStatus(422)
+            ->assertJsonStructure(['data' => ['errors' => ['crawl.source_gap_overrides']]]);
         $this->putJson('/ui-admin/settings', [])->assertStatus(422);
     }
 

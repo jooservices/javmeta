@@ -11,6 +11,7 @@ final class MetricStreams
 
     public const NAMES = [
         'source_gap_seconds' => self::PREFIX . 'source_gap_seconds',
+        'source_gap_effective_seconds' => self::PREFIX . 'source_gap_effective_seconds',
         'source_last_success_age_seconds' => self::PREFIX . 'source_last_success_age_seconds',
         'source_past_due' => self::PREFIX . 'source_past_due',
         'crawl_queue_depth' => self::PREFIX . 'crawl_queue_depth',

@@ -17,6 +17,8 @@ use App\Observability\MetricStreams;
 use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Crawl\CrawlerxFetchMethodPlan;
 use App\Services\Crawl\FeedPoolDiagnostics;
+use App\Services\Crawl\SourceGapPolicy;
+use App\Services\Crawl\SourceThrottle;
 use App\Services\Health\CrawlDispatchHeartbeat;
 use App\Services\Search\ElasticsearchHttpClient;
 use App\Services\Search\ElasticsearchRequestHealth;
@@ -50,6 +52,8 @@ final class PublishMetricsCommand extends Command
         CrawlDispatchHeartbeat $dispatchHeartbeat,
         CrawlerxFetchMethodPlan $fetchMethodPlan,
         FeedPoolDiagnostics $feedPoolDiagnostics,
+        SourceGapPolicy $gapPolicy,
+        SourceThrottle $throttle,
     ): int {
         if (! $client->enabled()) {
             $this->components->info('OpenObserve disabled; skipping metrics publish.');
@@ -58,7 +62,7 @@ final class PublishMetricsCommand extends Command
         }
 
         $points = array_merge(
-            $this->sourceMetrics($sourceFreshness),
+            $this->sourceMetrics($sourceFreshness, $gapPolicy, $throttle),
             $this->queueMetrics(),
             $feedPoolDiagnostics->metricPointsForMinute(CarbonImmutable::now()->startOfMinute()->subMinute()),
             $this->crawlDispatchMetrics($dispatchHeartbeat),
@@ -92,16 +96,25 @@ final class PublishMetricsCommand extends Command
      * @param  SourceScheduleFreshness  $sourceFreshness  Schedule rules for each enabled source.
      * @return list<array{name: string, value: float|int, labels?: array<string, string>}>
      */
-    private function sourceMetrics(SourceScheduleFreshness $sourceFreshness): array
+    private function sourceMetrics(SourceScheduleFreshness $sourceFreshness, SourceGapPolicy $gapPolicy, SourceThrottle $throttle): array
     {
         $points = [];
         $defaultStaleSeconds = (int) config('javmeta_alerts.watchdog.source_stale_seconds', 86400);
 
         foreach (Source::query()->get() as $source) {
-            $labels = ['source_slug' => $source->slug];
+            $gapDetails = $gapPolicy->describe((string) $source->getKey(), $source);
+            $labels = [
+                'source_slug' => (string) $source->getKey(),
+                'gap_source' => $gapDetails['overridden'] ? 'override' : 'definition',
+            ];
             $points[] = [
                 'name' => MetricStreams::NAMES['source_gap_seconds'],
-                'value' => (float) $source->gap_seconds_current,
+                'value' => $throttle->currentGap($source),
+                'labels' => $labels,
+            ];
+            $points[] = [
+                'name' => MetricStreams::NAMES['source_gap_effective_seconds'],
+                'value' => $gapDetails['effective']['default'],
                 'labels' => $labels,
             ];
             $age = $source->last_success_at !== null

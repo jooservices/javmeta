@@ -66,4 +66,16 @@ final class SettingsRegistryTest extends TestCase
         self::assertSame(120, config('javmeta_queues.feed_diagnostics.retention_minutes'));
         self::assertSame(3, $definitions['queue.feed_diagnostics.retention_minutes']['min']);
     }
+
+    public function test_source_gap_overrides_setting_is_registered_as_a_json_map(): void
+    {
+        $definitions = config('javmeta_settings.definitions');
+        $definition = $definitions['crawl.source_gap_overrides'];
+
+        self::assertSame('json', $definition['type']);
+        self::assertSame('source_gap_override_map', $definition['shape']);
+        self::assertSame(['javmeta_queues.source_gap_overrides'], $definition['config']);
+        self::assertSame(10000, $definition['max_length']);
+        self::assertSame([], config('javmeta_queues.source_gap_overrides'));
+    }
 }
