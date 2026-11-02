@@ -7,7 +7,7 @@
   "stream_name": "javmeta_crawl_dispatch_stale",
   "query_condition": {
     "type": "sql",
-    "sql": "SELECT _timestamp, severity, value FROM \"javmeta_crawl_dispatch_stale\" WHERE severity = 'warning' AND value > 0"
+    "sql": "SELECT _timestamp, severity, value FROM (SELECT _timestamp, severity, value FROM \"javmeta_crawl_dispatch_stale\" WHERE severity = 'warning' AND _timestamp >= now() - INTERVAL '5 minutes' ORDER BY _timestamp DESC LIMIT 1) AS latest WHERE value > 0"
   },
   "trigger_condition": {
     "frequency_type": "minutes",

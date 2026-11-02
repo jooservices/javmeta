@@ -32,7 +32,7 @@ product-specific text.
 | Crawl stalled/recovered | Due pending work and no source success for 30 minutes | Telegram + activity log |
 | Claimed queue stuck/recovered | Claimed crawl item older than 30 minutes | Telegram + activity log |
 | Due crawl backlog high/recovered | At least `cleanup.pending_queue_limit` due pending rows; default 1,000 | Telegram + activity log |
-| Crawl dispatch delayed | Due crawl rows remain pending without a recent feed-pool dispatch; warning after `alerts.crawl_dispatch_warning_seconds` (60 seconds), critical after `alerts.crawl_dispatch_critical_seconds` (180 seconds); checked every minute | OpenObserve alert rules; Telegram destination |
+| Crawl dispatch delayed | Due crawl rows remain pending without a recent feed-pool dispatch; warning after `alerts.crawl_dispatch_warning_seconds` (60 seconds), critical after `alerts.crawl_dispatch_critical_seconds` (180 seconds); checked every minute | OpenObserve alert rules; separate warning and critical Telegram labels |
 | Backup missing/stale/recovered | Manifest missing or older than 26 hours; checked every minute, one message per cause per hour | Telegram + activity log |
 | Consumer lookup miss | Query not in the catalogue; per normalized query, one message per hour | Telegram + activity log |
 | Source quality alert | Source stale, soft-404, or repeated title-needs-review signals | Telegram + activity log |

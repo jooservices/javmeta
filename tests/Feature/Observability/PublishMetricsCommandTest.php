@@ -11,15 +11,25 @@ use App\Models\Source;
 use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Health\CrawlDispatchHeartbeat;
 use App\Services\Search\ElasticsearchRequestHealth;
+use App\Services\Settings\SettingsService;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use JOOservices\LaravelConfig\Contracts\ConfigStore;
+use JOOservices\LaravelConfig\Testing\FakeConfigStore;
 use Tests\TestCase;
 
 final class PublishMetricsCommandTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        SettingsService::forgetDefaults();
+
+        parent::tearDown();
+    }
 
     public function test_metrics_command_is_registered_with_legacy_alias(): void
     {
@@ -63,11 +73,13 @@ final class PublishMetricsCommandTest extends TestCase
 
     public function test_command_publishes_dispatch_age_and_database_configured_stale_thresholds(): void
     {
-        config()->set([
-            'cache.default' => 'array',
-            'javmeta_alerts.watchdog.crawl_dispatch_warning_seconds' => 60,
-            'javmeta_alerts.watchdog.crawl_dispatch_critical_seconds' => 180,
-        ]);
+        config()->set('cache.default', 'array');
+        SettingsService::forgetDefaults();
+        $this->app->instance(ConfigStore::class, new FakeConfigStore());
+        $this->app->forgetInstance(SettingsService::class);
+        $settings = app(SettingsService::class);
+        $settings->set('alerts.crawl_dispatch_warning_seconds', 90);
+        $settings->set('alerts.crawl_dispatch_critical_seconds', 240);
         Cache::store('array')->flush();
         app(CrawlDispatchHeartbeat::class)->record();
         $this->travel(200)->seconds();
@@ -112,7 +124,7 @@ final class PublishMetricsCommandTest extends TestCase
 
             return $age === 200.0
                 && ($stale['warning'] ?? null) === 1.0
-                && ($stale['critical'] ?? null) === 1.0;
+                && ($stale['critical'] ?? null) === 0.0;
         });
     }
 

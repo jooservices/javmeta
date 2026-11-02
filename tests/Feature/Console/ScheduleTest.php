@@ -147,12 +147,22 @@ final class ScheduleTest extends TestCase
             $this->registeredEvents(),
             static fn($event): bool => ! $event instanceof CallbackEvent,
         );
+        $expectedCommands = [];
+        foreach ($commandEvents as $event) {
+            preg_match('/artisan[\'"]?\s+([^\s\'"]+)/', (string) $event->command, $matches);
+            $expectedCommands[] = $matches[1] ?? '';
+        }
+        $remainingCommands = $expectedCommands;
 
         Log::shouldReceive('error')
             ->times(count($commandEvents))
-            ->withArgs(static fn(string $message, array $context): bool => $message === 'Scheduled command failed.'
-                && isset($context['command'])
-                && is_string($context['command']))
+            ->withArgs(static function (string $message, array $context) use (&$remainingCommands): bool {
+                $expectedCommand = array_shift($remainingCommands);
+
+                return $message === 'Scheduled command failed.'
+                    && $expectedCommand !== null
+                    && ($context['command'] ?? null) === $expectedCommand;
+            })
             ->andReturnNull();
 
         foreach ($commandEvents as $event) {

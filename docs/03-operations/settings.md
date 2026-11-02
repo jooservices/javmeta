@@ -25,7 +25,8 @@ New features (Telegram follow notifications and bot, the library scanner) read t
 `alerts.crawl_dispatch_warning_seconds` (default 60) and
 `alerts.crawl_dispatch_critical_seconds` (default 180) control the warning and
 critical OpenObserve alert states for due crawl work that has not been
-dispatched. Both values are stored in the database and appear automatically in
+dispatched. The critical age must be greater than or equal to the warning age.
+Both values are stored in the database and appear automatically in
 Cài đặt → Cảnh báo. `obs:publish-metrics` publishes the dispatch age and the
 threshold-derived state every minute; the OpenObserve rules send matching
 alerts to the configured Telegram destination. Idle queues do not alert.

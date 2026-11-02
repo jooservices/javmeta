@@ -14,6 +14,8 @@ final class ObservabilityImporter
 {
     private const TELEGRAM_TEMPLATE_NAME = 'javmeta_telegram';
 
+    private const TELEGRAM_CRITICAL_TEMPLATE_NAME = 'javmeta_telegram_critical';
+
     private ?HttpClient $client = null;
 
     /**
@@ -52,8 +54,15 @@ final class ObservabilityImporter
         $telegram = $this->telegramConfiguration();
         $this->assertConfiguration($telegram);
 
-        $template = $this->telegramTemplate($telegram['chat_id'], (string) config('app.env', 'unknown'));
-        $destination = $this->telegramDestination($telegram);
+        $environment = (string) config('app.env', 'unknown');
+        $template = $this->telegramTemplate(self::TELEGRAM_TEMPLATE_NAME, 'WARNING', $telegram['chat_id'], $environment);
+        $criticalTemplate = $this->telegramTemplate(self::TELEGRAM_CRITICAL_TEMPLATE_NAME, 'CRITICAL', $telegram['chat_id'], $environment);
+        $destination = $this->telegramDestination($telegram, self::TELEGRAM_TEMPLATE_NAME, self::TELEGRAM_TEMPLATE_NAME);
+        $criticalDestination = $this->telegramDestination(
+            $telegram,
+            self::TELEGRAM_CRITICAL_TEMPLATE_NAME,
+            self::TELEGRAM_CRITICAL_TEMPLATE_NAME,
+        );
         $templates = $this->resources($this->path('/alerts/templates'));
         $destinations = $this->resources($this->path('/alerts/destinations'));
         $dashboardResources = $this->resources($this->path('/dashboards'), 'dashboards');
@@ -79,6 +88,8 @@ final class ObservabilityImporter
             'alerts_updated' => 0,
             'alerts_pending' => [],
         ];
+        $this->upsertNamed($this->path('/alerts/templates'), $criticalTemplate, $templates);
+        $this->upsertNamed($this->path('/alerts/destinations'), $criticalDestination, $destinations);
 
         foreach ($dashboards as $dashboard) {
             if ($this->upsertDashboard($dashboard, $dashboardResources)) {
@@ -89,7 +100,7 @@ final class ObservabilityImporter
         }
 
         foreach ($alerts as $alert) {
-            $alert['destinations'] = [self::TELEGRAM_TEMPLATE_NAME];
+            $alert['destinations'] ??= [self::TELEGRAM_TEMPLATE_NAME];
             try {
                 if ($this->upsertAlert($alert, $alertResources)) {
                     $result['alerts_created']++;
@@ -156,6 +167,15 @@ final class ObservabilityImporter
             if (isset($names[$name])) {
                 throw new RuntimeException('Alert names must be unique: ' . $name);
             }
+            $destinations = $alert['destinations'] ?? [self::TELEGRAM_TEMPLATE_NAME];
+            if (! is_array($destinations) || ! array_is_list($destinations) || $destinations === []) {
+                throw new RuntimeException('Alert destinations must be a non-empty list when configured.');
+            }
+            foreach ($destinations as $destinationName) {
+                if (! is_string($destinationName) || $destinationName === '') {
+                    throw new RuntimeException('Alert destination names must be non-empty strings.');
+                }
+            }
             $names[$name] = true;
         }
     }
@@ -219,15 +239,15 @@ final class ObservabilityImporter
     }
 
     /** @return array<string, mixed> */
-    private function telegramTemplate(string $chatId, string $environment): array
+    private function telegramTemplate(string $name, string $severity, string $chatId, string $environment): array
     {
         return [
-            'name' => self::TELEGRAM_TEMPLATE_NAME,
-            'title' => 'JAVMETA Telegram alert',
+            'name' => $name,
+            'title' => 'JAVMETA Telegram ' . strtolower($severity) . ' alert',
             'type' => 'http',
             'body' => json_encode([
                 'chat_id' => $chatId,
-                'text' => '[javmeta:' . $environment . '] [ALERT][WARNING][OPEN] {alert_name} triggered for {stream_name}. {rows}',
+                'text' => '[javmeta:' . $environment . '] [ALERT][' . $severity . '][OPEN] {alert_name} triggered for {stream_name}. {rows}',
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
         ];
     }
@@ -235,14 +255,14 @@ final class ObservabilityImporter
     /** @param array{bot_token: string, chat_id: string, api_base: string} $telegram
      *  @return array<string, mixed>
      */
-    private function telegramDestination(array $telegram): array
+    private function telegramDestination(array $telegram, string $name, string $template): array
     {
         return [
-            'name' => self::TELEGRAM_TEMPLATE_NAME,
+            'name' => $name,
             'url' => rtrim($telegram['api_base'], '/') . '/bot' . $telegram['bot_token'] . '/sendMessage',
             'method' => 'post',
             'type' => 'http',
-            'template' => self::TELEGRAM_TEMPLATE_NAME,
+            'template' => $template,
             'skip_tls_verify' => false,
         ];
     }

@@ -24,11 +24,11 @@ final class ImportTest extends TestCase
 
         $this->respond('GET', '/api/javmeta_it/alerts/templates', [
             [],
-            [['name' => 'javmeta_telegram']],
+            [['name' => 'javmeta_telegram'], ['name' => 'javmeta_telegram_critical']],
         ]);
         $this->respond('GET', '/api/javmeta_it/alerts/destinations', [
             [],
-            [['name' => 'javmeta_telegram', 'type' => 'http']],
+            [['name' => 'javmeta_telegram', 'type' => 'http'], ['name' => 'javmeta_telegram_critical', 'type' => 'http']],
         ]);
         $this->respond('GET', '/api/javmeta_it/dashboards', [
             ['dashboards' => []],
@@ -55,10 +55,10 @@ final class ImportTest extends TestCase
             ]],
         ]);
         foreach ([
-            ['POST', '/api/javmeta_it/alerts/templates'],
             ['PUT', '/api/javmeta_it/alerts/templates/javmeta_telegram'],
-            ['POST', '/api/javmeta_it/alerts/destinations'],
+            ['PUT', '/api/javmeta_it/alerts/templates/javmeta_telegram_critical'],
             ['PUT', '/api/javmeta_it/alerts/destinations/javmeta_telegram'],
+            ['PUT', '/api/javmeta_it/alerts/destinations/javmeta_telegram_critical'],
             ['PUT', '/api/javmeta_it/dashboards/operations-id'],
             ['PUT', '/api/javmeta_it/dashboards/quality-id'],
             ['PUT', '/api/javmeta_it/dashboards/crawl-id'],
@@ -76,6 +76,8 @@ final class ImportTest extends TestCase
         ] as [$method, $path]) {
             $this->respond($method, $path, [[]]);
         }
+        $this->respond('POST', '/api/javmeta_it/alerts/templates', [[], []]);
+        $this->respond('POST', '/api/javmeta_it/alerts/destinations', [[], []]);
         $this->respond('POST', '/api/javmeta_it/dashboards', [[], [], [], []]);
         $this->respond('POST', '/api/v2/javmeta_it/alerts', array_fill(0, 10, []));
 
@@ -92,10 +94,12 @@ final class ImportTest extends TestCase
             $counts[$key] = ($counts[$key] ?? 0) + 1;
         }
 
-        self::assertSame(1, $counts['POST /api/javmeta_it/alerts/templates']);
+        self::assertSame(2, $counts['POST /api/javmeta_it/alerts/templates']);
         self::assertSame(1, $counts['PUT /api/javmeta_it/alerts/templates/javmeta_telegram']);
-        self::assertSame(1, $counts['POST /api/javmeta_it/alerts/destinations']);
+        self::assertSame(1, $counts['PUT /api/javmeta_it/alerts/templates/javmeta_telegram_critical']);
+        self::assertSame(2, $counts['POST /api/javmeta_it/alerts/destinations']);
         self::assertSame(1, $counts['PUT /api/javmeta_it/alerts/destinations/javmeta_telegram']);
+        self::assertSame(1, $counts['PUT /api/javmeta_it/alerts/destinations/javmeta_telegram_critical']);
         self::assertSame(4, $counts['POST /api/javmeta_it/dashboards']);
         self::assertSame(1, $counts['PUT /api/javmeta_it/dashboards/operations-id']);
         self::assertSame(1, $counts['PUT /api/javmeta_it/dashboards/quality-id']);
@@ -125,9 +129,16 @@ final class ImportTest extends TestCase
         self::assertSame('javmeta_telegram', $destination['name']);
         self::assertSame('https://api.telegram.org/botunit-test-token/sendMessage', $destination['url']);
         self::assertSame('javmeta_telegram', $destination['template']);
+        $criticalDestination = $this->requestBody('POST', '/api/javmeta_it/alerts/destinations', 'javmeta_telegram_critical');
+        self::assertSame('javmeta_telegram_critical', $criticalDestination['template']);
         $template = $this->requestBody('POST', '/api/javmeta_it/alerts/templates');
         $templateMessage = json_decode($template['body'], true, 512, JSON_THROW_ON_ERROR);
         self::assertSame('[javmeta:testing] [ALERT][WARNING][OPEN] {alert_name} triggered for {stream_name}. {rows}', $templateMessage['text']);
+        $criticalTemplate = $this->requestBody('POST', '/api/javmeta_it/alerts/templates', 'javmeta_telegram_critical');
+        $criticalTemplateMessage = json_decode($criticalTemplate['body'], true, 512, JSON_THROW_ON_ERROR);
+        self::assertSame('[javmeta:testing] [ALERT][CRITICAL][OPEN] {alert_name} triggered for {stream_name}. {rows}', $criticalTemplateMessage['text']);
+        $criticalAlert = $this->requestBody('POST', '/api/v2/javmeta_it/alerts', 'javmeta_crawl_dispatch_critical');
+        self::assertSame(['javmeta_telegram_critical'], $criticalAlert['destinations']);
 
         $dashboard = $this->requestBody('POST', '/api/javmeta_it/dashboards', 'JAVMETA Operations');
         self::assertSame('JAVMETA Operations', $dashboard['title']);
@@ -188,12 +199,20 @@ final class ImportTest extends TestCase
     public function test_alerts_for_streams_that_do_not_exist_yet_are_reported_pending_and_strict_fails(): void
     {
         $this->configureImporter();
-        $this->respond('GET', '/api/javmeta_it/alerts/templates', [[['name' => 'javmeta_telegram']], [['name' => 'javmeta_telegram']]]);
-        $this->respond('GET', '/api/javmeta_it/alerts/destinations', [[['name' => 'javmeta_telegram', 'type' => 'http']], [['name' => 'javmeta_telegram', 'type' => 'http']]]);
+        $this->respond('GET', '/api/javmeta_it/alerts/templates', [
+            [['name' => 'javmeta_telegram'], ['name' => 'javmeta_telegram_critical']],
+            [['name' => 'javmeta_telegram'], ['name' => 'javmeta_telegram_critical']],
+        ]);
+        $this->respond('GET', '/api/javmeta_it/alerts/destinations', [
+            [['name' => 'javmeta_telegram', 'type' => 'http'], ['name' => 'javmeta_telegram_critical', 'type' => 'http']],
+            [['name' => 'javmeta_telegram', 'type' => 'http'], ['name' => 'javmeta_telegram_critical', 'type' => 'http']],
+        ]);
         $this->respond('GET', '/api/javmeta_it/dashboards', [['dashboards' => []], ['dashboards' => []]]);
         $this->respond('GET', '/api/v2/javmeta_it/alerts', [['list' => []], ['list' => []]]);
         $this->respond('PUT', '/api/javmeta_it/alerts/templates/javmeta_telegram', [[], []]);
+        $this->respond('PUT', '/api/javmeta_it/alerts/templates/javmeta_telegram_critical', [[], []]);
         $this->respond('PUT', '/api/javmeta_it/alerts/destinations/javmeta_telegram', [[], []]);
+        $this->respond('PUT', '/api/javmeta_it/alerts/destinations/javmeta_telegram_critical', [[], []]);
         $this->respond('POST', '/api/javmeta_it/dashboards', array_fill(0, 8, []));
         // Every alert creation answers 404 as OpenObserve does for a stream without data.
         $this->respond('POST', '/api/v2/javmeta_it/alerts', array_fill(0, 20, ['code' => 404, 'message' => 'Stream not found']), 404);
@@ -261,6 +280,23 @@ final class ImportTest extends TestCase
         self::assertSame(5, $alert['trigger_condition']['period'] ?? null);
     }
 
+    public function test_crawl_dispatch_alerts_only_consider_the_latest_sample_from_the_evaluation_period(): void
+    {
+        foreach (['warning', 'critical'] as $severity) {
+            $alert = json_decode(
+                (string) file_get_contents(base_path("deploy/observability/alerts/javmeta_crawl_dispatch_{$severity}.json")),
+                true,
+                512,
+                JSON_THROW_ON_ERROR,
+            );
+            $sql = $alert['query_condition']['sql'] ?? '';
+
+            self::assertStringContainsString("severity = '{$severity}'", $sql);
+            self::assertStringContainsString("_timestamp >= now() - INTERVAL '5 minutes'", $sql);
+            self::assertStringContainsString('ORDER BY _timestamp DESC LIMIT 1) AS latest WHERE value > 0', $sql);
+        }
+    }
+
     public function test_it_fails_before_writing_when_telegram_credentials_are_missing(): void
     {
         $this->configureImporter();
@@ -306,7 +342,7 @@ final class ImportTest extends TestCase
         foreach (ClientBuilder::recorded() as $record) {
             if ($record->request->getMethod() === $method && $record->request->getUri()->getPath() === $path) {
                 $body = json_decode((string) $record->request->getBody(), true, 512, JSON_THROW_ON_ERROR);
-                if ($title === null || ($body['title'] ?? $body['name'] ?? null) === $title) {
+                if ($title === null || ($body['title'] ?? null) === $title || ($body['name'] ?? null) === $title) {
                     return $body;
                 }
             }

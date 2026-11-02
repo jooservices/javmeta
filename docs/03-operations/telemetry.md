@@ -77,7 +77,10 @@ The crawl dispatch age and severity series are exported by the existing
 `obs:publish-metrics` command. The stale series is active only while due crawl
 rows are pending, so an idle queue does not page. A missing dispatch timestamp
 is treated as stale when due work exists. OpenObserve warning and critical
-rules evaluate that series every minute; configure their age thresholds with
+rules evaluate only the newest sample in their bounded five-minute window every
+minute, so a stale sample cannot keep an alert active after recovery. The
+critical rule uses a separate Telegram destination with a `[CRITICAL]` label.
+Configure age thresholds with
 `alerts.crawl_dispatch_warning_seconds` and
 `alerts.crawl_dispatch_critical_seconds` on the Settings page.
 
