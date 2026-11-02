@@ -36,8 +36,8 @@ final class CrawlStatsRollup
         }
 
         if ($backfill && ! DB::table('crawl_fetch_attempts')
-            ->where('started_at', '>=', $from)
-            ->where('started_at', '<', $until)
+            ->where('started_at', '>=', $this->bound($from))
+            ->where('started_at', '<', $this->bound($until))
             ->exists()) {
             return ['hours' => 0, 'attempt_rows' => 0, 'elapsed_ms' => $this->elapsedMs($started)];
         }
@@ -64,8 +64,8 @@ final class CrawlStatsRollup
 
         $attempts = DB::table('crawl_fetch_attempts')
             ->select(['source_slug', 'lane', 'method', 'started_at', 'duration_ms', 'http_status', 'cf_mitigated', 'outcome', 'error_code'])
-            ->where('started_at', '>=', $hour)
-            ->where('started_at', '<', $hourUntil)
+            ->where('started_at', '>=', $this->bound($hour))
+            ->where('started_at', '<', $this->bound($hourUntil))
             ->orderBy('started_at')
             ->cursor();
         $aggregates = $this->aggregator->aggregate($attempts);
@@ -93,11 +93,11 @@ final class CrawlStatsRollup
         $now = now()->utc();
         if ($details !== []) {
             foreach ($details as &$detail) {
-                $detail['created_at'] = $now;
+                $detail['created_at'] = $this->bound($now);
             }
             unset($detail);
         }
-        $global['created_at'] = $now;
+        $global['created_at'] = $this->bound($now);
 
         DB::transaction(function () use ($details, $global): void {
             if ($details !== []) {
@@ -140,8 +140,8 @@ final class CrawlStatsRollup
         $data = [];
         $runs = DB::table('crawl_runs')
             ->selectRaw("{$expression} AS hour_at, SUM(movies_new) AS movies_new, SUM(movies_updated) AS movies_updated, SUM(proxy_bytes) AS bytes_total")
-            ->where('started_at', '>=', $from)
-            ->where('started_at', '<', $until)
+            ->where('started_at', '>=', $this->bound($from))
+            ->where('started_at', '<', $this->bound($until))
             ->groupByRaw($expression)
             ->get();
 
@@ -160,8 +160,8 @@ final class CrawlStatsRollup
         $performers = DB::table('performers')
             ->selectRaw("{$performerExpression} AS hour_at, COUNT(*) AS total")
             ->whereNotNull('first_seen_at')
-            ->where('first_seen_at', '>=', $from)
-            ->where('first_seen_at', '<', $until)
+            ->where('first_seen_at', '>=', $this->bound($from))
+            ->where('first_seen_at', '<', $this->bound($until))
             ->groupByRaw($performerExpression)
             ->get();
         foreach ($performers as $row) {
@@ -186,6 +186,14 @@ final class CrawlStatsRollup
         }
 
         return $data;
+    }
+
+    /** Bind a moment so a PostgreSQL session time zone other than UTC cannot shift the window of timestamptz columns. */
+    private function bound(\DateTimeInterface $moment): CarbonImmutable|string
+    {
+        $moment = CarbonImmutable::instance($moment);
+
+        return DB::connection()->getDriverName() === 'pgsql' ? $moment->utc()->format('Y-m-d H:i:sP') : $moment;
     }
 
     private function hourExpression(string $column, bool $withTimeZone = true): string
@@ -220,7 +228,7 @@ final class CrawlStatsRollup
     private function databaseRow(array $row): array
     {
         return [
-            'hour_at' => $row['hour_at'],
+            'hour_at' => $this->bound($row['hour_at']),
             'source_slug' => (string) ($row['source_slug'] ?? self::GLOBAL_SOURCE),
             'lane' => (string) ($row['lane'] ?? self::GLOBAL_LANE),
             'method' => (string) ($row['method'] ?? self::GLOBAL_METHOD),
@@ -237,7 +245,7 @@ final class CrawlStatsRollup
             'movies_updated' => $row['movies_updated'] ?? null,
             'performers_new' => $row['performers_new'] ?? null,
             'jobs_failed' => $row['jobs_failed'] ?? null,
-            'updated_at' => now()->utc(),
+            'updated_at' => $this->bound(now()->utc()->toImmutable()),
         ];
     }
 

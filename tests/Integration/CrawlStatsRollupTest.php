@@ -80,8 +80,8 @@ final class CrawlStatsRollupTest extends IntegrationTestCase
         try {
             DB::table('crawl_runs')->insert([
                 'source_slug' => 'onejav',
-                'started_at' => CarbonImmutable::parse('2026-11-02T12:15:00Z'),
-                'finished_at' => CarbonImmutable::parse('2026-11-02T12:20:00Z'),
+                'started_at' => CarbonImmutable::parse('2026-11-02T12:15:00Z')->format('Y-m-d H:i:sP'),
+                'finished_at' => CarbonImmutable::parse('2026-11-02T12:20:00Z')->format('Y-m-d H:i:sP'),
                 'status' => 'completed',
                 'movies_new' => 7,
                 'movies_updated' => 2,
