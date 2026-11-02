@@ -84,5 +84,7 @@ final class MetricStreams
         'alert_firing' => self::PREFIX . 'alert_firing',
         'alert_event_count' => self::PREFIX . 'alert_event_count',
         'notification_sent_total' => self::PREFIX . 'notification_sent_total',
+        'notifications_sent_total' => self::PREFIX . 'notifications_sent_total',
+        'notifications_suppressed_total' => self::PREFIX . 'notifications_suppressed_total',
     ];
 }

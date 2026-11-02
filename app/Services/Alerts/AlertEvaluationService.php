@@ -153,6 +153,10 @@ final class AlertEvaluationService
         if ((bool) config('javmeta_alerts.recovery_notice', true)) {
             $this->attemptRecovery($event, $rule, $condition);
         }
+        $templateKey = $this->messages->templateKey($rule);
+        if ($templateKey !== null) {
+            app(\App\Services\Notifications\NotificationPolicyDispatcher::class)->resolveCause($templateKey, $rule);
+        }
     }
 
     /** @param array{severity: string, value: float|int, threshold: float|int, context: array<string, mixed>} $condition */
@@ -242,7 +246,7 @@ final class AlertEvaluationService
     /** @param array{attempts_by_source: array<string, array{attempts: int, successes: int, blocked: int}>, enabled_sources: list<string>, hot_sources: list<string>, due_by_source: array<string, int>, postgres_connections: int|null, dispatch_age_seconds: int|null, has_due_work: bool} $snapshot */
     private function needsRateSample(string $rule, array $snapshot): bool
     {
-        if (in_array($rule, ['success_rate', 'blocked_ratio'], true)) {
+        if (in_array($rule, ['success_rate', 'success_rate_critical', 'blocked_ratio'], true)) {
             return true;
         }
         if (! str_starts_with($rule, 'source_success_rate:')) {
@@ -304,9 +308,11 @@ final class AlertEvaluationService
 
         $values = $context;
         unset($values['severity']);
-        $values += $this->templateValues($rule, $condition, $resolved);
+        $templateValues = $this->templateValues($rule, $condition, $resolved);
+        $values += $templateValues;
         $rendered = $this->notifications->render($key, $values);
         $context['severity'] = $resolved ? 'info' : $rendered['severity'];
+        $context += $templateValues;
         $context['template_key'] = $key;
         $context['template_rendered'] = true;
 
@@ -321,7 +327,15 @@ final class AlertEvaluationService
         $context = $condition['context'];
         $window = max(1, (int) ($context['window_minutes'] ?? config('javmeta_alerts.window_minutes', 15)));
 
-        if ($rule === 'success_rate') {
+        if (in_array($rule, ['success_rate', 'success_rate_critical'], true)) {
+            if ($rule === 'success_rate_critical') {
+                return [
+                    'success_rate' => $condition['value'],
+                    'threshold' => $condition['threshold'],
+                    'window_minutes' => $window,
+                ];
+            }
+
             return [
                 'success_rate' => $condition['value'],
                 'minimum_rate' => $condition['threshold'],

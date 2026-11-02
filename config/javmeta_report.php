@@ -6,6 +6,9 @@ return [
     'enabled' => true,
     'interval_minutes' => 120,
     'timezone' => 'America/Mexico_City',
+    'daily_time' => '08:00',
+    'daily_timezone' => 'America/Mexico_City',
+    'legacy_hourly_enabled' => false,
     'quiet_hours_start' => '',
     'quiet_hours_end' => '',
     'sections' => ['movies', 'performers', 'crawl', 'sources', 'fleet', 'workers', 'servers', 'services'],
@@ -17,5 +20,5 @@ return [
     'sample_max_age_seconds' => 180,
     'node_volume_path' => '',
     'browser_stats_url' => '',
-    'template' => "{header}\n\n{movies}\n\n{performers}\n\n{crawl}\n\n{sources}\n{fleet}\n\n{workers}\n\n{servers}\n{services}",
+    'template' => "{header}\n\n{movies}\n\n{performers}\n\n{crawl}\n\n{sources}\n{fleet}\n\n{workers}\n\n{servers}\n{services}\n\n{deploys}\n{backup}\n\n{warnings}",
 ];

@@ -22,46 +22,81 @@ final class PeriodicReportService
     /** @return array{data: array<string, mixed>, text: string, last: array<string, mixed>|null, history: list<array<string, mixed>>} */
     public function preview(): array
     {
-        $data = $this->data->build();
+        return $this->previewType('periodic');
+    }
+
+    /** @return array{data: array<string, mixed>, text: string, last: array<string, mixed>|null, history: list<array<string, mixed>>} */
+    public function previewDaily(): array
+    {
+        return $this->previewType('daily');
+    }
+
+    /** @return array{sent: bool, duplicate: bool, text: string, result: string} */
+    public function sendDailyNow(): array
+    {
+        return $this->send(null, 'daily');
+    }
+
+    /** @return array{sent: bool, duplicate: bool, text: string, result: string} */
+    public function sendDailyScheduled(CarbonImmutable $slot): array
+    {
+        return $this->send($slot, 'daily');
+    }
+
+    /** @return array{data: array<string, mixed>, text: string, last: array<string, mixed>|null, history: list<array<string, mixed>>} */
+    private function previewType(string $type): array
+    {
+        $query = ReportSnapshot::query()->where('report_type', $type);
+        $data = $type === 'daily' ? $this->data->build(null, 1440) : $this->data->build();
 
         return [
             'data' => $data,
             'text' => $this->renderer->render($data),
-            'last' => $this->snapshotRow(ReportSnapshot::query()->orderByDesc('id')->first()),
-            'history' => ReportSnapshot::query()->orderByDesc('id')->limit(20)->get()->map(fn(ReportSnapshot $row): array => $this->snapshotRow($row) ?? [])->all(),
+            'last' => $this->snapshotRow((clone $query)->orderByDesc('id')->first()),
+            'history' => (clone $query)->orderByDesc('id')->limit(20)->get()->map(fn(ReportSnapshot $row): array => $this->snapshotRow($row) ?? [])->all(),
         ];
     }
 
     /** @return array{sent: bool, duplicate: bool, text: string, result: string} */
     public function sendNow(): array
     {
-        return $this->send(null);
+        return $this->send(null, 'periodic');
     }
 
     /** @return array{sent: bool, duplicate: bool, text: string, result: string} */
     public function sendScheduled(CarbonImmutable $slot): array
     {
-        return $this->send($slot);
+        return $this->send($slot, 'periodic');
     }
 
     /** @return array{sent: bool, duplicate: bool, text: string, result: string} */
-    private function send(?CarbonImmutable $scheduledFor): array
+    private function send(?CarbonImmutable $scheduledFor, string $type): array
     {
         $slot = $scheduledFor?->utc()->format('Y-m-d-H-i');
-        $lock = Cache::lock('javmeta:report:send:' . ($slot ?? 'manual'), 300);
+        $lock = Cache::lock('javmeta:report:send:' . $type . ':' . ($slot ?? 'manual'), 300);
         if (! $lock->get()) {
             return ['sent' => false, 'duplicate' => true, 'text' => '', 'result' => 'locked'];
         }
 
         try {
-            if ($scheduledFor !== null && ReportSnapshot::query()->where('scheduled_for', $scheduledFor->utc())->exists()) {
+            if ($scheduledFor !== null && ReportSnapshot::query()->where('report_type', $type)->where('scheduled_for', $scheduledFor->utc())->exists()) {
                 return ['sent' => false, 'duplicate' => true, 'text' => '', 'result' => 'duplicate'];
             }
-            if ($scheduledFor !== null && ! Cache::add('javmeta:report:reserved-slot:' . $slot, 1, now()->addDays(2))) {
+            if ($scheduledFor !== null && ! Cache::add('javmeta:report:reserved-slot:' . $type . ':' . $slot, 1, now()->addDays(2))) {
                 return ['sent' => false, 'duplicate' => true, 'text' => '', 'result' => 'duplicate'];
             }
 
-            $data = $this->data->build();
+            $policyDispatcher = app(\App\Services\Notifications\NotificationPolicyDispatcher::class);
+            $policyKey = $type === 'daily' ? 'report.daily' : 'report.periodic';
+            $policyDecision = $policyDispatcher->prepare($policyKey, [
+                'notification_cause' => $type . '_report',
+                'notification_digest' => true,
+            ]);
+            if ($policyDecision !== null && ! $policyDecision['allowed']) {
+                return ['sent' => false, 'duplicate' => true, 'text' => '', 'result' => 'suppressed'];
+            }
+
+            $data = $type === 'daily' ? $this->data->build(null, 1440) : $this->data->build();
             $text = $this->renderer->render($data);
             [$subject, $body] = $this->splitText($text);
             try {
@@ -73,6 +108,7 @@ final class PeriodicReportService
             $result = $sent ? 'sent' : 'failed';
             ReportSnapshot::query()->create([
                 'scheduled_for' => $scheduledFor?->utc(),
+                'report_type' => $type,
                 'result' => $result,
                 'channel' => 'telegram',
                 'rendered_text' => $text,
@@ -84,6 +120,13 @@ final class PeriodicReportService
                 // A retention cleanup failure must not change a delivered report's result.
             }
             $this->metrics->record($result, $sent ? now()->timestamp : null);
+            if ($policyDecision !== null) {
+                if ($sent) {
+                    $policyDispatcher->recordSent($policyDecision);
+                } else {
+                    $policyDispatcher->release($policyDecision);
+                }
+            }
 
             return ['sent' => $sent, 'duplicate' => false, 'text' => $text, 'result' => $result];
         } catch (Throwable) {

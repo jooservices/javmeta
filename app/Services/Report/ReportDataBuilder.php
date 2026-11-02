@@ -8,6 +8,7 @@ use App\Models\CrawlQueue;
 use App\Models\Movie;
 use App\Models\Performer;
 use App\Models\ReportSnapshot;
+use App\Services\Notifications\NotificationPolicyService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -18,30 +19,32 @@ final class ReportDataBuilder
         private readonly NodeSampleStore $samples,
         private readonly NodeSampleAggregator $sampleAggregator,
         private readonly ReportServiceStats $serviceStats,
+        private readonly NotificationPolicyService $notificationPolicies,
     ) {}
 
     /** @return array<string, mixed> */
-    public function build(?CarbonImmutable $at = null): array
+    public function build(?CarbonImmutable $at = null, ?int $windowMinutes = null): array
     {
         $at ??= CarbonImmutable::now();
-        $minutes = (int) config('javmeta_report.interval_minutes', 120);
+        $minutes = $windowMinutes ?? (int) config('javmeta_report.interval_minutes', 120);
         $start = $at->subMinutes($minutes);
-        $previous = ReportSnapshot::query()->where('result', 'sent')->orderByDesc('id')->first();
+        $previous = ReportSnapshot::query()->where('report_type', 'periodic')->where('result', 'sent')->orderByDesc('id')->first();
         $previousValue = $previous?->getAttribute('raw_numbers');
         $previousRaw = is_array($previousValue) ? $previousValue : null;
         $raw = [
             'generated_at' => $at->toIso8601String(),
             'window_minutes' => $minutes,
+            'report_type' => $windowMinutes === null ? 'periodic' : 'daily',
             'window_start' => $start->toIso8601String(),
             'window_end' => $at->toIso8601String(),
             'sections' => $this->sections(),
         ];
 
         if (in_array('movies', $this->sections(), true)) {
-            $raw['movies'] = $this->entity('movies', 'crawled_at', (int) Movie::query()->count(), $previousRaw, $start, $at, $minutes);
+            $raw['movies'] = $this->entity('movies', 'crawled_at', (int) Movie::query()->count(), $previousRaw, $start, $at, $minutes, $windowMinutes !== null);
         }
         if (in_array('performers', $this->sections(), true)) {
-            $raw['performers'] = $this->entity('performers', 'first_seen_at', (int) Performer::query()->count(), $previousRaw, $start, $at, $minutes);
+            $raw['performers'] = $this->entity('performers', 'first_seen_at', (int) Performer::query()->count(), $previousRaw, $start, $at, $minutes, $windowMinutes !== null);
         }
         if (in_array('crawl', $this->sections(), true)) {
             $raw['crawl'] = $this->crawl($start, $at);
@@ -49,6 +52,9 @@ final class ReportDataBuilder
         if (in_array('sources', $this->sections(), true)) {
             $raw['sources'] = $this->sources($start, $at);
         }
+        $raw['warnings'] = $this->notificationPolicies->digestItems($windowMinutes !== null, null, true);
+        $raw['deploys'] = $this->deploys($start, $at);
+        $raw['backup'] = $this->backupStatus($at);
 
         $nodeSamples = $this->samples->all();
         $raw['node_names'] = array_keys($nodeSamples);
@@ -90,10 +96,12 @@ final class ReportDataBuilder
     /** @param array<string, mixed>|null $previousRaw
      *  @return array<string, int|float>
      */
-    private function entity(string $table, string $dateColumn, int $total, ?array $previousRaw, CarbonImmutable $start, CarbonImmutable $at, int $minutes): array
+    private function entity(string $table, string $dateColumn, int $total, ?array $previousRaw, CarbonImmutable $start, CarbonImmutable $at, int $minutes, bool $windowCount): array
     {
         $lastReportTotal = (int) ($previousRaw[$table]['total'] ?? $total);
-        $since = (int) DB::table($table)->whereBetween($dateColumn, [$start, $at])->count();
+        $since = $windowCount
+            ? (int) DB::table($table)->whereBetween($dateColumn, [$start, $at])->count()
+            : max(0, $total - $lastReportTotal);
         $last24 = (int) DB::table($table)->where($dateColumn, '>=', $at->subDay())->where($dateColumn, '<=', $at)->count();
         $buckets = $this->hourBuckets($table, $dateColumn, $start, $at);
         $hours = max(1 / 60, $minutes / 60);
@@ -198,6 +206,45 @@ final class ReportDataBuilder
             ->all();
 
         return ['blocked' => array_map('strval', $blocked), 'exhausted' => array_map('strval', $exhausted)];
+    }
+
+    /** @return list<array{at: string, release: string, nodes: string}> */
+    private function deploys(CarbonImmutable $start, CarbonImmutable $at): array
+    {
+        if (! Schema::hasTable('notification_policy_events')) {
+            return [];
+        }
+        $rows = DB::table('notification_policy_events')->whereIn('notification_key', ['deploy.success', 'deploy.ok'])
+            ->whereBetween('first_seen_at', [$start, $at])->orderBy('first_seen_at')->limit(20)
+            ->get(['first_seen_at', 'context']);
+
+        return $rows->map(static function (object $row): array {
+            $context = is_array($row->context) ? $row->context : json_decode((string) $row->context, true);
+
+            return [
+                'at' => (string) $row->first_seen_at,
+                'release' => is_array($context) && is_scalar($context['release'] ?? null) ? (string) $context['release'] : 'release',
+                'nodes' => is_array($context) && is_scalar($context['nodes'] ?? null) ? (string) $context['nodes'] : 'fleet',
+            ];
+        })->all();
+    }
+
+    /** @return array{status: string, at: string|null} */
+    private function backupStatus(CarbonImmutable $at): array
+    {
+        if (! Schema::hasTable('notification_policy_events')) {
+            return ['status' => 'No recent backup status recorded', 'at' => null];
+        }
+        $row = DB::table('notification_policy_events')->whereIn('notification_key', ['backup.stale', 'backup.manifest_missing', 'backup.success', 'backup.ok'])
+            ->where('first_seen_at', '<=', $at)->orderByDesc('first_seen_at')->first(['notification_key', 'first_seen_at']);
+        if ($row === null) {
+            return ['status' => 'No recent backup status recorded', 'at' => null];
+        }
+
+        return [
+            'status' => in_array($row->notification_key, ['backup.stale', 'backup.manifest_missing'], true) ? 'Failed or stale' : 'Successful',
+            'at' => (string) $row->first_seen_at,
+        ];
     }
 
     /** @param array<string, array<string, mixed>> $nodes

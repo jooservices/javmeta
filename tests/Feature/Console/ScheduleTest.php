@@ -63,6 +63,7 @@ final class ScheduleTest extends TestCase
             'perf:warm' => '* * * * *',
             'perf:warm --status-only' => '* * * * *',
             'report:send' => '* * * * *',
+            'report:send-daily' => '0 8 * * *',
             'search:backfill-embeddings' => '0 * * * *',
             'staging:readiness' => '0 * * * *',
             'telegram:poll' => '* * * * *',
@@ -81,6 +82,9 @@ final class ScheduleTest extends TestCase
         $this->assertTrue($scheduled['crawler:recrawl-incomplete']->withoutOverlapping);
         $this->assertTrue($scheduled['report:send']->withoutOverlapping);
         $this->assertTrue($scheduled['report:send']->onOneServer);
+        $this->assertTrue($scheduled['report:send-daily']->withoutOverlapping);
+        $this->assertTrue($scheduled['report:send-daily']->onOneServer);
+        $this->assertSame('America/Mexico_City', $scheduled['report:send-daily']->timezone);
         $this->assertTrue($scheduled['search:backfill-embeddings']->withoutOverlapping);
         $this->assertTrue($scheduled['staging:readiness']->withoutOverlapping);
         $this->assertTrue($scheduled['perf:warm']->withoutOverlapping);
@@ -116,6 +120,20 @@ final class ScheduleTest extends TestCase
         } finally {
             app()->instance('env', $previousEnvironment);
         }
+    }
+
+    public function test_legacy_hourly_report_is_disabled_by_default_and_while_periodic_is_enabled(): void
+    {
+        config(['javmeta_report.legacy_hourly_enabled' => true, 'javmeta_report.enabled' => true]);
+        $events = $this->registeredEvents();
+        self::assertNull(collect($events)->first(static fn($event): bool => str_contains((string) $event->command, 'javmeta:hourly-report')));
+
+        config(['javmeta_report.enabled' => false]);
+        $events = $this->registeredEvents();
+        $legacy = collect($events)->first(static fn($event): bool => str_contains((string) $event->command, 'javmeta:hourly-report'));
+        self::assertNotNull($legacy);
+        self::assertSame('0 * * * *', $legacy->expression);
+        self::assertTrue($legacy->withoutOverlapping);
     }
 
     public function test_every_scheduled_command_string_is_accepted_by_the_artisan_kernel(): void

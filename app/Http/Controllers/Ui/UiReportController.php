@@ -14,6 +14,11 @@ final class UiReportController
         return response()->json(['data' => $reports->preview()]);
     }
 
+    public function showDaily(PeriodicReportService $reports): JsonResponse
+    {
+        return response()->json(['data' => $reports->previewDaily()]);
+    }
+
     public function sendNow(PeriodicReportService $reports): JsonResponse
     {
         $result = $reports->sendNow();

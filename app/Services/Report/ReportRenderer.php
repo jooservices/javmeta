@@ -12,7 +12,8 @@ final class ReportRenderer
     public function render(array $data, ?CarbonImmutable $at = null): string
     {
         $at ??= isset($data['generated_at']) ? CarbonImmutable::parse((string) $data['generated_at']) : CarbonImmutable::now();
-        $timezone = (string) config('javmeta_report.timezone', 'America/Mexico_City');
+        $daily = ($data['report_type'] ?? 'periodic') === 'daily';
+        $timezone = (string) config($daily ? 'javmeta_report.daily_timezone' : 'javmeta_report.timezone', 'America/Mexico_City');
         $date = $at->setTimezone($timezone);
         $zoneLabel = $timezone === 'America/Mexico_City' ? 'Mexico' : $timezone;
         $minutes = (int) ($data['window_minutes'] ?? 120);
@@ -20,7 +21,7 @@ final class ReportRenderer
         $sections = array_values((array) ($data['sections'] ?? ['movies', 'performers', 'crawl', 'sources', 'fleet', 'workers', 'servers', 'services']));
         $crawl = in_array('crawl', $sections, true) ? (array) ($data['crawl'] ?? []) : [];
         $values = [
-            '{header}' => '📊 [XCrawler] Report · ' . $date->format('M j, H:i') . ' (' . $zoneLabel . ') · last ' . $window,
+            '{header}' => '📊 [XCrawler] ' . ($daily ? 'Daily report' : 'Report') . ' · ' . $date->format('M j, H:i') . ' (' . $zoneLabel . ') · last ' . $window,
             '{movies}' => $this->entityBlock('Movies', $data['movies'] ?? null, in_array('movies', $sections, true) ? ($crawl['movies'] ?? null) : null),
             '{performers}' => $this->entityBlock('Performers', $data['performers'] ?? null, in_array('performers', $sections, true) ? ($crawl['performers'] ?? null) : null),
             '{crawl}' => $this->crawlBlock($crawl, $sections),
@@ -29,6 +30,9 @@ final class ReportRenderer
             '{workers}' => in_array('workers', $sections, true) ? $this->workersBlock($data['node_names'] ?? [], $data['workers'] ?? [], $window) : '',
             '{servers}' => in_array('servers', $sections, true) ? $this->serversBlock($data['node_names'] ?? [], $data['servers'] ?? [], $data['server_extra'] ?? [], $window) : '',
             '{services}' => in_array('services', $sections, true) ? $this->servicesLine($data['services'] ?? []) : '',
+            '{warnings}' => $this->warningsBlock($data['warnings'] ?? [], $timezone),
+            '{deploys}' => $this->deploysBlock($data['deploys'] ?? [], $timezone),
+            '{backup}' => $this->backupLine($data['backup'] ?? [], $timezone),
         ];
         $rendered = strtr((string) config('javmeta_report.template', ''), $values);
         $rendered = preg_replace('/\n{3,}/', "\n\n", $rendered) ?? $rendered;
@@ -195,6 +199,49 @@ final class ReportRenderer
         }
 
         return $parts === [] ? '' : 'Services   ' . implode(' · ', $parts);
+    }
+
+    /** @param list<array<string, mixed>> $warnings */
+    private function warningsBlock(array $warnings, string $timezone): string
+    {
+        if ($warnings === []) {
+            return 'Warnings   none open';
+        }
+        $lines = ['Warnings'];
+        foreach (array_slice($warnings, 0, 5) as $warning) {
+            $openedAt = CarbonImmutable::parse((string) ($warning['opened_at'] ?? 'now'))->setTimezone($timezone)->format('M j, H:i');
+            $value = is_numeric($warning['value'] ?? null) ? (string) $warning['value'] : 'n/a';
+            $threshold = is_numeric($warning['threshold'] ?? null) ? (string) $warning['threshold'] : 'n/a';
+            $lines[] = '⚠️ ' . (string) ($warning['name'] ?? $warning['key'] ?? 'Warning') . ' · open since ' . $openedAt
+                . ' · value ' . $value . ' · threshold ' . $threshold;
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /** @param list<array{at: string, release: string, nodes: string}> $deploys */
+    private function deploysBlock(array $deploys, string $timezone): string
+    {
+        if ($deploys === []) {
+            return 'Deploys    none';
+        }
+        $lines = ['Deploys'];
+        foreach (array_slice($deploys, 0, 5) as $deploy) {
+            $at = CarbonImmutable::parse($deploy['at'])->setTimezone($timezone)->format('M j, H:i');
+            $lines[] = '🚀 ' . $deploy['release'] . ' · ' . $deploy['nodes'] . ' · ' . $at;
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /** @param array{status?: string, at?: string|null} $backup */
+    private function backupLine(array $backup, string $timezone): string
+    {
+        $at = is_string($backup['at'] ?? null)
+            ? CarbonImmutable::parse($backup['at'])->setTimezone($timezone)->format('M j, H:i')
+            : 'unknown time';
+
+        return 'Backup     ' . (string) ($backup['status'] ?? 'No recent backup status recorded') . ' · ' . $at;
     }
 
     /** @param array<string, array<string, mixed>> $nodes

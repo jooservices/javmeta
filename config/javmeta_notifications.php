@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 // Defaults only: the values are settings in the database (docs/03-operations/settings.md) and are edited in the UI.
 return [
+    'policy' => [
+        'quiet_mode' => false,
+    ],
     'bot' => [
         'enabled' => true,
         'max_results' => 5,

@@ -12,6 +12,7 @@ return [
     'evaluate_interval_seconds' => 60,
     'window_minutes' => 15,
     'success_rate_min_percent' => 85,
+    'success_rate_critical_percent' => 70,
     'blocked_ratio_max_percent' => 10,
     'pg_connections_max' => 45,
     'dispatch_age_max_seconds' => 60,

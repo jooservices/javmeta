@@ -39,6 +39,18 @@ final class AlertRuleEvaluatorTest extends TestCase
         self::assertSame(85.0, $largeSample['success_rate']['threshold']);
     }
 
+    public function test_success_rate_below_critical_threshold_uses_the_critical_rule(): void
+    {
+        $rules = (new AlertRuleEvaluator())->evaluate($this->snapshot([
+            'javdb' => ['attempts' => 100, 'successes' => 69, 'blocked' => 0],
+        ]));
+
+        self::assertArrayHasKey('success_rate_critical', $rules);
+        self::assertSame('critical', $rules['success_rate_critical']['severity']);
+        self::assertSame(70.0, $rules['success_rate_critical']['threshold']);
+        self::assertArrayNotHasKey('success_rate', $rules);
+    }
+
     public function test_blocked_and_per_source_rates_use_their_own_thresholds(): void
     {
         $rules = (new AlertRuleEvaluator())->evaluate($this->snapshot([

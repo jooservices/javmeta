@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Notifications;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
@@ -32,6 +33,7 @@ final class NotificationTemplateService
                 'body_template' => $definition['body_template'],
                 'enabled' => $definition['enabled'],
                 'default_severity' => $definition['default_severity'],
+                ...$this->policyFields($definition),
                 'variables' => json_encode($definition['variables'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
                 'version' => 1,
                 'created_at' => $now,
@@ -81,7 +83,7 @@ final class NotificationTemplateService
     }
 
     /** @return array<string, mixed> */
-    public function save(string $key, string $title, string $body, bool $enabled, string $severity, ?int $updatedBy): array
+    public function save(string $key, string $title, string $body, bool $enabled, string $severity, ?int $updatedBy, ?array $policy = null): array
     {
         $definition = $this->registry->get($key);
         if ($definition === null) {
@@ -91,24 +93,43 @@ final class NotificationTemplateService
             throw new InvalidArgumentException('Choose a supported default severity.');
         }
         $this->validator->assertValid($key, $title, $body);
+        if ($policy !== null) {
+            $this->validatePolicy($policy);
+        }
 
-        DB::transaction(function () use ($key, $title, $body, $enabled, $severity, $updatedBy, $definition): void {
+        DB::transaction(function () use ($key, $title, $body, $enabled, $severity, $updatedBy, $definition, $policy): void {
             $this->insertIfMissing($key, $definition);
             $current = DB::table('notification_templates')->where('key', $key)->lockForUpdate()->first();
             if ($current === null) {
                 throw new RuntimeException('The notification template could not be loaded.');
             }
 
-            if ($current->title_template !== $title
+            $policyFields = $policy === null ? [] : $this->policyFields($policy);
+            $changed = $current->title_template !== $title
                 || $current->body_template !== $body
                 || (bool) $current->enabled !== $enabled
-                || $current->default_severity !== $severity) {
+                || $current->default_severity !== $severity;
+            foreach ($policyFields as $field => $value) {
+                $stored = $current->{$field};
+                if (in_array($field, ['include_in_periodic_report', 'include_in_daily_report', 'send_resolved'], true)) {
+                    $stored = (bool) $stored;
+                } elseif ($field === 'escalation_minutes') {
+                    $stored = $stored === null ? null : (int) $stored;
+                } else {
+                    $stored = (int) $stored;
+                }
+                if ($stored !== $value) {
+                    $changed = true;
+                }
+            }
+            if ($changed) {
                 $this->recordRevision($current);
                 DB::table('notification_templates')->where('id', $current->id)->update([
                     'title_template' => $title,
                     'body_template' => $body,
                     'enabled' => $enabled,
                     'default_severity' => $severity,
+                    ...$policyFields,
                     'version' => (int) $current->version + 1,
                     'updated_by' => $updatedBy,
                     'updated_at' => now(),
@@ -131,7 +152,7 @@ final class NotificationTemplateService
             ->where('notification_template_id', $template->id)
             ->orderByDesc('id')
             ->limit(50)
-            ->get(['id', 'title_template', 'body_template', 'enabled', 'default_severity', 'version', 'updated_by', 'created_at'])
+            ->get(['id', 'title_template', 'body_template', 'enabled', 'default_severity', 'tier', 'cooldown_minutes', 'escalation_minutes', 'include_in_periodic_report', 'include_in_daily_report', 'send_resolved', 'version', 'updated_by', 'created_at'])
             ->map(static fn(object $revision): array => (array) $revision)
             ->all();
     }
@@ -161,6 +182,12 @@ final class NotificationTemplateService
                 'body_template' => $revision->body_template,
                 'enabled' => (bool) $revision->enabled,
                 'default_severity' => $revision->default_severity,
+                'tier' => $revision->tier ?? $definition['tier'],
+                'cooldown_minutes' => $revision->cooldown_minutes ?? $definition['cooldown_minutes'],
+                'escalation_minutes' => $revision->escalation_minutes ?? $definition['escalation_minutes'],
+                'include_in_periodic_report' => $revision->include_in_periodic_report ?? $definition['include_in_periodic_report'],
+                'include_in_daily_report' => $revision->include_in_daily_report ?? $definition['include_in_daily_report'],
+                'send_resolved' => $revision->send_resolved ?? $definition['send_resolved'],
                 'version' => (int) $template->version + 1,
                 'updated_by' => $updatedBy,
                 'updated_at' => now(),
@@ -184,6 +211,7 @@ final class NotificationTemplateService
             $definition['enabled'],
             $definition['default_severity'],
             $updatedBy,
+            $this->policyFields($definition),
         );
     }
 
@@ -212,6 +240,7 @@ final class NotificationTemplateService
             'body_template' => $definition['body_template'],
             'enabled' => $definition['enabled'],
             'default_severity' => $definition['default_severity'],
+            ...$this->policyFields($definition),
             'variables' => json_encode($definition['variables'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
             'version' => 1,
             'created_at' => now(),
@@ -227,6 +256,12 @@ final class NotificationTemplateService
             'body_template' => $current->body_template,
             'enabled' => (bool) $current->enabled,
             'default_severity' => $current->default_severity,
+            'tier' => $current->tier,
+            'cooldown_minutes' => $current->cooldown_minutes,
+            'escalation_minutes' => $current->escalation_minutes,
+            'include_in_periodic_report' => (bool) $current->include_in_periodic_report,
+            'include_in_daily_report' => (bool) $current->include_in_daily_report,
+            'send_resolved' => (bool) $current->send_resolved,
             'version' => (int) $current->version,
             'updated_by' => $current->updated_by,
             'created_at' => now(),
@@ -248,6 +283,7 @@ final class NotificationTemplateService
             'body_template' => $definition['body_template'],
             'enabled' => $definition['enabled'],
             'default_severity' => $definition['default_severity'],
+            ...$this->policyFields($definition),
             'variables' => $definition['variables'],
             'version' => 1,
             'sent_count' => 0,
@@ -273,6 +309,12 @@ final class NotificationTemplateService
             'body_template' => (string) $row->body_template,
             'enabled' => (bool) $row->enabled,
             'default_severity' => (string) $row->default_severity,
+            'tier' => (string) $row->tier,
+            'cooldown_minutes' => (int) $row->cooldown_minutes,
+            'escalation_minutes' => $row->escalation_minutes === null ? null : (int) $row->escalation_minutes,
+            'include_in_periodic_report' => (bool) $row->include_in_periodic_report,
+            'include_in_daily_report' => (bool) $row->include_in_daily_report,
+            'send_resolved' => (bool) $row->send_resolved,
             'variables' => $definition['variables'],
             'version' => (int) $row->version,
             'sent_count' => (int) $row->sent_count,
@@ -280,5 +322,37 @@ final class NotificationTemplateService
             'last_sent_at' => $row->last_sent_at,
             'updated_at' => $row->updated_at,
         ];
+    }
+
+    /** @param array<string, mixed> $definition
+     *  @return array{}|array{tier: string, cooldown_minutes: int, escalation_minutes: int|null, include_in_periodic_report: bool, include_in_daily_report: bool, send_resolved: bool}
+     */
+    private function policyFields(array $definition): array
+    {
+        if (! Schema::hasColumn('notification_templates', 'tier')) {
+            return [];
+        }
+
+        return [
+            'tier' => (string) $definition['tier'],
+            'cooldown_minutes' => (int) $definition['cooldown_minutes'],
+            'escalation_minutes' => isset($definition['escalation_minutes']) ? (int) $definition['escalation_minutes'] : null,
+            'include_in_periodic_report' => (bool) $definition['include_in_periodic_report'],
+            'include_in_daily_report' => (bool) $definition['include_in_daily_report'],
+            'send_resolved' => (bool) $definition['send_resolved'],
+        ];
+    }
+
+    /** @param array<string, mixed> $policy */
+    private function validatePolicy(array $policy): void
+    {
+        if (! in_array($policy['tier'] ?? null, ['critical', 'warning', 'notice', 'info'], true)
+            || ! is_int($policy['cooldown_minutes'] ?? null) || $policy['cooldown_minutes'] < 0 || $policy['cooldown_minutes'] > 10080
+            || (isset($policy['escalation_minutes']) && (! is_int($policy['escalation_minutes']) || $policy['escalation_minutes'] < 1 || $policy['escalation_minutes'] > 10080))
+            || ! is_bool($policy['include_in_periodic_report'] ?? null)
+            || ! is_bool($policy['include_in_daily_report'] ?? null)
+            || ! is_bool($policy['send_resolved'] ?? null)) {
+            throw new InvalidArgumentException('The notification policy values are invalid.');
+        }
     }
 }
