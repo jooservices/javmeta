@@ -14,6 +14,7 @@ use App\Models\Source;
 use App\Observability\ObservabilityEmitter;
 use App\Observability\TraceContext;
 use App\Services\Crawl\CrawlQueueService;
+use App\Services\Crawl\FeedPoolMetrics;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Health\CrawlDispatchHeartbeat;
 use Carbon\CarbonImmutable;
@@ -34,7 +35,7 @@ final class FeedPoolCommand extends Command
 
     protected $description = 'Claim pending crawl_queue rows and dispatch FetchListing/FetchDetail/Performer/Gallery jobs.';
 
-    public function handle(CrawlQueueService $queue, ObservabilityEmitter $observability, SourceThrottle $throttle, CrawlDispatchHeartbeat $dispatchHeartbeat): int
+    public function handle(CrawlQueueService $queue, ObservabilityEmitter $observability, SourceThrottle $throttle, FeedPoolMetrics $feedMetrics, CrawlDispatchHeartbeat $dispatchHeartbeat): int
     {
         if ($this->option('scheduled') && ! $this->feedIntervalElapsed()) {
             $this->components->info('Feed interval has not elapsed.');
@@ -45,12 +46,13 @@ final class FeedPoolCommand extends Command
         // Keep depth reads and Redis pushes in one scope, including concurrent manual feeders.
         $postgres = DB::getDriverName() === 'pgsql';
         if ($postgres && ! DB::selectOne('SELECT pg_try_advisory_lock(?) AS acquired', [282])->acquired) {
+            $this->recordStoppedSources($feedMetrics, $queue->dueSourceSlugs(), 'advisory_lock');
             $this->components->info('Another feed pool is dispatching.');
 
             return self::SUCCESS;
         }
         try {
-            return $this->feed($queue, $observability, $throttle, $dispatchHeartbeat);
+            return $this->feed($queue, $observability, $throttle, $feedMetrics, $dispatchHeartbeat);
         } finally {
             if ($postgres) {
                 DB::select('SELECT pg_advisory_unlock(?)', [282]);
@@ -58,7 +60,7 @@ final class FeedPoolCommand extends Command
         }
     }
 
-    private function feed(CrawlQueueService $queue, ObservabilityEmitter $observability, SourceThrottle $throttle, CrawlDispatchHeartbeat $dispatchHeartbeat): int
+    private function feed(CrawlQueueService $queue, ObservabilityEmitter $observability, SourceThrottle $throttle, FeedPoolMetrics $feedMetrics, CrawlDispatchHeartbeat $dispatchHeartbeat): int
     {
         $limitPerMinute = max(1, (int) config('javmeta_queues.feed_pool_limit', 50));
         $limitPerRun = $this->scaledRunLimit($limitPerMinute);
@@ -83,23 +85,35 @@ final class FeedPoolCommand extends Command
         $exhausted = $this->exhaustedSources($waiting, $budgetUsed, $horizon, $gapOf);
         $dispatched = 0;
         $laneDispatched = ['direct' => 0, 'browser' => 0];
+        $globalStopsRecorded = [];
         $traceparent = TraceContext::formatTraceparent(TraceContext::newTraceId(), TraceContext::newSpanId());
 
         foreach ($queues as $key => $queueName) {
             $lane = str_starts_with($key, 'browser:') ? 'browser' : 'direct';
             $kind = $lane === 'browser' ? substr($key, 8) : $key;
-            if ($queueName === '' || $laneDispatched[$lane] >= $limitPerRun) {
+            if ($queueName === '') {
+                continue;
+            }
+
+            if ($laneDispatched[$lane] >= $limitPerRun) {
+                if (! isset($globalStopsRecorded[$lane])) {
+                    $this->recordStoppedSources($feedMetrics, $queue->dueSourceSlugs(null, $lane), 'global_cap');
+                    $globalStopsRecorded[$lane] = true;
+                }
+
                 continue;
             }
 
             $capacity = $this->capacity($queueName, $observability);
             if ($capacity === 0) {
+                $this->recordStoppedSources($feedMetrics, $queue->dueSourceSlugs($kind, $lane), 'depth');
                 continue;
             }
 
             $sent = $this->dispatchQueue(
                 $queue,
                 $observability,
+                $feedMetrics,
                 $queueName,
                 $kind,
                 $lane,
@@ -125,6 +139,10 @@ final class FeedPoolCommand extends Command
                 'limit_per_run' => $limitPerRun,
             ]);
             if ($limitPerRun === 0 || $count >= $limitPerRun) {
+                if (! isset($globalStopsRecorded[$lane])) {
+                    $this->recordStoppedSources($feedMetrics, $queue->dueSourceSlugs(null, $lane), 'global_cap');
+                    $globalStopsRecorded[$lane] = true;
+                }
                 $observability->emitOps('feed_gated', [
                     'reason' => 'global_cap',
                     'lane' => $lane,
@@ -150,7 +168,9 @@ final class FeedPoolCommand extends Command
         return static function (string $slug) use ($sources, $throttle): float {
             $source = $sources->get($slug);
 
-            return max(1.0, $source instanceof Source ? $throttle->currentGap($source) : 5.0);
+            return $source instanceof Source
+                ? $throttle->effectiveGap($source)
+                : max(5.0, (float) config('javmeta_queues.min_effective_gap_seconds', 1.0));
         };
     }
 
@@ -158,13 +178,19 @@ final class FeedPoolCommand extends Command
      * @param  array<string, int>  $waiting
      * @param  array<string, int>  $budgetUsed
      */
-    private function dispatchQueue(CrawlQueueService $queue, ObservabilityEmitter $observability, string $queueName, string $kind, string $lane, int $capacity, callable $exhausted, array $waiting, array &$budgetUsed, array &$dispatchedBySource, array $latestStartedAt, callable $gapOf, string $traceparent, string $workerId): int
+    private function dispatchQueue(CrawlQueueService $queue, ObservabilityEmitter $observability, FeedPoolMetrics $feedMetrics, string $queueName, string $kind, string $lane, int $capacity, callable $exhausted, array $waiting, array &$budgetUsed, array &$dispatchedBySource, array $latestStartedAt, callable $gapOf, string $traceparent, string $workerId): int
     {
         $dispatched = 0;
         for ($i = 0; $i < $capacity; $i++) {
             $excludedSources = $exhausted();
-            $row = $queue->claimNext($workerId, $kind, $excludedSources, $lane);
+            $stopReasons = [];
+            $row = $queue->claimNext($workerId, $kind, $excludedSources, $lane, $stopReasons);
             if (! $row instanceof CrawlQueue) {
+                foreach ($stopReasons as $sourceSlug => $reasons) {
+                    foreach ($reasons as $reason) {
+                        $feedMetrics->recordStopped((string) $sourceSlug, $reason);
+                    }
+                }
                 if ($excludedSources !== []) {
                     $observability->emitOps('feed_gated', [
                         'reason' => 'source_budget',
@@ -180,16 +206,19 @@ final class FeedPoolCommand extends Command
             $slug = (string) $row->source_slug;
             $gap = $gapOf($slug);
             $ahead = ($waiting[$slug] ?? 0) + ($dispatchedBySource[$slug] ?? 0);
-            $delay = $this->delayBeforeNextStart($latestStartedAt[$slug] ?? null, $gap)
-                + ($ahead * $gap);
-            $delay = (int) ceil($delay);
+            $delay = (int) ceil($this->delayBeforeNextStart($latestStartedAt[$slug] ?? null, $gap) + ($ahead * $gap));
             $budgetUsed[$slug] = ($budgetUsed[$slug] ?? 0) + 1;
             $dispatchedBySource[$slug] = ($dispatchedBySource[$slug] ?? 0) + 1;
 
             $pending = $this->dispatchJob($row, $queueName, $traceparent, $workerId);
             // A zero delay would still park the job in the delayed set; only pace the rows that really wait.
-            if ($delay > 0) {
+            if ($delay > 0 && floor($gap) === $gap) {
                 $pending?->delay($delay);
+            }
+
+            if ($pending instanceof PendingDispatch) {
+                unset($pending);
+                $feedMetrics->recordDispatched($slug);
             }
 
             $dispatched++;
@@ -217,6 +246,14 @@ final class FeedPoolCommand extends Command
         }
 
         return $capacity;
+    }
+
+    /** @param list<string> $sourceSlugs */
+    private function recordStoppedSources(FeedPoolMetrics $metrics, array $sourceSlugs, string $reason): void
+    {
+        foreach ($sourceSlugs as $slug) {
+            $metrics->recordStopped($slug, $reason);
+        }
     }
 
     /**

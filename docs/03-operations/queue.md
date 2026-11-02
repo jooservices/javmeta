@@ -103,21 +103,69 @@ See the [Laravel Horizon documentation](https://laravel.com/docs/13.x/horizon) f
 
 ## Fairness between sources
 
-`CrawlQueueService::claimNext` skips a source that already has `queue.per_source_inflight` (default 4) claimed, unfinished
-rows of the same kind, so one source with thousands of older rows cannot fill the worker queue and starve the others.
-Parallelism comes from `queue.workers_per_queue` and its lane, queue and node overrides; each source is still limited by its own
-throttle gap.
+`CrawlQueueService::claimNext` skips a source that already has `queue.per_source_inflight` (default 16) claimed, unfinished
+rows across crawl kinds, so one source with thousands of older rows cannot fill the worker queue and starve the others.
+This is a lookahead limit as well as a fairness limit: it must allow enough claims to keep paced starts supplied between
+feed-pool runs. Parallelism comes from `queue.workers_per_queue` and its lane, queue and node overrides; request starts
+remain limited by each source's effective gap.
 
 
 ## Request pacing and adaptive gap
 
-The gap between requests of one source (`sources.gap_seconds_current`, between its min and max) is enforced when the
-feed pool hands out work: a source may have at most `floor(queue.pacing_horizon_seconds / gap)` rows waiting (default
-horizon 60 seconds), and its jobs are delayed so that they start one gap apart. Rows that are still claimed from an
-earlier run count against the budget. The gap adapts to the answers of the site: rate limits, blocks and challenges
-double it up to `queue.gap_blocked_max_seconds` (default 600); timeouts and network errors raise it by half up to the
-source maximum; parse and not-found errors do not change it; every success lowers it by 10 percent of the distance to
-its minimum. The current gap is in `crawler:sources`, the status API and the metric `javmeta_source_gap_seconds`.
+The effective gap is the greater of `sources.gap_seconds_current` and the database setting
+`queue.min_effective_gap_seconds` (default 1 second). A source may have at most
+`max(1, floor(queue.pacing_horizon_seconds / effective_gap))` starts and waiting claims in the rolling horizon (default
+60 seconds). Integral-second gaps use delayed jobs as a queue buffer; every outbound fetch is also spaced by a shared
+request-start gate immediately before the call. Fractional gaps use the gate without rounding up to a whole second. Long
+waits are rescheduled instead of occupying a worker or consuming a crawl attempt. Rows still waiting from an earlier
+feeder run count against the budget. The gate uses a distributed cache lock, so
+`cache.default` must use a store shared by every crawl worker (`database`, `redis`, `memcached` or `dynamodb`); `array` and
+`file` stores are unsupported for production pacing.
+
+The default `queue.feed_pool_limit` is 60 jobs per minute per lane, divided over the configured feed interval. Each
+`crawler:feed-pool` invocation applies its own share for the current interval slot; manual or repeated runs in that slot
+are not counted against a shared minute budget. The
+default `queue.per_source_inflight` is 16 across crawl kinds, leaving enough lookahead for the default 10-second interval
+and a 1-second source gap. The start gate enforces the configured gap; these queue limits only supply work to it.
+
+The gap adapts to the site's responses: rate limits, blocks and challenges double it up to
+`queue.gap_blocked_max_seconds` (default 600); timeouts and network errors raise it by half up to the source maximum;
+parse and not-found errors do not change it; every success lowers it by 10 percent of the distance to its minimum. The
+current adaptive gap is in `crawler:sources`, the status API and `javmeta_source_gap_seconds`; the effective pacing
+capacity is in `javmeta_feed_source_budget`.
+
+### Reading feed-pool pacing metrics
+
+`obs:publish-metrics` exports one `source_slug` series per source:
+
+- `javmeta_feed_source_budget`: allowed starts in the configured pacing horizon (60 seconds by default).
+- `javmeta_feed_source_started`: request starts plus claimed rows with `started_at` but no recorded non-skipped fetch
+  attempt in the previous pacing horizon (60 seconds by default). A slow or stalled claim can temporarily raise this count.
+- `javmeta_feed_source_waiting`: currently claimed rows that have not started yet.
+- `javmeta_feed_source_dispatched`: jobs handed to Laravel queues during the previous calendar minute.
+- `javmeta_feed_source_stop_reason_1m`: stop counts from the previous calendar minute, labelled with `reason`.
+
+When due backlog exists, compare `started` with `budget`; sustained `started / budget >= 0.90` means the source is using
+at least 90% of its current allowance. A low ratio is a feeder capacity issue only when due rows exist. Stop reasons are
+`exhausted_budget`, `no_due_rows`, `depth`, `global_cap`, `advisory_lock` and `per_source_inflight`; `source_slug=none`
+marks a `no_due_rows` result with no eligible source to label. A high waiting count with a low started count points to
+worker or delayed-job throughput, while `depth`, `global_cap` and `per_source_inflight` identify feeder-side ceilings.
+
+### Safely raising a source rate
+
+1. Observe the source's budget, starts, waiting and stop reasons for at least 30 minutes while a due backlog exists.
+   Do not raise a rate while `rate_limited`, `blocked` or challenge outcomes are increasing.
+2. If `exhausted_budget` dominates, the source is already using its configured allowance. Raise only by lowering
+   `queue.min_effective_gap_seconds` when the source's stored minimum gap is lower and the target site's policy allows it;
+   the adaptive gap will recover toward that source minimum after successful requests.
+3. If `global_cap` dominates, raise `queue.feed_pool_limit` in Cài đặt in small steps. If `per_source_inflight` dominates,
+   raise `queue.per_source_inflight` enough to buffer the feed interval plus the normal request runtime. Keep the source
+   gap unchanged while adjusting those internal queue limits.
+4. If `depth` dominates, raise the affected queue's depth limit only after confirming its workers can drain the larger
+   buffer. If `advisory_lock` dominates, confirm there is one active scheduler and investigate overlapping feeders; keep
+   the advisory lock enabled.
+5. After each change, confirm `started` rises toward `budget`, the observed request spacing never drops below the source
+   gap, and 403/429/block outcomes remain unchanged. Roll back the last queue or gap setting if those conditions fail.
 
 
 ## Direct and browser lanes

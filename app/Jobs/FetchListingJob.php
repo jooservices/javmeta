@@ -61,6 +61,10 @@ final class FetchListingJob implements ShouldQueue
             return;
         }
 
+        if (! $this->paceBeforeRequest($row, $source, $throttle)) {
+            return;
+        }
+
         $result = $client->fetchListing($row->source_slug, $row->url);
         app(FetchAttemptRecorder::class)->record($row, $result);
         if (! $result->ok || $result->list === null) {

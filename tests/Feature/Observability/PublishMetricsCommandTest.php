@@ -22,6 +22,8 @@ use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Testing\FakeConfigStore;
 use Mockery;
 use Tests\TestCase;
+use App\Services\Crawl\FeedPoolMetrics;
+use Illuminate\Support\Facades\DB;
 
 final class PublishMetricsCommandTest extends TestCase
 {
@@ -413,6 +415,80 @@ final class PublishMetricsCommandTest extends TestCase
             }
 
             return false;
+        });
+    }
+
+    public function test_command_publishes_per_source_feed_budget_activity_and_stop_metrics(): void
+    {
+        config()->set([
+            'cache.default' => 'array',
+            'javmeta_queues.min_effective_gap_seconds' => 0.5,
+            'javmeta_queues.pacing_horizon_seconds' => 60,
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.email' => 'root@javmeta.local',
+            'openobserve.password' => 'secret',
+            'openobserve.timeout' => 1,
+        ]);
+        Cache::store('array')->flush();
+        $minute = now()->startOfMinute()->addSeconds(30);
+        $this->travelTo($minute);
+        Source::factory()->create([
+            'slug' => 'paced-metric',
+            'gap_seconds_default' => 0.5,
+            'gap_seconds_min' => 0.25,
+            'gap_seconds_current' => 0.5,
+        ]);
+        CrawlQueue::factory()->create([
+            'source_slug' => 'paced-metric',
+            'kind' => CrawlQueue::KIND_DETAIL,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'started_at' => null,
+            'claimed_at' => now(),
+        ]);
+        DB::table('crawl_fetch_attempts')->insert([
+            'created_at' => now()->subSeconds(30),
+            'source_slug' => 'paced-metric',
+            'crawl_queue_id' => null,
+            'url_hash' => hash('sha256', 'paced-metric-start'),
+            'method' => 'http',
+            'started_at' => now()->subSeconds(30),
+            'duration_ms' => 1,
+            'outcome' => 'ok',
+        ]);
+        app(FeedPoolMetrics::class)->recordDispatched('paced-metric');
+        app(FeedPoolMetrics::class)->recordStopped('paced-metric', 'per_source_inflight');
+        $this->travelTo($minute->copy()->addSeconds(30));
+        Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
+
+        $this->artisan('obs:publish-metrics')->assertSuccessful();
+
+        Http::assertSent(static function ($request): bool {
+            if (! str_contains($request->url(), '/v1/metrics')) {
+                return false;
+            }
+
+            $values = [];
+            $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [];
+            foreach ($metrics as $metric) {
+                $point = $metric['gauge']['dataPoints'][0] ?? [];
+                $labels = [];
+                foreach ($point['attributes'] ?? [] as $attribute) {
+                    $labels[$attribute['key']] = $attribute['value']['stringValue'] ?? null;
+                }
+                $values[$metric['name']][$labels['source_slug'] ?? ''][$labels['reason'] ?? ''] = $point['asDouble'] ?? null;
+            }
+
+            $reasons = array_keys($values['javmeta_feed_source_stop_reason_1m']['paced-metric'] ?? []);
+
+            return ($values['javmeta_feed_source_budget']['paced-metric'][''] ?? null) === 120.0
+                && ($values['javmeta_feed_source_started']['paced-metric'][''] ?? null) === 1.0
+                && ($values['javmeta_feed_source_waiting']['paced-metric'][''] ?? null) === 1.0
+                && ($values['javmeta_feed_source_dispatched']['paced-metric'][''] ?? null) === 1.0
+                && ($values['javmeta_feed_source_stop_reason_1m']['paced-metric']['per_source_inflight'] ?? null) === 1.0
+                && $reasons === ['exhausted_budget', 'no_due_rows', 'depth', 'global_cap', 'advisory_lock', 'per_source_inflight']
+                && ($values['javmeta_feed_source_stop_reason_1m']['none']['no_due_rows'] ?? null) === 0.0;
         });
     }
 }

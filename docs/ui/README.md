@@ -159,3 +159,10 @@ in [performer identity](../03-operations/performer-identity.md#co-credit-identit
 ## Legacy telemetry maintenance
 
 Legacy OpenObserve stream removal is an operator-only Artisan command, with no browser action. Follow [Removing legacy streams](../03-operations/observability.md#removing-legacy-streams) for dry-run review, complete exports, confirmation and live-stream verification.
+
+## Queue pacing setting
+
+Cài đặt → **Hàng đợi** includes `queue.min_effective_gap_seconds`, the minimum
+request-start gap shared by each source's adaptive gap and the cross-worker
+start gate. It defaults to 1 second. The queue operations guide documents the
+pacing metrics and staged procedure for changing source rates.

@@ -62,6 +62,12 @@ Giới hạn số sự kiện đang chờ gửi sang OpenObserve.
 
 Số nguyên; từ 1 đến 100000. Mã mục: `queue.observability_depth_limit`.
 
+### Khoảng cách request tối thiểu (giây)
+
+Gap hiệu lực tối thiểu giữa hai request cùng nguồn; mặc định 1 giây để giữ mức tải hiện tại.
+
+Số thập phân; từ 0.25 đến 60. Mã mục: `queue.min_effective_gap_seconds`.
+
 ## Worker
 
 ### Worker mặc định mỗi hàng đợi
