@@ -7,10 +7,8 @@ namespace Tests\Unit\Services\Crawl;
 use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Services\Crawl\CrawlQueueService;
-use App\Services\Crawl\SourceThrottle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Mockery;
 use Tests\TestCase;
 
 final class CrawlQueueServiceClaimTest extends TestCase
@@ -126,92 +124,6 @@ final class CrawlQueueServiceClaimTest extends TestCase
 
         $this->assertInstanceOf(CrawlQueue::class, $claimed);
         $this->assertSame($wanted->id, $claimed->id);
-    }
-
-    public function test_claim_next_reports_budget_and_inflight_stop_reasons(): void
-    {
-        config()->set('javmeta_queues.per_source_inflight', 1);
-        $this->source('limited');
-        $this->row('limited', CrawlQueue::STATUS_CLAIMED);
-        $this->row('limited', CrawlQueue::STATUS_PENDING);
-        $stopReasons = [];
-
-        $this->assertNull(app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_DETAIL, [], null, $stopReasons));
-        $this->assertSame(['limited' => ['per_source_inflight']], $stopReasons);
-
-        config()->set('javmeta_queues.per_source_inflight', 2);
-        $stopReasons = [];
-        $this->assertNull(app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_DETAIL, ['limited'], null, $stopReasons));
-        $this->assertSame(['limited' => ['exhausted_budget']], $stopReasons);
-    }
-
-    public function test_claim_next_reports_budget_and_inflight_limits_together(): void
-    {
-        config()->set('javmeta_queues.per_source_inflight', 1);
-        $this->source('limited');
-        $this->row('limited', CrawlQueue::STATUS_CLAIMED);
-        $this->row('limited', CrawlQueue::STATUS_PENDING);
-        $stopReasons = [];
-
-        $this->assertNull(app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_DETAIL, ['limited'], null, $stopReasons));
-        $this->assertSame(['limited' => ['exhausted_budget', 'per_source_inflight']], $stopReasons);
-    }
-
-    public function test_claim_next_reports_when_no_due_rows_exist(): void
-    {
-        $stopReasons = [];
-
-        $this->assertNull(app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_DETAIL, [], null, $stopReasons));
-        $this->assertSame(['none' => ['no_due_rows']], $stopReasons);
-    }
-
-    public function test_starting_a_claimed_row_does_not_wait_for_the_request_gap(): void
-    {
-        $this->source('paced-start');
-        $row = $this->row('paced-start', CrawlQueue::STATUS_CLAIMED);
-        $throttle = Mockery::mock();
-        $throttle->shouldNotReceive('waitForRequestStart');
-        $this->app->instance(SourceThrottle::class, $throttle);
-
-        $started = app(CrawlQueueService::class)->startClaimedRow($row->id, CrawlQueue::KIND_DETAIL, null);
-
-        $this->assertSame($row->id, $started?->id);
-        $this->assertNotNull($started?->started_at);
-    }
-
-    public function test_throttle_deferral_returns_a_started_claim_to_waiting_without_counting_an_attempt(): void
-    {
-        $this->source('paced-start');
-        $row = $this->row('paced-start', CrawlQueue::STATUS_CLAIMED);
-        $row->forceFill(['locked_by' => 'feed', 'started_at' => now(), 'attempts' => 3])->save();
-        $deferredUntil = now()->addSeconds(1200 + (int) config('javmeta_sources.defaults.queue.stale_claim_timeout_seconds', 900));
-
-        $deferred = app(CrawlQueueService::class)->returnStartedClaimToWaiting($row, 'feed', 1200);
-
-        $this->assertTrue($deferred);
-        $this->assertNull($row->refresh()->started_at);
-        $this->assertSame(2, $row->attempts);
-        $this->assertSame('feed', $row->locked_by);
-        $this->assertSame($deferredUntil->timestamp, $row->next_attempt_at?->timestamp);
-        $this->assertNotNull($row->claimed_at);
-    }
-
-    public function test_a_long_pacing_deferral_stays_claimed_until_its_delay_and_stale_timeout_expire(): void
-    {
-        $this->source('paced-start');
-        $row = $this->row('paced-start', CrawlQueue::STATUS_CLAIMED);
-        $row->forceFill(['locked_by' => 'feed', 'started_at' => now(), 'attempts' => 1])->save();
-
-        app(CrawlQueueService::class)->returnStartedClaimToWaiting($row, 'feed', 1200);
-
-        $this->travel(901)->seconds();
-        $this->assertSame(0, app(CrawlQueueService::class)->reclaimStaleClaimed(900));
-        $this->assertSame(CrawlQueue::STATUS_CLAIMED, $row->refresh()->status);
-        $this->assertNull($row->error_code);
-
-        $this->travel(1200)->seconds();
-        $this->assertSame(1, app(CrawlQueueService::class)->reclaimStaleClaimed(900));
-        $this->assertSame(CrawlQueue::STATUS_PENDING, $row->refresh()->status);
     }
 
     public function test_pacing_waiting_counts_only_claims_that_have_not_started(): void

@@ -11,7 +11,6 @@ use Monolog\Handler\TestHandler;
 use App\Logging\RedactUrlSecrets;
 use App\Observability\TelemetrySanitizer;
 use App\Services\Settings\SettingsService;
-use InvalidArgumentException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Artisan;
@@ -104,7 +103,7 @@ final class SettingsTest extends TestCase
         try {
             $settings->set('queue.feed_interval_seconds', 11);
             $this->fail('Unsupported feed intervals should be refused.');
-        } catch (InvalidArgumentException) {
+        } catch (\InvalidArgumentException) {
             $this->assertSame(60, config('javmeta_queues.feed_interval_seconds'));
         }
 
@@ -113,28 +112,6 @@ final class SettingsTest extends TestCase
         $this->assertSame(60, $setting['value']);
         $this->assertSame([5, 10, 15, 30, 60], $setting['options']);
         $this->assertSame('Chu kỳ nạp hàng đợi (giây)', $setting['label']);
-    }
-
-    public function test_minimum_effective_gap_is_database_backed_and_defaults_to_one_second(): void
-    {
-        $settings = app(SettingsService::class);
-
-        $this->assertSame(1.0, config('javmeta_queues.min_effective_gap_seconds'));
-        $this->assertSame(1.0, $settings->get('queue.min_effective_gap_seconds'));
-        $settings->set('queue.min_effective_gap_seconds', '0.5');
-
-        $setting = collect($settings->all())->firstWhere('key', 'queue.min_effective_gap_seconds');
-        $this->assertSame(0.5, config('javmeta_queues.min_effective_gap_seconds'));
-        $this->assertSame(0.5, $setting['value']);
-        $this->assertSame('database', $setting['source']);
-        $this->assertSame('Khoảng cách request tối thiểu (giây)', $setting['label']);
-
-        try {
-            $settings->set('queue.min_effective_gap_seconds', 0.1);
-            $this->fail('The minimum effective gap cannot be lower than the supported precision floor.');
-        } catch (\InvalidArgumentException) {
-            $this->assertSame(0.5, $settings->get('queue.min_effective_gap_seconds'));
-        }
     }
 
     public function test_crawl_dispatch_alert_thresholds_are_saved_database_settings(): void

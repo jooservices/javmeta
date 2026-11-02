@@ -15,9 +15,6 @@ use App\Models\Source;
 use App\Observability\OpenObserveClient;
 use App\Observability\MetricStreams;
 use App\Services\Archive\MongoArchiveWriteHealth;
-use App\Services\Crawl\CrawlQueueService;
-use App\Services\Crawl\FeedPoolMetrics;
-use App\Services\Crawl\SourceThrottle;
 use App\Services\Health\CrawlDispatchHeartbeat;
 use App\Services\Search\ElasticsearchHttpClient;
 use App\Services\Search\ElasticsearchRequestHealth;
@@ -48,9 +45,6 @@ final class PublishMetricsCommand extends Command
         ElasticsearchRequestHealth $elasticsearchHealth,
         SourceScheduleFreshness $sourceFreshness,
         CrawlDispatchHeartbeat $dispatchHeartbeat,
-        CrawlQueueService $queue,
-        SourceThrottle $throttle,
-        FeedPoolMetrics $feedMetrics,
     ): int {
         if (! $client->enabled()) {
             $this->components->info('OpenObserve disabled; skipping metrics publish.');
@@ -61,7 +55,6 @@ final class PublishMetricsCommand extends Command
         $points = array_merge(
             $this->sourceMetrics($sourceFreshness),
             $this->queueMetrics(),
-            $this->feedSourceMetrics($queue, $throttle, $feedMetrics),
             $this->crawlDispatchMetrics($dispatchHeartbeat),
             $this->crawlEventMetrics(),
             $this->apiMetrics(),
@@ -183,57 +176,6 @@ final class PublishMetricsCommand extends Command
         $points[] = [
             'name' => MetricStreams::NAMES['crawl_queue_avg_attempts'],
             'value' => $avgAttempts !== null ? (float) $avgAttempts : 0.0,
-        ];
-
-        return $points;
-    }
-
-    /**
-     * @return list<array{name: string, value: float|int, labels?: array<string, string>}>
-     */
-    private function feedSourceMetrics(CrawlQueueService $queue, SourceThrottle $throttle, FeedPoolMetrics $feedMetrics): array
-    {
-        $points = [];
-        $horizon = max(1, (int) config('javmeta_queues.pacing_horizon_seconds', 60));
-        $activity = $queue->pacingActivityBySource(now()->subSeconds($horizon));
-
-        foreach (Source::query()->get() as $source) {
-            $slug = (string) $source->slug;
-            $labels = ['source_slug' => $slug];
-            $points[] = [
-                'name' => MetricStreams::NAMES['feed_source_budget'],
-                'value' => max(1, (int) floor($horizon / $throttle->effectiveGap($source))),
-                'labels' => $labels,
-            ];
-            $points[] = [
-                'name' => MetricStreams::NAMES['feed_source_started'],
-                'value' => $activity[$slug]['started'] ?? 0,
-                'labels' => $labels,
-            ];
-            $points[] = [
-                'name' => MetricStreams::NAMES['feed_source_waiting'],
-                'value' => $activity[$slug]['waiting'] ?? 0,
-                'labels' => $labels,
-            ];
-            $points[] = [
-                'name' => MetricStreams::NAMES['feed_source_dispatched'],
-                'value' => $feedMetrics->dispatchedPreviousMinute($slug),
-                'labels' => $labels,
-            ];
-
-            foreach (FeedPoolMetrics::STOP_REASONS as $reason) {
-                $points[] = [
-                    'name' => MetricStreams::NAMES['feed_source_stop_reason_1m'],
-                    'value' => $feedMetrics->stoppedPreviousMinute($slug, $reason),
-                    'labels' => [...$labels, 'reason' => $reason],
-                ];
-            }
-        }
-
-        $points[] = [
-            'name' => MetricStreams::NAMES['feed_source_stop_reason_1m'],
-            'value' => $feedMetrics->stoppedPreviousMinute('none', 'no_due_rows'),
-            'labels' => ['source_slug' => 'none', 'reason' => 'no_due_rows'],
         ];
 
         return $points;

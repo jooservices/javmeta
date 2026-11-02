@@ -18,11 +18,6 @@ environment.
 | Metric stream | Labels | Emitted data |
 | --- | --- | --- |
 | `javmeta_source_gap_seconds` | `source_slug` | Current configured source gap. |
-| `javmeta_feed_source_budget` | `source_slug` | Allowed source starts in the configured pacing horizon (60 seconds by default), using the current effective gap. |
-| `javmeta_feed_source_started` | `source_slug` | Request starts plus claimed rows with `started_at` but no recorded non-skipped fetch attempt in the previous pacing horizon (60 seconds by default); a slow or stalled claim can temporarily raise the count. |
-| `javmeta_feed_source_waiting` | `source_slug` | Current claimed crawl rows that have not started. |
-| `javmeta_feed_source_dispatched` | `source_slug` | Jobs handed to Laravel queues during the previous UTC calendar minute. |
-| `javmeta_feed_source_stop_reason_1m` | `source_slug`, `reason` | Feed-pool stop counts during the previous UTC calendar minute. Reasons are `exhausted_budget`, `no_due_rows`, `depth`, `global_cap`, `advisory_lock` and `per_source_inflight`; `source_slug=none` is used when no eligible source exists. |
 | `javmeta_source_last_success_age_seconds` | `source_slug` | Age in seconds since the source's last successful crawl; `-1` means no success is recorded. |
 | `javmeta_source_past_due` | `source_slug` | 1 when an enabled source exceeded its manifest cycle plus one scheduler sweep, or global fallback; otherwise 0. |
 | `javmeta_crawl_queue_depth` | `status` | Current queue rows by state. |
@@ -88,18 +83,6 @@ critical rule uses a separate Telegram destination with a `[CRITICAL]` label.
 Configure age thresholds with
 `alerts.crawl_dispatch_warning_seconds` and
 `alerts.crawl_dispatch_critical_seconds` on the Settings page.
-
-For a source with due backlog, compare `javmeta_feed_source_started` with
-`javmeta_feed_source_budget`; a sustained ratio of at least 0.90 means the
-source is using at least 90% of its current allowance. `waiting` is a current
-gauge, while `dispatched` and stop-reason counts cover the previous UTC calendar
-minute. A high waiting count paired with low starts points to delayed-job or
-worker throughput. Use the stop-reason label to distinguish an exhausted
-source budget from queue depth, global feed cap, advisory-lock contention or
-the per-source in-flight limit. The start count includes claims that have started
-but have not recorded a non-skipped fetch attempt, so stalled claims can briefly
-inflate the ratio. See [Queue operations](queue.md#safely-raising-a-source-rate)
-for the staged procedure to raise a rate without changing the configured source gap.
 
 ### Natural-language search parse
 
