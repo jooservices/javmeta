@@ -154,7 +154,7 @@ final class AlertEvaluationService
             $this->attemptRecovery($event, $rule, $condition);
         }
         $templateKey = $this->messages->templateKey($rule);
-        if ($templateKey !== null) {
+        if ($templateKey !== null && $event->getAttribute('recovery_completed_at') !== null) {
             app(\App\Services\Notifications\NotificationPolicyDispatcher::class)->resolveCause($templateKey, $rule);
         }
     }

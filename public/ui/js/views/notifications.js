@@ -116,7 +116,7 @@ function mount(root) {
     try {
       const rows = (await admin(endpoint)).data || [];
       const tbody = root.querySelector('.notifications-list tbody');
-      if (tbody) tbody.innerHTML = rows.map(row => `<tr><td>${esc(row.name)}</td><td>${esc(row.usage)}</td><td>${esc(row.channel)}</td><td>${row.enabled ? 'Bật' : 'Tắt'}</td><td>${esc(row.last_sent_at || 'Chưa gửi')}</td><td>${esc(row.updated_at || 'Mặc định')}</td><td><button class="btn sm" data-action="edit" data-key="${esc(row.key)}">Sửa</button></td></tr>`).join('');
+      if (tbody) tbody.innerHTML = rows.map(row => `<tr><td>${esc(row.name)}</td><td>${esc(row.usage)}</td><td>${esc(row.channel)}</td><td>${row.enabled ? 'Bật' : 'Tắt'}</td><td>${esc(row.tier || row.default_severity)}</td><td>${esc(row.last_sent_at || 'Chưa gửi')}</td><td>${esc(row.updated_at || 'Mặc định')}</td><td><button class="btn sm" data-action="edit" data-key="${esc(row.key)}">Sửa</button></td></tr>`).join('');
     } catch { /* the current editor remains usable if the list refresh fails */ }
   };
 

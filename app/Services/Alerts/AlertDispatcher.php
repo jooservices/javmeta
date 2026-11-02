@@ -33,6 +33,13 @@ final class AlertDispatcher
             $policy = app(\App\Services\Notifications\NotificationPolicyDispatcher::class);
             $decision = $policy->prepare($templateKey, $context);
             if ($decision !== null && ! $decision['allowed']) {
+                if ($decision['resolved'] && $decision['reason'] !== 'reserved') {
+                    $cause = is_string($context['notification_cause'] ?? null)
+                        ? $context['notification_cause']
+                        : (is_string($context['rule'] ?? null) ? $context['rule'] : '');
+                    $policy->resolveCause($templateKey, $cause, $context);
+                }
+
                 return [];
             }
             if ($decision !== null) {
@@ -143,6 +150,8 @@ final class AlertDispatcher
             $policy = app(\App\Services\Notifications\NotificationPolicyDispatcher::class);
             $decision = $policy->prepare($templateKey, $notificationContext);
             if ($decision !== null && ! $decision['allowed']) {
+                $policy->resolveCause($templateKey, $debounceKey, $notificationContext);
+
                 return false;
             }
             $rendered = ($this->renderer ?? app(NotificationRenderer::class))->render($templateKey, $notificationContext);
@@ -154,6 +163,7 @@ final class AlertDispatcher
         if (! Cache::pull($this->activeKey($debounceKey))) {
             if ($policy !== null && $decision !== null) {
                 $policy->release($decision);
+                $policy->resolveCause($decision['policy_key'], $debounceKey, $notificationContext);
             }
 
             return false;

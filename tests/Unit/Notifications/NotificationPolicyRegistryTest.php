@@ -38,5 +38,7 @@ final class NotificationPolicyRegistryTest extends TestCase
         self::assertSame('warning', $policies['crawl.success_rate_low.performers']['tier']);
         self::assertSame('info', $policies['report.periodic']['tier']);
         self::assertSame('info', $policies['report.daily']['tier']);
+        self::assertFalse($policies['report.periodic']['include_periodic_report']);
+        self::assertFalse($policies['report.daily']['include_daily_report']);
     }
 }

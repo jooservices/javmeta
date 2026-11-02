@@ -32,7 +32,7 @@ final class NotificationPolicyDispatcher
         if ($key === null || $key === '') {
             return null;
         }
-        $policyKey = $this->policyKey($key);
+        $policyKey = $this->policyKey($key, $context);
         $isResolved = strtolower((string) ($context['alert_state'] ?? '')) === 'resolved'
             || strtolower((string) ($context['severity'] ?? '')) === 'resolved';
         $causeKey = $this->causeKey($context, $policyKey);
@@ -125,10 +125,11 @@ final class NotificationPolicyDispatcher
         }
     }
 
-    public function resolveCause(string $key, string $cause): void
+    /** @param array<string, mixed> $context */
+    public function resolveCause(string $key, string $cause, array $context = []): void
     {
         try {
-            $policyKey = $this->policyKey($key);
+            $policyKey = $this->policyKey($key, $context);
             $this->policies->resolveCause($policyKey, $this->hashCause($policyKey, $cause));
         } catch (Throwable) {
             // Alert recovery must continue when the policy state store is unavailable.
@@ -143,6 +144,9 @@ final class NotificationPolicyDispatcher
         $event = $this->policies->event($policyKey, $causeKey);
         if (! $policy['send_resolved']) {
             return $this->suppress($key, $policyKey, $causeKey, 'resolved_disabled', true);
+        }
+        if ($event !== null && $event->resolved_at !== null) {
+            return $this->suppress($key, $policyKey, $causeKey, 'already_resolved', true);
         }
         if ($event === null || $event->critical_sent_at === null) {
             return $this->suppress($key, $policyKey, $causeKey, 'resolved_without_critical', true);
@@ -234,7 +238,8 @@ final class NotificationPolicyDispatcher
         return hash('sha256', $key . "\0" . $cause);
     }
 
-    private function policyKey(string $key): string
+    /** @param array<string, mixed> $context */
+    private function policyKey(string $key, array $context = []): string
     {
         return match ($key) {
             'crawl.heartbeat_recovered' => 'crawl.heartbeat_stale',
@@ -242,6 +247,7 @@ final class NotificationPolicyDispatcher
             'crawl.stalled_recovered' => 'crawl.stalled',
             'crawl.queue_recovered' => 'crawl.queue_stuck',
             'crawl.backlog_recovered' => 'crawl.backlog_high',
+            'backup.recovered' => ($context['notification_cause'] ?? null) === 'backup:missing' ? 'backup.manifest_missing' : 'backup.stale',
             'source.health_recovered' => 'source.health_blocked',
             'staging.readiness_recovered' => 'staging.readiness_blocked',
             default => $key,

@@ -65,6 +65,8 @@ return new class extends Migration {
         if (Schema::hasTable('report_snapshots')) {
             Schema::table('report_snapshots', static function (Blueprint $table): void {
                 $table->string('report_type', 16)->default('periodic');
+                $table->dropUnique('report_snapshots_scheduled_for_unique');
+                $table->unique(['report_type', 'scheduled_for'], 'report_snapshots_type_slot_unique');
             });
         }
 
@@ -85,10 +87,11 @@ return new class extends Migration {
     {
         Schema::dropIfExists('notification_policy_metric_counters');
         Schema::dropIfExists('notification_policy_events');
-        Schema::dropIfExists('notification_policy_metric_counters');
         if (Schema::hasTable('report_snapshots') && Schema::hasColumn('report_snapshots', 'report_type')) {
             Schema::table('report_snapshots', static function (Blueprint $table): void {
+                $table->dropUnique('report_snapshots_type_slot_unique');
                 $table->dropColumn('report_type');
+                $table->unique('scheduled_for', 'report_snapshots_scheduled_for_unique');
             });
         }
         Schema::table('notification_template_revisions', static function (Blueprint $table): void {

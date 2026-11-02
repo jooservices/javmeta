@@ -44,6 +44,43 @@ final class ReportDataBuilderTest extends TestCase
         self::assertSame(['total' => 2, 'since_last' => 2, 'last_24h' => 2, 'avg_per_hour' => 1.0, 'peak_per_hour' => 1.0], $data['performers']);
     }
 
+    public function test_daily_report_uses_the_same_indexed_24_hour_window_for_its_delta_and_count(): void
+    {
+        config(['cache.default' => 'array', 'javmeta_report.sections' => ['movies', 'performers']]);
+        Cache::store('array')->flush();
+        $at = CarbonImmutable::parse('2026-11-03 12:00:00 UTC');
+        Movie::factory()->create(['crawled_at' => $at->subDay()->subMinute()]);
+        Movie::factory()->create(['crawled_at' => $at->subHours(12)]);
+        Movie::factory()->create(['crawled_at' => $at->subMinutes(10)]);
+        Performer::factory()->create(['first_seen_at' => $at->subDay()->subMinute()]);
+        Performer::factory()->create(['first_seen_at' => $at->subHours(12)]);
+
+        $data = app(ReportDataBuilder::class)->build($at, 1440);
+
+        self::assertSame('daily', $data['report_type']);
+        self::assertSame(2, $data['movies']['since_last']);
+        self::assertSame(2, $data['movies']['last_24h']);
+        self::assertSame(1, $data['performers']['since_last']);
+        self::assertSame(1, $data['performers']['last_24h']);
+    }
+
+    public function test_daily_and_periodic_snapshots_can_share_the_same_scheduled_time(): void
+    {
+        $scheduledFor = CarbonImmutable::parse('2026-11-03 08:00:00 America/Mexico_City');
+        foreach (['periodic', 'daily'] as $reportType) {
+            ReportSnapshot::query()->create([
+                'scheduled_for' => $scheduledFor,
+                'report_type' => $reportType,
+                'result' => 'sent',
+                'channel' => 'telegram',
+                'rendered_text' => $reportType,
+                'raw_numbers' => [],
+            ]);
+        }
+
+        self::assertSame(['daily', 'periodic'], ReportSnapshot::query()->orderBy('report_type')->pluck('report_type')->all());
+    }
+
     public function test_crawl_success_excludes_skipped_attempts_and_uses_kind_to_separate_entities(): void
     {
         config(['cache.default' => 'array', 'javmeta_report.interval_minutes' => 120, 'javmeta_report.sections' => ['crawl', 'sources']]);

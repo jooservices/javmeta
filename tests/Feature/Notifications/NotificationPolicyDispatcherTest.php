@@ -94,10 +94,32 @@ final class NotificationPolicyDispatcherTest extends TestCase
 
         $critical = $dispatcher->prepare('crawl.stalled', ['rule' => 'crawl_stalled']);
         $dispatcher->recordSent($critical);
-        $dispatcher->resolveCause('crawl.stalled', 'crawl_stalled');
         $resolved = $dispatcher->prepare('crawl.stalled', $resolvedContext);
         self::assertTrue($resolved['allowed']);
         self::assertTrue($resolved['resolved']);
+        $dispatcher->recordSent($resolved);
+
+        $duplicate = $dispatcher->prepare('crawl.stalled', $resolvedContext);
+        self::assertFalse($duplicate['allowed']);
+        self::assertSame('already_resolved', $duplicate['reason']);
+    }
+
+    public function test_backup_recovery_uses_the_original_stale_or_missing_cause(): void
+    {
+        $dispatcher = app(NotificationPolicyDispatcher::class);
+        foreach (['backup:stale' => 'backup.stale', 'backup:missing' => 'backup.manifest_missing'] as $cause => $key) {
+            $open = $dispatcher->prepare($key, ['notification_cause' => $cause]);
+            self::assertTrue($open['allowed']);
+            $dispatcher->recordSent($open);
+
+            $resolved = $dispatcher->prepare('backup.recovered', [
+                'alert_state' => 'resolved',
+                'notification_cause' => $cause,
+            ]);
+            self::assertTrue($resolved['allowed']);
+            self::assertSame($key, $resolved['policy_key']);
+            $dispatcher->recordSent($resolved);
+        }
     }
 
     public function test_only_opted_in_warning_events_appear_in_the_next_digest(): void
