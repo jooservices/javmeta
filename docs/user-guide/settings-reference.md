@@ -334,6 +334,12 @@ Giới hạn một phương thức fetch; timeout client của worker phải dà
 
 Số nguyên; từ 1 đến 150. Mã mục: `timeouts.fetch_service_seconds`.
 
+### Timeout tối đa Playwright (giây)
+
+Dừng lần gọi Playwright và giới hạn timeout browser service qua API cấu hình để giải phóng slot.
+
+Số nguyên; từ 1 đến 45. Mã mục: `timeouts.playwright_seconds`.
+
 ### Timeout client fetch (giây)
 
 Thời gian tối đa worker chờ fetch; phải dài hơn timeout của dịch vụ fetch.
@@ -347,6 +353,36 @@ Giới hạn thời gian gửi telemetry tới OpenObserve.
 Số nguyên; từ 1 đến 30. Mã mục: `observability.openobserve_timeout_seconds`.
 
 ## Vòng lặp crawl
+
+### Số lần thử trong cửa sổ chọn phương thức
+
+Số kết quả Playwright gần nhất dùng để học phương thức fetch cho từng nguồn và máy chủ.
+
+Số nguyên; từ 1 đến 100. Mã mục: `crawl.fetch_method_window_size`.
+
+### Số lỗi Playwright để ưu tiên FlareSolverr
+
+Cần đạt ngưỡng này trong cửa sổ và có ít nhất một lần FlareSolverr thành công gần đây; ngưỡng thực tế không vượt kích thước cửa sổ.
+
+Số nguyên; từ 1 đến 100. Mã mục: `crawl.fetch_method_failure_threshold`.
+
+### Thời hạn kết quả học phương thức (giây)
+
+Thời gian giữ cửa sổ thành công và thất bại trong cache dùng chung.
+
+Số nguyên; từ 60 đến 2592000. Mã mục: `crawl.fetch_method_window_ttl_seconds`.
+
+### Thời gian ưu tiên FlareSolverr (giây)
+
+Thời hạn ưu tiên FlareSolverr sau khi Playwright vượt ngưỡng lỗi; probe thành công sẽ bỏ ưu tiên sớm.
+
+Số nguyên; từ 60 đến 604800. Mã mục: `crawl.fetch_method_preference_ttl_seconds`.
+
+### Khoảng request giữa các lần probe Playwright
+
+Cứ mỗi số request này, thử Playwright trước để phát hiện khi nguồn đã hoạt động lại.
+
+Số nguyên; từ 1 đến 1000. Mã mục: `crawl.fetch_method_probe_interval`.
 
 ### Thời gian chờ khi bị chặn (giây, cách nhau bằng dấu phẩy)
 

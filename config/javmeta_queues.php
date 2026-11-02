@@ -73,6 +73,12 @@ return [
 
     'worker_timeout' => 180,
     'fetch_service_timeout_seconds' => 45,
+    'playwright_timeout_seconds' => 25,
+    'fetch_method_window_size' => 10,
+    'fetch_method_failure_threshold' => 8,
+    'fetch_method_window_ttl_seconds' => 86400,
+    'fetch_method_preference_ttl_seconds' => 21600,
+    'fetch_method_probe_interval' => 10,
     'queue_tries' => 3,
     'queue_max_time' => 3600,
     'queue_max_jobs' => 500,
