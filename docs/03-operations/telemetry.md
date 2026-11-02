@@ -83,6 +83,17 @@ environment.
 | `javmeta_search_embedding_backfill_missing` | `entity` | Movie or performer documents found missing from Elasticsearch or without an embedding during the latest backfill run. |
 | `javmeta_search_embedding_backfill_fixed` | `entity` | Movie or performer documents successfully indexed with an embedding during the latest backfill run. |
 | `javmeta_notification_sent_total` | `notification_key`, `channel` | Cumulative count of successful sends for each registered template. Unit: messages. Latest gauge is the total since the template row was created; use a difference between samples for sends during an interval. `environment` and `role` are attached by the shared metrics client. |
+| `javmeta_notifications_sent_total` | `tier`, `key` | Cumulative policy-approved messages sent, grouped by delivery tier and notification key. Unit: messages. |
+| `javmeta_notifications_suppressed_total` | `reason` | Cumulative notifications suppressed by policy, grouped by reason such as `warning_digest`, `cooldown`, `quiet_mode`, `duplicate_event`, or `digest_only`. Unit: messages. |
+
+Policy counters are persisted in `notification_policy_metric_counters` and
+published by `obs:publish-metrics`. To inspect current totals over SSH, run
+`php artisan notifications:metrics`; compare samples to measure change over a
+time window. The policy is working as intended when warning-only causes do not
+increase `javmeta_notifications_sent_total` before escalation, a persistent
+warning adds one critical send at its escalation age, and cooldown/digest
+suppression reasons increase without duplicate sends. `environment` and `role`
+are attached by the shared metrics client.
 
 The seven `javmeta_crawl_run_*_1h` streams are emitted from a fixed suffix list
 in `PublishMetricsCommand`; no other dynamic metric names are generated.

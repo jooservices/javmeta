@@ -45,6 +45,18 @@ enabled and successful or attempted in the evaluation window. A low-backlog
 alert includes zero due rows. These values apply without a restart; see
 [notifications](notifications.md).
 
+Notification policy is managed on Cài đặt → **Thông báo**. Each registered
+notification has editable enabled state, tier (`critical`, `warning`, `notice`,
+or `info`), cooldown minutes, escalation minutes, periodic/daily report
+inclusion, and resolved-message behavior. Policy edits, resets, and restores
+are revisioned. `notifications.quiet_mode` defaults off; when enabled, only
+critical notifications and security events are sent immediately. Daily reports
+run at `report.daily_time` (`08:00`) in `report.daily_timezone`
+(`America/Mexico_City`). `report.legacy_hourly_enabled` defaults off and the
+legacy hourly job is scheduled only when the periodic report is disabled.
+These values take effect through the database settings service without a
+restart. See [notification policy and reports](notifications.md).
+
 ## Hybrid search HTTP budget
 
 `search.budget_ms` (default 300, range 25–1500, group Tìm kiếm) maps to `javmeta_search.budget_ms` through the database settings service. It limits optional HTTP work within one hybrid search. SQL and response serialization can exceed that budget. A timeout falls back to keyword results; the existing response keys remain unchanged. No environment variable is needed. See [performance](performance.md) for measurements and acceptance limits.

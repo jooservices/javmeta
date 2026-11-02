@@ -18,6 +18,27 @@ successful delivery and last edit. It supports editing, sample preview, Telegram
 test sends, reset to the registry default and revision restore. All routes are
 login-required and listed in the [guest route matrix](guest-mode.md).
 
+Each template row also stores the notification policy: enabled state, tier,
+cooldown, escalation delay, periodic/daily report inclusion, and resolved
+delivery. The policy page displays these controls in Vietnamese; message
+templates remain English. The `NotificationRegistry` is the default source for
+both templates and policy rows, and the completeness test fails if a registered
+notification has no policy row. Policy changes and restores are revisioned.
+The global **Chế độ yên lặng** setting allows only critical notifications and
+security events through; other eligible events remain in report digests.
+
+Critical messages send immediately and are limited to one per cause per
+configured cooldown. A resolved message is sent only when the same cause had a
+critical delivery and its policy enables resolved messages. Warning messages
+are digest-only; an open warning escalates once its configured age is reached.
+Notice messages send immediately once per event, with a separate event
+cooldown. Info and warnings appear in enabled periodic/daily reports only.
+The notification page previews the next periodic and daily report.
+
+Run `php artisan notifications:metrics` over SSH to inspect cumulative policy
+delivery and suppression counters. `obs:publish-metrics` publishes the same
+counters to OpenObserve.
+
 Templates replace only registered `{variable}` placeholders. Saves reject
 unknown/malformed variables and token-shaped secrets; Telegram markup is limited
 to `b`, `i`, `u`, `s`, `code` and `pre` without attributes. Telegram variables
@@ -138,7 +159,7 @@ producer is connected. Their stated triggers are the contract for later wiring.
 The Telegram follow feature sends directly so it can attach a cover image and
 buttons. The owner bot replies directly so commands remain interactive.
 
-## Periodic status report
+## Periodic and daily status reports
 
 The main-node scheduler runs `report:send` every minute. It sends only on the
 configured interval grid (default: even hours in `America/Mexico_City`), skips
@@ -146,10 +167,21 @@ quiet-hour slots without a catch-up, and uses a cache lock plus a unique
 scheduled-slot key to prevent duplicates. `report:send --now` and the owner-only
 **Gửi ngay qua Telegram** action send once without moving the grid. The legacy
 `javmeta:hourly-report` command remains a one-time alias; `--dry-run` prints a
-live preview.
+live preview. When periodic reports are enabled, the legacy hourly scheduler is
+disabled; its separate compatibility switch defaults off.
 
-`report_snapshots` stores rendered text, raw numbers, the slot, channel, result
-and timestamp. Retention is controlled by `report.history_days` (default 30
+The daily scheduler runs `report:send-daily` once at `report.daily_time`
+(default `08:00`) in `report.daily_timezone` (default
+`America/Mexico_City`). It summarizes the preceding 24 hours in English,
+including separate movie and performer counts, crawl speed and success, blocked
+and exhausted sources, failed jobs after retries, nodes, completed deploys,
+backup status, and open warnings. `report:send-daily --now` sends immediately.
+Both report schedules and the daily local time/zone are editable in Settings.
+The periodic report includes open warnings with their start time, current value,
+and threshold.
+
+`report_snapshots` stores rendered text, raw numbers, report type, the slot,
+channel, result and timestamp. Retention is controlled by `report.history_days` (default 30
 days); the UI shows the latest 20. The report template is editable under
 Settings → Báo cáo. Report settings, including the sections, interval, timezone,
 quiet hours and top-source limit, are database-backed. See
