@@ -12,7 +12,27 @@ use Illuminate\Support\Facades\Cache;
  */
 final class AlertDispatcher
 {
-    public function __construct(private readonly AlertNotifier $notifier) {}
+    public function __construct(
+        private readonly AlertNotifier $notifier,
+        private readonly ?AlertChannelDispatcher $channels = null,
+    ) {}
+
+    /**
+     * Send an alert through the configured delivery channels. Channel failures are isolated.
+     *
+     * @param array<string, mixed> $context
+     * @return list<string>
+     */
+    public function dispatchChannels(string $subject, string $body, array $context = [], bool $force = false, ?array $onlyChannels = null): array
+    {
+        return $this->channels?->dispatch($subject, $body, $context, $force, $onlyChannels) ?? [];
+    }
+
+    /** @return list<string> */
+    public function enabledChannels(): array
+    {
+        return $this->channels?->enabledNames() ?? [];
+    }
 
     /**
      * Debounce and send an open warning, recording the active cause for a future recovery.

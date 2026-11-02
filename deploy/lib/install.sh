@@ -368,6 +368,7 @@ apply_release() {
     # Only the primary initializes shared data; adding workers must not rotate its owner.
     step 'Import manifest database settings' import_settings
     step 'Import missing database settings' php artisan settings:import-env
+    step 'Remove legacy Telegram credentials from database settings' php artisan settings:purge-telegram-credentials
     step 'Create Elasticsearch mappings before crawl' php artisan es:setup
     step 'Synchronize crawler sources' php artisan crawler:sync-sources
     if [[ -z "$previous" ]]; then

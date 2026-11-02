@@ -8,6 +8,21 @@ return [
     | (no fan-out to Telegram / activity log). Default: on.
     */
     'enabled' => true,
+    'channels' => ['telegram'],
+    'evaluate_interval_seconds' => 60,
+    'window_minutes' => 15,
+    'success_rate_min_percent' => 85,
+    'blocked_ratio_max_percent' => 10,
+    'pg_connections_max' => 45,
+    'dispatch_age_max_seconds' => 60,
+    'backlog_due_min_per_hot_source' => 10,
+    'min_attempts_in_window' => 100,
+    'cooldown_minutes' => 30,
+    'recovery_notice' => true,
+    'recovery_retry_max_attempts' => 3,
+    'history_retention_days' => 90,
+    'webhook_url' => '',
+    'webhook_timeout_seconds' => 5,
 
     /*
     | Telegram credentials prefer jooservices/laravel-notifications config /

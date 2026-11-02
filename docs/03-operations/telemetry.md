@@ -64,6 +64,8 @@ environment.
 | `javmeta_postgres_connections_used` | - | Active PostgreSQL sessions across the instance. |
 | `javmeta_postgres_connections_max` | - | Configured PostgreSQL max_connections. |
 | `javmeta_postgres_connection_utilization` | - | Active sessions divided by max_connections; alert threshold is 85% sustained for five minutes. |
+| `javmeta_alert_firing` | `rule` | Unitless 0/1 gauge while a rule is firing. Source rules use `source_success_rate:<slug>` and `backlog_depth:<slug>`. |
+| `javmeta_alert_event_count` | `state`, `severity` | Episode count, split into `firing` or `resolved` and `warning`, `critical` or `info`. Retention follows `alerts.history_retention_days`. |
 | `javmeta_mongo_archive_write_failures` | — | Cumulative count of failed Mongo archive writes since the cache counter was created. |
 | `javmeta_elasticsearch_request_failures` | — | Cumulative count of failed Elasticsearch requests since the cache counter was created. |
 | `javmeta_search_embedding_backfill_missing` | `entity` | Movie or performer documents found missing from Elasticsearch or without an embedding during the latest backfill run. |
@@ -105,9 +107,20 @@ is treated as stale when due work exists. OpenObserve warning and critical
 rules evaluate only the newest sample in their bounded five-minute window every
 minute, so a stale sample cannot keep an alert active after recovery. The
 critical rule uses a separate Telegram destination with a `[CRITICAL]` label.
-Configure age thresholds with
+Configure OpenObserve age thresholds with
 `alerts.crawl_dispatch_warning_seconds` and
 `alerts.crawl_dispatch_critical_seconds` on the Settings page.
+
+The scheduled safety evaluator publishes alert state and history counts with
+`obs:publish-metrics`. `javmeta_alert_firing{rule}` is a 0/1 gauge for overall
+success rate, blocked ratio, PostgreSQL connections, dispatch age and each
+enabled source's success/backlog rules. `javmeta_alert_event_count{state,
+severity}` counts retained event episodes. Safety thresholds are database
+settings; `alerts:evaluate` runs every minute and uses the configured rolling
+window and cooldown. Inspect current values and labels over SSH with
+`php artisan alerts:metrics`, compare them before and after a threshold change,
+and use `php artisan alerts:list --hours=24` to confirm episode history and
+recovery.
 
 ### Natural-language search parse
 

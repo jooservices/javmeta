@@ -45,6 +45,57 @@ product-specific text.
 | Follow feed | Recent movies matching the owner’s follows, plus new-since-last-visit count | XCrawler UI |
 | Owner Telegram bot | Search, movie details, status, follows, and optional downloads | Long polling every minute; owner chat only |
 
+## Crawl safety alerts
+
+`alerts:evaluate` is scheduled every minute and applies the database settings
+in Cài đặt → Cảnh báo. `alerts.evaluate_interval_seconds` is at least 60 and
+can reduce evaluation frequency without changing the scheduler cadence. The
+rolling window defaults to 15 minutes. `crawl_fetch_attempts` rows with
+`outcome=skipped` are excluded; HTTP 2xx is success, and 403, 429 or a
+Cloudflare mitigation marker counts as blocked. Rate rules require at least
+100 attempts by default. Per-source rate checks cover enabled sources.
+
+Rules cover overall and per-source success rate, blocked ratio, PostgreSQL
+client connections, dispatch age while due work exists, and due backlog per
+hot source. A source is hot when enabled and it has a recent success or fetch
+attempt in the evaluation window. Backlog alerts fire below the configured
+due-row floor, including zero. When the overall success rule and one or more
+source rules fire together, the overall notice lists the three lowest-rate
+sources and suppresses duplicate source notices for that evaluation.
+
+Open conditions are stored in `alert_events`; one row represents a firing
+episode, with its start, latest value/threshold, channel delivery state and
+resolution time. Each channel retries an undelivered open notice after
+`alerts.cooldown_minutes` (30 by default), without resending to channels that
+already accepted that attempt. A recovery goes only to channels that received
+the open notice. Failed recoveries retry at the same cooldown, up to
+`alerts.recovery_retry_max_attempts` (3 by default). Resolved history is pruned
+after `alerts.history_retention_days` (90 by default); active episodes remain.
+
+Run `php artisan alerts:metrics` over SSH to inspect current firing gauges and
+retained event counts. `obs:publish-metrics` exports the same points to the
+configured telemetry stream.
+
+Enabled channels default to Telegram. `AlertDispatcher` routes messages to
+each selected channel and catches channel failures independently, logging only
+the channel name and exception class. The webhook channel posts JSON with
+`subject`, `message` and safe scalar `context` to the HTTPS address in
+`alerts.webhook_url`; credentials belong in runtime secrets. Telegram bot
+tokens and chat IDs also stay in runtime secrets and are not exposed in the
+Settings page or logs. Use `php artisan alerts:test` to check enabled channels
+and `php artisan alerts:list --hours=24` to inspect history.
+
+## Safety evaluator notification types
+
+| Notification | Trigger | Default |
+| --- | --- | --- |
+| Crawl success rate | Overall 2xx ratio below configured minimum, with enough attempts | Below 85% in 15 minutes and at least 100 attempts |
+| Per-source success rate | Enabled source falls below the same minimum with enough attempts | Below 85% |
+| Blocked ratio | 403, 429 or Cloudflare-marked attempts exceed configured maximum | Above 10% |
+| PostgreSQL connections | Client connections exceed configured maximum | Above 45 |
+| Dispatch age | Due work exists without a recent feed-pool dispatch | Above 60 seconds |
+| Due backlog per hot source | Due pending rows fall below the configured source floor | Below 10 rows |
+
 The Telegram follow feature sends directly so it can attach a cover image and
 buttons. The owner bot replies directly so commands remain interactive.
 

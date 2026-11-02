@@ -33,6 +33,7 @@ if (! app()->runningUnitTests()) {
     $scheduleCommand('crawler:feed-pool --scheduled')->everyFiveSeconds()->withoutOverlapping();
     $scheduleCommand('horizon:reconcile-workers')->everyMinute()->withoutOverlapping();
     $scheduleCommand('obs:publish-metrics')->everyMinute();
+    $scheduleCommand('alerts:evaluate')->everyMinute()->withoutOverlapping();
     $scheduleCommand('javmeta:backup-status', ['--lenient'])->everyMinute();
     $scheduleCommand('crawler:recrawl-incomplete')->hourly()->withoutOverlapping();
     $scheduleCommand('search:backfill-embeddings')->hourly()->withoutOverlapping();

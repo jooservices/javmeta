@@ -14,7 +14,7 @@ Cấu hình hệ thống lưu trong cơ sở dữ liệu. Mỗi nhóm có nút L
 
 [Trang tra cứu](settings-reference.md) liệt kê đầy đủ các nhóm: Hàng đợi, Worker, Trình duyệt, Dọn dẹp, Thời gian chờ, Vòng lặp crawl, Cảnh báo, Telegram, Báo cáo hằng giờ, Kiểm tra sẵn sàng, Tìm kiếm, Giám sát, Sao lưu, AI (Ollama, embedding), Thông báo theo dõi (Telegram), Tên miền, Thư viện trên đĩa, Tải về (qBittorrent), Máy chủ tệp. Tên, mô tả và giới hạn được sinh tự động từ danh sách của ứng dụng.
 
-Ô bí mật không hiện lại giá trị; để trống là giữ nguyên trên trang này. Danh sách thư mục hoặc mạng có thể nhập mỗi dòng một mục. Không bật Tải về, Máy chủ tệp hay AI đám mây khi chưa có quyết định cho phép tương ứng. Thay đổi model hoặc số chiều tìm kiếm cần quy trình dựng lại chỉ mục của người quản lý.
+Các ô bí mật hiện trạng thái đã đặt mà không trả lại giá trị; Telegram bot token và chat ID được quản lý trong runtime secrets, không phải trên trang này. Danh sách thư mục hoặc mạng có thể nhập mỗi dòng một mục. Không bật Tải về, Máy chủ tệp hay AI đám mây khi chưa có quyết định cho phép tương ứng. Thay đổi model hoặc số chiều tìm kiếm cần quy trình dựng lại chỉ mục của người quản lý.
 
 ## Nếu có vẻ sai
 

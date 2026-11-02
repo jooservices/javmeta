@@ -13,8 +13,8 @@ use Throwable;
 
 /**
  * Sends one Telegram message for each new movie of a followed performer, maker or series, with the cover, the title, the
- * reason and an Open button. Quiet hours hold messages back until they end; a daily cap stops a flood. Every switch and
- * limit is a setting in the database (group "follow notifications"). The bot sends only; nothing opens an inbound port.
+ * reason and an Open button. Quiet hours hold messages back until they end; a daily cap stops a flood. Feature switches
+ * and limits are database settings; the bot token and chat id come from runtime secrets.
  */
 final class FollowNotifier
 {
@@ -27,8 +27,8 @@ final class FollowNotifier
         if (! (bool) $this->settings->get('follow_notifications.enabled')) {
             return ['sent' => 0, 'held' => 0, 'skipped' => 'disabled'];
         }
-        $token = (string) $this->settings->get('telegram.bot_token');
-        $chat = (string) $this->settings->get('telegram.chat_id');
+        $token = $this->telegramToken();
+        $chat = $this->telegramChatId();
         if ($token === '' || $chat === '') {
             return ['sent' => 0, 'held' => 0, 'skipped' => 'telegram is not configured'];
         }
@@ -125,6 +125,20 @@ final class FollowNotifier
         $hour = (int) $now->format('G');
 
         return $from < $to ? ($hour >= $from && $hour < $to) : ($hour >= $from || $hour < $to);
+    }
+
+    private function telegramToken(): string
+    {
+        $token = config('laravel-notifications.channels.telegram.bot_token', '');
+
+        return is_string($token) ? $token : '';
+    }
+
+    private function telegramChatId(): string
+    {
+        $chatId = config('laravel-notifications.channels.telegram.chat_id', '');
+
+        return is_string($chatId) ? $chatId : '';
     }
 
     /** @param array{code: string, title: string, cover: string|null, reason: string} $match */

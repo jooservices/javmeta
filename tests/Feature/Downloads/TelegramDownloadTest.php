@@ -31,9 +31,10 @@ final class TelegramDownloadTest extends TestCase
         $this->app->instance(ConfigStore::class, new FakeConfigStore());
         $this->app->forgetInstance(SettingsService::class);
         config(['app.url' => 'https://jav.example.test']);
+        config(['laravel-notifications.channels.telegram.bot_token' => '123:t', 'laravel-notifications.channels.telegram.chat_id' => '555']);
         $owner = User::factory()->create(['role' => 'super_administrator']);
         $s = app(SettingsService::class);
-        foreach (['telegram.bot_token' => '123:t', 'telegram.chat_id' => '555', 'telegram.api_base' => 'https://api.telegram.test', 'telegram.bot_enabled' => true, 'downloads.qbittorrent_url' => 'http://qbt.test:8080', 'downloads.save_path' => '/tmp'] as $k => $v) {
+        foreach (['telegram.api_base' => 'https://api.telegram.test', 'telegram.bot_enabled' => true, 'downloads.qbittorrent_url' => 'http://qbt.test:8080', 'downloads.save_path' => '/tmp'] as $k => $v) {
             $s->set($k, $v);
         }
         $movie = Movie::factory()->create(['display_code' => 'TGD-001', 'maker' => 'Followed', 'cover_url' => null, 'first_seen_at' => now()->subHour()]);

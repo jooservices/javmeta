@@ -470,6 +470,102 @@ Tắt thì không có cảnh báo nào được gửi.
 
 Bật/tắt. Mã mục: `alerts.enabled`.
 
+### Kiểm tra cảnh báo mỗi (giây)
+
+Lệnh chạy mỗi phút và bỏ qua lượt chưa đến thời điểm kiểm tra này.
+
+Số nguyên; từ 60 đến 3600. Mã mục: `alerts.evaluate_interval_seconds`.
+
+### Cửa sổ đánh giá crawl (phút)
+
+Khoảng thời gian dùng để tính tỷ lệ thành công và bị chặn.
+
+Số nguyên; từ 1 đến 1440. Mã mục: `alerts.window_minutes`.
+
+### Tỷ lệ tải thành công tối thiểu (%)
+
+Cảnh báo khi tỷ lệ phản hồi HTTP 2xx thấp hơn ngưỡng này.
+
+Số nguyên; từ 1 đến 100. Mã mục: `alerts.success_rate_min_percent`.
+
+### Tỷ lệ bị chặn tối đa (%)
+
+Cảnh báo khi tỷ lệ phản hồi 403, 429 hoặc dấu hiệu Cloudflare vượt ngưỡng này.
+
+Số nguyên; từ 0 đến 100. Mã mục: `alerts.blocked_ratio_max_percent`.
+
+### Số kết nối PostgreSQL tối đa
+
+Cảnh báo khi số kết nối client vượt ngưỡng này.
+
+Số nguyên; từ 1 đến 10000. Mã mục: `alerts.pg_connections_max`.
+
+### Chưa điều phối crawl quá (giây)
+
+Cảnh báo khi còn việc đến hạn nhưng chưa có lần điều phối trong khoảng này.
+
+Số nguyên; từ 1 đến 3600. Mã mục: `alerts.dispatch_age_max_seconds`.
+
+### Ngưỡng metric điều phối crawl (giây)
+
+Ngưỡng warning của metric javmeta_crawl_dispatch_stale; cảnh báo trực tiếp dùng ngưỡng riêng bên trên.
+
+Số nguyên; từ 30 đến 3600. Mã mục: `alerts.crawl_dispatch_warning_seconds`.
+
+### Việc đến hạn tối thiểu mỗi nguồn nóng
+
+Cảnh báo khi nguồn đang crawl còn ít việc đến hạn hơn mức này.
+
+Số nguyên; từ 0 đến 100000. Mã mục: `alerts.backlog_due_min_per_hot_source`.
+
+### Số lần thử tối thiểu trong cửa sổ
+
+Không tính tỷ lệ khi mẫu nhỏ hơn mức này.
+
+Số nguyên; từ 1 đến 100000. Mã mục: `alerts.min_attempts_in_window`.
+
+### Nhắc lại sau (phút)
+
+Nếu sự cố còn tiếp diễn, gửi lại tối đa một lần sau khoảng này.
+
+Số nguyên; từ 1 đến 10080. Mã mục: `alerts.cooldown_minutes`.
+
+### Gửi tin khi đã phục hồi
+
+Gửi một tin khi điều kiện cảnh báo trở lại bình thường.
+
+Bật/tắt. Mã mục: `alerts.recovery_notice`.
+
+### Số lần thử gửi tin phục hồi tối đa
+
+Sau mỗi khoảng nhắc lại, thử gửi lại tin phục hồi chưa tới được kênh; hết số lần này thì dừng.
+
+Số nguyên; từ 1 đến 10. Mã mục: `alerts.recovery_retry_max_attempts`.
+
+### Kênh nhận cảnh báo
+
+Mỗi dòng chọn một kênh đã bật: telegram hoặc webhook.
+
+Danh sách văn bản. Mã mục: `alerts.channels`.
+
+### Địa chỉ webhook cảnh báo
+
+URL HTTPS không chứa thông tin đăng nhập, query hoặc fragment; để trống nếu không dùng webhook.
+
+Văn bản. Mã mục: `alerts.webhook_url`.
+
+### Webhook chờ tối đa (giây)
+
+Giới hạn thời gian chờ gửi cảnh báo tới webhook.
+
+Số nguyên; từ 1 đến 30. Mã mục: `alerts.webhook_timeout_seconds`.
+
+### Số ngày giữ lịch sử cảnh báo
+
+Lịch sử đã xử lý cũ hơn mức này được tự động xóa.
+
+Số nguyên; từ 1 đến 3650. Mã mục: `alerts.history_retention_days`.
+
 ### Gộp cảnh báo trùng trong (giây)
 
 Cùng một cảnh báo chỉ gửi một lần trong khoảng này.
@@ -494,31 +590,13 @@ Một phim lỗi quá số lần này sẽ được cảnh báo.
 
 Số nguyên; từ 1 đến 100. Mã mục: `alerts.title_failure_threshold`.
 
-### Cảnh báo khi chưa nạp việc crawl (giây)
+### Ngưỡng metric điều phối crawl mức cao (giây)
 
-Cảnh báo khi còn việc đến hạn nhưng chưa có job crawl mới được đẩy vào hàng đợi trong khoảng này.
-
-Số nguyên; từ 30 đến 3600. Mã mục: `alerts.crawl_dispatch_warning_seconds`.
-
-### Báo động khi chưa nạp việc crawl (giây)
-
-Gửi cảnh báo mức cao khi còn việc đến hạn nhưng chưa có job crawl mới được đẩy vào hàng đợi trong khoảng này.
+Ngưỡng critical của metric javmeta_crawl_dispatch_stale; cảnh báo trực tiếp dùng ngưỡng riêng.
 
 Số nguyên; từ 30 đến 3600. Mã mục: `alerts.crawl_dispatch_critical_seconds`.
 
 ## Telegram
-
-### Token của bot
-
-Token do BotFather cấp. Được mã hoá trong cơ sở dữ liệu và không hiển thị lại.
-
-Thông tin bí mật. Mã mục: `telegram.bot_token`.
-
-### Chat ID nhận tin
-
-Chat của chủ sở hữu; chỉ chat này được dùng bot.
-
-Văn bản. Mã mục: `telegram.chat_id`.
 
 ### User ID chủ sở hữu Telegram
 
@@ -540,7 +618,7 @@ Số nguyên; từ 1 đến 60. Mã mục: `telegram.timeout`.
 
 ### Bật bot hỏi đáp
 
-Bot trả lời tin của chủ sở hữu: tìm phim, diễn viên, trạng thái, theo dõi. Chỉ chat ID ở trên được dùng.
+Bot trả lời tin của chủ sở hữu: tìm phim, diễn viên, trạng thái, theo dõi. Bot token và chat ID được cấu hình riêng trong runtime secrets.
 
 Bật/tắt. Mã mục: `telegram.bot_enabled`.
 

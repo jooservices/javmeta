@@ -17,6 +17,11 @@ use App\Support\InsecureDefaults;
 use App\Observability\OpenObserveClient;
 use App\Observability\TelemetrySanitizer;
 use App\Services\Alerts\AlertDispatcher;
+use App\Services\Alerts\AlertChannelDispatcher;
+use App\Services\Alerts\AlertSnapshotReader;
+use App\Services\Alerts\DatabaseAlertSnapshotReader;
+use App\Services\Alerts\TelegramAlertChannel;
+use App\Services\Alerts\WebhookAlertChannel;
 use App\Services\Crawl\MovieDraftSink;
 use App\Services\Crawl\PerformerDraftSink;
 use App\Services\Merge\ConflictPolicy;
@@ -105,6 +110,11 @@ class AppServiceProvider extends ServiceProvider
             ]);
         });
         $this->app->singleton(AlertDispatcher::class);
+        $this->app->singleton(AlertSnapshotReader::class, DatabaseAlertSnapshotReader::class);
+        $this->app->singleton(AlertChannelDispatcher::class, static fn(Application $app): AlertChannelDispatcher => new AlertChannelDispatcher([
+            'telegram' => $app->make(TelegramAlertChannel::class),
+            'webhook' => $app->make(WebhookAlertChannel::class),
+        ]));
         $this->app->bind(ReportChannel::class, TelegramAlertNotifier::class);
     }
 }

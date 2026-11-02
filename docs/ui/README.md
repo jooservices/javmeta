@@ -114,10 +114,12 @@ Per-file Media actions include **Phụ đề** (local GPU Whisper) and **Dịch 
 
 The Media page has **Ghi luồng** with a URL field. It remains disabled until capture is enabled in Settings. Each submit creates one explicit owner job; DRM/encryption refusals appear in the queue. Finished captures expose a signed **Mở tệp đã ghi** link when file serving is enabled. Capture is never offered as an automatic or bulk library action.
 
-Cài đặt → **Cảnh báo** includes the warning and critical age thresholds for
-crawl dispatch. The application applies saved values without a restart; the
-OpenObserve metrics and Telegram alerts use those database settings. See
-[dispatch monitoring](../03-operations/telemetry.md#logs-and-traces).
+Cài đặt → **Cảnh báo** includes crawl safety thresholds, minimum sample size,
+evaluation window, cooldown, channel selection and alert history retention.
+The application applies saved values without a restart; `alerts:evaluate`
+checks them every minute and `obs:publish-metrics` reports firing state and
+event counts. See [notifications](../03-operations/notifications.md) and
+[telemetry](../03-operations/telemetry.md).
 
 Capture refuses internal-network and cloud-metadata destinations, including redirects and segment hosts. Library paths and scene descriptions containing dollar signs render literally. A rejected worker result appears through the normal failure/retry flow instead of occupying a running slot until its lease expires.
 
