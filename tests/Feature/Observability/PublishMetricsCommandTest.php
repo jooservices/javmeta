@@ -89,6 +89,7 @@ final class PublishMetricsCommandTest extends TestCase
             'openobserve.timeout' => 1,
         ]);
         Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
+        $this->freezeTime();
         $minute = CarbonImmutable::now()->startOfMinute()->subMinute();
         $key = 'javmeta:feed-pool:diagnostics:' . $minute->timestamp;
         $redis = Mockery::mock();

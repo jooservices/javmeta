@@ -11,6 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
+use RuntimeException;
 use Tests\TestCase;
 
 final class FeedDiagnosticsCommandTest extends TestCase
@@ -40,7 +41,7 @@ final class FeedDiagnosticsCommandTest extends TestCase
 
         Source::query()->create([
             'slug' => 'budgeted', 'name' => 'budgeted', 'base_url' => 'https://budgeted.test', 'enabled' => true, 'priority' => 1,
-            'needs_proxy' => false, 'gap_seconds_default' => 60, 'gap_seconds_min' => 1, 'gap_seconds_max' => 60, 'gap_seconds_current' => 60,
+            'needs_proxy' => false, 'gap_seconds_default' => 120, 'gap_seconds_min' => 1, 'gap_seconds_max' => 120, 'gap_seconds_current' => 120,
         ]);
         CrawlQueue::factory()->create([
             'source_slug' => 'budgeted',
@@ -58,6 +59,7 @@ final class FeedDiagnosticsCommandTest extends TestCase
 
         $this->artisan('crawler:feed-pool')->assertSuccessful();
 
+        self::assertSame(1, $hash['s|budgeted|budget']);
         self::assertSame(1, $hash['q|gallery|direct|exhausted_budget']);
         $this->artisan('crawler:feed-diagnostics', ['--minutes' => 10])
             ->expectsOutputToContain('budgeted')
@@ -78,13 +80,25 @@ final class FeedDiagnosticsCommandTest extends TestCase
         ]);
         Queue::fake();
         $redis = Mockery::mock();
-        $redis->shouldReceive('pipeline')->once()->andThrow(new \RuntimeException('Redis unavailable.'));
+        $redis->shouldReceive('pipeline')->once()->andThrow(new RuntimeException('Redis unavailable.'));
         Redis::shouldReceive('connection')->once()->with('default')->andReturn($redis);
 
         $this->artisan('crawler:feed-pool', ['--limit' => 1])->assertSuccessful();
 
         Queue::assertPushed(FetchListingJob::class, 1);
         self::assertSame(CrawlQueue::STATUS_CLAIMED, $row->refresh()->status);
+    }
+
+    public function test_diagnostics_command_reports_redis_read_failure(): void
+    {
+        config(['javmeta_queues.feed_diagnostics.enabled' => true]);
+        $redis = Mockery::mock();
+        $redis->shouldReceive('hgetall')->once()->andThrow(new RuntimeException('Redis unavailable.'));
+        Redis::shouldReceive('connection')->once()->with('default')->andReturn($redis);
+
+        $this->artisan('crawler:feed-diagnostics', ['--minutes' => 10])
+            ->expectsOutput('Unable to read feed diagnostics from Redis.')
+            ->assertFailed();
     }
 
     /** @param array<string, int> $hash */

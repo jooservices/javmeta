@@ -124,7 +124,7 @@ its minimum. The current gap is in `crawler:sources`, the status API and the met
 Feed-pool diagnostics are enabled by default through the database setting
 `queue.feed_diagnostics.enabled`. The database setting
 `queue.feed_diagnostics.retention_minutes` controls how long minute buckets stay
-in Redis (default 120 minutes, maximum 1,440). Each run writes its source
+in Redis (default 120 minutes, minimum 3, maximum 1,440). Each run writes its source
 snapshot, per-queue stop reason, run duration and claim candidate count in one
 Redis pipeline; Redis TTL removes expired buckets. Instrumentation errors are
 ignored by the feed command.
@@ -134,12 +134,16 @@ over SSH. The command caps its window at the configured retention period. The
 per-source table shows the latest budget, started and waiting snapshot in the
 window, plus dispatched rows summed over the window. Started counts requests
 recorded within `queue.pacing_horizon_seconds`; waiting counts claimed rows
-without a start time. Budget is `floor(horizon / max(1, gap))`. Stop reasons are
+without a start time. Budget is `max(1, floor(horizon / max(1, gap)))`, matching
+the feeder's minimum-one claim allowance. Stop-reason classification matches
+the due rows for each queue kind and lane in the claim statement. Reasons are
 counted by queue and lane: `exhausted_budget`, `no_due_rows`, `depth`,
 `global_cap`, `advisory_lock`, `per_source_inflight` and `interval_not_elapsed`.
-Run time is shown as the total for the window. `claimNext` candidate rows count
-rows returned to the feeder for consideration (up to one per call); it does not
-estimate rows scanned internally by the database engine.
+`advisory_lock` includes feed or scheduled-interval lock contention;
+`interval_not_elapsed` means the scheduled interval is still pending.
+Run time is shown as the total for the window. The `claimNext` candidate count
+increments when claim selection or a source-gate check finds a row (up to one
+per call); it does not estimate rows scanned internally by the database engine.
 
 
 ## Direct and browser lanes

@@ -12,7 +12,9 @@ use App\Observability\Sentry\CrawlFailureReporter;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
 use Illuminate\Support\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -30,9 +32,10 @@ final class CrawlQueueService
      */
     public function claimNext(string $workerId, ?string $kind = null, array $excludeSources = [], ?string $lane = null, ?array &$diagnostics = null): ?CrawlQueue
     {
+        $collectDiagnostics = $diagnostics !== null;
         $diagnostics = ['rows_examined' => 0, 'stop_reason' => null];
 
-        return DB::transaction(function () use ($workerId, $kind, $excludeSources, $lane, &$diagnostics): ?CrawlQueue {
+        return DB::transaction(function () use ($workerId, $kind, $excludeSources, $lane, $collectDiagnostics, &$diagnostics): ?CrawlQueue {
             // Serialize claims across feeder processes so the global browser cap cannot be oversubscribed.
             if (DB::getDriverName() === 'pgsql') {
                 DB::select('SELECT pg_advisory_xact_lock(?)', [281]);
@@ -63,23 +66,38 @@ final class CrawlQueueService
             // A site that is waiting out a block delay gets no new claims until the delay is over.
             $query->whereNotIn('source_slug', $this->sourcesHeldByBlockDelay());
 
-            if ($excludeSources !== []) {
-                $query->whereNotIn('source_slug', $excludeSources);
-            }
-
             // Fairness: a source waits until its claimed work across every crawl kind has room.
             $sourcesAtInflightLimit = $this->sourcesAtInflightLimit();
-            $query->whereNotIn('source_slug', $sourcesAtInflightLimit);
-
-            if (DB::getDriverName() === 'pgsql') {
-                $query->lockForUpdate();
+            $eligibleQuery = clone $query;
+            if ($excludeSources !== []) {
+                $eligibleQuery->whereNotIn('source_slug', $excludeSources);
             }
+            $eligibleQuery->whereNotIn('source_slug', $sourcesAtInflightLimit);
 
-            $row = $query->first();
-            if (! $row instanceof CrawlQueue) {
-                $diagnostics['stop_reason'] = FeedPoolStopReason::forClaim($excludeSources, $sourcesAtInflightLimit);
+            if ($collectDiagnostics) {
+                $row = $this->claimWithDiagnostics($query, $eligibleQuery, $excludeSources, $sourcesAtInflightLimit);
+                if (! $row instanceof CrawlQueue || $row->getAttribute('id') === null) {
+                    if ($row instanceof CrawlQueue) {
+                        $hasBudgetCandidate = $row->getAttribute('budget_candidate') !== null;
+                        $hasInflightCandidate = $row->getAttribute('inflight_candidate') !== null;
+                        $diagnostics['rows_examined'] = $hasBudgetCandidate || $hasInflightCandidate ? 1 : 0;
+                        $diagnostics['stop_reason'] = FeedPoolStopReason::forClaim(
+                            $hasBudgetCandidate,
+                            $hasInflightCandidate,
+                        );
+                    }
 
-                return null;
+                    return null;
+                }
+            } else {
+                if (DB::getDriverName() === 'pgsql') {
+                    $eligibleQuery->lockForUpdate();
+                }
+
+                $row = $eligibleQuery->first();
+                if (! $row instanceof CrawlQueue) {
+                    return null;
+                }
             }
 
             $diagnostics['rows_examined'] = 1;
@@ -94,6 +112,56 @@ final class CrawlQueueService
 
             return $row->refresh();
         });
+    }
+
+    /**
+     * Keep candidate selection and gate classification in one database round trip.
+     * The sentinel branch is returned only when the unchanged eligible-row query is empty.
+     *
+     * @param  Builder<CrawlQueue>  $baseQuery
+     * @param  Builder<CrawlQueue>  $eligibleQuery
+     * @param  list<string>  $excludeSources
+     * @param  list<string>  $sourcesAtInflightLimit
+     */
+    private function claimWithDiagnostics(Builder $baseQuery, Builder $eligibleQuery, array $excludeSources, array $sourcesAtInflightLimit): ?CrawlQueue
+    {
+        $candidateQuery = clone $eligibleQuery;
+        $candidateQuery->select(['id', 'source_slug', 'kind'])->limit(1);
+        if (DB::getDriverName() === 'pgsql') {
+            $candidateQuery->lockForUpdate();
+        }
+
+        $budgetCandidates = clone $baseQuery;
+        if ($excludeSources === []) {
+            $budgetCandidates->whereRaw('1 = 0');
+        } else {
+            $budgetCandidates->whereIn('source_slug', $excludeSources);
+        }
+        $budgetCandidates->selectRaw('1')->limit(1);
+
+        $inflightCandidates = clone $baseQuery;
+        if ($sourcesAtInflightLimit === []) {
+            $inflightCandidates->whereRaw('1 = 0');
+        } else {
+            $inflightCandidates->whereIn('source_slug', $sourcesAtInflightLimit);
+        }
+        $inflightCandidates->selectRaw('1')->limit(1);
+
+        $budgetCandidates->whereNull('candidate.id');
+        $inflightCandidates->whereNull('candidate.id');
+        $singleton = DB::query()->selectRaw('1 AS singleton');
+
+        $row = CrawlQueue::query()
+            ->fromSub($singleton, 'feed_singleton')
+            ->leftJoinSub($candidateQuery, 'candidate', static function (JoinClause $join): void {
+                $join->on(DB::raw('1'), '=', DB::raw('1'));
+            })
+            ->select('candidate.id', 'candidate.source_slug', 'candidate.kind')
+            ->selectSub($budgetCandidates, 'budget_candidate')
+            ->selectSub($inflightCandidates, 'inflight_candidate')
+            ->first();
+
+        return $row instanceof CrawlQueue ? $row : null;
     }
 
     /**

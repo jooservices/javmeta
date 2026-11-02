@@ -25,13 +25,13 @@ environment.
 | `javmeta_crawl_dispatch_age_seconds` | — | Seconds since the feed pool last dispatched a crawl job; `-1` means no dispatch is recorded. |
 | `javmeta_crawl_dispatch_stale` | `severity` | 1 when due crawl work has exceeded the warning or critical dispatch-age threshold; 0 otherwise. Thresholds come from database settings. |
 | `javmeta_crawl_queue_avg_attempts` | — | Average attempts for pending and failed queue rows. |
-| `javmeta_feed_source_budget` | `source_slug` | Per-source `floor(horizon / max(1, gap))` budget from the latest feed run in the previous minute. |
+| `javmeta_feed_source_budget` | `source_slug` | Per-source `max(1, floor(horizon / max(1, gap)))` budget from the latest feed run in the previous minute. |
 | `javmeta_feed_source_started` | `source_slug` | Per-source requests started in the pacing horizon, from the latest feed run in the previous minute. |
 | `javmeta_feed_source_waiting` | `source_slug` | Per-source claimed rows without a start time, from the latest feed run in the previous minute. |
 | `javmeta_feed_source_dispatched_1m` | `source_slug` | Per-source rows dispatched by feed-pool runs in the previous minute. |
 | `javmeta_feed_stop_reason_1m` | `queue`, `lane`, `reason` | Number of runs stopped at each queue gate in the previous minute. |
 | `javmeta_feed_run_ms` | — | Average feed-pool run duration in milliseconds for the previous minute. |
-| `javmeta_feed_claim_rows_examined_1m` | — | Claim candidate rows returned by `claimNext` to the feeder in the previous minute. |
+| `javmeta_feed_claim_rows_examined_1m` | — | Rows found by claim selection or a source-gate check in the previous minute (up to one per `claimNext` call); it does not estimate database engine scans. |
 | `javmeta_crawl_events_5m` | `kind` | Crawl events created in the previous five minutes. |
 | `javmeta_fetch_method_attempts` | `source`, `method`, `outcome` | Fetch method attempts completed and recorded in the previous minute. |
 | `javmeta_fetch_method_preference` | `source`, `method` | Current browser-method preference by source (`1` preferred, `0` otherwise); a source is preferred when any observed host has an active FlareSolverr preference. |

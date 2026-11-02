@@ -302,7 +302,11 @@ final class CrawlQueueServiceClaimTest extends TestCase
         $this->row('reported', CrawlQueue::STATUS_PENDING);
         $blocked = [];
         $this->assertNull(app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_DETAIL, [], null, $blocked));
-        $this->assertSame(['rows_examined' => 0, 'stop_reason' => 'per_source_inflight'], $blocked);
+        $this->assertSame(['rows_examined' => 1, 'stop_reason' => 'per_source_inflight'], $blocked);
+
+        $emptyLane = [];
+        $this->assertNull(app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_LISTING, ['another-source'], 'browser', $emptyLane));
+        $this->assertSame(['rows_examined' => 0, 'stop_reason' => 'no_due_rows'], $emptyLane);
     }
 
     public function test_the_limit_is_shared_across_kinds_for_a_source(): void

@@ -48,7 +48,7 @@ Bật/tắt. Mã mục: `queue.feed_diagnostics.enabled`.
 
 Số phút giữ bộ đếm feed pool trong Redis để xuất metric và xem báo cáo.
 
-Số nguyên; từ 1 đến 1440. Mã mục: `queue.feed_diagnostics.retention_minutes`.
+Số nguyên; từ 3 đến 1440. Mã mục: `queue.feed_diagnostics.retention_minutes`.
 
 ### Khoảng nghỉ tối đa khi bị chặn (giây)
 

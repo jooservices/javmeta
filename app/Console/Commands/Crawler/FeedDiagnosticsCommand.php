@@ -6,6 +6,7 @@ namespace App\Console\Commands\Crawler;
 
 use App\Services\Crawl\FeedPoolDiagnostics;
 use Illuminate\Console\Command;
+use Throwable;
 
 final class FeedDiagnosticsCommand extends Command
 {
@@ -28,7 +29,13 @@ final class FeedDiagnosticsCommand extends Command
             return self::SUCCESS;
         }
 
-        $report = $diagnostics->report($requestedMinutes);
+        try {
+            $report = $diagnostics->report($requestedMinutes);
+        } catch (Throwable) {
+            $this->error('Unable to read feed diagnostics from Redis.');
+
+            return self::FAILURE;
+        }
         $this->info('Feed pool diagnostics for the last ' . $report['window_minutes'] . ' minute(s).');
         if ($report['sources'] === []) {
             $this->info('No per-source feed data was recorded in this window.');

@@ -8,6 +8,7 @@ use App\Services\Crawl\FeedPoolDiagnostics;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Redis;
 use Mockery;
+use RuntimeException;
 use Tests\TestCase;
 
 final class FeedPoolDiagnosticsTest extends TestCase
@@ -79,11 +80,33 @@ final class FeedPoolDiagnosticsTest extends TestCase
     {
         config(['javmeta_queues.feed_diagnostics.enabled' => true]);
         $redis = Mockery::mock();
-        $redis->shouldReceive('pipeline')->once()->andThrow(new \RuntimeException('Redis unavailable.'));
+        $redis->shouldReceive('pipeline')->once()->andThrow(new RuntimeException('Redis unavailable.'));
         Redis::shouldReceive('connection')->once()->with('default')->andReturn($redis);
 
         app(FeedPoolDiagnostics::class)->recordRun([], [], [], 1, 0);
 
         self::assertTrue(true);
+    }
+
+    public function test_report_surfaces_redis_read_errors(): void
+    {
+        config(['javmeta_queues.feed_diagnostics.enabled' => true]);
+        $redis = Mockery::mock();
+        $redis->shouldReceive('hgetall')->once()->andThrow(new RuntimeException('Redis unavailable.'));
+        Redis::shouldReceive('connection')->once()->with('default')->andReturn($redis);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Unable to read feed diagnostics from Redis.');
+        app(FeedPoolDiagnostics::class)->report(10);
+    }
+
+    public function test_empty_minute_does_not_emit_claim_rows_zero(): void
+    {
+        config(['javmeta_queues.feed_diagnostics.enabled' => true]);
+        $redis = Mockery::mock();
+        $redis->shouldReceive('hgetall')->once()->andReturn([]);
+        Redis::shouldReceive('connection')->once()->with('default')->andReturn($redis);
+
+        self::assertSame([], app(FeedPoolDiagnostics::class)->metricPointsForMinute(CarbonImmutable::now()));
     }
 }

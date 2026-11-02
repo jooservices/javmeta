@@ -11,9 +11,9 @@ final class FeedPoolStopReasonTest extends TestCase
 {
     public function test_claim_stop_reason_identifies_budget_inflight_and_empty_candidates(): void
     {
-        self::assertSame('exhausted_budget', FeedPoolStopReason::forClaim(['ffjav'], []));
-        self::assertSame('per_source_inflight', FeedPoolStopReason::forClaim([], ['141jav']));
-        self::assertSame('no_due_rows', FeedPoolStopReason::forClaim([], []));
+        self::assertSame('exhausted_budget', FeedPoolStopReason::forClaim(true, false));
+        self::assertSame('per_source_inflight', FeedPoolStopReason::forClaim(false, true));
+        self::assertSame('no_due_rows', FeedPoolStopReason::forClaim(false, false));
     }
 
     public function test_queue_stop_reason_classifies_early_and_capacity_gates(): void

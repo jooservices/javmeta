@@ -17,16 +17,14 @@ final class FeedPoolStopReason
     ];
 
     /**
-     * @param  list<string>  $excludedSources
-     * @param  list<string>  $sourcesAtInflightLimit
      */
-    public static function forClaim(array $excludedSources, array $sourcesAtInflightLimit): string
+    public static function forClaim(bool $hasBudgetCandidate, bool $hasInflightCandidate): string
     {
-        if ($excludedSources !== []) {
+        if ($hasBudgetCandidate) {
             return 'exhausted_budget';
         }
 
-        if ($sourcesAtInflightLimit !== []) {
+        if ($hasInflightCandidate) {
             return 'per_source_inflight';
         }
 

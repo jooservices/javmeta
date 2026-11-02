@@ -7,6 +7,7 @@ namespace App\Services\Crawl;
 use App\Observability\MetricStreams;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Redis;
+use RuntimeException;
 use Throwable;
 
 final class FeedPoolDiagnostics
@@ -148,8 +149,8 @@ final class FeedPoolDiagnostics
                 'run_count' => $runCount,
                 'claim_rows_examined' => $claimRowsExamined,
             ];
-        } catch (Throwable) {
-            return $this->emptyReport(0);
+        } catch (Throwable $error) {
+            throw new RuntimeException('Unable to read feed diagnostics from Redis.', 0, $error);
         }
     }
 
@@ -193,10 +194,12 @@ final class FeedPoolDiagnostics
                     'value' => $bucket['run_ms_total'] / $bucket['run_count'],
                 ];
             }
-            $points[] = [
-                'name' => MetricStreams::NAMES['feed_claim_rows_examined_1m'],
-                'value' => $bucket['claim_rows_examined'],
-            ];
+            if ($bucket['run_count'] > 0) {
+                $points[] = [
+                    'name' => MetricStreams::NAMES['feed_claim_rows_examined_1m'],
+                    'value' => $bucket['claim_rows_examined'],
+                ];
+            }
 
             return $points;
         } catch (Throwable) {
@@ -262,7 +265,7 @@ final class FeedPoolDiagnostics
 
     private function retentionMinutes(): int
     {
-        return max(1, min(1440, (int) config('javmeta_queues.feed_diagnostics.retention_minutes', 120)));
+        return max(3, min(1440, (int) config('javmeta_queues.feed_diagnostics.retention_minutes', 120)));
     }
 
     /** @return array{window_minutes: int, sources: array, stop_reasons: list<array>, run_ms_total: int, run_count: int, claim_rows_examined: int} */

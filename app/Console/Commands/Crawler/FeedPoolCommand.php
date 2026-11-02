@@ -40,8 +40,9 @@ final class FeedPoolCommand extends Command
     public function handle(CrawlQueueService $queue, ObservabilityEmitter $observability, SourceThrottle $throttle, CrawlDispatchHeartbeat $dispatchHeartbeat, FeedPoolDiagnostics $diagnostics): int
     {
         $runStartedAt = hrtime(true);
-        if ($this->option('scheduled') && ! $this->feedIntervalElapsed()) {
-            $reason = FeedPoolStopReason::forQueue(false, true, true, true);
+        $intervalStopReason = null;
+        if ($this->option('scheduled') && ! $this->feedIntervalElapsed($intervalStopReason)) {
+            $reason = $intervalStopReason ?? FeedPoolStopReason::forQueue(false, true, true, true);
             $this->recordDiagnosticsSafely($diagnostics, [], [], $this->stopReasonsForQueues($this->queues(), (string) $reason), $runStartedAt, 0);
             $this->components->info('Feed interval has not elapsed.');
 
@@ -98,7 +99,7 @@ final class FeedPoolCommand extends Command
                 $slug = (string) $slug;
                 $sourceActivity = $activity[$slug] ?? ['waiting' => 0, 'started' => 0];
                 $sourceSnapshots[$slug] = [
-                    'budget' => (int) floor($horizon / max(1.0, $gapOf($slug))),
+                    'budget' => max(1, (int) floor($horizon / max(1.0, $gapOf($slug)))),
                     'started' => (int) $sourceActivity['started'],
                     'waiting' => (int) $sourceActivity['waiting'],
                 ];
@@ -114,6 +115,7 @@ final class FeedPoolCommand extends Command
                 $waiting,
                 $budgetUsed,
                 $dispatchedBySource,
+                $stopReasons,
                 $latestStartedAt,
                 $gapOf,
                 $traceparent,
@@ -122,7 +124,6 @@ final class FeedPoolCommand extends Command
             );
             $dispatched = $dispatch['dispatched'];
             $laneDispatched = $dispatch['lane_dispatched'];
-            $stopReasons = $dispatch['stop_reasons'];
 
             foreach ($laneDispatched as $lane => $count) {
                 $observability->emitOps('feed_dispatched', [
@@ -158,17 +159,17 @@ final class FeedPoolCommand extends Command
      * @param  array<string, int>  $waiting
      * @param  array<string, int>  $budgetUsed
      * @param  array<string, int>  $dispatchedBySource
+     * @param  list<array{queue: string, lane: string, reason: string}>  $stopReasons
      * @param  array<string, CarbonImmutable>  $latestStartedAt
      * @param-out  array<string, int>  $budgetUsed
      * @param-out  array<string, int>  $dispatchedBySource
      * @param-out  int  $claimRowsExamined
-     * @return array{dispatched: int, lane_dispatched: array{direct: int, browser: int}, stop_reasons: list<array{queue: string, lane: string, reason: string}>}
+     * @return array{dispatched: int, lane_dispatched: array{direct: int, browser: int}}
      */
-    private function dispatchQueues(array $queues, CrawlQueueService $queue, ObservabilityEmitter $observability, int $limitPerRun, callable $exhausted, array $waiting, array &$budgetUsed, array &$dispatchedBySource, array $latestStartedAt, callable $gapOf, string $traceparent, string $workerId, int &$claimRowsExamined): array
+    private function dispatchQueues(array $queues, CrawlQueueService $queue, ObservabilityEmitter $observability, int $limitPerRun, callable $exhausted, array $waiting, array &$budgetUsed, array &$dispatchedBySource, array &$stopReasons, array $latestStartedAt, callable $gapOf, string $traceparent, string $workerId, int &$claimRowsExamined): array
     {
         $dispatched = 0;
         $laneDispatched = ['direct' => 0, 'browser' => 0];
-        $stopReasons = [];
         foreach ($queues as $key => $queueName) {
             $lane = str_starts_with($key, 'browser:') ? 'browser' : 'direct';
             $kind = $lane === 'browser' ? substr($key, 8) : $key;
@@ -225,7 +226,7 @@ final class FeedPoolCommand extends Command
             ];
         }
 
-        return ['dispatched' => $dispatched, 'lane_dispatched' => $laneDispatched, 'stop_reasons' => $stopReasons];
+        return ['dispatched' => $dispatched, 'lane_dispatched' => $laneDispatched];
     }
 
     /** @param array<string, float> $sourceGaps */
@@ -384,7 +385,7 @@ final class FeedPoolCommand extends Command
         return intdiv($limitPerMinute * $slotEnd, 60) - intdiv($limitPerMinute * $slotStart, 60);
     }
 
-    private function feedIntervalElapsed(): bool
+    private function feedIntervalElapsed(?string &$stopReason = null): bool
     {
         $interval = (int) config('javmeta_queues.feed_interval_seconds', 10);
         if (! in_array($interval, [5, 10, 15, 30, 60], true)) {
@@ -393,12 +394,16 @@ final class FeedPoolCommand extends Command
 
         $lock = Cache::lock('javmeta:crawl:feed-pool:interval-lock', 5);
         if (! $lock->get()) {
+            $stopReason = 'advisory_lock';
+
             return false;
         }
 
         try {
             $last = (int) Cache::get('javmeta:crawl:feed-pool:last-scheduled', 0);
             if ($last > 0 && now()->timestamp < $last + $interval) {
+                $stopReason = 'interval_not_elapsed';
+
                 return false;
             }
             Cache::put('javmeta:crawl:feed-pool:last-scheduled', now()->timestamp, 86400);

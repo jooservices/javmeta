@@ -64,5 +64,6 @@ final class SettingsRegistryTest extends TestCase
         self::assertArrayHasKey('queue.feed_diagnostics.retention_minutes', $definitions);
         self::assertTrue(config('javmeta_queues.feed_diagnostics.enabled'));
         self::assertSame(120, config('javmeta_queues.feed_diagnostics.retention_minutes'));
+        self::assertSame(3, $definitions['queue.feed_diagnostics.retention_minutes']['min']);
     }
 }
