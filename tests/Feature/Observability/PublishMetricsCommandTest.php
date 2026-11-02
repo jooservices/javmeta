@@ -103,6 +103,31 @@ final class PublishMetricsCommandTest extends TestCase
         });
     }
 
+    public function test_stats_sampling_failure_does_not_block_openobserve_publication(): void
+    {
+        config()->set([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.email' => 'root@javmeta.local',
+            'openobserve.password' => 'secret',
+            'openobserve.timeout' => 1,
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER reject_global_stats_sample
+            BEFORE INSERT ON crawl_stats_hourly
+            WHEN NEW.source_slug = '__global__'
+            BEGIN
+                SELECT RAISE(ABORT, 'global stats rejected');
+            END;
+            SQL);
+
+        $this->artisan('obs:publish-metrics')->assertSuccessful();
+
+        Http::assertSent(static fn($request): bool => str_contains($request->url(), '/v1/metrics'));
+    }
+
     public function test_command_publishes_feed_pool_diagnostics_metrics_from_the_previous_minute(): void
     {
         config()->set([

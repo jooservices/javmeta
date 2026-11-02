@@ -58,6 +58,7 @@ final class ScheduleTest extends TestCase
             'crawler:recrawl-incomplete' => '0 * * * *',
             'crawler:seed' => '* * * * *',
             'crawler:source-health' => '0 4 * * *',
+            'crawler:stats-rollup' => '0 * * * *',
             'crawler:sync-sources' => '*/15 * * * *',
             'crawler:watchdog' => '*/5 * * * *',
             'follows:notify' => '*/5 * * * *',
@@ -80,6 +81,7 @@ final class ScheduleTest extends TestCase
         $this->assertSame($expectedFrequencies, $actualFrequencies);
         $this->assertTrue($scheduled['crawler:prune-fetch-attempts']->withoutOverlapping);
         $this->assertTrue($scheduled['alerts:evaluate']->withoutOverlapping);
+        $this->assertTrue($scheduled['crawler:stats-rollup']->withoutOverlapping);
         $this->assertTrue($scheduled['crawler:feed-pool']->withoutOverlapping);
         $this->assertSame(5, $scheduled['crawler:feed-pool']->repeatSeconds);
         $this->assertTrue($scheduled['crawler:recrawl-incomplete']->withoutOverlapping);

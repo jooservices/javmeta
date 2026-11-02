@@ -69,4 +69,10 @@ A previously saved invalid URL is ignored during application boot and direct set
 `crawler:prune-fetch-attempts` command applies the current database value.
 See [fetch diagnostics](telemetry.md#fetch-attempts).
 
+`stats.enabled` and `stats.retention_days` control durable hourly crawl
+statistics. They default to enabled and 365 days in `config/javmeta_stats.php`
+and appear automatically under **Thống kê crawl** on Cài đặt. The hourly
+`crawler:stats-rollup` command enforces this retention. See
+[long-term crawl statistics](telemetry.md#long-term-crawl-statistics-jooxcr-305).
+
 Crawl lanes are controlled by `crawl.lanes_enabled`, `crawl.lane_browser_percent`, `crawl.lane_min_attempts`, `crawl.lane_direct_pins`, `crawl.lane_browser_pins` and `queue.browser_depth_limit`. See [queue.md](queue.md) for classification, precedence and fleet rollout. Horizon worker counts are read from the database at boot and reconciled automatically by each node.

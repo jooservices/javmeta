@@ -37,6 +37,9 @@ environment.
 | `javmeta_fetch_method_attempts` | `source`, `method`, `outcome` | Fetch method attempts completed and recorded in the previous minute. |
 | `javmeta_fetch_method_preference` | `source`, `method` | Current browser-method preference by source (`1` preferred, `0` otherwise); a source is preferred when any observed host has an active FlareSolverr preference. |
 | `javmeta_playwright_slot_busy_ratio` | — | Estimated Playwright-family slot occupancy over the previous minute, capped at 1.0. |
+| `javmeta_flaresolverr_slot_busy_ratio` | — | Estimated FlareSolverr slot occupancy over the previous minute, capped at 1.0. |
+| `javmeta_stats_movies_per_hour` | `hour` | New plus updated movies stored for that UTC hour (movies/hour). |
+| `javmeta_stats_source_success_ratio` | `hour`, `source` | Successful non-skipped fetch attempts divided by all non-skipped attempts for that source and UTC hour (0–1). |
 | `javmeta_api_requests_1m` | — | API requests recorded in the previous minute. |
 | `javmeta_api_error_rate_1m` | — | Fraction of API requests with a 4xx/5xx response in the previous minute. |
 | `javmeta_api_p50_ms_1m` | — | API response latency p50 in milliseconds. |
@@ -90,6 +93,11 @@ the shared cache to keep metric cardinality bounded.
 
 The `kind=queue_reclaimed_without_start` series on `javmeta_crawl_events_5m`
 counts stale queue claims returned to pending before a worker started them.
+
+`crawler:stats-rollup` also exports hourly values for the three most recent
+hour buckets. The success ratio excludes skipped attempts. The hourly movie
+metric counts both new and updated movies. The minute-level FlareSolverr busy
+ratio uses the same configured browser slot count as the Playwright estimate.
 
 ## Logs and traces
 
@@ -251,3 +259,56 @@ Diagnostic mapping/storage failures emit a warning containing only the exception
 class and queue ID; they do not interrupt normal crawl success/failure handling.
 Malformed required fields/outcomes are ignored, and invalid optional status/error
 fields become null. Raw exception messages are not logged by the recorder.
+
+## Long-term crawl statistics (JOOXCR-305)
+
+`crawl_stats_hourly` keeps the source/lane/method breakdown after
+`crawl_fetch_attempts` is pruned. The hourly scheduler runs
+`php artisan crawler:stats-rollup`; it recomputes the current and previous two
+UTC hour buckets, upserts by `(hour_at, source_slug, lane, method)`, and prunes
+hourly rows older than `stats.retention_days` (default 365). The
+`stats.enabled` and `stats.retention_days` values are database settings shown
+on Cài đặt. Run `php artisan crawler:stats-rollup --since="2026-11-01 00:00:00"`
+to backfill from attempt data that still exists; it cannot recreate attempts
+already removed by raw-attempt retention.
+
+Each attempt is counted in exactly one outcome bucket. `skipped` takes
+precedence, then HTTP 403/429 or a Cloudflare challenge is `blocked`, timeout
+status/error codes are `timeout`, successful outcomes are `ok`, and remaining
+errors are `other_error`. Average duration includes skipped attempts. P90 uses
+the nearest-rank 90th percentile. Legacy attempt rows without a lane are stored
+under `unknown`. Per-attempt byte counts are not currently captured; the global
+row stores proxy bytes from `crawl_runs` when available.
+
+The global sentinel row stores new/updated movie counters from `crawl_runs`,
+new performers by `first_seen_at`, and failed queue jobs by `failed_at`. Queue
+ready, delayed and reserved depth averages, browser-family busy ratios, and
+PostgreSQL connection averages come from minute samples. Busy ratio is the
+non-skipped method duration in the preceding minute divided by configured
+browser slots and 60 seconds, capped at 1. Node CPU is null because no existing
+node CPU collector is available. A missing average means there were no samples.
+
+Run `php artisan crawler:stats-report --hours=24 --by=source` for source totals.
+`--by=method`, `--by=lane` and `--by=hour` change the grouping, and
+`--source=onejav` filters to one source. The first table reports attempts,
+success ratio, error classes, average duration and the maximum stored p90 among
+the underlying source/lane/method slices; it labels this as “Max slice p90”
+because p90 values cannot be combined into a new exact percentile. The second
+table shows the hourly movie and global operational trend.
+
+### Questions this data can answer
+
+- **What was the best hour and why?** Run
+  `crawler:stats-report --hours=168 --by=hour`. Compare new/updated movies,
+  success, blocked/timeouts and queue/browser averages. A productive hour with
+  low errors and spare browser capacity is a strong candidate; the report shows
+  correlation, not a causal explanation.
+- **Which source degraded after a deploy?** Run
+  `crawler:stats-report --hours=48 --source=onejav --by=hour` for affected
+  sources and compare the hours before and after the deployment timestamp.
+  Lower success with more blocked/timeouts identifies the changed source; use
+  deployment records to establish the exact release boundary.
+- **How much does each method cost?** Run
+  `crawler:stats-report --hours=168 --by=method --source=onejav`. Compare
+  attempts, average and max-slice p90 milliseconds, and error mix. Method-level
+  byte cost is unavailable until fetch attempts expose response byte counts.

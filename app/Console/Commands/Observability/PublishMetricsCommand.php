@@ -17,6 +17,7 @@ use App\Observability\MetricStreams;
 use App\Services\Alerts\AlertMetrics;
 use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Crawl\CrawlerxFetchMethodPlan;
+use App\Services\Crawl\CrawlStatsOperationalSampler;
 use App\Services\Crawl\FeedPoolDiagnostics;
 use App\Services\Crawl\SourceGapPolicy;
 use App\Services\Crawl\SourceThrottle;
@@ -57,7 +58,14 @@ final class PublishMetricsCommand extends Command
         SourceGapPolicy $gapPolicy,
         SourceThrottle $throttle,
         AlertMetrics $alertMetrics,
+        CrawlStatsOperationalSampler $statsSampler,
     ): int {
+        try {
+            $statsSampler->sample();
+        } catch (Throwable $exception) {
+            Log::warning('Crawl stats sampling failed.', ['exception' => $exception::class, 'message' => $exception->getMessage()]);
+        }
+
         if (! $client->enabled()) {
             $this->components->info('OpenObserve disabled; skipping metrics publish.');
 
@@ -284,6 +292,7 @@ final class PublishMetricsCommand extends Command
     {
         $points = [];
         $playwrightDurationMs = 0;
+        $flaresolverrDurationMs = 0;
 
         if (Schema::hasTable('crawl_fetch_attempts')) {
             $rows = DB::table('crawl_fetch_attempts')
@@ -305,6 +314,9 @@ final class PublishMetricsCommand extends Command
                 if (in_array($method, ['playwright', 'playwright_stealth', 'chrome_stealth'], true) && $outcome !== 'skipped') {
                     $playwrightDurationMs += (int) $row->duration_ms;
                 }
+                if ($method === 'flaresolverr' && $outcome !== 'skipped') {
+                    $flaresolverrDurationMs += (int) $row->duration_ms;
+                }
             }
         }
 
@@ -312,6 +324,10 @@ final class PublishMetricsCommand extends Command
         $points[] = [
             'name' => MetricStreams::NAMES['playwright_slot_busy_ratio'],
             'value' => min(1.0, max(0.0, $playwrightDurationMs / ($slots * 60_000))),
+        ];
+        $points[] = [
+            'name' => MetricStreams::NAMES['flaresolverr_slot_busy_ratio'],
+            'value' => min(1.0, max(0.0, $flaresolverrDurationMs / ($slots * 60_000))),
         ];
 
         foreach (Source::query()->get(['slug']) as $source) {

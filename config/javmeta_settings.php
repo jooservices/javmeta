@@ -23,6 +23,7 @@ return [
         'readiness' => 'Kiểm tra sẵn sàng',
         'search' => 'Tìm kiếm',
         'observability' => 'Giám sát',
+        'stats' => 'Thống kê crawl',
         'backup' => 'Sao lưu',
         'ai' => 'AI (Ollama, embedding)',
         'follow_notifications' => 'Thông báo theo dõi (Telegram)',
@@ -224,6 +225,8 @@ return [
         'observability.openobserve_service_name' => ['group' => 'observability', 'label' => 'Tên dịch vụ OpenObserve', 'description' => 'Tên ứng dụng hiển thị trong dữ liệu telemetry.', 'type' => 'string', 'legacy_env' => ['OPENOBSERVE_SERVICE_NAME'], 'config' => ['openobserve.service_name']],
         'observability.trace_sample_rate' => ['group' => 'observability', 'label' => 'Tỷ lệ lấy mẫu trace (0 đến 1)', 'description' => '1 là lấy mọi request.', 'type' => 'float', 'legacy_env' => ['OPENOBSERVE_TRACE_SAMPLE_RATE'], 'config' => ['openobserve.trace_sample_rate'], 'min' => 0, 'max' => 1],
         'observability.sentry_traces_sample_rate' => ['group' => 'observability', 'label' => 'Tỷ lệ lấy mẫu trace Sentry (0 đến 1)', 'description' => '0 là tắt trace Sentry.', 'type' => 'float', 'legacy_env' => ['JAVMETA_SENTRY_TRACES_SAMPLE_RATE'], 'config' => ['sentry.traces_sample_rate'], 'min' => 0, 'max' => 1],
+        'stats.enabled' => ['group' => 'stats', 'label' => 'Bật thống kê crawl dài hạn', 'description' => 'Lưu số liệu crawl theo giờ và gửi các metric hiệu suất tổng hợp.', 'type' => 'bool', 'config' => ['javmeta_stats.enabled']],
+        'stats.retention_days' => ['group' => 'stats', 'label' => 'Thời gian lưu thống kê crawl (ngày)', 'description' => 'Số ngày giữ số liệu crawl theo giờ trước khi tự dọn.', 'type' => 'int', 'config' => ['javmeta_stats.retention_days'], 'min' => 1, 'max' => 3650],
 
         'follow_notifications.enabled' => ['group' => 'follow_notifications', 'label' => 'Gửi thông báo phim mới của mục đang theo dõi', 'description' => 'Mỗi phim mới của diễn viên, maker hoặc series đang theo dõi gửi một tin Telegram kèm ảnh bìa và nút Mở.', 'type' => 'bool', 'config' => ['javmeta_notifications.follow.enabled']],
         'follow_notifications.daily_cap' => ['group' => 'follow_notifications', 'label' => 'Số tin tối đa mỗi ngày', 'description' => 'Quá số này, các phim còn lại chờ sang ngày sau.', 'type' => 'int', 'config' => ['javmeta_notifications.follow.daily_cap'], 'min' => 1, 'max' => 500],
