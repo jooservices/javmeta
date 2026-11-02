@@ -35,6 +35,9 @@ final class NotificationPolicyRegistryTest extends TestCase
         self::assertSame(['info', false, true], [$policies['source.exhausted']['tier'], $policies['source.exhausted']['include_periodic_report'], $policies['source.exhausted']['include_daily_report']]);
         self::assertSame(['notice', 360], [$policies['egress.changed']['tier'], $policies['egress.changed']['cooldown_minutes']]);
         self::assertSame(720, $policies['backup.stale']['cooldown_minutes']);
+        self::assertSame(['warning', 60], [$policies['database.connections_high']['tier'], $policies['database.connections_high']['escalation_minutes']]);
+        self::assertSame(['warning', 60], [$policies['sentry.new_critical_group']['tier'], $policies['sentry.new_critical_group']['escalation_minutes']]);
+        self::assertSame(['critical', 120], [$policies['resource.disk_critical']['tier'], $policies['resource.disk_critical']['cooldown_minutes']]);
         self::assertSame('warning', $policies['crawl.success_rate_low.performers']['tier']);
         self::assertSame('info', $policies['report.periodic']['tier']);
         self::assertSame('info', $policies['report.daily']['tier']);

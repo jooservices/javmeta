@@ -49,6 +49,10 @@ final class NotificationPolicyDispatcher
             $security = str_starts_with($policyKey, 'security.') || ($context['security_event'] ?? false) === true;
             $quiet = $this->quietMode();
             if ($quiet && ! $security && (! $isResolved && $policy['tier'] !== 'critical' || $isResolved)) {
+                if (! $isResolved && ($context['notification_digest'] ?? false) !== true) {
+                    $this->policies->touchCause($policyKey, $causeKey, $context);
+                }
+
                 return $this->suppress($key, $policyKey, $causeKey, 'quiet_mode', $isResolved);
             }
             if ($quiet && $security && ! $isResolved) {
@@ -56,7 +60,7 @@ final class NotificationPolicyDispatcher
             }
 
             if ($isResolved) {
-                return $this->prepareResolved($key, $policyKey, $causeKey, $policy, $security);
+                return $this->prepareResolved($key, $policyKey, $causeKey, $policy);
             }
 
             $event = $this->policies->touchCause($policyKey, $causeKey, $context);
@@ -139,7 +143,7 @@ final class NotificationPolicyDispatcher
     /** @param array<string, mixed> $policy
      *  @return array{allowed: bool, key: string, policy_key: string, cause_key: string, tier: string, resolved: bool, reason: string|null}
      */
-    private function prepareResolved(string $key, string $policyKey, string $causeKey, array $policy, bool $security): array
+    private function prepareResolved(string $key, string $policyKey, string $causeKey, array $policy): array
     {
         $event = $this->policies->event($policyKey, $causeKey);
         if (! $policy['send_resolved']) {
@@ -155,7 +159,7 @@ final class NotificationPolicyDispatcher
             return $this->suppress($key, $policyKey, $causeKey, 'reserved', true);
         }
 
-        return $this->reserveDecision($key, $policyKey, $causeKey, $security ? 'critical' : 'critical', true);
+        return $this->reserveDecision($key, $policyKey, $causeKey, 'critical', true);
     }
 
     /** @return array{allowed: bool, key: string, policy_key: string, cause_key: string, tier: string, resolved: bool, reason: string|null} */

@@ -60,7 +60,9 @@ final class WatchdogAlertsTest extends TestCase
 
         $this->artisan('crawler:watchdog')->assertSuccessful();
         $this->assertSame([], $this->subjects());
-        $this->assertSame('crawl.source_stale', app(NotificationPolicyService::class)->openWarnings()[0]['key']);
+        $warning = app(NotificationPolicyService::class)->openWarnings()[0];
+        $this->assertSame('crawl.source_stale', $warning['key']);
+        $this->assertGreaterThan((int) $warning['threshold'], (int) $warning['value']);
 
         $this->travel(30)->minutes();
         (new WorkerHeartbeat())->beat();
@@ -158,7 +160,10 @@ final class WatchdogAlertsTest extends TestCase
 
         $this->artisan('crawler:watchdog')->assertSuccessful();
         $this->assertSame([], $this->sent);
-        $this->assertSame('crawl.backlog_high', app(NotificationPolicyService::class)->openWarnings()[0]['key']);
+        $warning = app(NotificationPolicyService::class)->openWarnings()[0];
+        $this->assertSame('crawl.backlog_high', $warning['key']);
+        $this->assertSame(2, (int) $warning['value']);
+        $this->assertSame(2, (int) $warning['threshold']);
 
         $dueTwo->update(['status' => CrawlQueue::STATUS_DONE]);
         $this->artisan('crawler:watchdog')->assertSuccessful();

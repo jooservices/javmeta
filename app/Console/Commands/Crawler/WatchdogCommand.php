@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use DateTimeInterface;
 use App\Events\CrawlSourceUnhealthy;
 use App\Events\WorkerHeartbeatStale;
 use App\Models\Source;
@@ -53,8 +54,13 @@ final class WatchdogCommand extends Command
 
         foreach ($staleSources as $source) {
             $slug = (string) $source->slug;
+            $threshold = $sourceFreshness->maximumSuccessAgeSeconds($slug, $defaultStaleSeconds);
+            $lastSuccess = $source->getAttribute('last_success_at');
+            $lastSuccess = $lastSuccess instanceof DateTimeInterface ? $lastSuccess : null;
             Event::dispatch(new CrawlSourceUnhealthy($slug, 'source_stale', [
-                'stale_seconds' => $sourceFreshness->maximumSuccessAgeSeconds($slug, $defaultStaleSeconds),
+                'value' => $lastSuccess === null ? -1 : max(0, now()->getTimestamp() - $lastSuccess->getTimestamp()),
+                'threshold' => $threshold,
+                'stale_seconds' => $threshold,
             ]));
             $this->warn("Source stale: {$slug}");
         }

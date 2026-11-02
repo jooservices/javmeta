@@ -84,6 +84,15 @@ final class NotificationPolicyDispatcherTest extends TestCase
         self::assertTrue($critical['allowed']);
         $securityEvent = $dispatcher->prepare('security.guest_mode_toggled', ['notification_cause' => 'guest-mode']);
         self::assertTrue($securityEvent['allowed']);
+
+        $warning = $dispatcher->prepare('crawl.success_rate_low', [
+            'rule' => 'success_rate',
+            'value' => 82,
+            'threshold' => 85,
+        ]);
+        self::assertFalse($warning['allowed']);
+        self::assertSame('quiet_mode', $warning['reason']);
+        self::assertSame('crawl.success_rate_low', app(NotificationPolicyService::class)->openWarnings()[0]['key']);
     }
 
     public function test_resolved_is_sent_only_after_a_critical_message_for_the_same_cause(): void
