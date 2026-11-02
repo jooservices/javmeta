@@ -85,14 +85,14 @@ final class OperationalAlertChecks
             $this->alerts->sendTemplate(
                 debounceKey: self::QUEUE_PENDING_BACKLOG_KEY,
                 templateKey: 'crawl.backlog_high',
-                context: ['pending_due' => $count, 'pending_limit' => $limit, 'source_slugs' => $sourceSlugs],
+                context: ['value' => $count, 'threshold' => $limit, 'pending_due' => $count, 'pending_limit' => $limit, 'source_slugs' => $sourceSlugs],
                 debounceSeconds: $this->throttle(),
             );
 
             return true;
         }
 
-        $this->alerts->resolveTemplate(self::QUEUE_PENDING_BACKLOG_KEY, 'crawl.backlog_recovered', ['pending_due' => $count, 'pending_limit' => $limit]);
+        $this->alerts->resolveTemplate(self::QUEUE_PENDING_BACKLOG_KEY, 'crawl.backlog_recovered', ['value' => $count, 'threshold' => $limit, 'pending_due' => $count, 'pending_limit' => $limit]);
 
         return false;
     }
