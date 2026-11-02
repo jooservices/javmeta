@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Observability;
 
 use App\Services\Observability\NodeEgressProbe;
+use App\Support\NodeIdentity;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -295,8 +296,7 @@ final class OpenObserveClient
         try {
             $context = app(NodeEgressProbe::class)->context();
         } catch (Throwable) {
-            $hostname = gethostname();
-            $context = ['node' => is_string($hostname) && $hostname !== '' ? $hostname : 'local', 'egress_ip' => null];
+            $context = ['node' => NodeIdentity::current(), 'egress_ip' => null];
         }
 
         return [(string) $context['node'], $context['egress_ip'], $shared];

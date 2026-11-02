@@ -64,6 +64,43 @@ final class NodeEgressProbeTest extends TestCase
         self::assertCount(2, $transport->recorded());
     }
 
+    public function test_each_configured_node_writes_its_own_probe_row(): void
+    {
+        $this->prepareTelemetry();
+        config()->set([
+            'javmeta_observability.egress_probe_urls' => ['https://echo.test'],
+            'sentry.node' => 'xcrawler',
+        ]);
+        Cache::setDefaultDriver('array');
+        $legacyNode = mb_substr(preg_replace('/[^A-Za-z0-9_.-]/', '-', (string) gethostname()) ?? 'local', 0, 64);
+        Cache::forever('javmeta:egress:nodes', [$legacyNode]);
+        Cache::put('javmeta:egress:' . $legacyNode, ['ip' => '192.0.2.10', 'probe_ok' => true]);
+        Cache::forever('javmeta:egress-meta:' . $legacyNode, ['last_known_ip' => '192.0.2.10', 'change_count' => 1]);
+        $this->fakeTransport(
+            new Response(200, [], '198.51.100.10'),
+            new Response(200, [], '198.51.100.11'),
+            new Response(200, [], '198.51.100.12'),
+        );
+
+        $probe = app(NodeEgressProbe::class);
+        foreach ([
+            'xcrawler' => '198.51.100.10',
+            'xcrawler-worker-1' => '198.51.100.11',
+            'xcrawler-worker-2' => '198.51.100.12',
+        ] as $node => $ip) {
+            config()->set('sentry.node', $node);
+            $probe->probeNodeIfDue();
+            self::assertSame($ip, Cache::get('javmeta:egress:' . $node)['ip']);
+        }
+
+        self::assertSame(
+            ['xcrawler', 'xcrawler-worker-1', 'xcrawler-worker-2'],
+            array_column($probe->nodeStatuses(), 'node'),
+        );
+        self::assertFalse(Cache::has('javmeta:egress:' . $legacyNode));
+        self::assertFalse(Cache::has('javmeta:egress-meta:' . $legacyNode));
+    }
+
     public function test_probe_change_updates_counter_and_emits_a_structured_log(): void
     {
         $this->prepareTelemetry();
@@ -136,6 +173,75 @@ final class NodeEgressProbeTest extends TestCase
         self::assertSame('203.0.113.40', $probe->contextForLane('browser')['egress_ip']);
         self::assertCount(1, $transport->recorded());
         self::assertLessThanOrEqual(5, $transport->recorded()[0]['options']->timeout);
+    }
+
+    public function test_browser_host_probe_extracts_the_ip_from_the_playwright_page_html(): void
+    {
+        $this->prepareTelemetry();
+        config()->set([
+            'javmeta_browser.playwright_url' => 'http://browser-a.test',
+            'javmeta_browser.flaresolverr_url' => '',
+            'javmeta_observability.egress_probe_urls' => ['https://ifconfig.me'],
+        ]);
+        Cache::setDefaultDriver('array');
+        $this->fakeTransport(new Response(200, [], json_encode([
+            'exitCode' => 0,
+            'stdout' => json_encode(['html' => '<html><body><pre>203.0.113.41</pre></body></html>'], JSON_THROW_ON_ERROR),
+        ], JSON_THROW_ON_ERROR)));
+
+        $probe = app(NodeEgressProbe::class);
+        $probe->probeBrowserHostsIfDue();
+
+        self::assertSame('203.0.113.41', $probe->currentBrowserIp('browser-a.test'));
+        self::assertNull($probe->browserStatuses()[0]['last_probe_error']);
+    }
+
+    public function test_browser_host_probe_tries_later_echo_urls_and_clears_a_previous_error(): void
+    {
+        $this->prepareTelemetry();
+        config()->set([
+            'javmeta_browser.playwright_url' => 'http://browser-a.test',
+            'javmeta_browser.flaresolverr_url' => '',
+            'javmeta_observability.egress_probe_urls' => ['https://unavailable.test', 'https://fallback.test'],
+        ]);
+        Cache::setDefaultDriver('array');
+        Cache::put('javmeta:browser-egress:browser-a.test', [
+            'ip' => null,
+            'probe_ok' => false,
+            'probe_error' => 'Browser service returned HTTP 503.',
+        ]);
+        $transport = $this->fakeTransport(
+            new Response(503),
+            new Response(200, [], json_encode([
+                'exitCode' => 0,
+                'stdout' => json_encode(['html' => '203.0.113.40'], JSON_THROW_ON_ERROR),
+            ], JSON_THROW_ON_ERROR)),
+        );
+
+        $probe = app(NodeEgressProbe::class);
+        $probe->probeBrowserHostsIfDue();
+
+        self::assertSame('203.0.113.40', $probe->currentBrowserIp('browser-a.test'));
+        self::assertNull($probe->browserStatuses()[0]['last_probe_error']);
+        self::assertCount(2, $transport->recorded());
+    }
+
+    public function test_browser_host_probe_records_http_failure_reason(): void
+    {
+        $this->prepareTelemetry();
+        config()->set([
+            'javmeta_browser.playwright_url' => 'http://browser-a.test',
+            'javmeta_browser.flaresolverr_url' => '',
+            'javmeta_observability.egress_probe_urls' => ['https://echo.test'],
+        ]);
+        Cache::setDefaultDriver('array');
+        $this->fakeTransport(new Response(503));
+
+        $probe = app(NodeEgressProbe::class);
+        $probe->probeBrowserHostsIfDue();
+
+        self::assertNull($probe->currentBrowserIp('browser-a.test'));
+        self::assertSame('Browser service returned HTTP 503.', $probe->browserStatuses()[0]['last_probe_error']);
     }
 
     private function prepareTelemetry(): void

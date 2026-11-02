@@ -56,12 +56,18 @@ final class EgressReportCommandTest extends TestCase
     {
         config()->set([
             'cache.default' => 'array',
+            'sentry.node' => 'xcrawler',
             'javmeta_browser.playwright_url' => 'http://browser-a.test',
+            'javmeta_browser.flaresolverr_url' => 'http://browser-b.test/v1',
         ]);
         Cache::setDefaultDriver('array');
         Cache::store('array')->flush();
-        $hostname = is_string(gethostname()) ? gethostname() : 'local';
-        $node = mb_substr(preg_replace('/[^A-Za-z0-9_.-]/', '-', trim($hostname)) ?? 'local', 0, 64);
+        $node = 'xcrawler';
+        $nodes = ['xcrawler', 'xcrawler-worker-1', 'xcrawler-worker-2'];
+        Cache::forever('javmeta:egress:nodes', $nodes);
+        foreach (['xcrawler-worker-1' => '198.51.100.13', 'xcrawler-worker-2' => '198.51.100.14'] as $worker => $ip) {
+            Cache::put('javmeta:egress:' . $worker, ['ip' => $ip, 'probe_ok' => true]);
+        }
         Cache::put('javmeta:egress:' . $node, ['ip' => '198.51.100.12', 'probe_ok' => true]);
         Cache::forever('javmeta:egress-meta:' . $node, [
             'last_known_ip' => '198.51.100.12',
@@ -74,6 +80,11 @@ final class EgressReportCommandTest extends TestCase
             'last_change_at' => '2026-11-01T11:00:00+00:00',
             'change_count' => 2,
         ]);
+        Cache::put('javmeta:browser-egress:browser-b.test', [
+            'ip' => null,
+            'probe_ok' => false,
+            'probe_error' => 'Browser service returned HTTP 503.',
+        ]);
 
         $tester = new CommandTester(app('Illuminate\\Contracts\\Console\\Kernel')->all()['crawler:egress-status']);
         $tester->execute([]);
@@ -82,8 +93,15 @@ final class EgressReportCommandTest extends TestCase
         self::assertSame(0, $tester->getStatusCode(), $output);
         self::assertStringContainsString($node, $output);
         self::assertStringContainsString('198.51.100.12', $output);
+        self::assertStringContainsString('xcrawler-worker-1', $output);
+        self::assertStringContainsString('198.51.100.13', $output);
+        self::assertStringContainsString('xcrawler-worker-2', $output);
+        self::assertStringContainsString('198.51.100.14', $output);
         self::assertStringContainsString('203.0.113.12', $output);
         self::assertStringContainsString('2026-11-01T10:00:00+00:00', $output);
+        self::assertStringContainsString('xcrawler', $output);
+        self::assertStringContainsString('browser-b.test', $output);
+        self::assertStringContainsString('Browser service returned HTTP 503.', $output);
     }
 
     private function insertAttempt(string $source, string $ip, int $status, ?string $cfMitigated, string $outcome, int $duration): void

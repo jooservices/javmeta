@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Observability;
 
 use App\Observability\ObservabilityEmitter;
+use App\Support\NodeIdentity;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use JOOservices\Client\Client\ClientBuilder;
@@ -65,7 +66,7 @@ final class NodeEgressProbe
         return null;
     }
 
-    /** @return list<array{node: string, ip: ?string, probe_ok: bool, last_change_at: ?string, change_count: int}> */
+    /** @return list<array{node: string, ip: ?string, probe_ok: bool, last_probe_error: ?string, last_change_at: ?string, change_count: int}> */
     public function nodeStatuses(): array
     {
         $nodes = $this->cachedNodeIds();
@@ -80,7 +81,7 @@ final class NodeEgressProbe
         return $statuses;
     }
 
-    /** @return list<array{host: string, ip: ?string, probe_ok: bool, last_change_at: ?string, change_count: int}> */
+    /** @return list<array{host: string, ip: ?string, probe_ok: bool, last_probe_error: ?string, last_change_at: ?string, change_count: int}> */
     public function browserStatuses(): array
     {
         $statuses = [];
@@ -90,6 +91,7 @@ final class NodeEgressProbe
                 'host' => $host,
                 'ip' => $status['ip'],
                 'probe_ok' => $status['probe_ok'],
+                'last_probe_error' => $status['last_probe_error'],
                 'last_change_at' => $status['last_change_at'],
                 'change_count' => $status['change_count'],
             ];
@@ -155,8 +157,8 @@ final class NodeEgressProbe
                 return;
             }
 
-            $ip = $this->lookupBrowserIp($target);
-            $this->storeResult('browser', $host, $ip, $interval);
+            $result = $this->lookupBrowserIp($target);
+            $this->storeResult('browser', $host, $result['ip'], $interval, $result['error']);
         } catch (Throwable) {
             // Browser services are optional and never gate crawling.
         } finally {
@@ -177,7 +179,7 @@ final class NodeEgressProbe
         $this->rememberNode($node);
     }
 
-    private function storeResult(string $kind, string $identity, ?string $ip, int $interval): void
+    private function storeResult(string $kind, string $identity, ?string $ip, int $interval, ?string $probeError = null): void
     {
         $cacheKey = $kind === 'node' ? $this->nodeCacheKey($identity) : $this->browserCacheKey($identity);
         $metaKey = $kind === 'node' ? $this->nodeMetaKey($identity) : $this->browserMetaKey($identity);
@@ -199,6 +201,7 @@ final class NodeEgressProbe
         Cache::put($cacheKey, [
             'ip' => $ip,
             'probe_ok' => $ip !== null,
+            'probe_error' => $probeError,
             'last_probe_at' => $probedAt,
         ], max(1, $interval * 2));
         Cache::forever($metaKey, [
@@ -257,17 +260,46 @@ final class NodeEgressProbe
     }
 
     /** @param array{kind: string, url: string} $target */
-    private function lookupBrowserIp(array $target): ?string
+    /** @return array{ip: ?string, error: ?string} */
+    private function lookupBrowserIp(array $target): array
     {
         $urls = config('javmeta_observability.egress_probe_urls', []);
-        $url = is_array($urls) && is_string($urls[0] ?? null) ? $urls[0] : null;
-        if ($url === null || ! $this->isHttpUrl($url)) {
-            return null;
+        if (! is_array($urls)) {
+            return ['ip' => null, 'error' => 'No valid egress probe URL is configured.'];
         }
 
-        return $target['kind'] === 'playwright'
-            ? $this->requestPlaywrightIp($target['url'], $url)
-            : $this->requestFlareSolverrIp($target['url'], $url);
+        $timeout = $this->interval('egress_probe_timeout_seconds', 5);
+        $deadline = hrtime(true) + ($timeout * 1_000_000_000);
+        $attempted = false;
+        $lastError = null;
+        foreach ($urls as $url) {
+            if (! is_string($url) || ! $this->isHttpUrl($url)) {
+                continue;
+            }
+
+            $remaining = ($deadline - hrtime(true)) / 1_000_000_000;
+            if ($remaining < 0.05) {
+                $lastError = 'Probe time limit reached before an echo URL succeeded.';
+                break;
+            }
+
+            $attempted = true;
+            $result = $target['kind'] === 'playwright'
+                ? $this->requestPlaywrightIp($target['url'], $url, $remaining)
+                : $this->requestFlareSolverrIp($target['url'], $url, $remaining);
+            if ($result['ip'] !== null) {
+                return $result;
+            }
+
+            $lastError = $result['error'];
+        }
+
+        return [
+            'ip' => null,
+            'error' => $attempted
+                ? ($lastError ?? 'No public IPv4 address was returned.')
+                : 'No valid egress probe URL is configured.',
+        ];
     }
 
     private function browserHostForMethod(?string $method): ?string
@@ -310,19 +342,20 @@ final class NodeEgressProbe
         }
     }
 
-    private function requestPlaywrightIp(string $endpoint, string $url): ?string
+    /** @return array{ip: ?string, error: ?string} */
+    private function requestPlaywrightIp(string $endpoint, string $url, float $timeout): array
     {
-        $timeout = $this->interval('egress_probe_timeout_seconds', 5);
+        $timeoutMilliseconds = max(1, (int) ceil($timeout * 1000));
         $payload = [
             'script' => 'playwright',
             'config' => [
                 'url' => $url,
-                'readyTimeoutMs' => $timeout * 1000,
+                'readyTimeoutMs' => $timeoutMilliseconds,
                 'settleAfterReadyMs' => 0,
                 'readyMarkers' => [],
                 'browser' => 'chromium',
                 'headless' => true,
-                'navigationTimeoutMs' => $timeout * 1000,
+                'navigationTimeoutMs' => $timeoutMilliseconds,
                 'viewport' => ['width' => 800, 'height' => 600],
                 'locale' => 'en-US',
                 'timezoneId' => 'UTC',
@@ -336,70 +369,122 @@ final class NodeEgressProbe
             ],
         ];
 
-        try {
-            $response = $this->browserRequest(rtrim($endpoint, '/') . '/fetch', $payload, $timeout);
-            if ($response === null) {
-                return null;
-            }
-            $body = json_decode((string) $response->getBody(), true);
-            $stdout = is_array($body) && is_string($body['stdout'] ?? null) ? $body['stdout'] : '';
-            $result = json_decode($stdout, true);
-
-            return is_array($result) && (int) ($body['exitCode'] ?? 1) === 0
-                ? $this->parseIpv4(is_string($result['html'] ?? null) ? $result['html'] : '')
-                : null;
-        } catch (Throwable) {
-            return null;
+        $attempt = $this->browserRequest(rtrim($endpoint, '/') . '/fetch', $payload, $timeout);
+        if ($attempt['response'] === null) {
+            return ['ip' => null, 'error' => $attempt['error']];
         }
+
+        $body = json_decode((string) $attempt['response']->getBody(), true);
+        if (! is_array($body)) {
+            return ['ip' => null, 'error' => 'Browser service returned invalid JSON.'];
+        }
+        $exitCode = (int) ($body['exitCode'] ?? 1);
+        if ($exitCode !== 0) {
+            return ['ip' => null, 'error' => 'Playwright fetch exited with code ' . $exitCode . '.'];
+        }
+
+        $stdout = is_string($body['stdout'] ?? null) ? $body['stdout'] : '';
+        $result = json_decode($stdout, true);
+        $ip = is_array($result) ? $this->parseIpv4(is_string($result['html'] ?? null) ? $result['html'] : '') : null;
+
+        return [
+            'ip' => $ip,
+            'error' => $ip === null ? 'Echo page did not return a public IPv4 address.' : null,
+        ];
     }
 
-    private function requestFlareSolverrIp(string $endpoint, string $url): ?string
+    /** @return array{ip: ?string, error: ?string} */
+    private function requestFlareSolverrIp(string $endpoint, string $url, float $timeout): array
     {
-        $timeout = $this->interval('egress_probe_timeout_seconds', 5);
-        try {
-            $response = $this->browserRequest($endpoint, [
-                'cmd' => 'request.get',
-                'url' => $url,
-                'maxTimeout' => $timeout * 1000,
-            ], $timeout);
-            if ($response === null) {
-                return null;
-            }
-            $body = json_decode((string) $response->getBody(), true);
-            $solution = is_array($body) && is_array($body['solution'] ?? null) ? $body['solution'] : [];
-
-            return is_array($body) && ($body['status'] ?? null) === 'ok'
-                ? $this->parseIpv4(is_string($solution['response'] ?? null) ? $solution['response'] : '')
-                : null;
-        } catch (Throwable) {
-            return null;
+        $attempt = $this->browserRequest($endpoint, [
+            'cmd' => 'request.get',
+            'url' => $url,
+            'maxTimeout' => (int) ceil($timeout * 1000),
+        ], $timeout);
+        if ($attempt['response'] === null) {
+            return ['ip' => null, 'error' => $attempt['error']];
         }
+
+        $body = json_decode((string) $attempt['response']->getBody(), true);
+        if (! is_array($body)) {
+            return ['ip' => null, 'error' => 'Browser service returned invalid JSON.'];
+        }
+        if (($body['status'] ?? null) !== 'ok') {
+            return ['ip' => null, 'error' => 'FlareSolverr returned a failed response.'];
+        }
+
+        $solution = is_array($body['solution'] ?? null) ? $body['solution'] : [];
+        $ip = $this->parseIpv4(is_string($solution['response'] ?? null) ? $solution['response'] : '');
+
+        return [
+            'ip' => $ip,
+            'error' => $ip === null ? 'Echo page did not return a public IPv4 address.' : null,
+        ];
     }
 
-    /** @param array<string, mixed> $payload */
-    private function browserRequest(string $url, array $payload, int $timeout): ?ResponseInterface
+    /** @param array<string, mixed> $payload
+     *  @return array{response: ?ResponseInterface, error: ?string}
+     */
+    private function browserRequest(string $url, array $payload, float $timeout): array
     {
-        $client = $this->clientBuilder
-            ->withTimeout($timeout)
-            ->withConnectTimeout($timeout)
-            ->withProxy('')
-            ->withRedirects(false)
-            ->build();
-        $response = $client->sendRequest(new Request(
-            'POST',
-            $url,
-            ['Accept' => 'application/json', 'Content-Type' => 'application/json'],
-            json_encode($payload, JSON_THROW_ON_ERROR),
-        ));
+        try {
+            $client = $this->clientBuilder
+                ->withTimeout($timeout)
+                ->withConnectTimeout($timeout)
+                ->withProxy('')
+                ->withRedirects(false)
+                ->build();
+            $response = $client->sendRequest(new Request(
+                'POST',
+                $url,
+                ['Accept' => 'application/json', 'Content-Type' => 'application/json'],
+                json_encode($payload, JSON_THROW_ON_ERROR),
+            ));
+        } catch (Throwable $exception) {
+            return ['response' => null, 'error' => $this->probeExceptionReason($exception)];
+        }
 
-        return $response->getStatusCode() >= 200 && $response->getStatusCode() < 300 ? $response : null;
+        if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) {
+            return ['response' => null, 'error' => 'Browser service returned HTTP ' . $response->getStatusCode() . '.'];
+        }
+
+        return ['response' => $response, 'error' => null];
+    }
+
+    private function probeExceptionReason(Throwable $exception): string
+    {
+        $message = strtolower($exception->getMessage());
+        if (str_contains($message, 'timeout') || str_contains($message, 'timed out')) {
+            return 'Browser service request timed out.';
+        }
+        if (str_contains($message, 'connection refused')) {
+            return 'Browser service refused the connection.';
+        }
+        if (str_contains($message, 'could not resolve') || str_contains($message, 'name or service not known')) {
+            return 'Browser service host could not be resolved.';
+        }
+
+        return 'Browser service request failed (' . class_basename($exception) . ').';
     }
 
     private function parseIpv4(string $body): ?string
     {
         $candidate = trim($body);
+        if (filter_var($candidate, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
+            return $candidate;
+        }
 
-        return filter_var($candidate, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false ? $candidate : null;
+        if (preg_match_all('/(?<![0-9A-Fa-f:.])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![0-9A-Fa-f:.])/', $candidate, $matches) === false) {
+            return null;
+        }
+
+        foreach ($matches[0] as $ip) {
+            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
+                return $ip;
+            }
+        }
+
+        return null;
     }
 
     private function isHttpUrl(string $url): bool
@@ -433,7 +518,7 @@ final class NodeEgressProbe
         return $targets;
     }
 
-    /** @return array{node: string, ip: ?string, probe_ok: bool, last_change_at: ?string, change_count: int} */
+    /** @return array{node: string, ip: ?string, probe_ok: bool, last_probe_error: ?string, last_change_at: ?string, change_count: int} */
     private function status(string $identity, string $cacheKey, string $metaKey): array
     {
         try {
@@ -450,6 +535,7 @@ final class NodeEgressProbe
             'node' => $identity,
             'ip' => is_string($current['ip'] ?? null) ? $current['ip'] : null,
             'probe_ok' => (bool) ($current['probe_ok'] ?? false),
+            'last_probe_error' => is_string($current['probe_error'] ?? null) ? $current['probe_error'] : null,
             'last_change_at' => is_string($meta['last_change_at'] ?? null) ? $meta['last_change_at'] : null,
             'change_count' => max(0, (int) ($meta['change_count'] ?? 0)),
         ];
@@ -489,6 +575,12 @@ final class NodeEgressProbe
                 return;
             }
             $nodes = $this->cachedNodeIds();
+            $legacyNode = NodeIdentity::hostname();
+            if ($legacyNode !== $node) {
+                $nodes = array_values(array_filter($nodes, static fn(string $cachedNode): bool => $cachedNode !== $legacyNode));
+                Cache::forget($this->nodeCacheKey($legacyNode));
+                Cache::forget($this->nodeMetaKey($legacyNode));
+            }
             $nodes[] = $node;
             $nodes = array_values(array_unique($nodes));
             sort($nodes);
@@ -526,10 +618,7 @@ final class NodeEgressProbe
 
     private function nodeId(): string
     {
-        $hostname = gethostname();
-        $node = is_string($hostname) && trim($hostname) !== '' ? trim($hostname) : 'local';
-
-        return mb_substr(preg_replace('/[^A-Za-z0-9_.-]/', '-', $node) ?? 'local', 0, 64);
+        return NodeIdentity::current();
     }
 
     private function nodeCacheKey(string $node): string

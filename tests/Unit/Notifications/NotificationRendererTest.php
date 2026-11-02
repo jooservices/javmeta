@@ -109,6 +109,19 @@ final class NotificationRendererTest extends TestCase
         self::assertStringContainsString('Due items', $rendered['body']);
     }
 
+    public function test_egress_notification_uses_the_configured_node_name(): void
+    {
+        config(['sentry.node' => 'xcrawler-worker-2']);
+
+        $rendered = app(NotificationRenderer::class)->render('network.egress_ip_changed', [
+            'current_ip' => '203.0.113.12',
+            'previous_ip' => '203.0.113.11',
+        ]);
+
+        self::assertStringContainsString('Node xcrawler-worker-2 now exits', $rendered['body']);
+        self::assertStringNotContainsString((string) gethostname(), $rendered['body']);
+    }
+
     public function test_preview_uses_registry_samples_while_live_render_uses_configured_timezone_and_node(): void
     {
         config(['javmeta_alerts.hourly_report.timezone' => 'Asia/Ho_Chi_Minh']);

@@ -515,6 +515,11 @@ final class PublishMetricsCommand extends Command
     {
         $points = [];
         foreach ($probe->browserStatuses() as $status) {
+            $points[] = [
+                'name' => MetricStreams::NAMES['browser_egress_probe_ok'],
+                'value' => $status['probe_ok'] ? 1 : 0,
+                'labels' => ['host' => $status['host']],
+            ];
             if ($status['ip'] === null) {
                 continue;
             }

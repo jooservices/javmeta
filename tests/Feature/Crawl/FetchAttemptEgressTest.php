@@ -19,7 +19,7 @@ final class FetchAttemptEgressTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config()->set('cache.default', 'array');
+        config()->set(['cache.default' => 'array', 'sentry.node' => 'xcrawler-worker-1']);
         Cache::setDefaultDriver('array');
         Cache::store('array')->flush();
     }
@@ -124,8 +124,6 @@ final class FetchAttemptEgressTest extends TestCase
 
     private function nodeId(): string
     {
-        $hostname = gethostname();
-
-        return mb_substr(preg_replace('/[^A-Za-z0-9_.-]/', '-', is_string($hostname) ? trim($hostname) : 'local') ?? 'local', 0, 64);
+        return 'xcrawler-worker-1';
     }
 }
