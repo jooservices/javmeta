@@ -12,10 +12,17 @@ use App\Models\Source;
 use App\Models\Movie;
 use App\Services\Crawl\CrawlQueueService;
 use App\Services\Crawl\MovieDraftSink;
+use App\Services\Crawl\SourceActivityRecorder;
+use App\Services\Crawl\SourceThrottle;
+use App\Services\Normalize\SourceNormalizerRegistry;
 use App\Services\Crawler\CrawlerxClient;
 use App\Services\Crawler\CrawlerxFetchResult;
+use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use JOOservices\CrawlerX\Dto\Entity\MovieDto;
+use Mockery;
+use RuntimeException;
 use Tests\Support\FakeCrawlerxClient;
 use Tests\Support\FakeMovieDraftSink;
 use Tests\TestCase;
@@ -88,6 +95,48 @@ final class FetchDetailJobTest extends TestCase
 
         self::assertCount(1, $sink->drafts);
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
+    }
+
+    public function test_failed_deferred_dispatch_returns_the_unstarted_row_to_pending(): void
+    {
+        $source = $this->source('onejav');
+        $row = $this->detailRow($source);
+        $claimToken = 'host:feed';
+        $row->forceFill(['locked_by' => $claimToken])->save();
+        $source->forceFill(['gap_seconds_current' => 20.0])->save();
+        config()->set([
+            'cache.default' => 'array',
+            'javmeta_queues.worker_timeout' => 10,
+            'javmeta_queues.fetch_service_timeout_seconds' => 9,
+        ]);
+        Cache::store('array')->flush();
+        Cache::put('javmeta:crawl:source-last-start:onejav', (int) floor(microtime(true) * 1_000_000), 120);
+        $client = $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'));
+        $throttle = new SourceThrottle();
+        $this->app->instance(SourceThrottle::class, $throttle);
+        $dispatcher = Mockery::mock(Dispatcher::class);
+        $dispatcher->shouldReceive('dispatch')->once()->andThrow(new RuntimeException('Queue unavailable.'));
+        $this->app->instance(Dispatcher::class, $dispatcher);
+
+        try {
+            (new FetchDetailJob($row->id, null, $claimToken))->handle(
+                $client,
+                app(SourceNormalizerRegistry::class),
+                app(SourceActivityRecorder::class),
+                $throttle,
+            );
+            $this->fail('The queue dispatch error should be rethrown.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Queue unavailable.', $exception->getMessage());
+        }
+
+        $row->refresh();
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $row->status);
+        $this->assertSame(0, $row->attempts);
+        $this->assertNull($row->started_at);
+        $this->assertNull($row->claimed_at);
+        $this->assertNull($row->locked_by);
+        $this->assertSame(0, $client->calls);
     }
 
     public function test_success_passes_the_recrawl_marker_to_the_sink_and_clears_it_from_the_row(): void

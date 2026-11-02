@@ -471,6 +471,7 @@ final class CrawlQueueService
             $row->forceFill([
                 'started_at' => now(),
                 'claimed_at' => now(),
+                'next_attempt_at' => null,
                 'attempts' => $row->attempts + 1,
             ])->save();
 
@@ -478,9 +479,9 @@ final class CrawlQueueService
         });
     }
 
-    public function returnStartedClaimToWaiting(CrawlQueue $row, ?string $claimToken): bool
+    public function returnStartedClaimToWaiting(CrawlQueue $row, ?string $claimToken, int $deferredSeconds = 0): bool
     {
-        return DB::transaction(function () use ($row, $claimToken): bool {
+        return DB::transaction(function () use ($row, $claimToken, $deferredSeconds): bool {
             $query = CrawlQueue::query()
                 ->whereKey($row->id)
                 ->where('status', CrawlQueue::STATUS_CLAIMED)
@@ -499,10 +500,47 @@ final class CrawlQueueService
                 return false;
             }
 
+            // Keep the stale-claim reaper from stealing the deferred envelope before it can run.
             $claimedRow->forceFill([
                 'started_at' => null,
                 'claimed_at' => now(),
+                'next_attempt_at' => $deferredSeconds > 0
+                    ? now()->addSeconds($deferredSeconds + max(0, (int) config('javmeta_sources.defaults.queue.stale_claim_timeout_seconds', 900)))
+                    : null,
                 'attempts' => max(0, $claimedRow->attempts - 1),
+            ])->save();
+
+            return true;
+        });
+    }
+
+    public function returnUnstartedClaimToPending(int $id, ?string $claimToken): bool
+    {
+        return DB::transaction(function () use ($id, $claimToken): bool {
+            $query = CrawlQueue::query()
+                ->whereKey($id)
+                ->where('status', CrawlQueue::STATUS_CLAIMED)
+                ->whereNull('started_at');
+
+            if ($claimToken !== null) {
+                $query->where('locked_by', $claimToken);
+            }
+
+            if (DB::getDriverName() === 'pgsql') {
+                $query->lockForUpdate();
+            }
+
+            $claimedRow = $query->first();
+            if (! $claimedRow instanceof CrawlQueue) {
+                return false;
+            }
+
+            $claimedRow->forceFill([
+                'status' => CrawlQueue::STATUS_PENDING,
+                'claimed_at' => null,
+                'started_at' => null,
+                'locked_by' => null,
+                'next_attempt_at' => null,
             ])->save();
 
             return true;
@@ -534,6 +572,9 @@ final class CrawlQueueService
         $reclaimed = DB::transaction(function () use ($cutoff, &$lostRows): int {
             $query = CrawlQueue::query()
                 ->where('status', CrawlQueue::STATUS_CLAIMED)
+                ->where(static function ($query): void {
+                    $query->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', now());
+                })
                 ->where('claimed_at', '<', $cutoff)
                 ->orderBy('id');
 
@@ -553,7 +594,7 @@ final class CrawlQueueService
                             'created_at' => now(),
                         ]);
 
-                        $this->returnUnstartedClaimToPending($row);
+                        $this->markUnstartedClaimAsWorkerLost($row);
                         $lostRows[] = [
                             $row->source_slug,
                             $row->kind,
@@ -593,7 +634,7 @@ final class CrawlQueueService
         return $reclaimed;
     }
 
-    private function returnUnstartedClaimToPending(CrawlQueue $row): void
+    private function markUnstartedClaimAsWorkerLost(CrawlQueue $row): void
     {
         $row->forceFill([
             'status' => CrawlQueue::STATUS_PENDING,

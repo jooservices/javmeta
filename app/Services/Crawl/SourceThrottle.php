@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Crawl;
 
 use App\Models\Source;
+use App\Services\Crawler\CrawlerxClient;
 use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
 use LogicException;
@@ -29,15 +30,18 @@ final class SourceThrottle
     {
         $workerTimeout = max(1.0, (float) config('javmeta_queues.worker_timeout', 180));
         $fetchTimeout = max(1.0, (float) config('javmeta_queues.fetch_service_timeout_seconds', 45));
+        $fetchDeadline = max($fetchTimeout, (float) CrawlerxClient::fetchDeadlineSeconds());
 
-        return (int) floor(max(0, $workerTimeout - $fetchTimeout) * 500_000);
+        return (int) floor(max(0, $workerTimeout - $fetchDeadline) * 500_000);
     }
 
     /** Returns the remaining delay when it exceeds the safe inline wait. */
     public function waitForRequestStart(Source|string $source, int $maxWaitMicroseconds): ?int
     {
+        $sourceSlug = $source instanceof Source ? (string) $source->slug : $source;
+
         if (app()->runningUnitTests()) {
-            $delay = $this->requestStartDelayMicroseconds($source, (int) floor(microtime(true) * 1_000_000));
+            $delay = $this->requestStartDelayMicroseconds($sourceSlug, (int) floor(microtime(true) * 1_000_000));
 
             return $delay > $maxWaitMicroseconds ? $delay : null;
         }
@@ -47,7 +51,7 @@ final class SourceThrottle
 
         while (true) {
             $nowMicroseconds = (int) floor(microtime(true) * 1_000_000);
-            $delay = $this->requestStartDelayMicroseconds($source, $nowMicroseconds);
+            $delay = $this->requestStartDelayMicroseconds($sourceSlug, $nowMicroseconds);
             if ($delay <= 0) {
                 return null;
             }

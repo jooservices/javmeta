@@ -184,14 +184,34 @@ final class CrawlQueueServiceClaimTest extends TestCase
         $this->source('paced-start');
         $row = $this->row('paced-start', CrawlQueue::STATUS_CLAIMED);
         $row->forceFill(['locked_by' => 'feed', 'started_at' => now(), 'attempts' => 3])->save();
+        $deferredUntil = now()->addSeconds(1200 + (int) config('javmeta_sources.defaults.queue.stale_claim_timeout_seconds', 900));
 
-        $deferred = app(CrawlQueueService::class)->returnStartedClaimToWaiting($row, 'feed');
+        $deferred = app(CrawlQueueService::class)->returnStartedClaimToWaiting($row, 'feed', 1200);
 
         $this->assertTrue($deferred);
         $this->assertNull($row->refresh()->started_at);
         $this->assertSame(2, $row->attempts);
         $this->assertSame('feed', $row->locked_by);
+        $this->assertSame($deferredUntil->timestamp, $row->next_attempt_at?->timestamp);
         $this->assertNotNull($row->claimed_at);
+    }
+
+    public function test_a_long_pacing_deferral_stays_claimed_until_its_delay_and_stale_timeout_expire(): void
+    {
+        $this->source('paced-start');
+        $row = $this->row('paced-start', CrawlQueue::STATUS_CLAIMED);
+        $row->forceFill(['locked_by' => 'feed', 'started_at' => now(), 'attempts' => 1])->save();
+
+        app(CrawlQueueService::class)->returnStartedClaimToWaiting($row, 'feed', 1200);
+
+        $this->travel(901)->seconds();
+        $this->assertSame(0, app(CrawlQueueService::class)->reclaimStaleClaimed(900));
+        $this->assertSame(CrawlQueue::STATUS_CLAIMED, $row->refresh()->status);
+        $this->assertNull($row->error_code);
+
+        $this->travel(1200)->seconds();
+        $this->assertSame(1, app(CrawlQueueService::class)->reclaimStaleClaimed(900));
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $row->refresh()->status);
     }
 
     public function test_pacing_waiting_counts_only_claims_that_have_not_started(): void

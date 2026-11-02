@@ -64,15 +64,23 @@ trait HandlesCrawlQueueRow
             return true;
         }
 
-        if (! app(CrawlQueueService::class)->returnStartedClaimToWaiting($row, $this->claimToken ?? null)) {
+        $delaySeconds = (int) ceil($delayMicroseconds / 1_000_000);
+        $queue = app(CrawlQueueService::class);
+        if (! $queue->returnStartedClaimToWaiting($row, $this->claimToken ?? null, $delaySeconds)) {
             return false;
         }
 
         // A new envelope prevents this politeness delay from consuming the crawl job's attempt budget.
         $deferred = new static($this->crawlQueueId, $this->traceparent, $this->claimToken);
         $deferred->onConnection($this->connection)->onQueue($this->queue);
-        $deferred->delay((int) ceil($delayMicroseconds / 1_000_000));
-        app(Dispatcher::class)->dispatch($deferred);
+        $deferred->delay($delaySeconds);
+        try {
+            app(Dispatcher::class)->dispatch($deferred);
+        } catch (Throwable $exception) {
+            $queue->returnUnstartedClaimToPending($row->id, $this->claimToken ?? null);
+            throw $exception;
+        }
+
         $this->delete();
 
         return false;

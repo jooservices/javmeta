@@ -91,6 +91,11 @@ trait RunsCrawlerxFixtures
         return Source::factory()->create([
             'slug' => $slug,
             'base_url' => is_string($baseUrl) ? $baseUrl : 'https://' . $slug . '.test',
+            // These tests cover fetch parsing, not pacing; keep their gap deterministic and inline.
+            'gap_seconds_default' => 2.0,
+            'gap_seconds_min' => 1.0,
+            'gap_seconds_max' => 15.0,
+            'gap_seconds_current' => 2.0,
         ]);
     }
 

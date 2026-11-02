@@ -6,8 +6,10 @@ namespace Tests\Unit\Services\Crawl;
 
 use App\Models\Source;
 use App\Services\Crawl\SourceThrottle;
+use App\Services\Crawler\CrawlerxClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use LogicException;
 use Tests\TestCase;
 
@@ -69,14 +71,36 @@ final class SourceThrottleTest extends TestCase
         $this->assertSame(0, $throttle->requestStartDelayMicroseconds($source, 1_500_000));
     }
 
-    public function test_inline_wait_stays_within_the_worker_budget_after_the_fetch_timeout(): void
+    public function test_inline_wait_uses_the_crawler_deadline_and_preserves_half_the_worker_margin(): void
     {
         config()->set([
             'javmeta_queues.worker_timeout' => 180,
             'javmeta_queues.fetch_service_timeout_seconds' => 45,
         ]);
 
-        $this->assertSame(67_500_000, (new SourceThrottle())->maxInlineWaitMicroseconds());
+        $this->assertSame(150, CrawlerxClient::fetchDeadlineSeconds());
+        $this->assertSame(15_000_000, (new SourceThrottle())->maxInlineWaitMicroseconds());
+
+        config()->set('javmeta_queues.fetch_service_timeout_seconds', 170);
+
+        $this->assertSame(5_000_000, (new SourceThrottle())->maxInlineWaitMicroseconds());
+    }
+
+    public function test_inline_wait_reads_a_fresh_gap_when_given_a_stale_source_model(): void
+    {
+        config(['cache.default' => 'array']);
+        Cache::store('array')->flush();
+        $source = $this->sourceWithGap(2.0, 0.5, 20.0);
+        $throttle = new SourceThrottle();
+        $nowMicroseconds = (int) floor(microtime(true) * 1_000_000);
+
+        $this->assertSame(0, $throttle->requestStartDelayMicroseconds($source, $nowMicroseconds));
+        DB::table('sources')->where('slug', $source->slug)->update(['gap_seconds_current' => 10.0]);
+
+        $delay = $throttle->waitForRequestStart($source, 0);
+
+        $this->assertNotNull($delay);
+        $this->assertGreaterThan(9_000_000, $delay);
     }
 
     public function test_request_start_gate_rejects_a_process_local_cache_store(): void
