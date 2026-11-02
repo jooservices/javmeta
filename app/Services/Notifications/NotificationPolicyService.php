@@ -187,6 +187,8 @@ final class NotificationPolicyService
                 'reserved_at' => null,
                 'reserved_tier' => null,
             ];
+        } elseif (($context['notification_occurrence'] ?? false) === true) {
+            return $current;
         }
         DB::table('notification_policy_events')->where('id', $current->id)->update($update);
 

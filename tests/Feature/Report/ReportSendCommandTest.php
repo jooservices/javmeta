@@ -73,6 +73,25 @@ final class ReportSendCommandTest extends TestCase
         self::assertSame('2026-11-02 18:00', ReportSnapshot::query()->firstOrFail()->getAttribute('scheduled_for')->timezone('America/Mexico_City')->format('Y-m-d H:i'));
     }
 
+    public function test_daily_report_command_sends_one_report_for_its_configured_local_slot(): void
+    {
+        config(['javmeta_report.daily_time' => '08:00', 'javmeta_report.daily_timezone' => 'America/Mexico_City']);
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-11-02 08:00:15 America/Mexico_City'));
+        Carbon::setTestNow(Carbon::parse('2026-11-02 08:00:15 America/Mexico_City'));
+
+        $event = collect(Schedule::events())->first(static fn($scheduled): bool => str_contains((string) $scheduled->command, 'report:send-daily'));
+        self::assertNotNull($event);
+        self::assertSame('0 8 * * *', $event->expression);
+        self::assertSame('America/Mexico_City', $event->timezone);
+
+        $this->artisan('report:send-daily')->assertSuccessful();
+        $this->artisan('report:send-daily')->assertSuccessful();
+
+        self::assertCount(1, $this->sent);
+        self::assertSame(1, ReportSnapshot::query()->where('report_type', 'daily')->count());
+        self::assertSame('2026-11-02 14:00', ReportSnapshot::query()->firstOrFail()->getAttribute('scheduled_for')->format('Y-m-d H:i'));
+    }
+
     public function test_scheduled_reports_are_not_duplicated_for_one_slot(): void
     {
         $slot = CarbonImmutable::parse('2026-11-02 18:00:00 America/Mexico_City');

@@ -6,6 +6,7 @@ namespace App\Services\Alerts;
 
 use App\Contracts\AlertNotifier;
 use App\Services\Notifications\NotificationRenderer;
+use App\Services\Notifications\NotificationPolicyDispatcher;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -30,7 +31,7 @@ final class AlertDispatcher
         $templateKey = is_string($context['template_key'] ?? null) ? $context['template_key'] : null;
         $policy = null;
         if ($templateKey !== null && ! ($context['policy_prepared'] ?? false)) {
-            $policy = app(\App\Services\Notifications\NotificationPolicyDispatcher::class);
+            $policy = app(NotificationPolicyDispatcher::class);
             $decision = $policy->prepare($templateKey, $context);
             if ($decision !== null && ! $decision['allowed']) {
                 if ($decision['resolved'] && $decision['reason'] !== 'reserved') {
@@ -102,13 +103,14 @@ final class AlertDispatcher
         }
         if ($templateKey !== null) {
             $decision = null;
-            $policy = app(\App\Services\Notifications\NotificationPolicyDispatcher::class);
+            $policy = app(NotificationPolicyDispatcher::class);
             $decision = $policy->prepare($templateKey, $notificationContext);
             if ($decision !== null && ! $decision['allowed']) {
                 return false;
             }
             if ($decision !== null) {
                 $notificationContext['severity'] = $decision['tier'];
+                $notificationContext['notification_policy_decision'] = $decision;
             }
             $rendered = ($this->renderer ?? app(NotificationRenderer::class))->render($templateKey, $notificationContext);
             $subject = $rendered['title'];
@@ -119,7 +121,7 @@ final class AlertDispatcher
         }
         $this->notifier->notify($subject, $body, $notificationContext);
         if ($templateKey !== null && isset($decision)) {
-            app(\App\Services\Notifications\NotificationPolicyDispatcher::class)->recordSent($decision);
+            app(NotificationPolicyDispatcher::class)->recordSent($decision);
         }
         Cache::put($this->activeKey($debounceKey), 1, now()->addDays(7));
 
@@ -147,7 +149,7 @@ final class AlertDispatcher
         $policy = null;
         $decision = null;
         if ($templateKey !== null) {
-            $policy = app(\App\Services\Notifications\NotificationPolicyDispatcher::class);
+            $policy = app(NotificationPolicyDispatcher::class);
             $decision = $policy->prepare($templateKey, $notificationContext);
             if ($decision !== null && ! $decision['allowed']) {
                 $policy->resolveCause($templateKey, $debounceKey, $notificationContext);
@@ -157,6 +159,9 @@ final class AlertDispatcher
             $rendered = ($this->renderer ?? app(NotificationRenderer::class))->render($templateKey, $notificationContext);
             $subject = $rendered['title'];
             $body = $rendered['body'];
+            if ($decision !== null) {
+                $notificationContext['notification_policy_decision'] = $decision;
+            }
             $notificationContext['template_key'] = $templateKey;
             $notificationContext['template_rendered'] = true;
         }
