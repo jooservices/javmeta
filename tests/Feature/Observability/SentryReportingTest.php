@@ -127,7 +127,7 @@ final class SentryReportingTest extends TestCase
             'max_attempts' => 3,
         ]);
         $client = Mockery::mock(CrawlerxClient::class);
-        $client->shouldReceive('fetchDetail')->once()->with('classified-source', $row->url)->andReturn(
+        $client->shouldReceive('fetchQueueRow')->once()->with(Mockery::on(fn(CrawlQueue $candidate): bool => $candidate->is($row)))->andReturn(
             CrawlerxFetchResult::failure('blocked', 'Request failed at https://source.example/item?api_key=private', true),
         );
         (new FetchDetailJob($row->id))->handle(

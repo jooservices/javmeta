@@ -58,6 +58,7 @@ trait HandlesCrawlQueueRow
 
     private function markDone(CrawlQueue $row): void
     {
+        $wasRetry = $row->claimed_lane === 'retry';
         $values = [
             'status' => CrawlQueue::STATUS_DONE,
             'claimed_at' => null,
@@ -65,6 +66,7 @@ trait HandlesCrawlQueueRow
             'locked_by' => null,
             'last_error' => null,
             'error_code' => null,
+            'retryable' => null,
             'last_failed_at' => null,
             'is_recrawl' => false,
         ];
@@ -75,6 +77,15 @@ trait HandlesCrawlQueueRow
         }
 
         $row->forceFill($values)->save();
+
+        if ($wasRetry) {
+            app(\App\Services\Crawl\CrawlRetryMetrics::class)->increment(
+                (string) $row->source_slug,
+                max(1, (int) $row->retry_round),
+                'success',
+                (string) ($row->retry_egress_label ?? 'default'),
+            );
+        }
     }
 
     private function markFailed(
@@ -110,7 +121,7 @@ trait HandlesCrawlQueueRow
             $row,
             $errorCode,
             $timedOut ? 'Worker timed out while processing the crawl row.' : $exception->getMessage(),
-            $row->attempts < $row->max_attempts,
+            true,
             exception: $exception,
         );
     }

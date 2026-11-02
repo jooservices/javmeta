@@ -160,6 +160,8 @@ The Crawl & sources table shows each source’s effective lane (Trực tiếp or
 The same group exposes **Feed interval (seconds)** (`queue.feed_interval_seconds`), with choices 5, 10, 15, 30 and 60. The default is 10 seconds; 60 restores the former once-per-minute cadence. Changes apply on the next scheduler minute.
 The **Vòng lặp crawl** group exposes **Khoảng request ghi đè theo nguồn** (`crawl.source_gap_overrides`), a validated JSON map of per-source min/default/max gaps. Operators can inspect the effective and adaptive values with `crawler:source-gap` and `crawler:feed-diagnostics`.
 
+The **Làn thử lại** settings group controls delayed retry rounds, their separate feed budget and pacing, per-queue workers, and the optional fetch profile. Owners can inspect due failures with `crawler:retry-list` and recovery counts over SSH with `crawler:retry-stats`; the operations guide documents safe manual requeue and historical import.
+
 Product-code recovery for javbtc, ffjav, tokyohot and 141jav preserves source
 product identifiers and uses a stable source-scoped URL identity when needed.
 The movie remains accessible through the existing movie UI; no new controls

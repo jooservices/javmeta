@@ -8,6 +8,7 @@ use App\Console\Commands\Observability\PublishMetricsCommand;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
+use App\Observability\MetricStreams;
 use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Crawl\FetchMethodPreference;
 use App\Services\Health\CrawlDispatchHeartbeat;
@@ -25,6 +26,7 @@ use Carbon\CarbonImmutable;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Testing\FakeConfigStore;
 use Mockery;
+use ReflectionMethod;
 use Tests\TestCase;
 
 final class PublishMetricsCommandTest extends TestCase
@@ -126,6 +128,40 @@ final class PublishMetricsCommandTest extends TestCase
         $this->artisan('obs:publish-metrics')->assertSuccessful();
 
         Http::assertSent(static fn($request): bool => str_contains($request->url(), '/v1/metrics'));
+    }
+
+    public function test_retry_metrics_publish_pending_success_and_permanent_failure_with_egress_labels(): void
+    {
+        $row = CrawlQueue::factory()->create([
+            'status' => CrawlQueue::STATUS_RETRY_PENDING,
+            'retry_round' => 2,
+            'retry_egress_label' => 'clean-egress',
+            'attempts' => 3,
+        ]);
+        CrawlQueue::factory()->create([
+            'status' => CrawlQueue::STATUS_PENDING,
+            'attempts' => 1,
+        ]);
+        DB::table('crawl_retry_metrics')->insert([
+            ['source_slug' => $row->source_slug, 'round' => 2, 'outcome' => 'success', 'egress_label' => 'clean-egress', 'value' => 4],
+            ['source_slug' => $row->source_slug, 'round' => 1, 'outcome' => 'failed_permanent', 'egress_label' => 'clean-egress', 'value' => 2],
+        ]);
+        $method = new ReflectionMethod(PublishMetricsCommand::class, 'queueMetrics');
+        /** @var list<array{name: string, value: float|int, labels?: array<string, string>}> $points */
+        $points = $method->invoke(app(PublishMetricsCommand::class));
+        $retryPoints = collect($points)->whereIn('name', [
+            'javmeta_retry_pending', 'javmeta_retry_success_total', 'javmeta_retry_failed_permanent_total',
+        ]);
+
+        self::assertCount(3, $retryPoints);
+        self::assertSame(1, $retryPoints->firstWhere('name', 'javmeta_retry_pending')['value']);
+        self::assertSame(4, $retryPoints->firstWhere('name', 'javmeta_retry_success_total')['value']);
+        self::assertSame(2, $retryPoints->firstWhere('name', 'javmeta_retry_failed_permanent_total')['value']);
+        $averageAttempts = collect($points)->firstWhere('name', MetricStreams::NAMES['crawl_queue_avg_attempts']);
+        self::assertSame(2.0, $averageAttempts['value']);
+        foreach ($retryPoints as $point) {
+            self::assertSame('clean-egress', $point['labels']['egress']);
+        }
     }
 
     public function test_command_publishes_feed_pool_diagnostics_metrics_from_the_previous_minute(): void
@@ -404,7 +440,7 @@ final class PublishMetricsCommandTest extends TestCase
         });
     }
 
-    public function test_missing_dispatch_timestamp_alerts_only_while_due_work_is_pending(): void
+    public function test_missing_dispatch_timestamp_alerts_while_due_retry_work_is_pending(): void
     {
         config()->set([
             'cache.default' => 'array',
@@ -421,8 +457,14 @@ final class PublishMetricsCommandTest extends TestCase
         CrawlQueue::factory()->create([
             'source_slug' => fake()->slug(2),
             'kind' => CrawlQueue::KIND_LISTING,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_RETRY_PENDING,
             'next_attempt_at' => null,
+        ]);
+        CrawlQueue::factory()->create([
+            'source_slug' => fake()->slug(2),
+            'kind' => CrawlQueue::KIND_LISTING,
+            'status' => CrawlQueue::STATUS_RETRY_PENDING,
+            'next_attempt_at' => now()->addHour(),
         ]);
         Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
 
@@ -465,6 +507,10 @@ final class PublishMetricsCommandTest extends TestCase
             'openobserve.timeout' => 1,
         ]);
         Cache::store('array')->flush();
+        CrawlQueue::factory()->create([
+            'status' => CrawlQueue::STATUS_RETRY_PENDING,
+            'next_attempt_at' => now()->addHour(),
+        ]);
         app(CrawlDispatchHeartbeat::class)->record();
         $this->travel(200)->seconds();
         Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);

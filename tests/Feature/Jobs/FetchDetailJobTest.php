@@ -60,6 +60,52 @@ final class FetchDetailJobTest extends TestCase
         $this->assertSame(0, Movie::query()->count());
     }
 
+    public function test_retry_lane_success_increments_the_round_and_egress_counter(): void
+    {
+        $source = $this->source('onejav');
+        $row = $this->detailRow($source);
+        $row->forceFill(['claimed_lane' => 'retry', 'retry_round' => 2])->save();
+        config(['javmeta_queues.retry.fetch_profile' => ['egress_label' => 'clean-egress']]);
+        $this->app->instance(MovieDraftSink::class, new FakeMovieDraftSink());
+        $this->fakeClient(CrawlerxFetchResult::movie($this->movie()));
+
+        FetchDetailJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_retry_metrics', [
+            'source_slug' => $source->slug,
+            'round' => 2,
+            'outcome' => 'success',
+            'egress_label' => 'clean-egress',
+            'value' => 1,
+        ]);
+    }
+
+    public function test_retry_success_is_not_counted_when_marking_the_queue_row_done_fails(): void
+    {
+        $source = $this->source('onejav');
+        $row = $this->detailRow($source);
+        $row->forceFill(['claimed_lane' => 'retry', 'retry_round' => 1])->save();
+        $this->app->instance(MovieDraftSink::class, new FakeMovieDraftSink());
+        $this->fakeClient(CrawlerxFetchResult::movie($this->movie()));
+        CrawlQueue::saving(static function (CrawlQueue $savedRow): void {
+            if ($savedRow->status === CrawlQueue::STATUS_DONE && $savedRow->claimed_lane === 'retry') {
+                throw new \RuntimeException('Queue row could not be marked done.');
+            }
+        });
+
+        try {
+            FetchDetailJob::dispatch($row->id);
+        } catch (\RuntimeException) {
+            // The simulated persistence failure is the condition under test.
+        }
+
+        $this->assertDatabaseMissing('crawl_retry_metrics', [
+            'source_slug' => $source->slug,
+            'round' => 1,
+            'outcome' => 'success',
+        ]);
+    }
+
     public function test_a_job_from_an_older_feed_is_skipped_after_the_row_was_claimed_again(): void
     {
         $source = $this->source('onejav');
@@ -281,7 +327,7 @@ final class FetchDetailJobTest extends TestCase
         self::assertSame(now()->addSeconds(300)->getTimestamp(), $row->next_attempt_at?->getTimestamp());
     }
 
-    public function test_retryable_failure_at_max_attempts_fails_the_row(): void
+    public function test_retryable_failure_at_max_attempts_moves_to_retry_pending(): void
     {
         $row = $this->detailRow($this->source('onejav'));
         $row->forceFill(['attempts' => 2])->save();
@@ -290,7 +336,7 @@ final class FetchDetailJobTest extends TestCase
 
         FetchDetailJob::dispatch($row->id);
 
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'attempts' => 3, 'error_code' => CrawlErrorCode::Network->value]);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_RETRY_PENDING, 'attempts' => 0, 'retry_round' => 1, 'error_code' => CrawlErrorCode::Network->value]);
     }
 
     public function test_not_found_fails_the_row_without_retry(): void

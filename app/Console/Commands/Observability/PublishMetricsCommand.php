@@ -220,12 +220,47 @@ final class PublishMetricsCommand extends Command
         ];
 
         $avgAttempts = CrawlQueue::query()
-            ->whereIn('status', [CrawlQueue::STATUS_PENDING, CrawlQueue::STATUS_FAILED])
+            ->whereIn('status', [CrawlQueue::STATUS_PENDING, CrawlQueue::STATUS_RETRY_PENDING, CrawlQueue::STATUS_FAILED])
             ->avg('attempts');
         $points[] = [
             'name' => MetricStreams::NAMES['crawl_queue_avg_attempts'],
             'value' => $avgAttempts !== null ? (float) $avgAttempts : 0.0,
         ];
+
+        $egressLabel = (string) data_get(config('javmeta_queues.retry.fetch_profile', []), 'egress_label', 'default');
+        foreach (CrawlQueue::query()->where('status', CrawlQueue::STATUS_RETRY_PENDING)
+            ->select('source_slug', 'retry_round', 'retry_egress_label')
+            ->selectRaw('COUNT(*) AS total')
+            ->groupBy('source_slug', 'retry_round', 'retry_egress_label')->get() as $row) {
+            $points[] = [
+                'name' => MetricStreams::NAMES['retry_pending'],
+                'value' => (int) $row->getAttribute('total'),
+                'labels' => [
+                    'source' => (string) $row->source_slug,
+                    'round' => (string) $row->retry_round,
+                    'egress' => (string) ($row->retry_egress_label ?: $egressLabel),
+                ],
+            ];
+        }
+
+        foreach (DB::table('crawl_retry_metrics')->get() as $row) {
+            $name = match ((string) $row->outcome) {
+                'success' => 'retry_success_total',
+                'failed_permanent' => 'retry_failed_permanent_total',
+                default => null,
+            };
+            if ($name !== null) {
+                $points[] = [
+                    'name' => MetricStreams::NAMES[$name],
+                    'value' => (int) $row->value,
+                    'labels' => [
+                        'source' => (string) $row->source_slug,
+                        'round' => (string) $row->round,
+                        'egress' => (string) $row->egress_label,
+                    ],
+                ];
+            }
+        }
 
         return $points;
     }
@@ -237,7 +272,7 @@ final class PublishMetricsCommand extends Command
     {
         $age = $dispatchHeartbeat->ageSeconds();
         $hasDueWork = CrawlQueue::query()
-            ->where('status', CrawlQueue::STATUS_PENDING)
+            ->whereIn('status', [CrawlQueue::STATUS_PENDING, CrawlQueue::STATUS_RETRY_PENDING])
             ->where(static function ($query): void {
                 $query->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', now());
             })

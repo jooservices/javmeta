@@ -72,7 +72,7 @@ final class FetchDetailJob implements ShouldQueue
             return;
         }
 
-        $result = $client->fetchDetail($row->source_slug, $row->url);
+        $result = $client->fetchQueueRow($row);
         app(FetchAttemptRecorder::class)->record($row, $result);
         if (! $result->ok || $result->movie === null) {
             $this->onCrawlFailure($row, $source, $result, $activity, $throttle);

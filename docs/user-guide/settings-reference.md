@@ -94,6 +94,12 @@ Số tiến trình Horizon tối đa cho từng queue cần Playwright hoặc Fl
 
 Số nguyên; từ 1 đến 32. Mã mục: `worker.browser_workers_per_queue`.
 
+### Worker mỗi hàng đợi làn thử lại
+
+Số tiến trình Horizon cho từng queue retry; mặc định chỉ dùng một tiến trình.
+
+Số nguyên; từ 1 đến 8. Mã mục: `worker.retry_workers_per_queue`.
+
 ### Worker ghi đè theo hàng đợi (JSON)
 
 Đối tượng JSON ánh xạ tên queue sang số worker từ 1 đến 32, ví dụ {"listing":2,"browser_detail":1}.
@@ -102,7 +108,7 @@ Số nguyên; từ 1 đến 32. Mã mục: `worker.browser_workers_per_queue`.
 
 ### Worker ghi đè theo node (JSON)
 
-Ánh xạ main, worker hoặc role@hostname sang default, direct, browser và queues.
+Ánh xạ main, worker hoặc role@hostname sang default, direct, browser, retry và queues.
 
 Đối tượng JSON; ghi đè theo vai trò hoặc role@hostname; worker từ 1 đến 32. Mã mục: `worker.node_overrides`.
 
@@ -264,6 +270,68 @@ Mỗi dòng là một mã nguồn ưu tiên dùng trình duyệt.
 
 Danh sách văn bản. Mã mục: `crawl.lane_browser_pins`.
 
+## Làn thử lại
+
+### Độ sâu queue thử lại
+
+Số job chờ tối đa trong mỗi queue riêng của làn thử lại.
+
+Số nguyên; từ 1 đến 1000. Mã mục: `retry.depth_limit`.
+
+### Ngân sách dispatch thử lại mỗi phút
+
+Giới hạn riêng cho số job làn thử lại được đưa vào worker mỗi phút.
+
+Số nguyên; từ 1 đến 100. Mã mục: `retry.feed_pool_limit`.
+
+### Cửa sổ pacing làn thử lại (giây)
+
+Cửa sổ riêng để giới hạn lượng việc thử lại đang chạy hoặc đang chờ theo từng nguồn.
+
+Số nguyên; từ 1 đến 3600. Mã mục: `retry.pacing_horizon_seconds`.
+
+### Hệ số giãn cách request thử lại
+
+Nhân khoảng nghỉ hiện tại của nguồn để retry chậm hơn luồng crawl thường.
+
+Số thập phân; từ 1 đến 20. Mã mục: `retry.pacing_gap_multiplier`.
+
+### Việc thử lại đồng thời mỗi nguồn
+
+Giới hạn riêng số job retry đang chờ hoặc chạy đồng thời cho mỗi nguồn.
+
+Số nguyên; từ 1 đến 8. Mã mục: `retry.per_source_inflight`.
+
+### Thời gian chờ giữa các vòng thử lại (giây)
+
+Danh sách thời gian chờ trước mỗi vòng; mặc định là 30 phút, 2 giờ và 6 giờ.
+
+Danh sách số nguyên. Mã mục: `retry.delays_seconds`.
+
+### Số vòng thử lại tối đa
+
+Sau số vòng này, lỗi còn lại được giữ ở trạng thái thất bại vĩnh viễn.
+
+Số nguyên; từ 1 đến 10. Mã mục: `retry.max_rounds`.
+
+### Số lần thử trong mỗi vòng retry
+
+Mỗi vòng retry dùng số lần thử này trước khi tăng vòng hoặc thất bại vĩnh viễn.
+
+Số nguyên; từ 1 đến 10. Mã mục: `retry.attempts_per_round`.
+
+### Kích thước mỗi lát nhập lỗi cũ
+
+Số dòng failed tối đa được kiểm tra và cập nhật trong một lát lệnh import.
+
+Số nguyên; từ 1 đến 1000. Mã mục: `retry.import_slice_size`.
+
+### Hồ sơ fetch làn thử lại (JSON)
+
+Ghi đè tùy chọn endpoint trình duyệt, HTTP proxy, nhãn egress và thứ tự fetch riêng cho retry.
+
+Đối tượng JSON; các khóa hợp lệ: flaresolverr_url, playwright_url, http_proxy_url, egress_label, preferred_methods. Mã mục: `retry.fetch_profile`.
+
 ## Dọn dẹp
 
 ### Việc kẹt được giải phóng sau (giây)
@@ -404,9 +472,15 @@ Số nguyên; từ 1 đến 1000. Mã mục: `crawl.fetch_method_probe_interval`
 
 ### Thời gian chờ khi bị chặn (giây, cách nhau bằng dấu phẩy)
 
-Mỗi lần bị chặn chờ theo từng giá trị; hết danh sách thì việc thất bại.
+Các lần chặn/challenge trong luồng thường dùng thời gian chờ theo danh sách này trước khi chuyển sang làn retry.
 
 Danh sách số nguyên. Mã mục: `crawl.block_delays_seconds`.
+
+### Backoff giữa các lần thử crawl (giây)
+
+Khoảng nghỉ theo số lần thử trước khi chuyển sang vòng retry riêng.
+
+Danh sách số nguyên. Mã mục: `crawl.retry_backoff_seconds`.
 
 ### Đọc lại trang đầu mỗi (phút)
 
@@ -446,7 +520,7 @@ Số nguyên; từ 1 đến 20. Mã mục: `crawl.recrawl_max_rounds`.
 
 ### Số lần thử crawl tối đa
 
-Sau số lần này một dòng crawl được đánh dấu thất bại.
+Sau số lần này lỗi tạm thời chuyển sang làn retry riêng; lỗi parse và lỗi kết thúc vẫn thất bại ngay.
 
 Số nguyên; từ 1 đến 20. Mã mục: `crawl.max_attempts`.
 

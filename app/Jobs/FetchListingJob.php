@@ -61,7 +61,7 @@ final class FetchListingJob implements ShouldQueue
             return;
         }
 
-        $result = $client->fetchListing($row->source_slug, $row->url);
+        $result = $client->fetchQueueRow($row);
         app(FetchAttemptRecorder::class)->record($row, $result);
         if (! $result->ok || $result->list === null) {
             $this->onCrawlFailure($row, $source, $result, $activity, $throttle);

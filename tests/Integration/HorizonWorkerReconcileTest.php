@@ -95,7 +95,7 @@ final class HorizonWorkerReconcileTest extends IntegrationTestCase
     {
         $node = 'joo-xcr-301-floor';
         $master = 'worker-joo-xcr-301-floor-master';
-        $this->seedSnapshot($node, $master);
+        $running = $this->seedSnapshot($node, $master);
         SettingsService::forgetDefaults();
         $settings = app(SettingsService::class);
         $settings->set('queue.workers_per_queue', 1);
@@ -107,6 +107,11 @@ final class HorizonWorkerReconcileTest extends IntegrationTestCase
         self::assertSame([1], array_values(array_unique(HorizonWorkerLayout::workerCounts($result['new']['supervisors']))));
         foreach (array_keys($result['new']['supervisors']) as $name) {
             $commands = $this->commands->pending($master . ':' . $name);
+            if ($running['supervisors'][$name]['maxProcesses'] === $result['new']['supervisors'][$name]['maxProcesses']) {
+                self::assertCount(0, $commands, $name);
+
+                continue;
+            }
             self::assertCount(1, $commands, $name);
             self::assertSame(['scale' => 1], $commands[0]->options, $name);
         }

@@ -78,15 +78,17 @@ final class FeedPoolCommand extends Command
         try {
             $limitPerMinute = max(1, (int) config('javmeta_queues.feed_pool_limit', 50));
             $limitPerRun = $this->scaledRunLimit($limitPerMinute);
+            $retryLimitPerRun = $this->scaledRunLimit(max(1, (int) config('javmeta_queues.retry.feed_pool_limit', 5)));
             if ($this->option('limit') !== null) {
                 $limitPerRun = min($limitPerRun, max(1, (int) $this->option('limit')));
+                $retryLimitPerRun = min($retryLimitPerRun, max(1, (int) $this->option('limit')));
             }
             $queues = $this->queues();
             $workerId = gethostname() . ':' . getmypid();
 
             // Keep queued work and recent starts in the same rolling politeness window.
             $horizon = max(1, (int) config('javmeta_queues.pacing_horizon_seconds', 60));
-            $activity = $queue->pacingActivityBySource(now()->subSeconds($horizon));
+            $activity = $queue->pacingActivityBySource(now()->subSeconds($horizon), 'direct');
             $waiting = array_map(static fn(array $source): int => $source['waiting'], $activity);
             $budgetUsed = array_map(static fn(array $source): int => $source['started'], $activity);
             $latestStartedAt = array_filter(
@@ -95,6 +97,16 @@ final class FeedPoolCommand extends Command
             );
             $sourceGaps = [];
             $gapOf = $this->sourceGaps($throttle, $sourceGaps);
+            $retryHorizon = max(1, (int) config('javmeta_queues.retry.pacing_horizon_seconds', 60));
+            $retryActivity = $queue->pacingActivityBySource(now()->subSeconds($retryHorizon), 'retry');
+            $retryWaiting = array_map(static fn(array $source): int => $source['waiting'], $retryActivity);
+            $retryBudgetUsed = array_map(static fn(array $source): int => $source['started'], $retryActivity);
+            $retryLatestStartedAt = array_filter(
+                array_map(static fn(array $source): ?CarbonImmutable => $source['latest_started_at'], $retryActivity),
+                static fn(?CarbonImmutable $timestamp): bool => $timestamp !== null,
+            );
+            $retryMultiplier = max(1.0, (float) config('javmeta_queues.retry.pacing_gap_multiplier', 2.0));
+            $retryGapOf = static fn(string $slug): float => $gapOf($slug) * $retryMultiplier;
             foreach (array_unique([...array_keys($sourceGaps), ...array_keys($activity)]) as $slug) {
                 $slug = (string) $slug;
                 $sourceActivity = $activity[$slug] ?? ['waiting' => 0, 'started' => 0];
@@ -118,6 +130,12 @@ final class FeedPoolCommand extends Command
                 $stopReasons,
                 $latestStartedAt,
                 $gapOf,
+                $retryLimitPerRun,
+                $retryWaiting,
+                $retryBudgetUsed,
+                $retryLatestStartedAt,
+                $retryGapOf,
+                $retryHorizon,
                 $traceparent,
                 $workerId,
                 $claimRowsExamined,
@@ -125,22 +143,7 @@ final class FeedPoolCommand extends Command
             $dispatched = $dispatch['dispatched'];
             $laneDispatched = $dispatch['lane_dispatched'];
 
-            foreach ($laneDispatched as $lane => $count) {
-                $observability->emitOps('feed_dispatched', [
-                    'lane' => $lane,
-                    'dispatched' => $count,
-                    'limit_per_minute' => $limitPerMinute,
-                    'limit_per_run' => $limitPerRun,
-                ]);
-                if ($limitPerRun === 0 || $count >= $limitPerRun) {
-                    $observability->emitOps('feed_gated', [
-                        'reason' => 'global_cap',
-                        'lane' => $lane,
-                        'limit_per_minute' => $limitPerMinute,
-                        'limit_per_run' => $limitPerRun,
-                    ]);
-                }
-            }
+            $this->emitDispatchMetrics($laneDispatched, $limitPerMinute, $limitPerRun, $retryLimitPerRun, $observability);
 
             $observability->emitOps('crawl_dispatch', ['dispatched' => $dispatched]);
             if ($dispatched > 0) {
@@ -154,6 +157,29 @@ final class FeedPoolCommand extends Command
         }
     }
 
+    /** @param array{direct: int, browser: int, retry: int} $laneDispatched */
+    private function emitDispatchMetrics(array $laneDispatched, int $limitPerMinute, int $limitPerRun, int $retryLimitPerRun, ObservabilityEmitter $observability): void
+    {
+        foreach ($laneDispatched as $lane => $count) {
+            $laneLimitPerMinute = $lane === 'retry' ? max(1, (int) config('javmeta_queues.retry.feed_pool_limit', 5)) : $limitPerMinute;
+            $laneLimitPerRun = $lane === 'retry' ? $retryLimitPerRun : $limitPerRun;
+            $observability->emitOps('feed_dispatched', [
+                'lane' => $lane,
+                'dispatched' => $count,
+                'limit_per_minute' => $laneLimitPerMinute,
+                'limit_per_run' => $laneLimitPerRun,
+            ]);
+            if ($laneLimitPerRun === 0 || $count >= $laneLimitPerRun) {
+                $observability->emitOps('feed_gated', [
+                    'reason' => 'global_cap',
+                    'lane' => $lane,
+                    'limit_per_minute' => $laneLimitPerMinute,
+                    'limit_per_run' => $laneLimitPerRun,
+                ]);
+            }
+        }
+    }
+
     /**
      * @param  array<string, string>  $queues
      * @param  array<string, int>  $waiting
@@ -164,21 +190,37 @@ final class FeedPoolCommand extends Command
      * @param-out  array<string, int>  $budgetUsed
      * @param-out  array<string, int>  $dispatchedBySource
      * @param-out  int  $claimRowsExamined
-     * @return array{dispatched: int, lane_dispatched: array{direct: int, browser: int}}
+     * @return array{dispatched: int, lane_dispatched: array{direct: int, browser: int, retry: int}}
      */
-    private function dispatchQueues(array $queues, CrawlQueueService $queue, ObservabilityEmitter $observability, int $limitPerRun, callable $exhausted, array $waiting, array &$budgetUsed, array &$dispatchedBySource, array &$stopReasons, array $latestStartedAt, callable $gapOf, string $traceparent, string $workerId, int &$claimRowsExamined): array
+    private function dispatchQueues(array $queues, CrawlQueueService $queue, ObservabilityEmitter $observability, int $limitPerRun, callable $exhausted, array $waiting, array &$budgetUsed, array &$dispatchedBySource, array &$stopReasons, array $latestStartedAt, callable $gapOf, int $retryLimitPerRun, array $retryWaiting, array &$retryBudgetUsed, array $retryLatestStartedAt, callable $retryGapOf, int $retryHorizon, string $traceparent, string $workerId, int &$claimRowsExamined): array
     {
         $dispatched = 0;
-        $laneDispatched = ['direct' => 0, 'browser' => 0];
+        $laneDispatched = ['direct' => 0, 'browser' => 0, 'retry' => 0];
+        /** @var array<string, int> $retryDispatchedBySource */
+        $retryDispatchedBySource = [];
         foreach ($queues as $key => $queueName) {
-            $lane = str_starts_with($key, 'browser:') ? 'browser' : 'direct';
-            $kind = $lane === 'browser' ? substr($key, 8) : $key;
+            $lane = str_starts_with($key, 'browser:') ? 'browser' : (str_starts_with($key, 'retry:') ? 'retry' : 'direct');
+            $kind = $lane === 'browser' || $lane === 'retry' ? substr($key, strlen($lane) + 1) : $key;
+            $laneLimit = $lane === 'retry' ? $retryLimitPerRun : $limitPerRun;
+            $laneWaiting = $lane === 'retry' ? $retryWaiting : $waiting;
+            if ($lane === 'retry') {
+                $laneBudgetUsed = &$retryBudgetUsed;
+                $laneDispatchedBySource = &$retryDispatchedBySource;
+            } else {
+                $laneBudgetUsed = &$budgetUsed;
+                $laneDispatchedBySource = &$dispatchedBySource;
+            }
+            $laneLatestStartedAt = $lane === 'retry' ? $retryLatestStartedAt : $latestStartedAt;
+            $laneGapOf = $lane === 'retry' ? $retryGapOf : $gapOf;
+            $laneExhausted = $lane === 'retry'
+                ? $this->exhaustedSources($retryWaiting, $retryBudgetUsed, $retryHorizon, $retryGapOf)
+                : $exhausted;
             if ($queueName === '') {
                 $stopReasons[] = ['queue' => (string) $queueName, 'lane' => $lane, 'reason' => 'no_due_rows'];
                 continue;
             }
 
-            $remainingLane = $limitPerRun - $laneDispatched[$lane];
+            $remainingLane = $laneLimit - $laneDispatched[$lane];
             if ($remainingLane <= 0) {
                 $stopReasons[] = ['queue' => $queueName, 'lane' => $lane, 'reason' => (string) FeedPoolStopReason::forQueue(true, true, false, true)];
                 continue;
@@ -199,12 +241,12 @@ final class FeedPoolCommand extends Command
                 $kind,
                 $lane,
                 $claimCapacity,
-                $exhausted,
-                $waiting,
-                $budgetUsed,
-                $dispatchedBySource,
-                $latestStartedAt,
-                $gapOf,
+                $laneExhausted,
+                $laneWaiting,
+                $laneBudgetUsed,
+                $laneDispatchedBySource,
+                $laneLatestStartedAt,
+                $laneGapOf,
                 $traceparent,
                 $workerId,
                 $claimRowsExamined,
@@ -224,6 +266,10 @@ final class FeedPoolCommand extends Command
                 'lane' => $lane,
                 'reason' => $reason ?? 'no_due_rows',
             ];
+        }
+
+        foreach ($retryDispatchedBySource as $source => $count) {
+            $dispatchedBySource[$source] = ($dispatchedBySource[$source] ?? 0) + $count;
         }
 
         return ['dispatched' => $dispatched, 'lane_dispatched' => $laneDispatched];
@@ -305,7 +351,7 @@ final class FeedPoolCommand extends Command
         foreach ($queues as $key => $queueName) {
             $stops[] = [
                 'queue' => $queueName,
-                'lane' => str_starts_with($key, 'browser:') ? 'browser' : 'direct',
+                'lane' => str_starts_with($key, 'browser:') ? 'browser' : (str_starts_with($key, 'retry:') ? 'retry' : 'direct'),
                 'reason' => $reason,
             ];
         }
@@ -344,7 +390,9 @@ final class FeedPoolCommand extends Command
         if ($depth > 0) {
             $observability->emitOps('feed_gated', [
                 'reason' => 'depth',
-                'lane' => in_array($queueName, (array) config('javmeta_queues.browser_names', []), true) ? 'browser' : 'direct',
+                'lane' => in_array($queueName, (array) config('javmeta_queues.browser_names', []), true)
+                    ? 'browser'
+                    : (in_array($queueName, (array) config('javmeta_queues.retry_names', []), true) ? 'retry' : 'direct'),
                 'queue' => $queueName,
                 'depth' => $depth,
                 'threshold' => $depthLimit,
@@ -461,6 +509,13 @@ final class FeedPoolCommand extends Command
                 if (in_array($name, $feedPoolNames, true)) {
                     $queues['browser:' . $kind] = $name;
                 }
+            }
+        }
+        /** @var array<string, string> $retryNames */
+        $retryNames = config('javmeta_queues.retry_names', []);
+        foreach ($retryNames as $kind => $name) {
+            if (in_array($name, $feedPoolNames, true)) {
+                $queues['retry:' . $kind] = $name;
             }
         }
 

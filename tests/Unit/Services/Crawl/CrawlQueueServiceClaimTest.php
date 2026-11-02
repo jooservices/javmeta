@@ -270,6 +270,69 @@ final class CrawlQueueServiceClaimTest extends TestCase
         $this->assertSame(now()->subSeconds(5)->timestamp, $activity['completed']['latest_started_at']?->timestamp);
     }
 
+    public function test_pacing_activity_uses_each_attempts_stored_lane_after_the_queue_lane_changes(): void
+    {
+        $this->source('lane-history');
+        $retryRow = $this->row('lane-history', CrawlQueue::STATUS_DONE)
+            ->forceFill(['claimed_lane' => 'direct']);
+        $retryRow->save();
+        $directRow = $this->row('lane-history', CrawlQueue::STATUS_DONE)
+            ->forceFill(['claimed_lane' => 'retry']);
+        $directRow->save();
+        DB::table('crawl_fetch_attempts')->insert([
+            [
+                'created_at' => now(),
+                'source_slug' => 'lane-history',
+                'lane' => 'retry',
+                'crawl_queue_id' => $retryRow->id,
+                'url_hash' => hash('sha256', 'retry-history-request-one'),
+                'method' => 'http',
+                'started_at' => now()->subSeconds(20),
+                'duration_ms' => 1,
+                'outcome' => 'error',
+            ],
+            [
+                'created_at' => now(),
+                'source_slug' => 'lane-history',
+                'lane' => 'retry',
+                'crawl_queue_id' => $retryRow->id,
+                'url_hash' => hash('sha256', 'retry-history-request-two'),
+                'method' => 'http',
+                'started_at' => now()->subSeconds(30),
+                'duration_ms' => 1,
+                'outcome' => 'error',
+            ],
+            [
+                'created_at' => now(),
+                'source_slug' => 'lane-history',
+                'lane' => 'direct',
+                'crawl_queue_id' => $directRow->id,
+                'url_hash' => hash('sha256', 'direct-history-request'),
+                'method' => 'http',
+                'started_at' => now()->subSeconds(10),
+                'duration_ms' => 1,
+                'outcome' => 'ok',
+            ],
+            [
+                'created_at' => now(),
+                'source_slug' => 'lane-history',
+                'lane' => null,
+                'crawl_queue_id' => null,
+                'url_hash' => hash('sha256', 'legacy-history-request'),
+                'method' => 'http',
+                'started_at' => now()->subSeconds(5),
+                'duration_ms' => 1,
+                'outcome' => 'ok',
+            ],
+        ]);
+
+        $service = app(CrawlQueueService::class);
+        $since = now()->subSeconds(60);
+
+        self::assertSame(2, $service->pacingActivityBySource($since, 'retry')['lane-history']['started']);
+        self::assertSame(2, $service->pacingActivityBySource($since, 'direct')['lane-history']['started']);
+    }
+
     public function test_a_source_alone_can_still_use_its_limit_and_is_released_when_a_row_finishes(): void
     {
         config()->set('javmeta_queues.per_source_inflight', 2);
