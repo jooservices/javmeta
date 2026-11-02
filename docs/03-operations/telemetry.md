@@ -138,7 +138,7 @@ window, so one-off errors and empty or low-volume windows do not notify.
 
 Telegram settings come from `NOTIFICATION_TELEGRAM_*`; with no token nothing is
 sent and nothing fails. Operational alerts use
-`[javmeta:<environment>] [ALERT][<severity>][<OPEN|RESOLVED>]` and name the
+`[XCrawler][<LEVEL>]` and name the
 source where one applies. Each cause alerts at most once per
 `JAVMETA_ALERT_THROTTLE_SECONDS` (default 3600) and sends one recovery message
 when it clears. Follow messages and bot replies use product-specific templates.

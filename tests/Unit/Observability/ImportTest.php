@@ -133,10 +133,10 @@ final class ImportTest extends TestCase
         self::assertSame('javmeta_telegram_critical', $criticalDestination['template']);
         $template = $this->requestBody('POST', '/api/javmeta_it/alerts/templates');
         $templateMessage = json_decode($template['body'], true, 512, JSON_THROW_ON_ERROR);
-        self::assertSame('[javmeta:testing] [ALERT][WARNING][OPEN] {alert_name} triggered for {stream_name}. {rows}', $templateMessage['text']);
+        self::assertSame('[XCrawler][WARNING] {alert_name} triggered for {stream_name}. {rows}', $templateMessage['text']);
         $criticalTemplate = $this->requestBody('POST', '/api/javmeta_it/alerts/templates', 'javmeta_telegram_critical');
         $criticalTemplateMessage = json_decode($criticalTemplate['body'], true, 512, JSON_THROW_ON_ERROR);
-        self::assertSame('[javmeta:testing] [ALERT][CRITICAL][OPEN] {alert_name} triggered for {stream_name}. {rows}', $criticalTemplateMessage['text']);
+        self::assertSame('[XCrawler][CRITICAL] {alert_name} triggered for {stream_name}. {rows}', $criticalTemplateMessage['text']);
         $criticalAlert = $this->requestBody('POST', '/api/v2/javmeta_it/alerts', 'javmeta_crawl_dispatch_critical');
         self::assertSame(['javmeta_telegram_critical'], $criticalAlert['destinations']);
 
