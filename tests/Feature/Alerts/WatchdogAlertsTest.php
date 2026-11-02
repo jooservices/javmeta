@@ -34,9 +34,11 @@ final class WatchdogAlertsTest extends TestCase
             /** @param list<array{string, string, array<string, mixed>}> $sent */
             public function __construct(private array &$sent) {}
 
-            public function notify(string $subject, string $body, array $context = []): void
+            public function notify(string $subject, string $body, array $context = []): bool
             {
                 $this->sent[] = [$subject, $body, $context];
+
+                return true;
             }
         };
         $this->app->instance(AlertDispatcher::class, new AlertDispatcher($fake));

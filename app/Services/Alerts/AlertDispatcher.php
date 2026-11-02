@@ -119,13 +119,21 @@ final class AlertDispatcher
             $notificationContext['template_key'] = $templateKey;
             $notificationContext['template_rendered'] = true;
         }
-        $this->notifier->notify($subject, $body, $notificationContext);
+        $delivered = $this->notifier->notify($subject, $body, $notificationContext);
         if ($templateKey !== null && isset($decision)) {
-            app(NotificationPolicyDispatcher::class)->recordSent($decision);
+            if ($delivered) {
+                app(NotificationPolicyDispatcher::class)->recordSent($decision);
+            } else {
+                app(NotificationPolicyDispatcher::class)->release($decision);
+            }
         }
-        Cache::put($this->activeKey($debounceKey), 1, now()->addDays(7));
+        if ($delivered) {
+            Cache::put($this->activeKey($debounceKey), 1, now()->addDays(7));
+        } elseif ($templateKey === null && $ttl > 0) {
+            Cache::forget($cacheKey);
+        }
 
-        return true;
+        return $delivered;
     }
 
     /** @param array<string, mixed> $context */
@@ -173,13 +181,20 @@ final class AlertDispatcher
 
             return false;
         }
-        $this->notifier->notify($subject, $body, $notificationContext);
+        $delivered = $this->notifier->notify($subject, $body, $notificationContext);
         if ($policy !== null && $decision !== null) {
-            $policy->recordSent($decision);
-            $policy->resolveCause((string) $decision['policy_key'], $debounceKey);
+            if ($delivered) {
+                $policy->recordSent($decision);
+                $policy->resolveCause((string) $decision['policy_key'], $debounceKey);
+            } else {
+                $policy->release($decision);
+            }
+        }
+        if (! $delivered) {
+            Cache::put($this->activeKey($debounceKey), 1, now()->addDays(7));
         }
 
-        return true;
+        return $delivered;
     }
 
     /** @param array<string, mixed> $context */

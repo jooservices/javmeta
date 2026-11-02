@@ -65,7 +65,8 @@ final class BackupStatusCommandTest extends TestCase
             ->withArgs(static fn(string $subject, string $body, array $context): bool => str_contains($subject, 'Database backup is stale')
                 && str_contains($body, '93,601 seconds')
                 && $context['backup_age_seconds'] === 93_601
-                && $context['template_key'] === 'backup.stale');
+                && $context['template_key'] === 'backup.stale')
+            ->andReturn(true);
         $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
 
         $this->artisan('javmeta:backup-status')->assertFailed();
@@ -78,8 +79,10 @@ final class BackupStatusCommandTest extends TestCase
         $this->writeManifest(now()->subHours(30)->toIso8601String());
         $notifications = [];
         $notifier = Mockery::mock(AlertNotifier::class);
-        $notifier->shouldReceive('notify')->twice()->andReturnUsing(static function (string $subject, string $body, array $context) use (&$notifications): void {
+        $notifier->shouldReceive('notify')->twice()->andReturnUsing(static function (string $subject, string $body, array $context) use (&$notifications): bool {
             $notifications[] = [$subject, $body, $context];
+
+            return true;
         });
         $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
 
@@ -116,7 +119,8 @@ final class BackupStatusCommandTest extends TestCase
                 && $context['alert_state'] === 'open'
                 && $context['severity'] === 'critical'
                 && $context['backup_age_seconds'] === -1
-                && $context['template_key'] === 'backup.manifest_missing');
+                && $context['template_key'] === 'backup.manifest_missing')
+            ->andReturn(true);
         $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
 
         $this->artisan('javmeta:backup-status')->assertFailed();
@@ -135,7 +139,8 @@ final class BackupStatusCommandTest extends TestCase
                 && $context['alert_state'] === 'open'
                 && $context['severity'] === 'critical'
                 && $context['backup_age_seconds'] === -1
-                && $context['template_key'] === 'backup.manifest_missing');
+                && $context['template_key'] === 'backup.manifest_missing')
+            ->andReturn(true);
         $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
 
         $this->artisan('javmeta:backup-status')->assertFailed();
@@ -149,7 +154,7 @@ final class BackupStatusCommandTest extends TestCase
         Storage::disk('local')->makeDirectory('backups');
         file_put_contents(Storage::disk('local')->path('backups/latest.json'), '{invalid json');
         $notifier = Mockery::mock(AlertNotifier::class);
-        $notifier->shouldReceive('notify')->once();
+        $notifier->shouldReceive('notify')->once()->andReturn(true);
         $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
 
         $this->artisan('javmeta:backup-status')->assertFailed();

@@ -20,7 +20,7 @@ final class ActivityLogAlertNotifier implements AlertNotifier
      *
      * @param  array<string, mixed>  $context
      */
-    public function notify(string $subject, string $body, array $context = []): void
+    public function notify(string $subject, string $body, array $context = []): bool
     {
         $sanitizer = app(TelemetrySanitizer::class);
         $subject = $sanitizer->sanitizeText($subject) ?? '';
@@ -46,8 +46,10 @@ final class ActivityLogAlertNotifier implements AlertNotifier
                 ])
                 ->bySystem()
                 ->save();
+            return true;
         } catch (Throwable) {
             // Fail-open: alert delivery must not depend on the activity-log store.
+            return false;
         }
     }
 }

@@ -11,10 +11,15 @@ final class CompositeAlertNotifier implements AlertNotifier
     /** @param list<AlertNotifier> $notifiers */
     public function __construct(private readonly array $notifiers) {}
 
-    public function notify(string $subject, string $body, array $context = []): void
+    public function notify(string $subject, string $body, array $context = []): bool
     {
+        $delivered = false;
         foreach ($this->notifiers as $notifier) {
-            $notifier->notify($subject, $body, $context);
+            if ($notifier->notify($subject, $body, $context)) {
+                $delivered = true;
+            }
         }
+
+        return $delivered;
     }
 }

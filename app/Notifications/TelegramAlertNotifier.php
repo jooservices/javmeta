@@ -32,9 +32,9 @@ final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
      *
      * @param  array<string, mixed>  $context
      */
-    public function notify(string $subject, string $body, array $context = []): void
+    public function notify(string $subject, string $body, array $context = []): bool
     {
-        $this->deliver($subject, $body, $context + ['alert_state' => 'open', 'severity' => 'warning']);
+        return $this->deliver($subject, $body, $context + ['alert_state' => 'open', 'severity' => 'warning']);
     }
 
     /**

@@ -29,9 +29,11 @@ final class AlertDispatcherTest extends TestCase
         return new class implements AlertNotifier {
             public bool $called = false;
 
-            public function notify(string $subject, string $body, array $context = []): void
+            public function notify(string $subject, string $body, array $context = []): bool
             {
                 $this->called = true;
+
+                return true;
             }
         };
     }
@@ -80,5 +82,57 @@ final class AlertDispatcherTest extends TestCase
         self::assertFalse($dispatcher->sendTemplate('crawl-stalled', 'crawl.stalled'));
         self::assertCount(1, ClientBuilder::recorded());
         self::assertNotNull(DB::table('notification_policy_events')->value('critical_sent_at'));
+    }
+
+    public function test_failed_critical_delivery_releases_policy_reservation_and_can_retry(): void
+    {
+        config([
+            'javmeta_alerts.telegram.bot_token' => 'tok',
+            'javmeta_alerts.telegram.chat_id' => '42',
+            'laravel-notifications.channels.telegram.bot_token' => 'tok',
+            'laravel-notifications.channels.telegram.chat_id' => '42',
+        ]);
+        ClientBuilder::fake()->respond(
+            'POST',
+            '*',
+            (new TestResponseSequence())
+                ->push(TestResponse::json(['ok' => false], 503))
+                ->push(TestResponse::json(['ok' => true])),
+        );
+        $client = ClientBuilder::create()->withBaseUri('https://api.telegram.org/')->build();
+        $dispatcher = new AlertDispatcher(new TelegramAlertNotifier($client));
+
+        self::assertFalse($dispatcher->sendTemplate('crawl-stalled', 'crawl.stalled'));
+        self::assertNull(DB::table('notification_policy_events')->value('critical_sent_at'));
+        self::assertTrue($dispatcher->sendTemplate('crawl-stalled', 'crawl.stalled'));
+        self::assertNotNull(DB::table('notification_policy_events')->value('critical_sent_at'));
+        self::assertCount(2, ClientBuilder::recorded());
+    }
+
+    public function test_failed_recovery_delivery_keeps_the_cause_open_and_can_retry(): void
+    {
+        config([
+            'javmeta_alerts.telegram.bot_token' => 'tok',
+            'javmeta_alerts.telegram.chat_id' => '42',
+            'laravel-notifications.channels.telegram.bot_token' => 'tok',
+            'laravel-notifications.channels.telegram.chat_id' => '42',
+        ]);
+        ClientBuilder::fake()->respond(
+            'POST',
+            '*',
+            (new TestResponseSequence())
+                ->push(TestResponse::json(['ok' => true]))
+                ->push(TestResponse::json(['ok' => false], 503))
+                ->push(TestResponse::json(['ok' => true])),
+        );
+        $client = ClientBuilder::create()->withBaseUri('https://api.telegram.org/')->build();
+        $dispatcher = new AlertDispatcher(new TelegramAlertNotifier($client));
+
+        self::assertTrue($dispatcher->sendTemplate('crawl-stalled', 'crawl.stalled'));
+        self::assertFalse($dispatcher->resolveTemplate('crawl-stalled', 'crawl.stalled_recovered'));
+        self::assertNull(DB::table('notification_policy_events')->value('resolved_at'));
+        self::assertTrue($dispatcher->resolveTemplate('crawl-stalled', 'crawl.stalled_recovered'));
+        self::assertNotNull(DB::table('notification_policy_events')->value('resolved_at'));
+        self::assertCount(3, ClientBuilder::recorded());
     }
 }
