@@ -186,8 +186,10 @@ final class FeedPoolCommand extends Command
             $stopReasons = [];
             $row = $queue->claimNext($workerId, $kind, $excludedSources, $lane, $stopReasons);
             if (! $row instanceof CrawlQueue) {
-                foreach ($stopReasons as $sourceSlug => $reason) {
-                    $feedMetrics->recordStopped((string) $sourceSlug, (string) $reason);
+                foreach ($stopReasons as $sourceSlug => $reasons) {
+                    foreach ($reasons as $reason) {
+                        $feedMetrics->recordStopped((string) $sourceSlug, $reason);
+                    }
                 }
                 if ($excludedSources !== []) {
                     $observability->emitOps('feed_gated', [
@@ -215,6 +217,7 @@ final class FeedPoolCommand extends Command
             }
 
             if ($pending instanceof PendingDispatch) {
+                unset($pending);
                 $feedMetrics->recordDispatched($slug);
             }
 

@@ -115,11 +115,16 @@ remain limited by each source's effective gap.
 The effective gap is the greater of `sources.gap_seconds_current` and the database setting
 `queue.min_effective_gap_seconds` (default 1 second). A source may have at most
 `max(1, floor(queue.pacing_horizon_seconds / effective_gap))` starts and waiting claims in the rolling horizon (default
-60 seconds). Integral-second gaps use delayed jobs as a queue buffer; fractional gaps are spaced by a shared request-start
-gate, which also checks the current adaptive gap immediately before a claim is marked started. Rows still waiting from an
-earlier feeder run count against the budget.
+60 seconds). Integral-second gaps use delayed jobs as a queue buffer; every outbound fetch is also spaced by a shared
+request-start gate immediately before the call. Fractional gaps use the gate without rounding up to a whole second. Long
+waits are rescheduled instead of occupying a worker or consuming a crawl attempt. Rows still waiting from an earlier
+feeder run count against the budget. The gate uses a distributed cache lock, so
+`cache.default` must use a store shared by every crawl worker (`database`, `redis`, `memcached` or `dynamodb`); `array` and
+`file` stores are unsupported for production pacing.
 
-The default `queue.feed_pool_limit` is 60 jobs per minute per lane, divided over the configured feed interval. The
+The default `queue.feed_pool_limit` is 60 jobs per minute per lane, divided over the configured feed interval. Each
+`crawler:feed-pool` invocation applies its own share for the current interval slot; manual or repeated runs in that slot
+are not counted against a shared minute budget. The
 default `queue.per_source_inflight` is 16 across crawl kinds, leaving enough lookahead for the default 10-second interval
 and a 1-second source gap. The start gate enforces the configured gap; these queue limits only supply work to it.
 
@@ -134,7 +139,8 @@ capacity is in `javmeta_feed_source_budget`.
 `obs:publish-metrics` exports one `source_slug` series per source:
 
 - `javmeta_feed_source_budget`: allowed starts in the configured pacing horizon (60 seconds by default).
-- `javmeta_feed_source_started`: actual crawl request starts in the previous pacing horizon (60 seconds by default).
+- `javmeta_feed_source_started`: request starts plus claimed rows with `started_at` but no recorded non-skipped fetch
+  attempt in the previous pacing horizon (60 seconds by default). A slow or stalled claim can temporarily raise this count.
 - `javmeta_feed_source_waiting`: currently claimed rows that have not started yet.
 - `javmeta_feed_source_dispatched`: jobs handed to Laravel queues during the previous calendar minute.
 - `javmeta_feed_source_stop_reason_1m`: stop counts from the previous calendar minute, labelled with `reason`.

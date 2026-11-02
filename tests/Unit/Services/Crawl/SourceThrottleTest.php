@@ -8,6 +8,7 @@ use App\Models\Source;
 use App\Services\Crawl\SourceThrottle;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use LogicException;
 use Tests\TestCase;
 
 final class SourceThrottleTest extends TestCase
@@ -66,6 +67,27 @@ final class SourceThrottleTest extends TestCase
         $this->assertSame(0, $throttle->requestStartDelayMicroseconds($source, 1_000_000));
         $this->assertSame(500_000, $throttle->requestStartDelayMicroseconds($source, 1_000_000));
         $this->assertSame(0, $throttle->requestStartDelayMicroseconds($source, 1_500_000));
+    }
+
+    public function test_inline_wait_stays_within_the_worker_budget_after_the_fetch_timeout(): void
+    {
+        config()->set([
+            'javmeta_queues.worker_timeout' => 180,
+            'javmeta_queues.fetch_service_timeout_seconds' => 45,
+        ]);
+
+        $this->assertSame(67_500_000, (new SourceThrottle())->maxInlineWaitMicroseconds());
+    }
+
+    public function test_request_start_gate_rejects_a_process_local_cache_store(): void
+    {
+        $source = $this->sourceWithGap(1.0);
+        config(['app.env' => 'production', 'cache.default' => 'array']);
+        $this->app->instance('env', 'production');
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('Source request pacing requires a shared cache store.');
+
+        (new SourceThrottle())->waitForRequestStart($source, 1_000_000);
     }
 
     public function test_start_slot_survives_a_later_adaptive_backoff_that_exceeds_the_initial_gap(): void

@@ -19,7 +19,7 @@ environment.
 | --- | --- | --- |
 | `javmeta_source_gap_seconds` | `source_slug` | Current configured source gap. |
 | `javmeta_feed_source_budget` | `source_slug` | Allowed source starts in the configured pacing horizon (60 seconds by default), using the current effective gap. |
-| `javmeta_feed_source_started` | `source_slug` | Actual crawl request starts in the previous pacing horizon (60 seconds by default). |
+| `javmeta_feed_source_started` | `source_slug` | Request starts plus claimed rows with `started_at` but no recorded non-skipped fetch attempt in the previous pacing horizon (60 seconds by default); a slow or stalled claim can temporarily raise the count. |
 | `javmeta_feed_source_waiting` | `source_slug` | Current claimed crawl rows that have not started. |
 | `javmeta_feed_source_dispatched` | `source_slug` | Jobs handed to Laravel queues during the previous UTC calendar minute. |
 | `javmeta_feed_source_stop_reason_1m` | `source_slug`, `reason` | Feed-pool stop counts during the previous UTC calendar minute. Reasons are `exhausted_budget`, `no_due_rows`, `depth`, `global_cap`, `advisory_lock` and `per_source_inflight`; `source_slug=none` is used when no eligible source exists. |
@@ -96,7 +96,9 @@ gauge, while `dispatched` and stop-reason counts cover the previous UTC calendar
 minute. A high waiting count paired with low starts points to delayed-job or
 worker throughput. Use the stop-reason label to distinguish an exhausted
 source budget from queue depth, global feed cap, advisory-lock contention or
-the per-source in-flight limit. See [Queue operations](queue.md#safely-raising-a-source-rate)
+the per-source in-flight limit. The start count includes claims that have started
+but have not recorded a non-skipped fetch attempt, so stalled claims can briefly
+inflate the ratio. See [Queue operations](queue.md#safely-raising-a-source-rate)
 for the staged procedure to raise a rate without changing the configured source gap.
 
 ### Natural-language search parse

@@ -25,7 +25,7 @@ final class CrawlQueueService
      * @param  list<string>  $excludeSources  sources that must not get a row now (for example their pacing budget is used up)
      */
     /**
-     * @param  array<string, string>|null  $stopReasons  source slug => stop reason, populated when no row can be claimed
+     * @param  array<string, list<string>>|null  $stopReasons  source slug => all applicable stop reasons
      */
     public function claimNext(string $workerId, ?string $kind = null, array $excludeSources = [], ?string $lane = null, ?array &$stopReasons = null): ?CrawlQueue
     {
@@ -242,20 +242,28 @@ final class CrawlQueueService
     /**
      * @param  list<string>  $excludeSources
      * @param  list<string>  $inflightSources
-     * @return array<string, string>
+     * @return array<string, list<string>>
      */
     private function claimStopReasons(?string $kind, ?string $lane, array $excludeSources, array $inflightSources): array
     {
         $dueSources = $this->dueSourceSlugs($kind, $lane);
         if ($dueSources === []) {
-            return ['none' => 'no_due_rows'];
+            return ['none' => ['no_due_rows']];
         }
 
         $reasons = [];
         foreach ($dueSources as $slug) {
-            $reasons[$slug] = in_array($slug, $excludeSources, true)
-                ? 'exhausted_budget'
-                : (in_array($slug, $inflightSources, true) ? 'per_source_inflight' : 'no_due_rows');
+            $sourceReasons = [];
+            if (in_array($slug, $excludeSources, true)) {
+                $sourceReasons[] = 'exhausted_budget';
+            }
+            if (in_array($slug, $inflightSources, true)) {
+                $sourceReasons[] = 'per_source_inflight';
+            }
+            if ($sourceReasons === []) {
+                $sourceReasons[] = 'no_due_rows';
+            }
+            $reasons[$slug] = $sourceReasons;
         }
 
         return $reasons;
@@ -441,8 +449,6 @@ final class CrawlQueueService
             return null;
         }
 
-        app(SourceThrottle::class)->waitForRequestStart($sourceSlug);
-
         return DB::transaction(function () use ($id, $expectedKind, $claimToken): ?CrawlQueue {
             $query = CrawlQueue::query()
                 ->whereKey($id)
@@ -469,6 +475,37 @@ final class CrawlQueueService
             ])->save();
 
             return $row->refresh();
+        });
+    }
+
+    public function returnStartedClaimToWaiting(CrawlQueue $row, ?string $claimToken): bool
+    {
+        return DB::transaction(function () use ($row, $claimToken): bool {
+            $query = CrawlQueue::query()
+                ->whereKey($row->id)
+                ->where('status', CrawlQueue::STATUS_CLAIMED)
+                ->whereNotNull('started_at');
+
+            if ($claimToken !== null) {
+                $query->where('locked_by', $claimToken);
+            }
+
+            if (DB::getDriverName() === 'pgsql') {
+                $query->lockForUpdate();
+            }
+
+            $claimedRow = $query->first();
+            if (! $claimedRow instanceof CrawlQueue) {
+                return false;
+            }
+
+            $claimedRow->forceFill([
+                'started_at' => null,
+                'claimed_at' => now(),
+                'attempts' => max(0, $claimedRow->attempts - 1),
+            ])->save();
+
+            return true;
         });
     }
 

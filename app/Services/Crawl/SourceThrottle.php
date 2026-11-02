@@ -7,6 +7,7 @@ namespace App\Services\Crawl;
 use App\Models\Source;
 use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
+use LogicException;
 
 final class SourceThrottle
 {
@@ -24,14 +25,38 @@ final class SourceThrottle
         return max($minimum, $this->currentGap($source));
     }
 
-    public function waitForRequestStart(Source|string $source): void
+    public function maxInlineWaitMicroseconds(): int
+    {
+        $workerTimeout = max(1.0, (float) config('javmeta_queues.worker_timeout', 180));
+        $fetchTimeout = max(1.0, (float) config('javmeta_queues.fetch_service_timeout_seconds', 45));
+
+        return (int) floor(max(0, $workerTimeout - $fetchTimeout) * 500_000);
+    }
+
+    /** Returns the remaining delay when it exceeds the safe inline wait. */
+    public function waitForRequestStart(Source|string $source, int $maxWaitMicroseconds): ?int
     {
         if (app()->runningUnitTests()) {
-            return;
+            $delay = $this->requestStartDelayMicroseconds($source, (int) floor(microtime(true) * 1_000_000));
+
+            return $delay > $maxWaitMicroseconds ? $delay : null;
         }
 
-        $slug = $source instanceof Source ? (string) $source->slug : $source;
-        while (($delay = $this->requestStartDelayMicroseconds($slug, (int) floor(microtime(true) * 1_000_000))) > 0) {
+        $this->assertSharedCacheStore();
+        $deadlineMicroseconds = (int) floor(microtime(true) * 1_000_000) + max(0, $maxWaitMicroseconds);
+
+        while (true) {
+            $nowMicroseconds = (int) floor(microtime(true) * 1_000_000);
+            $delay = $this->requestStartDelayMicroseconds($source, $nowMicroseconds);
+            if ($delay <= 0) {
+                return null;
+            }
+
+            $remainingMicroseconds = $deadlineMicroseconds - $nowMicroseconds;
+            if ($delay > $remainingMicroseconds) {
+                return $delay;
+            }
+
             usleep($delay);
         }
     }
@@ -116,5 +141,14 @@ final class SourceThrottle
         }
 
         return $model;
+    }
+
+    private function assertSharedCacheStore(): void
+    {
+        $store = (string) config('cache.default');
+        $driver = (string) config("cache.stores.{$store}.driver", '');
+        if (! in_array($driver, ['database', 'dynamodb', 'memcached', 'redis'], true)) {
+            throw new LogicException('Source request pacing requires a shared cache store.');
+        }
     }
 }

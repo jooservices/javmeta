@@ -20,6 +20,26 @@ use Tests\Support\Jobs\RedisQueueProbeJob;
 
 final class CrawlLaneTest extends IntegrationTestCase
 {
+    public function test_postgres_throttle_deferral_returns_the_claim_to_waiting_without_counting_an_attempt(): void
+    {
+        $source = Source::factory()->create();
+        $row = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'kind' => CrawlQueue::KIND_DETAIL,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'locked_by' => 'feed',
+            'started_at' => now(),
+            'attempts' => 3,
+        ]);
+
+        $returned = app(CrawlQueueService::class)->returnStartedClaimToWaiting($row, 'feed');
+
+        $this->assertTrue($returned);
+        $this->assertNull($row->refresh()->started_at);
+        $this->assertSame(2, $row->attempts);
+        $this->assertSame('feed', $row->locked_by);
+    }
+
     public function test_postgres_classification_and_claims_route_to_independent_redis_queues(): void
     {
         $this->freezeTime();

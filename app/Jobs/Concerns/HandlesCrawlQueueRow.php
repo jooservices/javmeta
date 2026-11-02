@@ -17,6 +17,7 @@ use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawl\TitleFailureTracker;
 use App\Services\Crawler\CrawlerxClient;
 use App\Services\Crawler\CrawlerxFetchResult;
+use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Event;
 use RuntimeException;
@@ -54,6 +55,27 @@ trait HandlesCrawlQueueRow
         }
 
         return $row;
+    }
+
+    private function paceBeforeRequest(CrawlQueue $row, Source $source, SourceThrottle $throttle): bool
+    {
+        $delayMicroseconds = $throttle->waitForRequestStart($source, $throttle->maxInlineWaitMicroseconds());
+        if ($delayMicroseconds === null) {
+            return true;
+        }
+
+        if (! app(CrawlQueueService::class)->returnStartedClaimToWaiting($row, $this->claimToken ?? null)) {
+            return false;
+        }
+
+        // A new envelope prevents this politeness delay from consuming the crawl job's attempt budget.
+        $deferred = new static($this->crawlQueueId, $this->traceparent, $this->claimToken);
+        $deferred->onConnection($this->connection)->onQueue($this->queue);
+        $deferred->delay((int) ceil($delayMicroseconds / 1_000_000));
+        app(Dispatcher::class)->dispatch($deferred);
+        $this->delete();
+
+        return false;
     }
 
     private function markDone(CrawlQueue $row): void

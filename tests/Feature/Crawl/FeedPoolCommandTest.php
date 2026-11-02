@@ -19,6 +19,7 @@ use App\Services\Crawl\FeedPoolMetrics;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -26,6 +27,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use JOOservices\LaravelConfig\Testing\FakeConfigStore;
 use Mockery;
+use RuntimeException;
 use Tests\TestCase;
 
 final class FeedPoolCommandTest extends TestCase
@@ -81,6 +83,34 @@ final class FeedPoolCommandTest extends TestCase
         $this->artisan('crawler:feed-pool', ['--limit' => 1])->assertSuccessful();
 
         $this->assertSame(0, app(CrawlDispatchHeartbeat::class)->ageSeconds());
+    }
+
+    public function test_feed_pool_does_not_record_dispatch_when_the_queue_push_fails(): void
+    {
+        config(['cache.default' => 'array']);
+        Cache::store('array')->flush();
+        $sourceSlug = 'queue-push-failure';
+        CrawlQueue::factory()->create([
+            'source_slug' => $sourceSlug,
+            'kind' => CrawlQueue::KIND_LISTING,
+        ]);
+        $dispatcher = Mockery::mock(Dispatcher::class);
+        $dispatcher->shouldReceive('dispatch')->once()->andThrow(new RuntimeException('Queue push failed.'));
+        $this->app->instance(Dispatcher::class, $dispatcher);
+        Queue::fake();
+
+        try {
+            $this->artisan('crawler:feed-pool', ['--limit' => 1]);
+            self::fail('The queue push failure was not raised.');
+        } catch (RuntimeException $exception) {
+            self::assertSame('Queue push failed.', $exception->getMessage());
+        }
+
+        $minute = intdiv(now()->timestamp, 60);
+        self::assertSame(
+            0,
+            Cache::store('array')->get("javmeta:crawl:feed-metric:dispatched:{$sourceSlug}:{$minute}", 0),
+        );
     }
 
     public function test_scheduled_feed_pool_reads_the_current_database_interval_without_scheduler_restart(): void
@@ -213,6 +243,41 @@ final class FeedPoolCommandTest extends TestCase
                 && ($record['lane'] ?? null) === 'direct',
             );
         });
+    }
+
+    public function test_feed_pool_counts_budget_and_inflight_stops_for_the_same_source(): void
+    {
+        config([
+            'cache.default' => 'array',
+            'javmeta_queues.pacing_horizon_seconds' => 60,
+            'javmeta_queues.per_source_inflight' => 1,
+        ]);
+        Cache::store('array')->flush();
+        $this->pacedSource('combined-stop', 60.0);
+        CrawlQueue::factory()->create([
+            'source_slug' => 'combined-stop',
+            'kind' => CrawlQueue::KIND_DETAIL,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'started_at' => now()->subSeconds(5),
+            'claimed_at' => now()->subSeconds(5),
+        ]);
+        CrawlQueue::factory()->create([
+            'source_slug' => 'combined-stop',
+            'kind' => CrawlQueue::KIND_DETAIL,
+            'status' => CrawlQueue::STATUS_PENDING,
+            'next_attempt_at' => now()->subSecond(),
+        ]);
+        Queue::fake();
+
+        $this->artisan('crawler:feed-pool', ['--limit' => 1])->assertSuccessful();
+
+        $minute = intdiv(now()->timestamp, 60);
+        foreach (['exhausted_budget', 'per_source_inflight'] as $reason) {
+            $this->assertSame(
+                1,
+                Cache::store('array')->get("javmeta:crawl:feed-metric:stopped:{$reason}:combined-stop:{$minute}", 0),
+            );
+        }
     }
 
     public function test_feed_pool_emits_depth_gate_when_existing_jobs_reduce_the_queue_capacity(): void

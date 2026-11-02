@@ -137,11 +137,24 @@ final class CrawlQueueServiceClaimTest extends TestCase
         $stopReasons = [];
 
         $this->assertNull(app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_DETAIL, [], null, $stopReasons));
-        $this->assertSame(['limited' => 'per_source_inflight'], $stopReasons);
+        $this->assertSame(['limited' => ['per_source_inflight']], $stopReasons);
 
+        config()->set('javmeta_queues.per_source_inflight', 2);
         $stopReasons = [];
         $this->assertNull(app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_DETAIL, ['limited'], null, $stopReasons));
-        $this->assertSame(['limited' => 'exhausted_budget'], $stopReasons);
+        $this->assertSame(['limited' => ['exhausted_budget']], $stopReasons);
+    }
+
+    public function test_claim_next_reports_budget_and_inflight_limits_together(): void
+    {
+        config()->set('javmeta_queues.per_source_inflight', 1);
+        $this->source('limited');
+        $this->row('limited', CrawlQueue::STATUS_CLAIMED);
+        $this->row('limited', CrawlQueue::STATUS_PENDING);
+        $stopReasons = [];
+
+        $this->assertNull(app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_DETAIL, ['limited'], null, $stopReasons));
+        $this->assertSame(['limited' => ['exhausted_budget', 'per_source_inflight']], $stopReasons);
     }
 
     public function test_claim_next_reports_when_no_due_rows_exist(): void
@@ -149,21 +162,36 @@ final class CrawlQueueServiceClaimTest extends TestCase
         $stopReasons = [];
 
         $this->assertNull(app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_DETAIL, [], null, $stopReasons));
-        $this->assertSame(['none' => 'no_due_rows'], $stopReasons);
+        $this->assertSame(['none' => ['no_due_rows']], $stopReasons);
     }
 
-    public function test_starting_a_claimed_row_waits_for_the_source_gap_before_recording_a_start(): void
+    public function test_starting_a_claimed_row_does_not_wait_for_the_request_gap(): void
     {
         $this->source('paced-start');
         $row = $this->row('paced-start', CrawlQueue::STATUS_CLAIMED);
         $throttle = Mockery::mock();
-        $throttle->shouldReceive('waitForRequestStart')->once()->with('paced-start')->ordered();
+        $throttle->shouldNotReceive('waitForRequestStart');
         $this->app->instance(SourceThrottle::class, $throttle);
 
         $started = app(CrawlQueueService::class)->startClaimedRow($row->id, CrawlQueue::KIND_DETAIL, null);
 
         $this->assertSame($row->id, $started?->id);
         $this->assertNotNull($started?->started_at);
+    }
+
+    public function test_throttle_deferral_returns_a_started_claim_to_waiting_without_counting_an_attempt(): void
+    {
+        $this->source('paced-start');
+        $row = $this->row('paced-start', CrawlQueue::STATUS_CLAIMED);
+        $row->forceFill(['locked_by' => 'feed', 'started_at' => now(), 'attempts' => 3])->save();
+
+        $deferred = app(CrawlQueueService::class)->returnStartedClaimToWaiting($row, 'feed');
+
+        $this->assertTrue($deferred);
+        $this->assertNull($row->refresh()->started_at);
+        $this->assertSame(2, $row->attempts);
+        $this->assertSame('feed', $row->locked_by);
+        $this->assertNotNull($row->claimed_at);
     }
 
     public function test_pacing_waiting_counts_only_claims_that_have_not_started(): void

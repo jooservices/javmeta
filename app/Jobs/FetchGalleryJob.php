@@ -65,6 +65,10 @@ final class FetchGalleryJob implements ShouldQueue
             return;
         }
 
+        if (! $this->paceBeforeRequest($row, $source, $throttle)) {
+            return;
+        }
+
         $result = $client->fetchGallery($row->source_slug, $row->url);
         app(FetchAttemptRecorder::class)->record($row, $result);
         if (! $result->ok || $result->gallery === null) {
