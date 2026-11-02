@@ -7,7 +7,7 @@ step() {
   local label="$1" started=$SECONDS
   shift
   log "START: $label"
-  if [[ "$1" == unit_action ]]; then "$@"; else "$@" >/dev/null 2>&1; fi
+  if [[ "$1" == unit_action || "$1" == refresh_systemd_units ]]; then "$@"; else "$@" >/dev/null 2>&1; fi
   log "OK: $label ($((SECONDS-started))s), exit status verified"
 }
 ask() {
@@ -230,6 +230,25 @@ unit_action() {
   local unit
   for unit in "${units[@]}"; do control "$action" "$unit"; done
 }
+refresh_systemd_units() {
+  local mode="$1" key
+  local -a command=(bash "$root/deploy/production/node/refresh-units.sh")
+  [[ "$mode" != dry-run ]] || command+=(--dry-run)
+  if [[ "$mode" == apply ]] && (( no_systemd )); then
+    log 'SKIP: --no-systemd; native unit files were not changed.'
+    return 0
+  fi
+  (
+    for key in NODE_ROLE TARGET_DIR SERVICE_USER UNIT_PREFIX GATEKEEPER_ADDRESS UI_HOST CC_HOST PHP_BINARY EMBEDDER_BIND EMBEDDER_PORT; do
+      export "$key=${answers[$key]}"
+    done
+    if [[ "$mode" == dry-run ]]; then
+      "${command[@]}"
+    else
+      sudo --preserve-env=NODE_ROLE,TARGET_DIR,SERVICE_USER,UNIT_PREFIX,GATEKEEPER_ADDRESS,UI_HOST,CC_HOST,PHP_BINARY,EMBEDDER_BIND,EMBEDDER_PORT "${command[@]}"
+    fi
+  )
+}
 rollback() {
   local status=$?
   trap - ERR INT TERM
@@ -337,6 +356,7 @@ apply_release() {
   step 'Install authoritative production dependencies' composer install --no-dev --classmap-authoritative --no-interaction --prefer-dist
   step 'UI render smoke' node ui-tests/render-smoke.mjs
   step 'Startup health on staged release' startup_health
+  step 'Refresh systemd units' refresh_systemd_units apply
   quiesced=0
   if (( ! no_start )); then quiesced=1; step 'Quiesce scheduler and workers' unit_action stop "${answers[STOP_UNITS]}"; fi
   step 'Promote verified private environment' promote_env
@@ -423,6 +443,7 @@ install_main() {
   if (( ! apply )); then
     log 'DRY RUN: answers validated; no network calls, files, packages or services changed.'
     log 'DRY RUN: prerequisites; authenticated service probes; backup; clone/fetch selected ref; CI; composer; env/storage; UI; migrate; settings; atomic current; restart; readiness; rollback on failure.'
+    refresh_systemd_units dry-run
     return
   fi
   if (( validate_only )); then

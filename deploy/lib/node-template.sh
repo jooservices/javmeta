@@ -14,17 +14,105 @@ render_node_template() {
   chmod 644 "$destination"
 }
 
+sync_node_units() (
+  local template_dir="$1" unit_dir="$2" role="$3" prefix="$4" mode="${5:-apply}" reload="${6:-1}"
+  local temporary template filename unit_name destination rendered staged='' changed=0
+  [[ "$role" == primary || "$role" == main || "$role" == worker ]] || return 2
+  [[ "$mode" == apply || "$mode" == dry-run ]] || return 2
+  [[ "$reload" == 0 || "$reload" == 1 ]] || return 2
+  [[ "$unit_dir" == /* && "$unit_dir" != / && "$prefix" =~ ^[a-zA-Z0-9_-]+$ ]] || return 2
+  temporary="$(mktemp -d "${TMPDIR:-/tmp}/javmeta-units.XXXXXXXX")"
+  trap 'rm -rf -- "$temporary"; [[ -z "$staged" ]] || rm -f -- "$staged"' EXIT
+  shopt -s nullglob
+  local -a templates=("$template_dir"/xcrawler-*.service "$template_dir"/xcrawler-*.timer)
+  (( ${#templates[@]} > 0 )) || { printf 'No systemd templates found in %s\n' "$template_dir" >&2; return 1; }
+
+  for template in "${templates[@]}"; do
+    filename="${template##*/}"
+    unit_name="${filename#xcrawler-}"
+    if [[ "$unit_name" == scheduler.service && "$role" == worker ]]; then
+      destination="$unit_dir/$prefix-$unit_name"
+      if [[ -e "$destination" ]]; then
+        [[ ! -L "$destination" && -f "$destination" ]] || { printf 'Refusing to remove non-regular unit: %s\n' "$destination" >&2; return 1; }
+        grep -Fxq 'Description=XCrawler scheduler' "$destination" && grep -Fq 'artisan schedule:work' "$destination" || {
+          printf 'Refusing to remove an unmanaged scheduler unit: %s\n' "$destination" >&2
+          return 1
+        }
+        printf 'REMOVE: %s (scheduler is only installed on primary nodes)\n' "$destination"
+        diff -u --label "$destination" --label /dev/null "$destination" /dev/null || true
+        if [[ "$mode" == apply ]]; then
+          node_control disable --now "$prefix-scheduler"
+          rm -- "$destination"
+        fi
+        changed=1
+      fi
+      continue
+    fi
+
+    destination="$unit_dir/$prefix-$unit_name"
+    [[ ! -L "$destination" && ( ! -e "$destination" || -f "$destination" ) ]] || {
+      printf 'Refusing to replace non-regular unit: %s\n' "$destination" >&2
+      return 1
+    }
+    rendered="$temporary/$unit_name"
+    render_node_template "$template" "$rendered"
+    if [[ -f "$destination" ]] && cmp -s -- "$rendered" "$destination"; then
+      printf 'UNCHANGED: %s\n' "$destination"
+      continue
+    fi
+
+    printf 'UPDATE: %s\n' "$destination"
+    if [[ -f "$destination" ]]; then
+      diff -u --label "$destination" --label "$template" "$destination" "$rendered" || true
+    else
+      diff -u --label /dev/null --label "$template" /dev/null "$rendered" || true
+    fi
+    if [[ "$mode" == apply ]]; then
+      install -d "$unit_dir"
+      staged="$(mktemp "$unit_dir/.$unit_name.XXXXXXXX")"
+      install -m 644 -- "$rendered" "$staged"
+      mv -f -- "$staged" "$destination"
+      staged=''
+    fi
+    changed=1
+  done
+
+  if (( changed && reload )) && [[ "$mode" == apply ]]; then
+    node_control daemon-reload
+  fi
+  if [[ "$mode" == dry-run ]]; then
+    if (( changed )); then printf 'DRY RUN: systemd unit changes shown above; no files written or daemon-reload requested.\n'
+    else printf 'DRY RUN: systemd units already match; no changes or daemon-reload needed.\n'; fi
+  elif (( ! changed )); then
+    printf 'Systemd units already match; daemon-reload skipped.\n'
+  fi
+)
+
 configure_node_role() {
-  local role="$1" target="$2" unit_dir="$3" unit dropin
+  local role="$1" target="$2" unit_dir="$3" unit dropin expected staged
   shift 3
+  NODE_ROLE_CHANGED=0
   for unit in "$@"; do
     dropin="$unit_dir/$unit.service.d/worker-role.conf"
     if [[ "$role" == worker ]]; then
-      install -d "$(dirname -- "$dropin")"
-      printf '[Unit]\nConditionPathExists=%s/shared/primary-role\n' "$target" > "$dropin"
-      node_control disable --now "$unit"
+      [[ "$unit" != "${UNIT_PREFIX}-scheduler" || -f "$unit_dir/$unit.service" ]] || continue
+      expected="$(printf '[Unit]\nConditionPathExists=%s/shared/primary-role' "$target")"
+      if [[ ! -f "$dropin" || "$(cat "$dropin")" != "$expected" ]]; then
+        install -d "$(dirname -- "$dropin")"
+        staged="$(mktemp "$(dirname -- "$dropin")/.worker-role.XXXXXXXX")"
+        if ! { printf '%s\n' "$expected" > "$staged" && chmod 644 -- "$staged" && mv -f -- "$staged" "$dropin"; }; then
+          rm -f -- "$staged"
+          return 1
+        fi
+        staged=''
+        NODE_ROLE_CHANGED=1
+        node_control disable --now "$unit"
+      fi
     else
-      rm -f "$dropin"
+      if [[ -f "$dropin" ]]; then
+        rm -- "$dropin"
+        NODE_ROLE_CHANGED=1
+      fi
     fi
   done
 }

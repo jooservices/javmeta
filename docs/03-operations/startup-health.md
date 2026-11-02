@@ -40,8 +40,17 @@ OpenObserve is available; it never blocks startup.
   503 with `Retry-After`. `/api/health` and `/api/health/live` bypass this
   middleware so operators can see dependency details or process liveness.
 - The native Horizon, scheduler and embedder systemd units run
-  `health:startup` in `ExecStartPre`, using the database-configured wait with a
-  bounded 660-second start timeout and restart-on-failure policy.
+  `health:startup` in `ExecStartPre`, using the database-configured probe
+  timeout, wait, retry delay and dependency lists. `TimeoutStartSec=660` is a
+  systemd bootstrap ceiling; it does not replace the database settings.
+  `Restart=on-failure` retries after a fixed `RestartSec=15s`. The unit sets
+  `StartLimitIntervalSec=0`, so a brief outage cannot exhaust systemd's default
+  start-rate limit and leave the service stopped. `StartLimitBurst=5` remains a
+  bootstrap guard if the interval policy is changed later.
+- The health gate is a start hook only. `systemctl stop` does not run it and a
+  manual stop is not automatically undone. `systemctl restart` stops normally,
+  then applies the gate to the new start; a failed check leaves the unit stopped
+  until its scheduled retry succeeds.
 - A clean `horizon:terminate` or `schedule:work` exit does not trigger
   `Restart=on-failure`; use `systemctl restart <unit-prefix>-horizon` or
   `systemctl restart <unit-prefix>-scheduler` for maintenance reloads.
@@ -71,3 +80,72 @@ php artisan health:startup --role=worker --wait=0
 ```
 
 Messages never include credentials, tokens, DSNs or response bodies.
+
+## Safe systemd verification
+
+Run this procedure only on a disposable test instance with its own application
+configuration and database. It uses a throwaway unit under `/run`; it never
+stops or changes a production dependency or application unit.
+
+1. Use only the test instance's own database and endpoints. For the first run,
+   point its PostgreSQL, Redis and MongoDB connections at unused loopback ports,
+   for example `127.0.0.1:1`, `127.0.0.1:2` and `127.0.0.1:3`. The throwaway
+   unit below passes `--wait=0` only to make this manual failure check quick;
+   production units omit that override and use the database setting.
+2. Create a throwaway service using the test release's PHP path, service user
+   and current directory. Set these values to that test instance's paths, then
+   write the throwaway unit:
+
+   ```sh
+   TEST_SERVICE_USER='javmeta-test'
+   TEST_TARGET='/srv/javmeta-test'
+   TEST_PHP='/usr/bin/php8.5'
+   TEST_UNIT='javmeta-startup-health-check.service'
+   sudo tee "/run/systemd/system/$TEST_UNIT" >/dev/null <<UNIT
+   [Unit]
+   Description=Throwaway JavMeta startup health check
+   StartLimitIntervalSec=0
+
+   [Service]
+   Type=simple
+   User=$TEST_SERVICE_USER
+   WorkingDirectory=$TEST_TARGET/current
+   ExecStartPre=$TEST_PHP artisan health:startup --role=worker --wait=0
+   ExecStart=/usr/bin/sleep infinity
+   Restart=no
+   UNIT
+   sudo systemctl daemon-reload
+   if sudo systemctl start "$TEST_UNIT"; then
+     echo 'Expected primary dependency failure.' >&2
+     exit 1
+   fi
+   sudo journalctl -u "$TEST_UNIT" -n 20 --no-pager
+   timeout 10s sudo systemctl stop "$TEST_UNIT"
+   ```
+
+   The journal must report a primary dependency failure. The stop command must
+   return promptly even after the failed start.
+3. Restore the test instance's primary endpoints to its own reachable test
+   services. In its test database, set `search.enabled=true`,
+   `search.embedder_enabled=true`, and `search.embedder_url` to
+   `http://127.0.0.1:1` through the test instance's Cài đặt page. Then run:
+
+   ```sh
+   sudo systemctl start "$TEST_UNIT"
+   sudo systemctl is-active --quiet "$TEST_UNIT"
+   sudo journalctl -u "$TEST_UNIT" -n 20 --no-pager
+   sudo systemctl restart "$TEST_UNIT"
+   sudo systemctl stop "$TEST_UNIT"
+   ```
+
+   The unit must become active, and the journal must show the embedder warning.
+4. Remove only the throwaway unit from `/run/systemd/system`, then run
+   `sudo systemctl daemon-reload` again:
+
+   ```sh
+   sudo rm -f -- "/run/systemd/system/$TEST_UNIT"
+   sudo systemctl daemon-reload
+   ```
+
+   Do not run this procedure against the production database, addresses, or
+   unit names.

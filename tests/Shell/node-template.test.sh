@@ -17,11 +17,22 @@ done
 grep -q 'server_name ui.example.test cc.example.test' "$fixture/xcrawler.nginx.conf"
 grep -q 'ExecStart=/operator/php artisan horizon' "$fixture/xcrawler-horizon.service"
 grep -q -- '--host 127.0.0.2 --port 9001' "$fixture/xcrawler-embedder.service"
+for unit in "$fixture/xcrawler-horizon.service" "$fixture/xcrawler-embedder.service" "$fixture/xcrawler-scheduler.service"; do
+  grep -Fxq 'StartLimitIntervalSec=0' "$unit"
+  grep -Fxq 'StartLimitBurst=5' "$unit"
+  grep -Fxq 'Restart=on-failure' "$unit"
+  grep -Fxq 'RestartSec=15s' "$unit"
+done
+grep -Fxq 'ExecStartPre=/operator/php artisan health:startup --role=worker' "$fixture/xcrawler-horizon.service"
+grep -Fxq 'ExecStartPre=/operator/php artisan health:startup --role=worker' "$fixture/xcrawler-embedder.service"
+grep -Fxq 'ExecStartPre=/operator/php artisan health:startup --role=scheduler' "$fixture/xcrawler-scheduler.service"
 if UI_HOST=$'invalid\nserver' render_node_template "$root/deploy/production/node/xcrawler.nginx.conf" "$fixture/bad"; then echo 'FAIL: multiline template injection accepted'; exit 1; fi
 echo 'OK (9 node template scenarios)'
 
 # Exercise actual role configuration with only systemctl replaced.
 systemctl() { printf '%s\n' "$*" >> "$fixture/units"; }
+mkdir -p "$fixture/systemd"
+: > "$fixture/systemd/custom-scheduler.service"
 configure_node_role worker "$TARGET_DIR" "$fixture/systemd" custom-nginx custom-scheduler
 for unit in custom-nginx custom-scheduler; do
   grep -Fxq "ConditionPathExists=$TARGET_DIR/shared/primary-role" "$fixture/systemd/$unit.service.d/worker-role.conf"
@@ -60,3 +71,83 @@ ensure_node_account fresh "$TARGET_DIR"
 grep -q -- '--gid fresh' "$fixture/users"
 unset -f getent groupadd id useradd
 echo 'OK (3 service-account idempotency assertions)'
+
+cat > "$fixture/startup-php" <<'STUB'
+#!/usr/bin/env bash
+[[ "$*" == 'artisan health:startup --role=worker' ]] || exit 2
+if [[ "${PRIMARY_DEPENDENCY:-up}" == down ]]; then
+  echo 'Startup blocked: primary dependency is unavailable.'
+  exit 1
+fi
+if [[ "${SECONDARY_DEPENDENCY:-up}" == down ]]; then
+  echo 'WARN: secondary dependency is unavailable.'
+fi
+STUB
+chmod +x "$fixture/startup-php"
+run_horizon_prestart() {
+  local prestart
+  local -a command
+  prestart="$(sed -n 's/^ExecStartPre=//p' "$fixture/xcrawler-horizon.service")"
+  [[ -n "$prestart" ]] || { echo 'FAIL: horizon unit has no ExecStartPre'; return 1; }
+  prestart="${prestart/\/operator\/php/$fixture\/startup-php}"
+  read -r -a command <<< "$prestart"
+  "${command[@]}"
+}
+if PRIMARY_DEPENDENCY=down SECONDARY_DEPENDENCY=up run_horizon_prestart > "$fixture/primary-down.log" 2>&1; then
+  echo 'FAIL: ExecStartPre accepted a down primary dependency'
+  exit 1
+fi
+grep -q 'Startup blocked' "$fixture/primary-down.log"
+PRIMARY_DEPENDENCY=up SECONDARY_DEPENDENCY=down run_horizon_prestart > "$fixture/secondary-down.log"
+grep -q 'WARN:' "$fixture/secondary-down.log"
+echo 'OK (2 ExecStartPre primary/secondary scenarios)'
+
+templates="$fixture/unit-templates"
+installed="$fixture/application-systemd"
+mkdir -p "$templates"
+cp "$root"/deploy/production/node/xcrawler-*.service "$templates/"
+cp "$root"/deploy/production/node/xcrawler-*.timer "$templates/"
+: > "$fixture/units"
+TMPDIR="$fixture" sync_node_units "$templates" "$installed" primary "$UNIT_PREFIX" apply
+[[ -f "$installed/$UNIT_PREFIX-horizon.service" ]]
+[[ -f "$installed/$UNIT_PREFIX-embedder.service" ]]
+[[ -f "$installed/$UNIT_PREFIX-scheduler.service" ]]
+[[ -f "$installed/$UNIT_PREFIX-horizon-reconcile.service" ]]
+[[ -f "$installed/$UNIT_PREFIX-horizon-reconcile.timer" ]]
+[[ "$(grep -Fc 'daemon-reload' "$fixture/units")" == 1 ]]
+echo 'OK (initial primary unit refresh uses one daemon-reload)'
+
+: > "$fixture/units"
+TMPDIR="$fixture" sync_node_units "$templates" "$installed" primary "$UNIT_PREFIX" apply > "$fixture/unchanged.log"
+[[ ! -s "$fixture/units" ]]
+grep -q 'already match; daemon-reload skipped' "$fixture/unchanged.log"
+echo 'OK (unchanged units skip daemon-reload)'
+
+sed -i 's/Description=XCrawler horizon/Description=XCrawler horizon refreshed/' "$templates/xcrawler-horizon.service"
+: > "$fixture/units"
+TMPDIR="$fixture" sync_node_units "$templates" "$installed" primary "$UNIT_PREFIX" apply > "$fixture/changed.log"
+grep -q '^UPDATE:' "$fixture/changed.log"
+grep -Fxq 'Description=XCrawler horizon refreshed' "$installed/$UNIT_PREFIX-horizon.service"
+[[ "$(grep -Fc 'daemon-reload' "$fixture/units")" == 1 ]]
+echo 'OK (changed units are diffed, installed and reloaded once)'
+
+sed -i 's/Description=XCrawler embedder/Description=XCrawler embedder preview/' "$templates/xcrawler-embedder.service"
+: > "$fixture/units"
+TMPDIR="$fixture" sync_node_units "$templates" "$installed" primary "$UNIT_PREFIX" dry-run > "$fixture/dry-run.log"
+grep -q '^UPDATE:' "$fixture/dry-run.log"
+grep -q 'DRY RUN:' "$fixture/dry-run.log"
+! grep -q 'Description=XCrawler embedder preview' "$installed/$UNIT_PREFIX-embedder.service"
+[[ ! -s "$fixture/units" ]]
+echo 'OK (dry-run displays changes without writing or reloading)'
+
+: > "$fixture/units"
+TMPDIR="$fixture" sync_node_units "$templates" "$installed" worker "$UNIT_PREFIX" apply > "$fixture/worker.log"
+[[ ! -e "$installed/$UNIT_PREFIX-scheduler.service" ]]
+[[ -f "$installed/$UNIT_PREFIX-horizon.service" && -f "$installed/$UNIT_PREFIX-embedder.service" ]]
+grep -q 'scheduler is only installed on primary nodes' "$fixture/worker.log"
+grep -Fxq 'disable --now custom-unit-scheduler' "$fixture/units"
+[[ "$(grep -Fc 'daemon-reload' "$fixture/units")" == 1 ]]
+: > "$fixture/units"
+TMPDIR="$fixture" sync_node_units "$templates" "$installed" worker "$UNIT_PREFIX" apply > "$fixture/worker-unchanged.log"
+[[ ! -s "$fixture/units" ]]
+echo 'OK (worker excludes scheduler and unchanged worker units do not reload)'
