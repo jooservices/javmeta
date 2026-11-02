@@ -129,5 +129,7 @@ class AppServiceProvider extends ServiceProvider
             'webhook' => $app->make(WebhookAlertChannel::class),
         ]));
         $this->app->bind(ReportChannel::class, TelegramAlertNotifier::class);
+
+        $this->app->singleton(\App\Services\Backup\CommandRunner::class, \App\Services\Backup\ProcessCommandRunner::class);
     }
 }

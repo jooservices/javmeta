@@ -157,4 +157,14 @@ final class StagingReadinessTest extends TestCase
         $this->assertSame('warn', $rows['ui_login']['status']);
         $this->assertSame('UI login disabled (guest mode)', $rows['ui_login']['message']);
     }
+
+    public function test_backup_is_skipped_instead_of_failing_when_manifest_alerting_is_disabled(): void
+    {
+        config(['javmeta_backup.manifest_alert_enabled' => false]);
+
+        $rows = $this->byName();
+
+        $this->assertSame('skipped', $rows['backup']['status']);
+        $this->assertNull($rows['backup']['action']);
+    }
 }

@@ -67,9 +67,41 @@ debounced Telegram alert. When the manifest age exceeds
 <code>backup.stale_after_seconds</code> (default 93,600 seconds), it publishes the
 age and sends the existing debounced Telegram alert.
 
+When <code>backup.manifest_alert_enabled</code> (default <code>true</code>) is turned off, the
+command still publishes the age metric but sends no missing/stale alert, and the
+readiness gate reports <code>backup</code> as <code>skipped</code> rather than <code>FAIL</code>.
+This is the intended state while the real backup is an external Synology
+VM-level job the application cannot see. The owner can re-enable the alert when
+the application manifest again represents the backup source that should be monitored.
+
 The target RPO is 24 hours. RTO remains unverified until a successful rehearsal
 can record the full restore duration and per-service counts. The shared
 Elasticsearch filesystem snapshot path tracked by JOOS-114 is a prerequisite.
+
+## Scheduled logical backup (application)
+
+<code>javmeta:backup-run</code>, scheduled hourly on the main node by the application
+scheduler, writes a PostgreSQL custom-format dump (<code>pg_dump -Fc</code>) and a MongoDB
+gzip archive (<code>mongodump --archive --gzip</code>) into a dated directory under the
+database setting <code>backup.logical_dir</code>. It is a no-op until
+<code>backup.logical_enabled</code> (default <code>false</code>) is switched on, and only runs when
+the manifest age reaches <code>backup.logical_interval_hours</code> (default 24). Connection
+values are read from the existing application config; the PostgreSQL password is passed
+as <code>PGPASSWORD</code> in the process environment and is never printed or placed on the
+command line. When the MongoDB URI contains credentials, it is passed through a mode-0600
+temporary mongodump config file inside the private run directory, then removed. MongoDB
+Database Tools 100.19.1 is installed on the primary node by the native prerequisite
+installer using the matching Ubuntu 24.04 or 26.04 archive. The PostgreSQL client is already part of the node runtime packages. When
+deployment uses <code>--skip-os-install</code>, both <code>mongodump</code> and <code>pg_dump</code> must be available
+on the scheduler's <code>PATH</code> before enabling this setting.
+
+A successful run writes the manifest at <code>backup.manifest_path</code> with the UTC
+<code>created_at</code> and, per store, the dump path relative to <code>backup.logical_dir</code>, byte size and SHA-256, then removes
+dated directories beyond the newest <code>backup.logical_keep</code> (default 7). It publishes
+<code>javmeta_backup_last_size_bytes{store}</code> and <code>javmeta_backup_runs_total{result}</code>
+through the existing OpenObserve client. A failed dump never refreshes the manifest and
+raises one English <code>[XCrawler][WARNING] Database backup failed</code> alert, debounced by
+<code>javmeta_alerts.throttle_seconds</code> so a down database does not page every minute.
 
 ## Test rehearsal
 

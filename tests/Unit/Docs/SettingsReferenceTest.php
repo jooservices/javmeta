@@ -44,4 +44,14 @@ final class SettingsReferenceTest extends TestCase
         $this->assertIsString($section);
         $this->assertMatchesRegularExpression('/[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]/iu', $section);
     }
+
+    public function test_backup_section_uses_english_labels_and_type_descriptions(): void
+    {
+        $root = dirname(__DIR__, 3);
+        $reference = (string) file_get_contents($root . '/docs/user-guide/settings-reference.md');
+        $matched = preg_match('/^## Backup\n(.*?)(?=^## |\z)/ms', $reference, $matches);
+
+        $this->assertSame(1, $matched);
+        $this->assertDoesNotMatchRegularExpression('/[^\x00-\x7F]/', $matches[1]);
+    }
 }

@@ -9,9 +9,17 @@ use Tests\TestCase;
 
 final class SettingsRegistryTest extends TestCase
 {
-    public function test_every_registered_setting_has_a_default_type_range_and_vietnamese_copy(): void
+    public function test_every_registered_setting_has_a_default_type_range_and_localized_copy(): void
     {
         $schema = config('javmeta_settings');
+        $englishSettings = [
+            'backup.manifest_path',
+            'backup.logical_enabled',
+            'backup.logical_interval_hours',
+            'backup.logical_dir',
+            'backup.logical_keep',
+            'backup.manifest_alert_enabled',
+        ];
         $this->assertIsArray($schema['groups'] ?? null);
         $this->assertIsArray($schema['definitions'] ?? null);
 
@@ -21,11 +29,12 @@ final class SettingsRegistryTest extends TestCase
             $this->assertNotSame('', trim((string) ($definition['description'] ?? '')), $key . ' description');
             if (str_starts_with($key, 'normalization.')) {
                 $this->assertMatchesRegularExpression('/[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]/iu', $definition['label'] . ' ' . $definition['description'], $key . ' Vietnamese UI text');
-            } else {
-                $this->assertMatchesRegularExpression('/[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]/iu', $definition['description'], $key . ' Vietnamese description');
             }
             $this->assertContains($definition['type'], ['bool', 'int', 'float', 'string', 'secret', 'int_list', 'string_list', 'json'], $key . ' type');
             $this->assertNotEmpty($definition['config'] ?? [], $key . ' config mapping');
+            if (! in_array($key, $englishSettings, true)) {
+                $this->assertMatchesRegularExpression('/[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủụừứửữựỳýỷỹỵ]/iu', $definition['description'], $key . ' Vietnamese description');
+            }
 
             foreach ($definition['config'] as $configKey) {
                 $this->assertTrue(Arr::has(config()->all(), $configKey), $key . ' default missing at ' . $configKey);
@@ -121,5 +130,42 @@ final class SettingsRegistryTest extends TestCase
         self::assertSame('performer_field_ranges', $definitions['normalization.field_ranges']['shape']);
         self::assertSame('performer_location_aliases', $definitions['normalization.location_aliases']['shape']);
         self::assertGreaterThan(6000, count(config('javmeta_japan_locations')));
+    }
+
+    public function test_logical_backup_settings_are_registered_with_defaults(): void
+    {
+        $definitions = config('javmeta_settings.definitions');
+
+        foreach ([
+            'backup.logical_enabled',
+            'backup.logical_interval_hours',
+            'backup.logical_dir',
+            'backup.logical_keep',
+            'backup.manifest_alert_enabled',
+        ] as $key) {
+            self::assertArrayHasKey($key, $definitions);
+            self::assertSame('backup', $definitions[$key]['group']);
+        }
+
+        self::assertFalse(config('javmeta_backup.logical_enabled'));
+        self::assertSame(24, config('javmeta_backup.logical_interval_hours'));
+        self::assertSame(storage_path('app/private/backups'), config('javmeta_backup.logical_dir'));
+        self::assertSame(7, config('javmeta_backup.logical_keep'));
+        self::assertTrue(config('javmeta_backup.manifest_alert_enabled'));
+        self::assertSame(1, $definitions['backup.logical_interval_hours']['min']);
+        self::assertSame(8760, $definitions['backup.logical_interval_hours']['max']);
+        self::assertSame(1, $definitions['backup.logical_keep']['min']);
+        self::assertSame(1000, $definitions['backup.logical_keep']['max']);
+        self::assertSame('Backup', config('javmeta_settings.groups.backup'));
+        self::assertDoesNotMatchRegularExpression('/[^\\x00-\\x7F]/', config('javmeta_settings.groups.backup'));
+        foreach ($definitions as $key => $definition) {
+            if (! str_starts_with($key, 'backup.logical_') && ! in_array($key, ['backup.manifest_alert_enabled', 'backup.manifest_path'], true)) {
+                continue;
+            }
+
+            self::assertSame('backup', $definition['group']);
+            self::assertDoesNotMatchRegularExpression('/[^\x00-\x7F]/', $definition['label']);
+            self::assertDoesNotMatchRegularExpression('/[^\x00-\x7F]/', $definition['description']);
+        }
     }
 }

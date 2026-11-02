@@ -6,6 +6,15 @@ fixture="$(mktemp -d "$root/.tmp/node-template.XXXXXX")"
 trap 'rm -rf -- "$fixture"' EXIT
 # shellcheck source=deploy/lib/node-template.sh
 source "$root/deploy/lib/node-template.sh"
+# shellcheck source=deploy/lib/mongodb-database-tools.sh
+source "$root/deploy/lib/mongodb-database-tools.sh"
+[[ "$(mongodb_database_tools_platform 24.04 amd64)" == ubuntu2404-x86_64 ]]
+[[ "$(mongodb_database_tools_platform 24.04 arm64)" == ubuntu2404-arm64 ]]
+[[ "$(mongodb_database_tools_platform 26.04 amd64)" == ubuntu2604-x86_64 ]]
+[[ "$(mongodb_database_tools_platform 26.04 arm64)" == ubuntu2604-arm64 ]]
+if mongodb_database_tools_platform 24.10 amd64 >/dev/null; then echo 'FAIL: unsupported Ubuntu release accepted for MongoDB Database Tools'; exit 1; fi
+if mongodb_database_tools_platform 24.04 s390x >/dev/null; then echo 'FAIL: unsupported architecture accepted for MongoDB Database Tools'; exit 1; fi
+echo 'OK (6 MongoDB Database Tools platform assertions)'
 export TARGET_DIR="$fixture/custom" SERVICE_USER=custom UNIT_PREFIX=custom-unit
 export GATEKEEPER_ADDRESS=203.0.113.1 UI_HOST=ui.example.test CC_HOST=cc.example.test
 export PHP_BINARY=/operator/php EMBEDDER_BIND=127.0.0.2 EMBEDDER_PORT=9001

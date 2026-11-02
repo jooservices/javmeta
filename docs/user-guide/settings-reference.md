@@ -1002,13 +1002,43 @@ Số ngày giữ số liệu crawl theo giờ trước khi tự dọn.
 
 Số nguyên; từ 1 đến 3650. Mã mục: `stats.retention_days`.
 
-## Sao lưu
+## Backup
 
-### Đường dẫn manifest sao lưu
+### Backup manifest path
 
-Tệp trạng thái được lệnh backup cập nhật sau khi hoàn tất.
+The status file updated after a backup completes.
 
-Văn bản. Mã mục: `backup.manifest_path`.
+Text. Setting key: `backup.manifest_path`.
+
+### Enable scheduled logical backups
+
+Disabled by default. When enabled, the scheduler runs pg_dump and mongodump in the configured folder.
+
+Boolean. Setting key: `backup.logical_enabled`.
+
+### Logical backup interval (hours)
+
+Minimum time between logical backups, measured from the last logical manifest timestamp.
+
+Integer; from 1 to 8760. Setting key: `backup.logical_interval_hours`.
+
+### Logical backup folder
+
+Folder for dated dump directories. The manifest location is controlled by backup.manifest_path.
+
+Text. Setting key: `backup.logical_dir`.
+
+### Logical backups to retain
+
+Keep this many newest dump folders and remove older folders after a successful run.
+
+Integer; from 1 to 1000. Setting key: `backup.logical_keep`.
+
+### Enable backup manifest alerts
+
+When disabled, backup status still publishes its metric without alerts and readiness marks backup as skipped.
+
+Boolean. Setting key: `backup.manifest_alert_enabled`.
 
 ## AI (Ollama, embedding)
 

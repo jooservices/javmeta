@@ -178,4 +178,31 @@ final class BackupStatusCommandTest extends TestCase
             ->expectsOutputToContain('No successful backup manifest is available.')
             ->assertSuccessful();
     }
+
+    public function test_it_publishes_the_missing_sentinel_without_an_alert_when_manifest_alerting_is_disabled(): void
+    {
+        config(['javmeta_backup.manifest_alert_enabled' => false]);
+        $notifier = Mockery::mock(AlertNotifier::class);
+        $notifier->shouldNotReceive('notify');
+        $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
+
+        $this->artisan('javmeta:backup-status')->assertSuccessful();
+
+        Http::assertSent(fn($request): bool => str_contains($request->body(), 'javmeta_backup_last_success_age_seconds')
+            && str_contains($request->body(), '-1'));
+    }
+
+    public function test_it_publishes_a_stale_age_without_an_alert_when_manifest_alerting_is_disabled(): void
+    {
+        $this->writeManifest(now()->subHours(30)->toIso8601String());
+        config(['javmeta_backup.manifest_alert_enabled' => false]);
+        $notifier = Mockery::mock(AlertNotifier::class);
+        $notifier->shouldNotReceive('notify');
+        $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
+
+        $this->artisan('javmeta:backup-status')->assertSuccessful();
+
+        Http::assertSent(fn($request): bool => str_contains($request->body(), 'javmeta_backup_last_success_age_seconds')
+            && str_contains($request->body(), (string) (30 * 60 * 60)));
+    }
 }

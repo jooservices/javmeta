@@ -27,34 +27,49 @@ final class BackupStatusCommand extends Command
             ],
         ]);
 
+        $alerting = (bool) config('javmeta_backup.manifest_alert_enabled', true);
         $threshold = max(1, (int) config('backup.stale_after_seconds', 26 * 60 * 60));
         $throttle = (int) config('javmeta_alerts.throttle_seconds', 3600);
         if ($age === null) {
-            $alerts->sendTemplate(
-                debounceKey: 'backup:missing',
-                templateKey: 'backup.manifest_missing',
-                context: ['backup_age_seconds' => -1],
-                debounceSeconds: $throttle,
-            );
-            $this->error('No successful backup manifest is available.');
+            if ($alerting) {
+                $alerts->sendTemplate(
+                    debounceKey: 'backup:missing',
+                    templateKey: 'backup.manifest_missing',
+                    context: ['backup_age_seconds' => -1],
+                    debounceSeconds: $throttle,
+                );
+                $this->error('No successful backup manifest is available.');
 
-            return $this->option('lenient') ? self::SUCCESS : self::FAILURE;
+                return $this->option('lenient') ? self::SUCCESS : self::FAILURE;
+            }
+
+            $this->info('No successful backup manifest is available; the manifest alert is disabled.');
+
+            return self::SUCCESS;
         }
 
         if ($age > $threshold) {
-            $alerts->sendTemplate(
-                debounceKey: 'backup:stale',
-                templateKey: 'backup.stale',
-                context: ['backup_age_seconds' => $age, 'threshold_seconds' => $threshold],
-                debounceSeconds: $throttle,
-            );
-            $this->warn("Last successful backup is stale ({$age} seconds old).");
+            if ($alerting) {
+                $alerts->sendTemplate(
+                    debounceKey: 'backup:stale',
+                    templateKey: 'backup.stale',
+                    context: ['backup_age_seconds' => $age, 'threshold_seconds' => $threshold],
+                    debounceSeconds: $throttle,
+                );
+                $this->warn("Last successful backup is stale ({$age} seconds old).");
 
-            return $this->option('lenient') ? self::SUCCESS : self::FAILURE;
+                return $this->option('lenient') ? self::SUCCESS : self::FAILURE;
+            }
+
+            $this->warn("Last successful backup is stale ({$age} seconds old); the manifest alert is disabled.");
+
+            return self::SUCCESS;
         }
 
-        $alerts->resolveTemplate('backup:stale', 'backup.recovered', ['backup_age_seconds' => $age]);
-        $alerts->resolveTemplate('backup:missing', 'backup.recovered', ['backup_age_seconds' => $age]);
+        if ($alerting) {
+            $alerts->resolveTemplate('backup:stale', 'backup.recovered', ['backup_age_seconds' => $age]);
+            $alerts->resolveTemplate('backup:missing', 'backup.recovered', ['backup_age_seconds' => $age]);
+        }
         $this->info("Last successful backup is current ({$age} seconds old).");
 
         return self::SUCCESS;

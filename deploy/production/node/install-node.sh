@@ -8,12 +8,24 @@ manifest="$root/deploy/manifest.json"
 command -v jq >/dev/null || { echo 'Bootstrap jq with the OS package manager first.' >&2; exit 1; }
 # shellcheck source=deploy/lib/node-template.sh
 source "$root/deploy/lib/node-template.sh"
+# shellcheck source=deploy/lib/mongodb-database-tools.sh
+source "$root/deploy/lib/mongodb-database-tools.sh"
 node_value() { jq -er --arg key "$1" '.node[$key]' "$manifest"; }
 : "${EXPORTER_UNIT:?}" "${NGINX_UNIT:?}" "${NODE_ROLE:?}" "${TARGET_DIR:?}" "${SERVICE_USER:?}" "${UNIT_PREFIX:?}" "${GATEKEEPER_ADDRESS:?}" "${UI_HOST:?}" "${CC_HOST:?}" "${PHP_BINARY:?}" "${FPM_UNIT:?}" "${EMBEDDER_BIND:?}" "${EMBEDDER_PORT:?}"
 [[ "$TARGET_DIR" =~ ^/[a-zA-Z0-9_./-]+$ && "$TARGET_DIR" != / && "$SERVICE_USER" =~ ^[a-z_][a-z0-9_-]*$ && "$SERVICE_USER" != root && "$UNIT_PREFIX" =~ ^[a-zA-Z0-9_-]+$ ]] || exit 1
 # shellcheck source=/dev/null
 source "$(node_value os_release)"
 [[ "$ID" == ubuntu && "${VERSION_ID%%.*}" -ge "$(node_value minimum_ubuntu)" ]] || { echo 'Unsupported Ubuntu version.' >&2; exit 1; }
+mongo_tools_version=''
+mongo_tools_platform=''
+if [[ "$NODE_ROLE" == primary ]]; then
+  mongo_tools_version="$(node_value mongodb_database_tools_version)"
+  [[ "$mongo_tools_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid MongoDB Database Tools version.' >&2; exit 1; }
+  if ! mongo_tools_platform="$(mongodb_database_tools_platform "$VERSION_ID" "$(dpkg --print-architecture)")"; then
+    echo 'Unsupported Ubuntu release or architecture for MongoDB Database Tools.' >&2
+    exit 1
+  fi
+fi
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 mapfile -t packages < <(jq -r '.node.packages[]' "$manifest")
@@ -27,6 +39,14 @@ printf 'deb [signed-by=%s] %s %s-pgdg main\n' "$(node_value pg_key_path)" "$(nod
 apt-get update
 mapfile -t packages < <(jq -r '.node.runtime_packages[]' "$manifest")
 apt-get install -y "${packages[@]}"
+if [[ "$NODE_ROLE" == primary ]]; then
+  apt-get install -y libgssapi-krb5-2 libkrb5-3
+  curl -fsSL "https://fastdl.mongodb.org/tools/db/mongodb-database-tools-${mongo_tools_platform}-${mongo_tools_version}.tgz" \
+    | tar -xz --strip-components=2 -C /usr/local/bin \
+      "mongodb-database-tools-${mongo_tools_platform}-${mongo_tools_version}/bin/mongodump"
+  chmod 0755 /usr/local/bin/mongodump
+  /usr/local/bin/mongodump --version >/dev/null
+fi
 # shellcheck disable=SC2016 # PHP evaluates these expressions.
 "$PHP_BINARY" -r 'foreach (["mongodb", "redis", "pdo_pgsql", "pcntl", "intl", "mbstring"] as $ext) { if (!extension_loaded($ext)) { exit(1); } }'
 if [[ ! -x "$(node_value composer_dir)/composer" ]]; then

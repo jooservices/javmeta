@@ -83,6 +83,9 @@ environment.
 | `javmeta_search_embedding_backfill_missing` | `entity` | Movie or performer documents found missing from Elasticsearch or without an embedding during the latest backfill run. |
 | `javmeta_search_embedding_backfill_fixed` | `entity` | Movie or performer documents successfully indexed with an embedding during the latest backfill run. |
 | `javmeta_notification_sent_total` | `notification_key`, `channel` | Cumulative count of successful sends for each registered template. Unit: messages. Latest gauge is the total since the template row was created; use a difference between samples for sends during an interval. `environment` and `role` are attached by the shared metrics client. |
+| `javmeta_backup_last_success_age_seconds` | — | Age in seconds since the last successful logical backup manifest; `-1` when no readable manifest exists. Published every minute by `javmeta:backup-status`. |
+| `javmeta_backup_last_size_bytes` | `store` | Size in bytes of the last successful logical dump for `store` (`postgres`, `mongo`), published by `javmeta:backup-run`. |
+| `javmeta_backup_runs_total` | `result` | Cumulative logical backup attempts, labelled `result=success` or `result=failure`; the value resets when the application cache is cleared. |
 | `javmeta_normalize_rejected_total` | `entity`, `field`, `source` | Cumulative rejected performer profile values. Unit: values. The database counter is emitted by `obs:publish-metrics`; a rising value identifies a source/field still returning junk or outside the configured range. |
 | `javmeta_notifications_sent_total` | `tier`, `key` | Cumulative policy-approved messages sent, grouped by delivery tier and notification key. Unit: messages. |
 | `javmeta_notifications_suppressed_total` | `reason` | Cumulative policy suppression decisions, grouped by reason such as `warning_digest`, `cooldown`, `quiet_mode`, `duplicate_event`, or `digest_only`. Unit: decisions. |
@@ -242,6 +245,7 @@ when it clears. Follow messages and bot replies use product-specific templates.
 | Stuck queue | Claimed items older than `JAVMETA_WATCHDOG_QUEUE_STUCK_SECONDS` | `crawler:watchdog` |
 | Due pending backlog | Due pending items reach `JAVMETA_WATCHDOG_PENDING_QUEUE_LIMIT` (default 1,000); a recovery message follows below the limit | `crawler:watchdog` |
 | Old backup | Last backup older than `backup.stale_after_seconds` (26 hours) or missing | `javmeta:backup-status` |
+| Backup failed | A scheduled `javmeta:backup-run` dump returned non-zero; the previous manifest is left unchanged | `javmeta:backup-run` |
 
 `OPENOBSERVE_STREAM_METRICS` is retained in configuration for compatibility;
 the current metrics client sends OTLP metric names and does not route them into

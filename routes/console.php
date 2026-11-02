@@ -69,6 +69,7 @@ if (! app()->runningUnitTests()) {
     $scheduleCommand('alerts:evaluate')->everyMinute()->withoutOverlapping();
     $scheduleCommand('node:sample')->everyMinute();
     $scheduleCommand('javmeta:backup-status', ['--lenient'])->everyMinute();
+    $scheduleCommand('javmeta:backup-run')->hourly()->withoutOverlapping();
     $scheduleCommand('crawler:recrawl-incomplete')->hourly()->withoutOverlapping();
     $scheduleCommand('search:backfill-embeddings')->hourly()->withoutOverlapping();
     $scheduleCommand('crawler:watchdog')->everyFiveMinutes();

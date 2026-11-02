@@ -112,7 +112,11 @@ final class StagingReadiness
     /** @return array{name: string, status: string, message: string, action: ?string} */
     private function backupCheck(): array
     {
-        $file = storage_path('app/private/backups/latest.json');
+        if (! (bool) config('javmeta_backup.manifest_alert_enabled', true)) {
+            return $this->row('backup', 'skipped', 'Backup manifest alerting is disabled; backup freshness is not checked.');
+        }
+
+        $file = (string) config('backup.manifest_path');
         $data = is_file($file) ? json_decode((string) file_get_contents($file), true) : null;
         $at = is_array($data) ? ($data['created_at'] ?? $data['finished_at'] ?? $data['generated_at'] ?? null) : null;
         $now = now()->getTimestamp();
@@ -121,7 +125,7 @@ final class StagingReadiness
 
         return $ageHours !== null && $ageHours <= $max
             ? $this->row('backup', 'pass', "The last backup is {$ageHours} hours old.")
-            : $this->row('backup', 'fail', $ageHours === null ? 'There is no readable backup manifest.' : "The last backup is {$ageHours} hours old (limit {$max}).", 'Run `deploy/backup/staging-backup.sh` and check `systemctl --user status javmeta-backup.timer`.');
+            : $this->row('backup', 'fail', $ageHours === null ? 'There is no readable backup manifest.' : "The last backup is {$ageHours} hours old (limit {$max}).", 'Enable `backup.logical_enabled`, then run `php artisan javmeta:backup-run --force` or `deploy/backup/staging-backup.sh`.');
     }
 
     /** @return array{name: string, status: string, message: string, action: ?string} */

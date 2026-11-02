@@ -66,6 +66,8 @@ final class MetricStreams
         'elasticsearch_request_failures' => self::PREFIX . 'elasticsearch_request_failures',
         'dep_up' => self::PREFIX . 'dep_up',
         'backup_last_success_age_seconds' => self::PREFIX . 'backup_last_success_age_seconds',
+        'backup_last_size_bytes' => self::PREFIX . 'backup_last_size_bytes',
+        'backup_runs_total' => self::PREFIX . 'backup_runs_total',
         'horizon_workers' => self::PREFIX . 'horizon_workers',
         'workers' => self::PREFIX . 'workers',
         'node_cpu_percent' => self::PREFIX . 'node_cpu_percent',

@@ -55,6 +55,7 @@ final class ScheduleTest extends TestCase
             'crawler:watchdog' => '*/5 * * * *',
             'follows:notify' => '*/5 * * * *',
             'horizon:reconcile-workers' => '* * * * *',
+            'javmeta:backup-run' => '0 * * * *',
             'javmeta:backup-status' => '* * * * *',
             'library:scan' => '0 * * * *',
             'node:egress-probe' => '*/2 * * * *',
@@ -85,6 +86,7 @@ final class ScheduleTest extends TestCase
         $this->assertTrue($scheduled['report:send-daily']->withoutOverlapping);
         $this->assertTrue($scheduled['report:send-daily']->onOneServer);
         $this->assertSame('America/Mexico_City', $scheduled['report:send-daily']->timezone);
+        $this->assertTrue($scheduled['javmeta:backup-run']->withoutOverlapping);
         $this->assertTrue($scheduled['search:backfill-embeddings']->withoutOverlapping);
         $this->assertTrue($scheduled['staging:readiness']->withoutOverlapping);
         $this->assertTrue($scheduled['perf:warm']->withoutOverlapping);

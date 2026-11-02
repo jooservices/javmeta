@@ -17,7 +17,7 @@ $lines = [
     '',
 ];
 foreach ($schema['groups'] as $group => $label) {
-    $english = $group === 'normalization';
+    $english = in_array($group, ['normalization', 'backup'], true);
     $lines[] = '## ' . $label;
     $lines[] = '';
     foreach ($schema['definitions'] as $key => $definition) {

@@ -887,6 +887,7 @@
   "node": {
     "os_release": "/etc/os-release",
     "minimum_ubuntu": 24,
+    "mongodb_database_tools_version": "100.19.1",
     "php_ppa": "ppa:ondrej/php",
     "node_key": "https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key",
     "node_repo": "https://deb.nodesource.com/node_24.x",
