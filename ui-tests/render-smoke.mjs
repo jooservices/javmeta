@@ -64,7 +64,7 @@ assert.match(home, /phim trong DB/); assert.match(home, /data-to="4469"/); asser
 await run('movies', await load('views/movies.js'), { params: {}, query: { genre: 'Drama' } });
 assert.match(out.movies, /Bộ lọc/); assert.match(out.movies, /data-drop="genre" data-value="Drama"/); assert.match(out.movies, /Thể loại: Drama/);
 const detail = await run('movie', await load('views/movie.js'), { params: { code: 'AAA-001' }, query: {} });
-assert.match(detail, /Title of AAA-001/); assert.match(detail, /Eimi Fukada/); assert.match(detail, /#\/facet\/genre\/Drama/);
+assert.match(detail, /Title of AAA-001/); assert.match(detail, /class="cols detail"/, 'detail uses the fluid cover column'); assert.match(detail, /data-zoom="https:\/\/img\.test\/AAA-001\.jpg"/, 'cover opens the zoom viewer'); assert.match(detail, /role="button"[^>]*aria-label="Phóng to ảnh bìa AAA-001"/); assert.match(detail, /Eimi Fukada/); assert.match(detail, /#\/facet\/genre\/Drama/);
 globalThis.innerWidth = 375;
 for (const code of ['JAVBTC-DERIVED-' + 'A'.repeat(64), 'TOKYOHOT-SLUG-JAPANESE_INVASION_2_AMERICA_SC4']) {
   const longDetail = await (await load('views/movie.js')).render({ params: { code }, query: {} });
@@ -301,3 +301,39 @@ globalThis.fetch = normalFetch;
 const guestStyles = await readFile(new URL('../public/ui/app.css', import.meta.url), 'utf8');
 assert.match(guestStyles, /flex-wrap:wrap/);
 assert.match(guestStyles, /body\[data-guest-mode="true"\].*\[data-mark\]/);
+
+/* zoom viewer: opens on [data-zoom], rejects non-http sources, closes on Escape and restores focus */
+{
+  const listeners = {};
+  const mk = () => {
+    const nodes = {};
+    const el = {
+      hidden: false, className: '', style: {}, attrs: {}, children: {}, focused: false, innerHTML: '', textContent: '', href: '', alt: '', src: 'x',
+      setAttribute(k, v) { this.attrs[k] = v; }, addEventListener() {}, focus() { this.focused = true; },
+      removeAttribute(k) { if (k === 'src') this.src = ''; },
+      querySelector(sel) { return nodes[sel] ??= { ...mk.leaf(), src: 'x' }; },
+    };
+    return el;
+  };
+  mk.leaf = () => ({ focused: false, textContent: '', href: '', alt: '', focus() { this.focused = true; }, removeAttribute(k) { if (k === 'src') this.src = ''; } });
+  const appended = [];
+  const returnFocus = { focused: false, focus() { this.focused = true; } };
+  const fakeBody = { style: {}, appendChild: n => appended.push(n) };
+  const previous = globalThis.document;
+  globalThis.document = { body: fakeBody, activeElement: returnFocus, createElement: () => mk(), addEventListener: (type, fn) => { (listeners[type] ??= []).push(fn); } };
+  const lb = await import('../public/ui/js/lightbox.js');
+  lb.initLightbox();
+  lb.openLightbox('javascript:alert(1)', 'BAD');
+  assert.equal(lb.isLightboxOpen(), false, 'non-http sources never open the viewer');
+  lb.openLightbox('https://img.test/AAA-001.jpg', 'AAA-001');
+  assert.equal(lb.isLightboxOpen(), true);
+  assert.equal(fakeBody.style.overflow, 'hidden', 'page scroll is locked while open');
+  for (const fn of listeners.keydown) fn({ key: 'Escape', preventDefault() {} });
+  assert.equal(lb.isLightboxOpen(), false, 'Escape closes the viewer');
+  assert.equal(fakeBody.style.overflow, '', 'page scroll is restored');
+  assert.equal(returnFocus.focused, true, 'focus returns to the cover');
+  globalThis.document = previous;
+}
+const cssText = await readFile(new URL('../public/ui/app.css', import.meta.url), 'utf8');
+assert.doesNotMatch(cssText, /\.wrap\{max-width:1400px/, 'content width is fluid, not capped at 1400px');
+assert.match(cssText, /\.cols\.detail\{grid-template-columns:minmax\(0,clamp\(340px,32vw,620px\)\)/);

@@ -1,5 +1,6 @@
 import { $, $$, esc, fmt, debounce, copyText, titleOf } from './util.js';
 import { ic } from './icons.js';
+import { initLightbox } from './lightbox.js';
 import { api } from './api.js';
 import { initTheme, toggleTheme } from './theme.js';
 import { errorBox, loadingBox, performerName, href, avatar, disk } from './components.js';
@@ -205,6 +206,7 @@ document.addEventListener('keydown', e => {
   else if (!typing && e.key === '?') document.querySelector('[data-act=help]').click();
   else if (e.key === 'Escape') { $('#ov').classList.remove('on'); }
 });
+initLightbox();
 render();
 live();
 setInterval(live, 30000);
