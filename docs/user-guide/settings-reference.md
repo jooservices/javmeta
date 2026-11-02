@@ -68,31 +68,31 @@ Số nguyên; từ 1 đến 100000. Mã mục: `queue.observability_depth_limit`
 
 Số tiến trình Horizon mặc định cho mỗi hàng đợi; cấu hình theo làn, loại hàng đợi và node có thể ghi đè.
 
-Số nguyên; từ 1 đến 32; cần khởi động lại javmeta-horizon. Mã mục: `queue.workers_per_queue`.
+Số nguyên; từ 1 đến 32. Mã mục: `queue.workers_per_queue`.
 
 ### Worker mỗi hàng đợi làn trực tiếp
 
 Để trống để dùng số worker mặc định; thiết lập riêng cho các queue không dùng trình duyệt.
 
-Số nguyên; từ 1 đến 32; cần khởi động lại javmeta-horizon. Mã mục: `worker.direct_workers_per_queue`.
+Số nguyên; từ 1 đến 32. Mã mục: `worker.direct_workers_per_queue`.
 
 ### Worker mỗi hàng đợi làn trình duyệt
 
 Số tiến trình Horizon tối đa cho từng queue cần Playwright hoặc FlareSolverr.
 
-Số nguyên; từ 1 đến 32; cần khởi động lại javmeta-horizon. Mã mục: `worker.browser_workers_per_queue`.
+Số nguyên; từ 1 đến 32. Mã mục: `worker.browser_workers_per_queue`.
 
 ### Worker ghi đè theo hàng đợi (JSON)
 
 Đối tượng JSON ánh xạ tên queue sang số worker từ 1 đến 32, ví dụ {"listing":2,"browser_detail":1}.
 
-Đối tượng JSON; mỗi hàng đợi đã biết nhận 1–32 worker; cần khởi động lại javmeta-horizon. Mã mục: `worker.queue_overrides`.
+Đối tượng JSON; mỗi hàng đợi đã biết nhận 1–32 worker. Mã mục: `worker.queue_overrides`.
 
 ### Worker ghi đè theo node (JSON)
 
 Ánh xạ main, worker hoặc role@hostname sang default, direct, browser và queues.
 
-Đối tượng JSON; ghi đè theo vai trò hoặc role@hostname; worker từ 1 đến 32; cần khởi động lại javmeta-horizon. Mã mục: `worker.node_overrides`.
+Đối tượng JSON; ghi đè theo vai trò hoặc role@hostname; worker từ 1 đến 32. Mã mục: `worker.node_overrides`.
 
 ### Tên hàng đợi cần chạy
 
@@ -132,19 +132,19 @@ Số nguyên; từ 0 đến 60; cần khởi động lại javmeta-horizon. Mã 
 
 ### Thời gian chờ worker dừng an toàn (giây)
 
-Worker chờ các tiến trình đang chạy thoát trước khi kết thúc.
+Horizon cho phép job đang chạy hoàn tất trong giới hạn này; giá trị không được thấp hơn worker timeout.
 
 Số nguyên; từ 1 đến 3600; cần khởi động lại javmeta-horizon. Mã mục: `worker.stop_grace_seconds`.
 
 ### Khoảng cách tối thiểu giữa hai lần đổi worker (giây)
 
-Giữ mỗi node khỏi khởi động Horizon lại thường xuyên hơn mức này.
+Giữ mỗi node cách nhau ít nhất mức này giữa hai lần thay đổi số worker.
 
 Số nguyên; từ 600 đến 3600. Mã mục: `worker.reconcile_cooldown_seconds`.
 
-### Độ trễ ngẫu nhiên ổn định giữa các node (giây)
+### Độ trễ ổn định giữa các node (giây)
 
-Mỗi node chờ một khoảng khác nhau trước khi đổi cấu hình worker.
+Mỗi node chờ một khoảng khác nhau trước khi đổi số worker; khóa đội máy đảm bảo chỉ một node đổi tại một thời điểm.
 
 Số nguyên; từ 0 đến 600. Mã mục: `worker.reconcile_jitter_seconds`.
 

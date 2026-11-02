@@ -15,25 +15,44 @@ final class SettingsImportEnvCommand extends Command
 
     public function handle(SettingsService $settings): int
     {
+        $skipped = $settings->importSkippedPreview();
         if ((bool) $this->option('dry-run')) {
             $rows = $settings->importPreview();
-            if ($rows === []) {
+            if ($rows === [] && $skipped === []) {
                 $this->line('No missing settings would be imported.');
 
                 return self::SUCCESS;
             }
-            $this->table(['Setting', 'Current value', 'Source'], array_map(
-                static fn(array $row): array => [$row['key'], is_scalar($row['display']) ? (string) $row['display'] : json_encode($row['display'], JSON_THROW_ON_ERROR), $row['source']],
-                $rows,
-            ));
-            $this->line(count($rows) . ' missing settings would be stored; secrets are redacted.');
+            if ($rows !== []) {
+                $this->table(['Setting', 'Current value', 'Source'], array_map(
+                    static fn(array $row): array => [$row['key'], is_scalar($row['display']) ? (string) $row['display'] : json_encode($row['display'], JSON_THROW_ON_ERROR), $row['source']],
+                    $rows,
+                ));
+                $this->line(count($rows) . ' missing settings would be stored; secrets are redacted.');
+            }
+            $this->reportSkipped($skipped);
 
             return self::SUCCESS;
         }
 
         $written = $settings->importDefaults();
         $this->components->info(count($written) . ' settings stored in the database' . ($written === [] ? ' (all were already there).' : ': ' . implode(', ', $written)));
+        $this->reportSkipped($skipped);
 
         return self::SUCCESS;
+    }
+
+    /** @param list<array{key: string, environment: string, reason: string}> $skipped */
+    private function reportSkipped(array $skipped): void
+    {
+        if ($skipped === []) {
+            return;
+        }
+
+        $this->components->warn('Skipped deploy-specific environment paths:');
+        $this->table(['Setting', 'Environment key', 'Reason'], array_map(
+            static fn(array $row): array => [$row['key'], $row['environment'], $row['reason']],
+            $skipped,
+        ));
     }
 }

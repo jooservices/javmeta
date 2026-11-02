@@ -356,6 +356,9 @@ apply_release() {
   step 'Install authoritative production dependencies' composer install --no-dev --classmap-authoritative --no-interaction --prefer-dist
   step 'UI render smoke' node ui-tests/render-smoke.mjs
   step 'Startup health on staged release' startup_health
+  if [[ "${answers[NODE_ROLE]}" == worker ]]; then
+    step 'Verify primary imported worker settings' php artisan settings:assert-worker-bootstrap
+  fi
   step 'Refresh systemd units' refresh_systemd_units apply
   quiesced=0
   if (( ! no_start )); then quiesced=1; step 'Quiesce scheduler and workers' unit_action stop "${answers[STOP_UNITS]}"; fi

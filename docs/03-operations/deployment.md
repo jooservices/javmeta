@@ -35,12 +35,19 @@ cutover step; `--no-start` installs without starting services.
 
 Horizon reads worker counts from database settings at boot. The per-node
 `horizon:reconcile-workers` command and systemd timer compare the running layout
-with the current settings and gracefully restart a node when it changes;
-deploy locks, jitter, fleet serialization and a 10-minute per-node cooldown
-guard the restart. PostgreSQL's role connection limit **60** and shared
+with current settings and scale count-only changes inside the running Horizon
+master; they do not restart the node or require a deploy. Deploy locks, jitter,
+fleet serialization and a 10-minute per-node cooldown guard each change. A
+queue-name or other non-count Horizon layout change is reported for an
+operator-managed restart. PostgreSQL's role connection limit **60** and shared
 `max_connections` **150** bound fleet capacity. Browser capacity on vm-tools is
 global, shared by every crawler node. The native Playwright script must be
 under `<root>/current/vendor/jooservices/crawlerx/scripts/`.
+
+Run `settings:import-env` on the primary before upgrading or adding worker
+nodes. The worker installer checks that the primary imported the valid
+environment-backed worker settings before it stops or restarts worker units;
+it fails safely when those database values are missing.
 
 For local verification use a disposable shared-service namespace, a local
 repository/ref and `--skip-os-install --no-systemd --no-start`. These flags do

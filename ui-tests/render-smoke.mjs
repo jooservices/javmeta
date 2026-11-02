@@ -111,10 +111,13 @@ assert.match(st, /<select id="st-queue\.feed_interval_seconds" data-key="queue\.
 for (const value of [5, 10, 15, 30, 60]) assert.match(st, new RegExp(`<option value="${value}"${value === 10 ? ' selected' : ''}>${value}</option>`));
 settingsSample.data.settings.push({ key: 'telegram.owner_user_id', group: 'telegram', label: 'User ID chủ sở hữu Telegram', description: 'Để trống cho chat riêng.', type: 'int', min: 1, source: 'default', value: null });
 settingsSample.data.settings.push({ key: 'telegram.api_base', group: 'telegram', label: 'Địa chỉ API Telegram', description: 'HTTPS', type: 'string', source: 'default', value: 'https://api.telegram.org', warning: 'URL đã lưu không hợp lệ và đang được bỏ qua. <b>unsafe</b>' });
+settingsSample.data.settings.push({ key: 'worker.queue_overrides', group: 'worker', label: 'Worker override', description: 'JSON worker layout', type: 'json', source: 'database', value: '{"listing":oops', warning: 'Giá trị đã lưu không hợp lệ.' });
 const secureSettings = await run('secure-settings', await load('views/settings.js'), { params: {}, query: {} });
 assert.match(secureSettings, /telegram\.owner_user_id/);
 assert.match(secureSettings, /URL đã lưu không hợp lệ/);
 assert.match(secureSettings, /role="alert"/);
+assert.ok(secureSettings.includes('{&quot;listing&quot;:oops'), 'invalid JSON remains editable as its stored raw text');
+assert.match(secureSettings, /Giá trị đã lưu không hợp lệ/);
 assert.ok(!secureSettings.includes('<b>unsafe</b>'), 'URL warnings are escaped');
 assert.match(secureSettings, /value="https:\/\/api.telegram.org"/);
 settingsSample.data.settings.find(r => r.key === 'telegram.api_base').warning = null;
