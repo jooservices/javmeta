@@ -193,7 +193,7 @@ final class CrawlStatsRollup
     {
         $moment = CarbonImmutable::instance($moment);
 
-        return DB::connection()->getDriverName() === 'pgsql' ? $moment->utc()->format('Y-m-d H:i:sP') : $moment;
+        return DB::connection()->getDriverName() === 'pgsql' ? $moment->utc()->format('Y-m-d H:i:s.uP') : $moment;
     }
 
     private function hourExpression(string $column, bool $withTimeZone = true): string

@@ -63,7 +63,7 @@ final class PublishMetricsCommand extends Command
         try {
             $statsSampler->sample();
         } catch (Throwable $exception) {
-            Log::warning('Crawl stats sampling failed.', ['exception' => $exception::class]);
+            Log::warning('Crawl stats sampling failed.', ['exception' => $exception::class, 'message' => $exception->getMessage()]);
         }
 
         if (! $client->enabled()) {
