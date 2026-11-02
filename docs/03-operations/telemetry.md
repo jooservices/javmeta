@@ -66,6 +66,12 @@ environment.
 | `javmeta_observations_1d` | — | Movie observations from the previous day. |
 | `javmeta_failed_jobs` | — | Failed queue jobs. |
 | `javmeta_failed_jobs_1h` | — | Queue jobs that failed in the previous hour. |
+| `javmeta_report_sent_total` | `result` | Cumulative periodic-report sends (`sent` or `failed`) since the shared-cache counter was created. |
+| `javmeta_report_last_sent_timestamp_seconds` | — | Unix timestamp, in seconds, of the latest successful Telegram report; `0` means none has succeeded yet. |
+| `javmeta_node_cpu_percent` | `node` | Latest per-node CPU utilization in percent, sampled from `/proc/stat` deltas. |
+| `javmeta_node_mem_available_bytes` | `node` | Latest per-node available memory in bytes from `/proc/meminfo`. |
+| `javmeta_node_disk_used_percent` | `node` | Latest used space percent on the configured application volume. |
+| `javmeta_workers` | `node`, `lane`, `state` | Current Horizon worker process count; `lane` is `direct` or `browser`, `state` is `busy`, `idle` or `total`, unit is worker processes. |
 | `javmeta_dep_up` | `dependency` | Availability of PostgreSQL, Elasticsearch, OpenObserve, and MongoDB (`1` up, `0` down). |
 | `javmeta_postgres_connections_used` | - | Active PostgreSQL sessions across the instance. |
 | `javmeta_postgres_connections_max` | - | Configured PostgreSQL max_connections. |
@@ -117,6 +123,18 @@ durations recorded in the previous minute by `queue.browser_inflight` slots and
 60 seconds. The attempt counter is a one-minute gauge grouped by source, method
 and outcome. Preference points use source labels only; per-host state stays in
 the shared cache to keep metric cardinality bounded.
+
+`node:sample` samples CPU deltas, load, available memory, application-volume
+usage and the local Horizon process list each minute. The primary runs it from
+the scheduler; each worker runs the installed node-sample systemd timer. Samples
+and busy markers are stored in shared cache with a three-hour sample lifetime
+and expiring job markers. `JobProcessing` marks a PID busy; `JobProcessed` and
+`JobFailed` clear it. `obs:publish-metrics` reads the shared samples and emits
+the latest values. `php artisan node:sample` prints a node's current sample;
+`php artisan javmeta:hourly-report --dry-run` renders a live report without
+sending or contacting OpenObserve. Browser-host CPU/RAM/disk and Chrome counts
+require the optional `report.browser_stats_url`; health probes still report
+service availability if those host stats are not configured.
 
 The `kind=queue_reclaimed_without_start` series on `javmeta_crawl_events_5m`
 counts stale queue claims returned to pending before a worker started them.

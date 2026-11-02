@@ -73,6 +73,26 @@ final class TelegramAlertNotifierTest extends TestCase
         self::assertStringContainsString('"chat_id":"42"', $body);
     }
 
+    public function test_periodic_report_keeps_its_existing_prefix(): void
+    {
+        config([
+            'javmeta_alerts.telegram.bot_token' => 'tok',
+            'javmeta_alerts.telegram.chat_id' => '42',
+            'javmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
+            'laravel-notifications.channels.telegram.bot_token' => 'tok',
+            'laravel-notifications.channels.telegram.chat_id' => '42',
+            'laravel-notifications.channels.telegram.api_base' => 'https://api.telegram.org',
+        ]);
+        ClientBuilder::fake()->respond('POST', '*', (new TestResponseSequence())->push(TestResponse::json(['ok' => true])));
+        $client = ClientBuilder::create()->withBaseUri('https://api.telegram.org/')->build();
+
+        (new TelegramAlertNotifier($client))->deliver('📊 [XCrawler] Report', 'Window data', ['plain_report' => true]);
+
+        $payload = json_decode((string) ClientBuilder::recorded()[0]->request->getBody(), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame("📊 [XCrawler] Report\nWindow data", $payload['text'] ?? null);
+        self::assertStringNotContainsString('[XCrawler] 📊', (string) ($payload['text'] ?? ''));
+    }
+
     /**
      * A recovery keeps its resolved state and informational severity in the Telegram subject.
      */

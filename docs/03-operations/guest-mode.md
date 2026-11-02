@@ -97,6 +97,8 @@ session or API credential.
 | `GET, HEAD` | `ui-admin/notifications/{key}/revisions` | Login required | Requires an authenticated super-administrator; returns private template revision history. |
 | `POST` | `ui-admin/notifications/{key}/revisions/{revision}/restore` | Login required | Requires an authenticated super-administrator and restores a selected revision. |
 | `GET, HEAD` | `ui-admin/report/{type}` | Login required | Requires an authenticated super-administrator; returns reports. |
+| `GET, HEAD` | `ui-admin/report/periodic` | Login required | Requires an authenticated super-administrator; returns the periodic report preview and history. |
+| `POST` | `ui-admin/report/periodic/send-now` | Login required | Requires an authenticated super-administrator and CSRF token. |
 | `GET, HEAD` | `ui-admin/settings` | Login required | Requires an authenticated super-administrator; may return settings values. |
 | `PUT` | `ui-admin/settings` | Login required | Requires an authenticated super-administrator and changes settings. |
 | `GET, HEAD` | `ui-api/{path}` | Guest allowed | Read-only bridge with a strict public catalog allow-list, field redaction, per-IP rate limiting, and `noindex` headers. |

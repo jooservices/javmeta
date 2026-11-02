@@ -8,6 +8,12 @@ The UI is plain ES modules under `public/ui`, served at `/app` with static files
 
 Guests see a read-only banner, public navigation, and sign-in prompts for saved searches and owner-only pages. Personal marks, on-disk status, download controls, library details, signed media links, settings, admin screens, and the operations dashboard stay private. The `/api/v1/*` API-key contract is unchanged.
 
+The owner-only **Cài đặt → Báo cáo** page uses `/ui-admin/report/periodic` for
+live preview/history and `/ui-admin/report/periodic/send-now` for a one-time
+Telegram send. The periodic report itself is English; controls and help text are
+Vietnamese. The page saves database-backed report settings and shows load, error,
+empty-history and send-result states.
+
 The current NAV exposes Discover, Tìm kiếm, Thống kê; Phim, Diễn viên, Hồ sơ diễn viên, Mới cập nhật, Thể loại, Maker, Series, Label, Năm, Lịch phát hành; Yêu thích, Xem sau, Đã xem, Theo dõi, Thư viện, Tải về; Crawl & nguồn, Vận hành (Command Center), Quản trị and Cài đặt. The owner-only Cài đặt page links to **Thông báo**, where notification templates, previews and revision history are managed. [The user index](../user-guide/README.md) links each topic and every settings group. Downloads and file serving default off, but the download page exists and explains the disabled state.
 
 The owner-only [Thông báo](../user-guide/notifications.md) subpage lists all registered notification types. Template text is stored in the database, rendered with sample values for preview and can be tested against the owner's Telegram; guests cannot read these routes.

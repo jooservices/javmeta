@@ -13,6 +13,7 @@ import crawl from './views/crawl.js';
 import search from './views/search.js';
 import settings from './views/settings.js';
 import notifications from './views/notifications.js';
+import report from './views/report.js';
 import catalog from './views/catalog.js';
 import calendar from './views/calendar.js';
 import adminView from './views/admin.js';
@@ -49,6 +50,7 @@ const ROUTES = [
   [/^crawl$/, crawl, 'crawl'],
   [/^settings\/notifications$/, notifications, 'settings'],
   [/^settings$/, settings, 'settings'],
+  [/^settings\/report$/, report, 'settings'],
 ];
 
 const NAV = [
