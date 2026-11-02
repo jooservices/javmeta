@@ -93,6 +93,15 @@ final class NotificationPolicyDispatcherTest extends TestCase
         self::assertFalse($warning['allowed']);
         self::assertSame('quiet_mode', $warning['reason']);
         self::assertSame('crawl.success_rate_low', app(NotificationPolicyService::class)->openWarnings()[0]['key']);
+
+        CarbonImmutable::setTestNow(CarbonImmutable::now()->addMinutes(60));
+        $escalated = $dispatcher->prepare('crawl.success_rate_low', [
+            'rule' => 'success_rate',
+            'value' => 82,
+            'threshold' => 85,
+        ]);
+        self::assertTrue($escalated['allowed']);
+        self::assertSame('critical', $escalated['tier']);
     }
 
     public function test_resolved_is_sent_only_after_a_critical_message_for_the_same_cause(): void
@@ -159,5 +168,30 @@ final class NotificationPolicyDispatcherTest extends TestCase
         $repeat = $dispatcher->prepare('node.joined', $context);
         self::assertFalse($repeat['allowed']);
         self::assertSame('duplicate_event', $repeat['reason']);
+    }
+
+    public function test_egress_notice_uses_a_per_node_cooldown_and_can_repeat_after_six_hours(): void
+    {
+        $service = app(NotificationPolicyService::class);
+        $notice = $service->get('egress.changed');
+        self::assertNotNull($notice);
+        $service->save('egress.changed', [...$notice, 'enabled' => true], null);
+
+        $dispatcher = app(NotificationPolicyDispatcher::class);
+        $first = $dispatcher->prepare('egress.changed', ['node' => 'worker-1', 'current_ip' => '203.0.113.10']);
+        self::assertTrue($first['allowed']);
+        $dispatcher->recordSent($first);
+
+        $sameNode = $dispatcher->prepare('egress.changed', ['node' => 'worker-1', 'current_ip' => '203.0.113.11']);
+        self::assertFalse($sameNode['allowed']);
+        self::assertSame('cooldown', $sameNode['reason']);
+
+        $otherNode = $dispatcher->prepare('egress.changed', ['node' => 'worker-2', 'current_ip' => '203.0.113.12']);
+        self::assertTrue($otherNode['allowed']);
+        $dispatcher->recordSent($otherNode);
+
+        CarbonImmutable::setTestNow(CarbonImmutable::now()->addMinutes(360));
+        $afterCooldown = $dispatcher->prepare('egress.changed', ['node' => 'worker-1', 'current_ip' => '203.0.113.13']);
+        self::assertTrue($afterCooldown['allowed']);
     }
 }

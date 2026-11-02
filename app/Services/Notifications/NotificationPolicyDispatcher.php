@@ -48,39 +48,37 @@ final class NotificationPolicyDispatcher
 
             $security = str_starts_with($policyKey, 'security.') || ($context['security_event'] ?? false) === true;
             $quiet = $this->quietMode();
-            if ($quiet && ! $security && (! $isResolved && $policy['tier'] !== 'critical' || $isResolved)) {
-                if (! $isResolved && ($context['notification_digest'] ?? false) !== true) {
-                    $this->policies->touchCause($policyKey, $causeKey, $context);
+            if ($isResolved) {
+                if ($quiet && ! $security) {
+                    return $this->suppress($key, $policyKey, $causeKey, 'quiet_mode', true);
                 }
 
-                return $this->suppress($key, $policyKey, $causeKey, 'quiet_mode', $isResolved);
-            }
-            if ($quiet && $security && ! $isResolved) {
-                $policy['tier'] = 'critical';
-            }
-
-            if ($isResolved) {
                 return $this->prepareResolved($key, $policyKey, $causeKey, $policy);
             }
 
             $event = $this->policies->touchCause($policyKey, $causeKey, $context);
             $digest = ($context['notification_digest'] ?? false) === true;
             $tier = (string) $policy['tier'];
+            if ($quiet && $security) {
+                $tier = 'critical';
+            }
+            if ($tier === 'warning' && ! $digest) {
+                $openedAt = CarbonImmutable::parse((string) $event->first_seen_at);
+                if ($policy['escalation_minutes'] <= 0 || $openedAt->greaterThan(now()->subMinutes($policy['escalation_minutes']))) {
+                    return $this->suppress($key, $policyKey, $causeKey, $quiet && ! $security ? 'quiet_mode' : 'warning_digest', false);
+                }
+                $tier = 'critical';
+            } elseif ($tier === 'info' && ! $digest) {
+                return $this->suppress($key, $policyKey, $causeKey, $quiet && ! $security ? 'quiet_mode' : 'digest_only', false);
+            }
+            if ($quiet && ! $security && $tier !== 'critical') {
+                return $this->suppress($key, $policyKey, $causeKey, 'quiet_mode', false);
+            }
             if ($digest) {
                 return $this->reserveDecision($key, $policyKey, $causeKey, $tier, false);
             }
 
-            if ($tier === 'warning') {
-                $openedAt = CarbonImmutable::parse((string) $event->first_seen_at);
-                if ($policy['escalation_minutes'] <= 0 || $openedAt->greaterThan(now()->subMinutes($policy['escalation_minutes']))) {
-                    return $this->suppress($key, $policyKey, $causeKey, 'warning_digest', false);
-                }
-                $tier = 'critical';
-            } elseif ($tier === 'info') {
-                return $this->suppress($key, $policyKey, $causeKey, 'digest_only', false);
-            }
-
-            if ($tier === 'notice' && $event->notice_sent_at !== null) {
+            if ($tier === 'notice' && $event->notice_sent_at !== null && ! $this->usesRecurringNoticeCooldown($policyKey)) {
                 return $this->suppress($key, $policyKey, $causeKey, 'duplicate_event', false);
             }
             if ($this->isCoolingDown($event, (int) $policy['cooldown_minutes'])) {
@@ -228,6 +226,10 @@ final class NotificationPolicyDispatcher
     /** @param array<string, mixed> $context */
     private function causeKey(array $context, string $key): string
     {
+        if ($this->usesRecurringNoticeCooldown($key) && is_string($context['node'] ?? null) && $context['node'] !== '') {
+            return $this->hashCause($key, 'node:' . $context['node']);
+        }
+
         foreach (['notification_cause', 'cause_key', 'rule', 'debounce_key'] as $field) {
             if (is_string($context[$field] ?? null) && $context[$field] !== '') {
                 return $this->hashCause($key, $context[$field]);
@@ -235,6 +237,11 @@ final class NotificationPolicyDispatcher
         }
 
         return $this->hashCause($key, $key);
+    }
+
+    private function usesRecurringNoticeCooldown(string $key): bool
+    {
+        return in_array($key, ['network.egress_ip_changed', 'egress.changed'], true);
     }
 
     private function hashCause(string $key, string $cause): string
