@@ -38,6 +38,18 @@ Cửa sổ dùng để chia nhịp request của mỗi nguồn.
 
 Số nguyên; từ 1 đến 3600. Mã mục: `queue.pacing_horizon_seconds`.
 
+### Bật chẩn đoán feed pool
+
+Ghi số liệu budget, lượt chạy và nguyên nhân dừng của feed pool vào Redis.
+
+Bật/tắt. Mã mục: `queue.feed_diagnostics.enabled`.
+
+### Thời hạn lưu chẩn đoán feed pool (phút)
+
+Số phút giữ bộ đếm feed pool trong Redis để xuất metric và xem báo cáo.
+
+Số nguyên; từ 3 đến 1440. Mã mục: `queue.feed_diagnostics.retention_minutes`.
+
 ### Khoảng nghỉ tối đa khi bị chặn (giây)
 
 Khi một nguồn bị chặn, khoảng nghỉ giữa các request tăng gấp đôi đến mức này.

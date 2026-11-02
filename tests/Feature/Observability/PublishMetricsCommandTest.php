@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Redis;
+use Carbon\CarbonImmutable;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Testing\FakeConfigStore;
 use Mockery;
@@ -73,6 +74,72 @@ final class PublishMetricsCommandTest extends TestCase
                 && str_contains($request->body(), 'javmeta_source_gap_seconds')
                 && ! str_contains($request->body(), 'javmeta_source_circuit_state')
                 && ! str_contains($request->body(), 'javmeta_source_consecutive_failures');
+        });
+    }
+
+    public function test_command_publishes_feed_pool_diagnostics_metrics_from_the_previous_minute(): void
+    {
+        config()->set([
+            'cache.default' => 'array',
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.email' => 'root@javmeta.local',
+            'openobserve.password' => 'secret',
+            'openobserve.timeout' => 1,
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
+        $this->freezeTime();
+        $minute = CarbonImmutable::now()->startOfMinute()->subMinute();
+        $key = 'javmeta:feed-pool:diagnostics:' . $minute->timestamp;
+        $redis = Mockery::mock();
+        $redis->shouldReceive('smembers')->once()->with(HorizonLayoutSnapshot::NODE_REGISTRY_KEY)->andReturn([]);
+        $redis->shouldReceive('hgetall')->once()->with($key)->andReturn([
+            's|ffjav|budget' => 60,
+            's|ffjav|started' => 33,
+            's|ffjav|waiting' => 2,
+            's|ffjav|dispatched' => 5,
+            'q|listing|direct|depth' => 1,
+            'run_ms_total' => 80,
+            'run_count' => 2,
+            'claim_rows_examined' => 4,
+        ]);
+        Redis::shouldReceive('connection')->andReturn($redis);
+
+        $this->artisan('obs:publish-metrics')->assertSuccessful();
+
+        Http::assertSent(static function ($request): bool {
+            $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [];
+            $metricValue = static function (string $name, array $expectedLabels) use ($metrics): ?float {
+                foreach ($metrics as $metric) {
+                    if (($metric['name'] ?? null) !== $name) {
+                        continue;
+                    }
+                    foreach ($metric['gauge']['dataPoints'] ?? [] as $point) {
+                        $labels = [];
+                        foreach ($point['attributes'] ?? [] as $attribute) {
+                            $labels[$attribute['key']] = $attribute['value']['stringValue'] ?? null;
+                        }
+                        foreach ($expectedLabels as $key => $value) {
+                            if (($labels[$key] ?? null) !== $value) {
+                                continue 2;
+                            }
+                        }
+
+                        return is_numeric($point['asDouble'] ?? null) ? (float) $point['asDouble'] : null;
+                    }
+                }
+
+                return null;
+            };
+
+            return $metricValue('javmeta_feed_source_budget', ['source_slug' => 'ffjav']) === 60.0
+                && $metricValue('javmeta_feed_source_started', ['source_slug' => 'ffjav']) === 33.0
+                && $metricValue('javmeta_feed_source_waiting', ['source_slug' => 'ffjav']) === 2.0
+                && $metricValue('javmeta_feed_source_dispatched_1m', ['source_slug' => 'ffjav']) === 5.0
+                && $metricValue('javmeta_feed_stop_reason_1m', ['queue' => 'listing', 'lane' => 'direct', 'reason' => 'depth']) === 1.0
+                && $metricValue('javmeta_feed_run_ms', []) === 40.0
+                && $metricValue('javmeta_feed_claim_rows_examined_1m', []) === 4.0;
         });
     }
 
@@ -200,9 +267,10 @@ final class PublishMetricsCommandTest extends TestCase
         ];
         $redis = Mockery::mock();
         $redis->shouldReceive('smembers')->once()->with(HorizonLayoutSnapshot::NODE_REGISTRY_KEY)->andReturn(['unavailable-node', 'worker-node-one']);
+        $redis->shouldReceive('hgetall')->once()->andReturn([]);
         $redis->shouldReceive('get')->once()->with(HorizonLayoutSnapshot::key('unavailable-node'))->andThrow(new \RuntimeException('Node snapshot unavailable.'));
         $redis->shouldReceive('get')->once()->with(HorizonLayoutSnapshot::key('worker-node-one'))->andReturn(json_encode(['snapshot' => $snapshot], JSON_THROW_ON_ERROR));
-        Redis::shouldReceive('connection')->once()->with('default')->andReturn($redis);
+        Redis::shouldReceive('connection')->twice()->with('default')->andReturn($redis);
 
         $this->artisan('obs:publish-metrics')->assertSuccessful();
 

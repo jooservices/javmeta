@@ -68,6 +68,11 @@ return [
     /** Seconds of work a source may have queued at once; with its gap this gives its per-minute budget (floor(horizon / gap)). */
     'pacing_horizon_seconds' => 60,
 
+    'feed_diagnostics' => [
+        'enabled' => true,
+        'retention_minutes' => 120,
+    ],
+
     /** Highest gap (seconds) the throttle may reach after rate limits, blocks and challenges. */
     'gap_blocked_max_seconds' => 600,
 

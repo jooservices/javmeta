@@ -55,5 +55,12 @@ final class MetricStreams
         'horizon_workers' => self::PREFIX . 'horizon_workers',
         'search_embedding_backfill_missing' => self::PREFIX . 'search_embedding_backfill_missing',
         'search_embedding_backfill_fixed' => self::PREFIX . 'search_embedding_backfill_fixed',
+        'feed_source_budget' => self::PREFIX . 'feed_source_budget',
+        'feed_source_started' => self::PREFIX . 'feed_source_started',
+        'feed_source_waiting' => self::PREFIX . 'feed_source_waiting',
+        'feed_source_dispatched_1m' => self::PREFIX . 'feed_source_dispatched_1m',
+        'feed_stop_reason_1m' => self::PREFIX . 'feed_stop_reason_1m',
+        'feed_run_ms' => self::PREFIX . 'feed_run_ms',
+        'feed_claim_rows_examined_1m' => self::PREFIX . 'feed_claim_rows_examined_1m',
     ];
 }

@@ -55,4 +55,15 @@ final class SettingsRegistryTest extends TestCase
             self::assertArrayHasKey($key, $definitions);
         }
     }
+
+    public function test_feed_diagnostics_settings_are_registered_and_enabled_by_default(): void
+    {
+        $definitions = config('javmeta_settings.definitions');
+
+        self::assertArrayHasKey('queue.feed_diagnostics.enabled', $definitions);
+        self::assertArrayHasKey('queue.feed_diagnostics.retention_minutes', $definitions);
+        self::assertTrue(config('javmeta_queues.feed_diagnostics.enabled'));
+        self::assertSame(120, config('javmeta_queues.feed_diagnostics.retention_minutes'));
+        self::assertSame(3, $definitions['queue.feed_diagnostics.retention_minutes']['min']);
+    }
 }
