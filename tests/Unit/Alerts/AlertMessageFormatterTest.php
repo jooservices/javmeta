@@ -19,7 +19,7 @@ final class AlertMessageFormatterTest extends TestCase
         ], true);
 
         self::assertSame('info', $message['context']['severity']);
-        self::assertStringContainsString('không còn việc crawl đến hạn', $message['body']);
-        self::assertStringNotContainsString('0.0 giây', $message['body']);
+        self::assertStringContainsString('No crawl work is due right now', $message['body']);
+        self::assertStringNotContainsString('0.0 seconds', $message['body']);
     }
 }

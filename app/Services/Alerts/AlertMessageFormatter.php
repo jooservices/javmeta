@@ -13,7 +13,7 @@ final class AlertMessageFormatter
     public function format(string $rule, array $condition, bool $resolved = false): array
     {
         $label = $this->label($rule);
-        $subject = $resolved ? 'Đã ổn định: ' . $label : $label;
+        $subject = $label;
         $body = $this->body($rule, $condition, $resolved);
         $context = $condition['context'] + [
             'alert_state' => $resolved ? 'resolved' : 'open',
@@ -29,25 +29,25 @@ final class AlertMessageFormatter
     private function label(string $rule): string
     {
         if (str_starts_with($rule, 'source_success_rate:')) {
-            return 'Nguồn ' . substr($rule, strlen('source_success_rate:')) . ' tải chưa tốt';
+            return 'Source ' . substr($rule, strlen('source_success_rate:')) . ' is performing poorly';
         }
         if (str_starts_with($rule, 'backlog_depth:')) {
-            return 'Nguồn ' . substr($rule, strlen('backlog_depth:')) . ' sắp hết việc đến hạn';
+            return 'Source ' . substr($rule, strlen('backlog_depth:')) . ' is running out of due work';
         }
 
         return match ($rule) {
-            'success_rate' => 'Tỷ lệ crawl thành công thấp',
-            'blocked_ratio' => 'Tỷ lệ yêu cầu bị chặn cao',
-            'postgres_connections' => 'Kết nối cơ sở dữ liệu cao',
-            'dispatch_age' => 'Hàng đợi crawl chờ điều phối',
-            default => 'Cảnh báo vận hành',
+            'success_rate' => 'Crawl success rate is low',
+            'blocked_ratio' => 'Blocked request ratio is high',
+            'postgres_connections' => 'Database connections are high',
+            'dispatch_age' => 'Crawl dispatch is delayed',
+            default => 'Operational alert',
         };
     }
 
     /** @param array{severity: string, value: float|int, threshold: float|int, context: array<string, mixed>} $condition */
     private function body(string $rule, array $condition, bool $resolved): string
     {
-        $prefix = $resolved ? 'Hiện đã ổn định. ' : '';
+        $prefix = $resolved ? 'Back to normal. ' : '';
         $value = $condition['value'];
         $threshold = $condition['threshold'];
 
@@ -55,40 +55,40 @@ final class AlertMessageFormatter
             $window = max(1, (int) ($condition['context']['window_minutes'] ?? config('javmeta_alerts.window_minutes', 15)));
             $rate = $this->number($value) . '%';
             $limit = $this->number($threshold) . '%';
-            $name = $rule === 'blocked_ratio' ? 'Bị chặn' : 'Thành công';
-            $comparison = $rule === 'blocked_ratio' ? 'mức tối đa' : 'mức tối thiểu';
-            $body = "{$prefix}{$name}: {$rate} ({$comparison} {$limit}) trong {$window} phút.";
+            $name = $rule === 'blocked_ratio' ? 'Blocked' : 'Success';
+            $comparison = $rule === 'blocked_ratio' ? 'maximum' : 'minimum';
+            $body = "{$prefix}{$name}: {$rate} ({$comparison} {$limit}) over the last {$window} minutes.";
             $sources = array_values(array_filter(array_map('strval', (array) ($condition['context']['top_sources'] ?? []))));
             if ($sources !== []) {
-                $body .= ' Nguồn cần chú ý: ' . implode(', ', $sources) . '.';
+                $body .= ' Sources to watch: ' . implode(', ', $sources) . '.';
             }
 
             return $body;
         }
 
         if ($rule === 'postgres_connections') {
-            return "{$prefix}Hiện có {$this->number($value)} kết nối PostgreSQL (ngưỡng {$this->number($threshold)}).";
+            return "{$prefix}There are currently {$this->number($value)} PostgreSQL connections (threshold {$this->number($threshold)}).";
         }
 
         if ($rule === 'dispatch_age') {
             if ((bool) ($condition['context']['idle'] ?? false)) {
-                return "{$prefix}Hiện không còn việc crawl đến hạn.";
+                return "{$prefix}No crawl work is due right now.";
             }
 
             if ((bool) ($condition['context']['missing'] ?? false)) {
-                return "{$prefix}Còn việc đến hạn nhưng chưa ghi nhận lượt điều phối mới (ngưỡng {$this->number($threshold)} giây).";
+                return "{$prefix}Work is due but no new dispatch has been recorded (threshold {$this->number($threshold)} seconds).";
             }
 
-            return "{$prefix}Lượt điều phối gần nhất cách đây {$this->number($value)} giây (ngưỡng {$this->number($threshold)} giây).";
+            return "{$prefix}The last dispatch was {$this->number($value)} seconds ago (threshold {$this->number($threshold)} seconds).";
         }
 
         if (str_starts_with($rule, 'backlog_depth:')) {
             $source = substr($rule, strlen('backlog_depth:'));
 
-            return "{$prefix}Nguồn {$source} còn {$this->number($value)} việc đến hạn (mức tối thiểu {$this->number($threshold)}).";
+            return "{$prefix}Source {$source} has {$this->number($value)} due items (minimum {$this->number($threshold)}).";
         }
 
-        return $prefix . 'Giá trị hiện tại ' . $this->number($value) . ' (ngưỡng ' . $this->number($threshold) . ').';
+        return $prefix . 'Current value ' . $this->number($value) . ' (threshold ' . $this->number($threshold) . ').';
     }
 
     private function number(float|int $value): string
