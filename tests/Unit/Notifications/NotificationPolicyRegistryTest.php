@@ -16,6 +16,32 @@ final class NotificationPolicyRegistryTest extends TestCase
         $policies = (new NotificationPolicyRegistry(new NotificationRegistry()))->all();
 
         self::assertSame(array_keys($templates), array_keys($policies));
+        self::assertSame([], array_values(array_diff([
+            'deploy.ok',
+            'deploy.rolled_back',
+            'node.joined',
+            'node.lost',
+            'egress.changed',
+            'egress.shared',
+            'retry.permanent_failures',
+            'jobs.failed_spike',
+            'jobs.deadlock_burst',
+            'browser.saturated',
+            'browser.down',
+            'sentry.new_critical',
+            'source.exhausted',
+            'report.daily',
+            'backup.ok',
+            'backup.restore_test',
+            'security.api_key_created',
+            'security.api_key_revoked',
+            'security.login_failures',
+            'security.guest_mode_toggled',
+            'security.setting_changed',
+            'startup.blocked',
+            'crawl.success_rate_low.movies',
+            'crawl.success_rate_low.performers',
+        ], array_keys($policies))));
         foreach ($policies as $key => $policy) {
             self::assertContains($policy['tier'], ['critical', 'warning', 'notice', 'info'], $key);
             self::assertGreaterThanOrEqual(0, $policy['cooldown_minutes'], $key);
@@ -38,6 +64,13 @@ final class NotificationPolicyRegistryTest extends TestCase
         self::assertSame(['warning', 60], [$policies['database.connections_high']['tier'], $policies['database.connections_high']['escalation_minutes']]);
         self::assertSame(['warning', 60], [$policies['sentry.new_critical_group']['tier'], $policies['sentry.new_critical_group']['escalation_minutes']]);
         self::assertSame(['critical', 120], [$policies['resource.disk_critical']['tier'], $policies['resource.disk_critical']['cooldown_minutes']]);
+        self::assertSame(['warning', 60, false, true, true], [
+            $policies['queue.retry_permanent_failures']['tier'],
+            $policies['queue.retry_permanent_failures']['escalation_minutes'],
+            $policies['queue.retry_permanent_failures']['include_periodic_report'],
+            $policies['queue.retry_permanent_failures']['include_daily_report'],
+            $policies['queue.retry_permanent_failures']['send_resolved'],
+        ]);
         self::assertSame('warning', $policies['crawl.success_rate_low.performers']['tier']);
         self::assertSame('info', $policies['report.periodic']['tier']);
         self::assertSame('info', $policies['report.daily']['tier']);

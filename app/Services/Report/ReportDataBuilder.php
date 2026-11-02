@@ -31,6 +31,12 @@ final class ReportDataBuilder
         $previous = ReportSnapshot::query()->where('report_type', 'periodic')->where('result', 'sent')->orderByDesc('id')->first();
         $previousValue = $previous?->getAttribute('raw_numbers');
         $previousRaw = is_array($previousValue) ? $previousValue : null;
+        $periodicDigestSince = $previous?->created_at;
+        if (! $periodicDigestSince instanceof \DateTimeInterface) {
+            $periodicDigestSince = $start;
+        }
+        $daily = $windowMinutes !== null;
+        $digestSince = $daily ? $start : $periodicDigestSince;
         $raw = [
             'generated_at' => $at->toIso8601String(),
             'window_minutes' => $minutes,
@@ -52,8 +58,17 @@ final class ReportDataBuilder
         if (in_array('sources', $this->sections(), true)) {
             $raw['sources'] = $this->sources($start, $at);
         }
-        $raw['warnings'] = $this->notificationPolicies->digestItems($windowMinutes !== null, null, true);
-        $raw['deploys'] = $this->deploys($start, $at);
+        $raw['warnings'] = $this->notificationPolicies->digestItems($daily, null, true);
+        $digestItems = $this->notificationPolicies->digestItems($daily, $digestSince, false, $at);
+        $raw['notification_events'] = array_values(array_filter(
+            $digestItems,
+            static fn(array $item): bool => in_array($item['tier'], ['info', 'notice'], true)
+                && ! in_array($item['key'], ['deploy.ok', 'deploy.success'], true),
+        ));
+        $raw['deploys'] = $this->deploys(array_values(array_filter(
+            $digestItems,
+            static fn(array $item): bool => in_array($item['key'], ['deploy.ok', 'deploy.success'], true),
+        )));
         $raw['backup'] = $this->backupStatus($at);
 
         $nodeSamples = $this->samples->all();
@@ -65,7 +80,7 @@ final class ReportDataBuilder
             max(60, (int) config('javmeta_report.sample_max_age_seconds', 180)),
         );
         if (in_array('fleet', $this->sections(), true)) {
-            $raw['fleet'] = $this->fleet($raw['nodes'], $start);
+            $raw['fleet'] = $this->fleet($raw['nodes'], $start, $at);
         }
         if (in_array('workers', $this->sections(), true)) {
             $raw['workers'] = $raw['nodes'];
@@ -196,7 +211,7 @@ final class ReportDataBuilder
 
         $exhausted = CrawlQueue::query()
             ->where('status', CrawlQueue::STATUS_FAILED)
-            ->where('last_failed_at', '>=', $start)
+            ->whereBetween('last_failed_at', [$start, $at])
             ->whereColumn('attempts', '>=', 'max_attempts')
             ->select('source_slug')
             ->selectRaw('COUNT(*) AS exhausted_count')
@@ -210,25 +225,20 @@ final class ReportDataBuilder
         return ['blocked' => array_map('strval', $blocked), 'exhausted' => array_map('strval', $exhausted)];
     }
 
-    /** @return list<array{at: string, release: string, nodes: string}> */
-    private function deploys(CarbonImmutable $start, CarbonImmutable $at): array
+    /** @param list<array<string, mixed>> $events
+     *  @return list<array{at: string, release: string, nodes: string}>
+     */
+    private function deploys(array $events): array
     {
-        if (! Schema::hasTable('notification_policy_events')) {
-            return [];
-        }
-        $rows = DB::table('notification_policy_events')->whereIn('notification_key', ['deploy.success', 'deploy.ok'])
-            ->whereBetween('first_seen_at', [$start, $at])->orderBy('first_seen_at')->limit(20)
-            ->get(['first_seen_at', 'context']);
-
-        return $rows->map(static function (object $row): array {
-            $context = is_array($row->context) ? $row->context : json_decode((string) $row->context, true);
+        return array_map(static function (array $event): array {
+            $context = is_array($event['context'] ?? null) ? $event['context'] : [];
 
             return [
-                'at' => (string) $row->first_seen_at,
-                'release' => is_array($context) && is_scalar($context['release'] ?? null) ? (string) $context['release'] : 'release',
-                'nodes' => is_array($context) && is_scalar($context['nodes'] ?? null) ? (string) $context['nodes'] : 'fleet',
+                'at' => (string) ($event['opened_at'] ?? ''),
+                'release' => is_scalar($context['release'] ?? null) ? (string) $context['release'] : 'release',
+                'nodes' => is_scalar($context['nodes'] ?? null) ? (string) $context['nodes'] : 'fleet',
             ];
-        })->all();
+        }, array_slice($events, 0, 20));
     }
 
     /** @return array{status: string, at: string|null} */
@@ -252,10 +262,10 @@ final class ReportDataBuilder
     /** @param array<string, array<string, mixed>> $nodes
      *  @return array{nodes_running: int, failed_jobs: int}
      */
-    private function fleet(array $nodes, CarbonImmutable $start): array
+    private function fleet(array $nodes, CarbonImmutable $start, CarbonImmutable $at): array
     {
         $failedJobs = Schema::hasTable('failed_jobs')
-            ? (int) DB::table('failed_jobs')->where('failed_at', '>=', $start)->count()
+            ? (int) DB::table('failed_jobs')->whereBetween('failed_at', [$start, $at])->count()
             : 0;
 
         return ['nodes_running' => count($nodes), 'failed_jobs' => $failedJobs];

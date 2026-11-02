@@ -11,12 +11,18 @@ export default {
     try { rows = (await admin(endpoint)).data || []; }
     catch (e) { error = e.message; }
     let quietHtml = '<div class="err" role="alert">Không tải được chế độ yên lặng.</div>';
+    let dailyScheduleHtml = '<div class="err" role="alert">Không tải được lịch báo cáo hằng ngày.</div>';
     try {
       const settings = (await admin('/ui-admin/settings')).data.settings || [];
       const quiet = settings.find(row => row.key === 'notifications.quiet_mode');
+      const dailyTime = settings.find(row => row.key === 'report.daily_time');
+      const dailyTimezone = settings.find(row => row.key === 'report.daily_timezone');
       quietHtml = quiet
         ? `<label class="sw"><input type="checkbox" data-quiet-mode ${quiet.value ? 'checked' : ''}><span>Chỉ gửi CRITICAL và sự kiện bảo mật</span></label><span class="muted" data-quiet-status aria-live="polite"></span>`
         : '<div class="err" role="alert">Chưa có cấu hình chế độ yên lặng.</div>';
+      dailyScheduleHtml = dailyTime && dailyTimezone
+        ? `<div class="bd"><label>Giờ gửi cục bộ<input type="time" data-daily-time value="${esc(dailyTime.value || '08:00')}"></label><label>Múi giờ IANA<input type="text" data-daily-timezone maxlength="64" value="${esc(dailyTimezone.value || 'America/Mexico_City')}"></label><button class="btn pri" data-action="save-daily-schedule">Lưu lịch</button><span class="muted" data-daily-schedule-status aria-live="polite"></span></div>`
+        : '<div class="err" role="alert">Chưa có cấu hình lịch báo cáo hằng ngày.</div>';
     } catch (e) { quietHtml = `<div class="err" role="alert">${esc(e.message)}</div>`; }
     const previews = await Promise.all([
       reportPreview('/ui-admin/report/periodic', 'Báo cáo định kỳ'),
@@ -26,7 +32,7 @@ export default {
       ? `<div class="panel"><div class="bd"><div class="err" role="alert">${esc(error)}</div><button class="btn" data-action="reload">Thử lại</button></div></div>`
       : rows.length === 0
         ? '<div class="panel"><div class="bd empty">Chưa có mẫu thông báo.</div></div>'
-        : `<section class="panel"><div class="hd"><h2>Chế độ yên lặng</h2><span class="sp"></span>${quietHtml}</div><div class="bd muted">WARNING chỉ nằm trong báo cáo; NOTICE được gửi theo từng sự kiện và cooldown.</div></section><section class="panel"><div class="hd"><h2>Xem trước báo cáo kế tiếp</h2></div><div class="bd notification-report-previews">${previews.join('')}</div></section><div class="notifications-layout"><section class="panel notifications-list"><div class="hd"><h2>Danh sách thông báo</h2><span class="chip">${rows.length}</span></div><div class="notifications-scroll"><table><thead><tr><th>Tên</th><th>Mục đích</th><th>Kênh</th><th>Bật</th><th>Tầng</th><th>Gửi gần nhất</th><th>Sửa gần nhất</th><th></th></tr></thead><tbody>${rows.map(row => `<tr><td>${esc(row.name)}</td><td>${esc(row.usage)}</td><td>${esc(row.channel)}</td><td>${row.enabled ? 'Bật' : 'Tắt'}</td><td>${esc(row.tier || row.default_severity)}</td><td>${esc(row.last_sent_at || 'Chưa gửi')}</td><td>${esc(row.updated_at || 'Mặc định')}</td><td><button class="btn sm" data-action="edit" data-key="${esc(row.key)}">Sửa</button></td></tr>`).join('')}</tbody></table></div></section><section class="panel notifications-editor"><div class="hd"><h2>Chỉnh sửa mẫu và chính sách</h2><span class="sp"></span><span class="muted" data-status></span></div><div class="bd" data-editor><div class="muted">Chọn một loại thông báo để chỉnh sửa.</div></div></section></div>`;
+        : `<section class="panel"><div class="hd"><h2>Chế độ yên lặng</h2><span class="sp"></span>${quietHtml}</div><div class="bd muted">WARNING chỉ nằm trong báo cáo; NOTICE được gửi theo từng sự kiện và cooldown.</div></section><section class="panel notification-daily-schedule"><div class="hd"><h2>Lịch báo cáo hằng ngày</h2></div>${dailyScheduleHtml}</section><section class="panel"><div class="hd"><h2>Xem trước báo cáo kế tiếp</h2></div><div class="bd notification-report-previews">${previews.join('')}</div></section><div class="notifications-layout"><section class="panel notifications-list"><div class="hd"><h2>Danh sách thông báo</h2><span class="chip">${rows.length}</span></div><div class="notifications-scroll"><table><thead><tr><th>Tên</th><th>Mục đích</th><th>Kênh</th><th>Bật</th><th>Tầng</th><th>Gửi gần nhất</th><th>Sửa gần nhất</th><th></th></tr></thead><tbody>${rows.map(row => `<tr><td>${esc(row.name)}</td><td>${esc(row.usage)}</td><td>${esc(row.channel)}</td><td>${row.enabled ? 'Bật' : 'Tắt'}</td><td>${esc(row.tier || row.default_severity)}</td><td>${esc(row.last_sent_at || 'Chưa gửi')}</td><td>${esc(row.updated_at || 'Mặc định')}</td><td><button class="btn sm" data-action="edit" data-key="${esc(row.key)}">Sửa</button></td></tr>`).join('')}</tbody></table></div></section><section class="panel notifications-editor"><div class="hd"><h2>Chỉnh sửa mẫu và chính sách</h2><span class="sp"></span><span class="muted" data-status></span></div><div class="bd" data-editor><div class="muted">Chọn một loại thông báo để chỉnh sửa.</div></div></section></div>`;
     return {
       html: `<div class="wrap">${head('Chính sách thông báo', 'Mẫu tiếng Anh và chính sách gửi được lưu trong cơ sở dữ liệu')}${content}</div>`,
       mount: root => mount(root),
@@ -124,6 +130,24 @@ function mount(root) {
     const button = event.target.closest('[data-action]');
     if (!button) return;
     const action = button.dataset.action;
+    if (action === 'save-daily-schedule') {
+      const message = root.querySelector('[data-daily-schedule-status]');
+      button.disabled = true;
+      if (message) message.textContent = 'Đang lưu…';
+      try {
+        const settings = {
+          'report.daily_time': root.querySelector('[data-daily-time]').value,
+          'report.daily_timezone': root.querySelector('[data-daily-timezone]').value.trim(),
+        };
+        await send('PUT', '/ui-admin/settings', { settings });
+        if (message) message.textContent = 'Đã lưu; lịch mới sẽ áp dụng mà không cần khởi động lại.';
+      } catch (error) {
+        const errors = error.body?.data?.errors;
+        const details = errors ? Object.values(errors).join(' · ') : error.message;
+        if (message) message.innerHTML = `<span class="err" role="alert">${esc(details)}</span>`;
+      } finally { button.disabled = false; }
+      return;
+    }
     if (action === 'edit') { await loadTemplate(button.dataset.key); return; }
     if (action === 'reload') { location.reload(); return; }
     if (action === 'reload-template') { await loadTemplate(selected); return; }

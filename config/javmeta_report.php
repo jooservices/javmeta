@@ -20,5 +20,5 @@ return [
     'sample_max_age_seconds' => 180,
     'node_volume_path' => '',
     'browser_stats_url' => '',
-    'template' => "{header}\n\n{movies}\n\n{performers}\n\n{crawl}\n\n{sources}\n{fleet}\n\n{workers}\n\n{servers}\n{services}\n\n{deploys}\n{backup}\n\n{warnings}",
+    'template' => "{header}\n\n{movies}\n\n{performers}\n\n{crawl}\n\n{sources}\n{fleet}\n\n{workers}\n\n{servers}\n{services}\n\n{notification_events}\n{deploys}\n{backup}\n{warnings}",
 ];

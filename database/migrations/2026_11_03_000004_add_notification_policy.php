@@ -79,6 +79,20 @@ return new class extends Migration {
                 'include_in_daily_report' => $definition['include_in_daily_report'],
                 'send_resolved' => $definition['send_resolved'],
             ]);
+
+            $templateId = DB::table('notification_templates')->where('key', $key)->value('id');
+            if ($templateId !== null) {
+                DB::table('notification_template_revisions')
+                    ->where('notification_template_id', $templateId)
+                    ->update([
+                        'tier' => $definition['tier'],
+                        'cooldown_minutes' => $definition['cooldown_minutes'],
+                        'escalation_minutes' => $definition['escalation_minutes'],
+                        'include_in_periodic_report' => $definition['include_in_periodic_report'],
+                        'include_in_daily_report' => $definition['include_in_daily_report'],
+                        'send_resolved' => $definition['send_resolved'],
+                    ]);
+            }
         }
         app(NotificationTemplateService::class)->seed();
     }

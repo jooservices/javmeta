@@ -77,11 +77,12 @@ final class WatchdogAlertsTest extends TestCase
 
         $source->update(['last_success_at' => now()]);
         $this->artisan('crawler:watchdog')->assertSuccessful();
-        $this->assertCount(1, $this->sent, 'recovery is not sent because this warning is not configured for it');
+        $this->assertCount(2, $this->sent, 'a warning escalated to critical may send one recovery message');
+        $this->assertStringContainsString('[RESOLVED]', $this->sent[1][0]);
         $this->assertSame([], app(NotificationPolicyService::class)->openWarnings());
 
         $this->artisan('crawler:watchdog')->assertSuccessful();
-        $this->assertCount(1, $this->sent, 'recovery does not repeat');
+        $this->assertCount(2, $this->sent, 'recovery does not repeat');
     }
 
     public function test_manifest_cycle_prevents_false_stale_alert_until_the_source_is_past_due(): void

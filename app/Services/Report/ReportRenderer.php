@@ -31,6 +31,7 @@ final class ReportRenderer
             '{servers}' => in_array('servers', $sections, true) ? $this->serversBlock($data['node_names'] ?? [], $data['servers'] ?? [], $data['server_extra'] ?? [], $window) : '',
             '{services}' => in_array('services', $sections, true) ? $this->servicesLine($data['services'] ?? []) : '',
             '{warnings}' => $this->warningsBlock($data['warnings'] ?? [], $timezone),
+            '{notification_events}' => $this->notificationEventsBlock($data['notification_events'] ?? [], $timezone),
             '{deploys}' => $this->deploysBlock($data['deploys'] ?? [], $timezone),
             '{backup}' => $this->backupLine($data['backup'] ?? [], $timezone),
         ];
@@ -214,6 +215,22 @@ final class ReportRenderer
             $threshold = is_numeric($warning['threshold'] ?? null) ? (string) $warning['threshold'] : 'n/a';
             $lines[] = '⚠️ ' . (string) ($warning['name'] ?? $warning['key'] ?? 'Warning') . ' · open since ' . $openedAt
                 . ' · value ' . $value . ' · threshold ' . $threshold;
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /** @param list<array<string, mixed>> $events */
+    private function notificationEventsBlock(array $events, string $timezone): string
+    {
+        if ($events === []) {
+            return '';
+        }
+        $lines = ['Events'];
+        foreach (array_slice($events, 0, 10) as $event) {
+            $at = CarbonImmutable::parse((string) ($event['opened_at'] ?? 'now'))->setTimezone($timezone)->format('M j, H:i');
+            $tier = strtoupper((string) ($event['tier'] ?? 'info'));
+            $lines[] = ($tier === 'NOTICE' ? '🟡 ' : '🔵 ') . $tier . ' ' . (string) ($event['key'] ?? 'notification') . ' · ' . $at;
         }
 
         return implode("\n", $lines);

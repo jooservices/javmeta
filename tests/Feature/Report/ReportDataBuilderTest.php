@@ -81,6 +81,99 @@ final class ReportDataBuilderTest extends TestCase
         self::assertSame(['daily', 'periodic'], ReportSnapshot::query()->orderBy('report_type')->pluck('report_type')->all());
     }
 
+    public function test_daily_digest_includes_recent_info_and_notice_events_and_excludes_out_of_window_events(): void
+    {
+        config(['cache.default' => 'array', 'javmeta_report.sections' => []]);
+        Cache::store('array')->flush();
+        $at = CarbonImmutable::parse('2026-11-03 12:00:00 UTC');
+        DB::table('notification_templates')->whereIn('key', ['egress.changed', 'source.exhausted', 'crawl.success_rate_low'])
+            ->update(['enabled' => true]);
+        foreach ([
+            ['egress.changed', 'recent-notice', $at->subHours(2), 12, 20],
+            ['egress.changed', 'old-notice', $at->subHours(25), 12, 20],
+            ['source.exhausted', 'future-info', $at->addHour(), 0, null],
+            ['crawl.success_rate_low', 'open-warning', $at->subHour(), 82, 85],
+        ] as [$key, $cause, $lastSeen, $value, $threshold]) {
+            DB::table('notification_policy_events')->insert([
+                'notification_key' => $key,
+                'cause_hash' => hash('sha256', $cause),
+                'first_seen_at' => $lastSeen,
+                'last_seen_at' => $lastSeen,
+                'value' => $value,
+                'threshold' => $threshold,
+                'context' => '{}',
+                'created_at' => $lastSeen,
+                'updated_at' => $lastSeen,
+            ]);
+        }
+
+        $data = app(ReportDataBuilder::class)->build($at, 1440);
+
+        self::assertSame(['egress.changed'], array_column($data['notification_events'], 'key'));
+        self::assertSame(['crawl.success_rate_low'], array_column($data['warnings'], 'key'));
+    }
+
+    public function test_deploy_events_obey_notification_enabled_and_report_inclusion_settings(): void
+    {
+        config(['cache.default' => 'array', 'javmeta_report.sections' => []]);
+        Cache::store('array')->flush();
+        $at = CarbonImmutable::parse('2026-11-03 12:00:00 UTC');
+        DB::table('notification_templates')->where('key', 'deploy.ok')->update([
+            'enabled' => true,
+            'include_in_daily_report' => true,
+        ]);
+        DB::table('notification_policy_events')->insert([
+            'notification_key' => 'deploy.ok',
+            'cause_hash' => hash('sha256', 'release-1'),
+            'first_seen_at' => $at->subHour(),
+            'last_seen_at' => $at->subHour(),
+            'context' => json_encode(['release' => 'release-1', 'nodes' => 'control, worker-1'], JSON_THROW_ON_ERROR),
+            'created_at' => $at->subHour(),
+            'updated_at' => $at->subHour(),
+        ]);
+
+        $data = app(ReportDataBuilder::class)->build($at, 1440);
+        self::assertSame([
+            ['at' => $at->subHour()->toDateTimeString(), 'release' => 'release-1', 'nodes' => 'control, worker-1'],
+        ], $data['deploys']);
+
+        DB::table('notification_templates')->where('key', 'deploy.ok')->update(['include_in_daily_report' => false]);
+        self::assertSame([], app(ReportDataBuilder::class)->build($at, 1440)['deploys']);
+
+        DB::table('notification_templates')->where('key', 'deploy.ok')->update([
+            'enabled' => false,
+            'include_in_daily_report' => true,
+        ]);
+        self::assertSame([], app(ReportDataBuilder::class)->build($at, 1440)['deploys']);
+    }
+
+    public function test_escalated_warnings_are_no_longer_listed_as_open_warnings(): void
+    {
+        config(['cache.default' => 'array', 'javmeta_report.sections' => []]);
+        Cache::store('array')->flush();
+        $at = CarbonImmutable::parse('2026-11-03 12:00:00 UTC');
+        DB::table('notification_templates')->where('key', 'crawl.success_rate_low')->update([
+            'enabled' => true,
+            'tier' => 'warning',
+            'include_in_periodic_report' => true,
+        ]);
+        DB::table('notification_policy_events')->insert([
+            'notification_key' => 'crawl.success_rate_low',
+            'cause_hash' => hash('sha256', 'escalated-warning'),
+            'first_seen_at' => $at->subMinutes(90),
+            'last_seen_at' => $at->subMinute(),
+            'critical_sent_at' => $at->subMinutes(30),
+            'escalated_at' => $at->subMinutes(30),
+            'value' => 68,
+            'threshold' => 85,
+            'context' => '{}',
+            'created_at' => $at->subMinutes(90),
+            'updated_at' => $at->subMinute(),
+        ]);
+
+        self::assertSame([], app(ReportDataBuilder::class)->build($at)['warnings']);
+    }
+
     public function test_crawl_success_excludes_skipped_attempts_and_uses_kind_to_separate_entities(): void
     {
         config(['cache.default' => 'array', 'javmeta_report.interval_minutes' => 120, 'javmeta_report.sections' => ['crawl', 'sources']]);

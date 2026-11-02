@@ -252,14 +252,14 @@ final class NotificationPolicyService
             ->update(['resolved_at' => now(), 'reserved_at' => null, 'reserved_tier' => null, 'updated_at' => now()]);
     }
 
-    /** @return list<array{key: string, name: string, opened_at: string, last_seen_at: string, value: int|float|string|null, threshold: int|float|string|null, context: array<string, mixed>}> */
+    /** @return list<array{key: string, name: string, tier: string, opened_at: string, last_seen_at: string, value: int|float|string|null, threshold: int|float|string|null, context: array<string, mixed>}> */
     public function openWarnings(): array
     {
         return $this->digestItems(false, null, true);
     }
 
-    /** @return list<array{key: string, name: string, opened_at: string, last_seen_at: string, value: int|float|string|null, threshold: int|float|string|null, context: array<string, mixed>}> */
-    public function digestItems(bool $daily, ?DateTimeInterface $since = null, bool $warningsOnly = false): array
+    /** @return list<array{key: string, name: string, tier: string, opened_at: string, last_seen_at: string, value: int|float|string|null, threshold: int|float|string|null, context: array<string, mixed>}> */
+    public function digestItems(bool $daily, ?DateTimeInterface $since = null, bool $warningsOnly = false, ?DateTimeInterface $until = null): array
     {
         if (! Schema::hasTable('notification_policy_events') || ! Schema::hasTable('notification_templates')) {
             return [];
@@ -273,8 +273,14 @@ final class NotificationPolicyService
             ->whereNull('event.resolved_at')
             ->orderBy('template.tier')
             ->orderBy('event.first_seen_at');
+        if ($warningsOnly) {
+            $query->whereNull('event.escalated_at');
+        }
         if ($since !== null && ! $warningsOnly) {
             $query->where('event.last_seen_at', '>=', $since);
+        }
+        if ($until !== null && ! $warningsOnly) {
+            $query->where('event.last_seen_at', '<=', $until);
         }
 
         return $query->get([

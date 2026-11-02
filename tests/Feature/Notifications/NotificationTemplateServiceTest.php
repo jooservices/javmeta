@@ -8,6 +8,7 @@ use App\Services\Notifications\NotificationRegistry;
 use App\Services\Notifications\NotificationTemplateService;
 use App\Observability\NotificationMetrics;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class NotificationTemplateServiceTest extends TestCase
@@ -26,7 +27,11 @@ final class NotificationTemplateServiceTest extends TestCase
 
         self::assertSame('Custom title', $service->get('crawl.dispatch_delayed')['title_template']);
         self::assertSame('Custom body', $service->get('crawl.dispatch_delayed')['body_template']);
-        self::assertSame(count(app(NotificationRegistry::class)->all()), $service->count());
+        $registryKeys = array_keys(app(NotificationRegistry::class)->all());
+        $storedKeys = DB::table('notification_templates')->orderBy('key')->pluck('key')->all();
+        sort($registryKeys);
+        self::assertSame($registryKeys, $storedKeys);
+        self::assertSame(count($registryKeys), $service->count());
     }
 
     public function test_restore_reinstates_a_previous_template_revision(): void

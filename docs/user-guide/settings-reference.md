@@ -810,7 +810,7 @@ Văn bản. Mã mục: `report.browser_stats_url`.
 
 ### Mẫu văn bản báo cáo
 
-Văn bản mẫu tiếng Anh. Có thể dùng các biến {header}, {movies}, {performers}, {crawl}, {sources}, {fleet}, {workers}, {servers}, {services}, {deploys}, {backup}, {warnings}.
+Văn bản mẫu tiếng Anh. Có thể dùng các biến {header}, {movies}, {performers}, {crawl}, {sources}, {fleet}, {workers}, {servers}, {services}, {notification_events}, {deploys}, {backup}, {warnings}.
 
 Văn bản. Mã mục: `report.template`.
 

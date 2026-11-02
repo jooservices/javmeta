@@ -63,6 +63,8 @@ const settingsSample = {
       { key: 'report.enabled', group: 'report', label: 'Bật báo cáo định kỳ', description: 'Lịch tự động qua Telegram.', type: 'bool', value: true },
       { key: 'report.interval_minutes', group: 'report', label: 'Chu kỳ gửi báo cáo', description: 'Theo múi giờ đã chọn.', type: 'int', options: [15, 30, 60, 120, 180, 360, 720, 1440], value: 120 },
       { key: 'report.timezone', group: 'report', label: 'Múi giờ báo cáo', description: 'Tên múi giờ IANA.', type: 'string', value: 'America/Mexico_City' },
+      { key: 'report.daily_time', group: 'report', label: 'Giờ gửi báo cáo hằng ngày', description: 'Giờ địa phương.', type: 'string', format: 'time', value: '08:00' },
+      { key: 'report.daily_timezone', group: 'report', label: 'Múi giờ báo cáo hằng ngày', description: 'Tên múi giờ IANA.', type: 'string', format: 'timezone', value: 'America/Mexico_City' },
       { key: 'report.sections', group: 'report', label: 'Các phần trong báo cáo', description: 'Chọn mục hiển thị.', type: 'string_list', item_options: ['movies', 'performers', 'crawl', 'sources', 'fleet', 'workers', 'servers', 'services'], value: ['movies', 'crawl'] },
       { key: 'report.template', group: 'report', label: 'Mẫu văn bản báo cáo', description: 'Mẫu tiếng Anh.', type: 'string', multiline: true, max_length: 1000, value: '{header}\n\n{movies}\n\n{crawl}' },
     ],
@@ -211,9 +213,12 @@ const notificationPage = await run('notifications', await load('views/notificati
 assert.match(notificationPage, /Chính sách thông báo/); assert.match(notificationPage, /Danh sách thông báo/);
 assert.match(notificationPage, /Tỷ lệ crawl thành công thấp/); assert.match(notificationPage, /Gửi gần nhất/);
 assert.match(notificationPage, /Chế độ yên lặng/); assert.match(notificationPage, /Báo cáo định kỳ/); assert.match(notificationPage, /Báo cáo hằng ngày/);
+assert.match(notificationPage, /Lịch báo cáo hằng ngày/); assert.match(notificationPage, /Giờ gửi cục bộ/); assert.match(notificationPage, /Múi giờ IANA/);
+assert.match(notificationPage, /data-daily-time/); assert.match(notificationPage, /data-daily-timezone/); assert.match(notificationPage, /save-daily-schedule/);
 assert.ok(!notificationPage.includes('<script>'), 'notification labels are escaped');
 const notificationCss = await readFile(new URL('../public/ui/app.css', import.meta.url), 'utf8');
 assert.match(notificationCss, /@media\(max-width:480px\)/, 'notification editor has a narrow-screen layout');
+assert.match(notificationCss, /\.notification-daily-schedule \.bd\{display:grid/, 'daily report settings fit narrow screens');
 globalThis.innerWidth = 1280;
 
 settingsSample.data.groups.search = 'Tìm kiếm';

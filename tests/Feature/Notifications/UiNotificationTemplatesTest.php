@@ -141,4 +141,26 @@ final class UiNotificationTemplatesTest extends TestCase
             ->assertJsonPath('data.data.window_minutes', 1440)
             ->assertJsonPath('data.data.report_type', 'daily');
     }
+
+    public function test_daily_report_time_and_timezone_are_editable_and_validated_in_settings(): void
+    {
+        $this->app->instance(ConfigStore::class, new FakeConfigStore());
+        $this->app->forgetInstance(SettingsService::class);
+
+        $this->putJson('/ui-admin/settings', ['settings' => [
+            'report.daily_time' => '07:30',
+            'report.daily_timezone' => 'UTC',
+        ]])->assertOk()->assertJsonPath('data.applied', ['report.daily_time', 'report.daily_timezone']);
+
+        $settings = $this->getJson('/ui-admin/settings')->assertOk()->json('data.settings');
+        self::assertSame('07:30', collect($settings)->firstWhere('key', 'report.daily_time')['value']);
+        self::assertSame('UTC', collect($settings)->firstWhere('key', 'report.daily_timezone')['value']);
+
+        $this->putJson('/ui-admin/settings', ['settings' => ['report.daily_time' => '25:90']])
+            ->assertUnprocessable()
+            ->assertJsonPath('data.errors', ['report.daily_time' => 'report.daily_time: must use HH:MM']);
+        $this->putJson('/ui-admin/settings', ['settings' => ['report.daily_timezone' => 'Invalid/Timezone']])
+            ->assertUnprocessable()
+            ->assertJsonPath('data.errors', ['report.daily_timezone' => 'report.daily_timezone: must be a valid IANA timezone']);
+    }
 }

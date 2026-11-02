@@ -196,7 +196,7 @@ final class NotificationRegistry
         $reportTemplate = str_starts_with($key, 'report.');
         $warning = $severity === 'warning' || in_array($key, [
             'crawl.success_rate_low.movies', 'crawl.success_rate_low.performers',
-            'database.connections_high', 'sentry.new_critical_group',
+            'database.connections_high', 'sentry.new_critical_group', 'queue.retry_permanent_failures',
         ], true);
         $tier = $critical ? 'critical' : ($notice ? 'notice' : ($key === 'source.exhausted' ? 'info' : ($warning ? 'warning' : $severity)));
 
@@ -205,10 +205,10 @@ final class NotificationRegistry
             'cooldown_minutes' => $key === 'network.egress_ip_changed' || $key === 'egress.changed' ? 360
                 : (in_array($key, ['backup.manifest_missing', 'backup.stale'], true) ? 720
                     : ($key === 'report.periodic' ? 120 : ($key === 'report.daily' ? 1440 : (in_array($tier, ['critical', 'warning'], true) ? 120 : ($tier === 'notice' ? 5 : 0))))),
-            'escalation_minutes' => $warning ? 60 : null,
+            'escalation_minutes' => $tier === 'warning' ? 60 : null,
             'include_in_periodic_report' => ! $dailyOnly && ! $reportTemplate && in_array($tier, ['warning', 'notice', 'info'], true),
             'include_in_daily_report' => ! $reportTemplate && in_array($tier, ['warning', 'notice', 'info'], true),
-            'send_resolved' => $tier === 'critical',
+            'send_resolved' => in_array($tier, ['critical', 'warning'], true),
         ];
     }
 }

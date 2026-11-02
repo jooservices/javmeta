@@ -55,6 +55,23 @@ final class ReportRendererTest extends TestCase
         self::assertStringNotContainsString('Services', $text);
     }
 
+    public function test_daily_report_renders_info_and_notice_events_in_english(): void
+    {
+        config(['javmeta_report.daily_timezone' => 'America/Mexico_City']);
+        $text = (new ReportRenderer())->render([
+            'report_type' => 'daily',
+            'generated_at' => '2026-11-03T12:00:00Z',
+            'window_minutes' => 1440,
+            'sections' => [],
+            'notification_events' => [
+                ['key' => 'egress.changed', 'tier' => 'notice', 'opened_at' => '2026-11-03T11:00:00Z'],
+                ['key' => 'source.exhausted', 'tier' => 'info', 'opened_at' => '2026-11-03T10:00:00Z'],
+            ],
+        ]);
+
+        self::assertStringContainsString("Events\n🟡 NOTICE egress.changed · Nov 3, 05:00\n🔵 INFO source.exhausted · Nov 3, 04:00", $text);
+    }
+
     public function test_independent_section_selection_keeps_crawl_without_catalog_totals(): void
     {
         $text = (new ReportRenderer())->render([
