@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Crawl;
 
 use Carbon\CarbonImmutable;
+use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
@@ -20,11 +21,11 @@ final class CrawlStatsRollup
     /**
      * @return array{hours: int, attempt_rows: int, elapsed_ms: float}
      */
-    public function rollup(CarbonImmutable $from, CarbonImmutable $until, bool $backfill = false): array
+    public function rollup(DateTimeInterface $from, DateTimeInterface $until, bool $backfill = false): array
     {
         $started = hrtime(true);
-        $from = $from->utc()->startOfHour();
-        $until = $until->utc();
+        $from = CarbonImmutable::instance($from)->utc()->startOfHour();
+        $until = CarbonImmutable::instance($until)->utc();
 
         if (! Schema::hasTable('crawl_fetch_attempts') || $until <= $from) {
             return ['hours' => 0, 'attempt_rows' => 0, 'elapsed_ms' => $this->elapsedMs($started)];
@@ -249,6 +250,6 @@ final class CrawlStatsRollup
     {
         $retentionDays = max(1, (int) config('javmeta_stats.retention_days', 365));
 
-        return now('UTC')->subDays($retentionDays)->startOfHour()->toImmutable();
+        return now('UTC')->subDays($retentionDays)->toImmutable();
     }
 }

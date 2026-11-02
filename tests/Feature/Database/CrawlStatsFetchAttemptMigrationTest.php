@@ -67,9 +67,9 @@ final class CrawlStatsFetchAttemptMigrationTest extends TestCase
         self::assertFalse(Schema::hasColumn('crawl_fetch_attempts', 'lane'));
         $migration->up();
         self::assertTrue(Schema::hasColumn('crawl_fetch_attempts', 'lane'));
-        self::assertContains(
-            ['started_at'],
-            array_column(Schema::getIndexes('crawl_fetch_attempts'), 'columns'),
-        );
+        $migration->up();
+        $indexNames = array_column(Schema::getIndexes('crawl_fetch_attempts'), 'name');
+        self::assertContains('crawl_fetch_attempts_started_at_idx', $indexNames);
+        self::assertSame(1, count(array_filter($indexNames, static fn(string $name): bool => $name === 'crawl_fetch_attempts_started_at_idx')));
     }
 }

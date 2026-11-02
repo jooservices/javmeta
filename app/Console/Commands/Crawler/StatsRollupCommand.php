@@ -91,7 +91,9 @@ final class StatsRollupCommand extends Command
 
         foreach ($rows as $row) {
             $hour = CarbonImmutable::parse((string) $row->hour_at)->utc()->toIso8601String();
-            if ($row->source_slug === CrawlStatsRollup::GLOBAL_SOURCE) {
+            if ($row->source_slug === CrawlStatsRollup::GLOBAL_SOURCE
+                && $row->lane === CrawlStatsRollup::GLOBAL_LANE
+                && $row->method === CrawlStatsRollup::GLOBAL_METHOD) {
                 $points[] = [
                     'name' => MetricStreams::NAMES['stats_movies_per_hour'],
                     'value' => (int) $row->movies_new + (int) $row->movies_updated,

@@ -30,18 +30,10 @@ return new class extends Migration {
             });
         }
 
-        Schema::table('crawl_fetch_attempts', function (Blueprint $table): void {
-            $table->index('started_at', 'crawl_fetch_attempts_started_at_idx');
-        });
-        Schema::table('crawl_runs', function (Blueprint $table): void {
-            $table->index('started_at', 'crawl_runs_started_at_idx');
-        });
-        Schema::table('performers', function (Blueprint $table): void {
-            $table->index('first_seen_at', 'performers_first_seen_at_idx');
-        });
-        Schema::table('failed_jobs', function (Blueprint $table): void {
-            $table->index('failed_at', 'failed_jobs_failed_at_idx');
-        });
+        $this->addIndexIfMissing('crawl_fetch_attempts', 'started_at', 'crawl_fetch_attempts_started_at_idx');
+        $this->addIndexIfMissing('crawl_runs', 'started_at', 'crawl_runs_started_at_idx');
+        $this->addIndexIfMissing('performers', 'first_seen_at', 'performers_first_seen_at_idx');
+        $this->addIndexIfMissing('failed_jobs', 'failed_at', 'failed_jobs_failed_at_idx');
     }
 
     public function down(): void
@@ -100,6 +92,18 @@ return new class extends Migration {
     private function isLockTimeout(QueryException $exception): bool
     {
         return $exception->getCode() === '55P03' || ($exception->errorInfo[0] ?? null) === '55P03';
+    }
+
+    private function addIndexIfMissing(string $tableName, string $columnName, string $indexName): void
+    {
+        $indexNames = array_column(Schema::getIndexes($tableName), 'name');
+        if (in_array($indexName, $indexNames, true)) {
+            return;
+        }
+
+        Schema::table($tableName, static function (Blueprint $table) use ($columnName, $indexName): void {
+            $table->index($columnName, $indexName);
+        });
     }
 
     private function rebuildInvalidStartedAtIndex(): void

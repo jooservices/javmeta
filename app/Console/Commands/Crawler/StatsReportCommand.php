@@ -49,7 +49,11 @@ final class StatsReportCommand extends Command
         $query = DB::table('crawl_stats_hourly')
             ->where('hour_at', '>=', $from)
             ->where('hour_at', '<=', $until)
-            ->where('source_slug', '<>', CrawlStatsRollup::GLOBAL_SOURCE);
+            ->where(static function ($query): void {
+                $query->where('source_slug', '<>', CrawlStatsRollup::GLOBAL_SOURCE)
+                    ->orWhere('lane', '<>', CrawlStatsRollup::GLOBAL_LANE)
+                    ->orWhere('method', '<>', CrawlStatsRollup::GLOBAL_METHOD);
+            });
         if ($source !== '') {
             $query->where('source_slug', $source);
         }
@@ -137,6 +141,8 @@ final class StatsReportCommand extends Command
     {
         $trend = DB::table('crawl_stats_hourly')
             ->where('source_slug', CrawlStatsRollup::GLOBAL_SOURCE)
+            ->where('lane', CrawlStatsRollup::GLOBAL_LANE)
+            ->where('method', CrawlStatsRollup::GLOBAL_METHOD)
             ->where('hour_at', '>=', $from)
             ->where('hour_at', '<=', $until)
             ->orderBy('hour_at')

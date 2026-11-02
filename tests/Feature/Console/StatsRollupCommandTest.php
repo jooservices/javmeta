@@ -189,9 +189,9 @@ final class StatsRollupCommandTest extends TestCase
 
     public function test_detail_and_global_rows_roll_back_together_when_global_upsert_fails(): void
     {
-        $this->freezeTime();
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
         config()->set('javmeta_stats.enabled', true);
-        $hour = now('UTC')->startOfHour();
+        $hour = CarbonImmutable::parse('2026-11-02T12:00:00Z');
         $this->insertAttempt($hour->addMinutes(5), 'ok', 200, 30, 'http');
         DB::unprepared(<<<'SQL'
             CREATE TRIGGER reject_global_stats_insert
@@ -208,6 +208,111 @@ final class StatsRollupCommandTest extends TestCase
         } catch (QueryException) {
             $this->assertDatabaseMissing('crawl_stats_hourly', ['source_slug' => 'onejav']);
         }
+    }
+
+    public function test_global_row_is_identified_by_all_key_columns_in_report_and_metrics(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
+        config()->set([
+            'javmeta_stats.enabled' => true,
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'https://metrics.example.test',
+            'openobserve.org' => 'default',
+        ]);
+        Http::fake();
+        DB::table('crawl_stats_hourly')->insert([
+            [
+                'hour_at' => '2026-11-02 12:00:00',
+                'source_slug' => CrawlStatsRollup::GLOBAL_SOURCE,
+                'lane' => CrawlStatsRollup::GLOBAL_LANE,
+                'method' => CrawlStatsRollup::GLOBAL_METHOD,
+                'attempts' => 0,
+                'ok' => 0,
+                'blocked' => 0,
+                'timeout' => 0,
+                'other_error' => 0,
+                'skipped' => 0,
+                'avg_duration_ms' => null,
+                'p90_duration_ms' => null,
+                'bytes_total' => null,
+                'movies_new' => 6,
+                'movies_updated' => 2,
+                'performers_new' => 0,
+                'jobs_failed' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'hour_at' => '2026-11-02 12:00:00',
+                'source_slug' => CrawlStatsRollup::GLOBAL_SOURCE,
+                'lane' => 'normal',
+                'method' => 'http',
+                'attempts' => 2,
+                'ok' => 1,
+                'blocked' => 0,
+                'timeout' => 0,
+                'other_error' => 0,
+                'skipped' => 0,
+                'avg_duration_ms' => null,
+                'p90_duration_ms' => null,
+                'bytes_total' => null,
+                'movies_new' => 0,
+                'movies_updated' => 0,
+                'performers_new' => 0,
+                'jobs_failed' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->artisan('crawler:stats-report --hours=1 --source=__global__ --by=source')
+            ->expectsOutputToContain('__global__')
+            ->assertSuccessful();
+        $this->artisan('crawler:stats-rollup')->assertSuccessful();
+        $this->assertDatabaseHas('crawl_stats_hourly', [
+            'hour_at' => '2026-11-02 12:00:00',
+            'source_slug' => CrawlStatsRollup::GLOBAL_SOURCE,
+            'lane' => 'normal',
+            'method' => 'http',
+            'attempts' => 2,
+            'ok' => 1,
+        ]);
+
+        Http::assertSent(static function ($request): bool {
+            $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [];
+            foreach ($metrics as $metric) {
+                if (($metric['name'] ?? null) !== 'javmeta_stats_source_success_ratio') {
+                    continue;
+                }
+                foreach ($metric['gauge']['dataPoints'] ?? [] as $point) {
+                    $labels = [];
+                    foreach ($point['attributes'] ?? [] as $attribute) {
+                        $labels[$attribute['key']] = $attribute['value']['stringValue'] ?? null;
+                    }
+                    if (($labels['source'] ?? null) === CrawlStatsRollup::GLOBAL_SOURCE
+                        && (float) ($point['asDouble'] ?? 0) === 0.5) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        });
+    }
+
+    public function test_backfill_rejects_an_hour_that_overlaps_the_exact_retention_cutoff(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
+        config()->set(['javmeta_stats.enabled' => true, 'javmeta_stats.retention_days' => 3]);
+        $hour = now('UTC')->subDays(3)->startOfHour();
+        $this->insertAttempt($hour->copy()->addMinutes(10), 'ok', 200, 30, 'http');
+
+        $this->artisan('crawler:stats-rollup --since=' . $hour->toIso8601String())->assertFailed();
+
+        $this->assertDatabaseMissing('crawl_stats_hourly', [
+            'hour_at' => $hour->toDateTimeString(),
+            'source_slug' => 'onejav',
+        ]);
     }
 
     public function test_hourly_schedule_executes_the_registered_rollup_command_through_artisan_kernel(): void
