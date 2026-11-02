@@ -22,7 +22,7 @@ final class StatsRollupCommandTest extends TestCase
 
     public function test_rollup_upserts_hourly_rows_idempotently_and_report_groups_by_method(): void
     {
-        $this->freezeTime();
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
         $hour = now()->utc()->startOfHour();
         config()->set('javmeta_stats.enabled', true);
         config()->set('javmeta_stats.retention_days', 3);
@@ -96,7 +96,7 @@ final class StatsRollupCommandTest extends TestCase
 
     public function test_disabled_setting_skips_rollup(): void
     {
-        $this->freezeTime();
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
         config()->set('javmeta_stats.enabled', false);
         config()->set('javmeta_stats.retention_days', 3);
         DB::table('crawl_stats_hourly')->insert([
@@ -115,7 +115,7 @@ final class StatsRollupCommandTest extends TestCase
 
     public function test_empty_scheduled_rollup_stores_global_hours_but_backfill_needs_attempt_data(): void
     {
-        $this->freezeTime();
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
         config()->set('javmeta_stats.enabled', true);
 
         $this->artisan('crawler:stats-rollup')->assertSuccessful();
@@ -317,7 +317,7 @@ final class StatsRollupCommandTest extends TestCase
 
     public function test_hourly_schedule_executes_the_registered_rollup_command_through_artisan_kernel(): void
     {
-        $this->freezeTime();
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
         config()->set('javmeta_stats.enabled', true);
         $previousEnvironment = app('env');
         app()->instance('env', 'local');

@@ -13,7 +13,7 @@ final class CrawlStatsRollupTest extends IntegrationTestCase
 {
     public function test_postgres_rollup_is_idempotent_indexed_and_preserves_sampled_averages(): void
     {
-        $this->freezeTime();
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
         config()->set('javmeta_stats.enabled', true);
         $now = now('UTC')->toImmutable();
         $hour = $now->startOfHour();

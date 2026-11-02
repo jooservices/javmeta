@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Console;
 
+use Carbon\CarbonImmutable;
 use App\Services\Crawl\CrawlStatsOperationalSampler;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +17,7 @@ final class StatsOperationalSamplerTest extends TestCase
 
     public function test_it_keeps_hourly_average_queue_depths_from_minute_samples(): void
     {
-        $this->freezeTime();
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
         config()->set('javmeta_stats.enabled', true);
         $this->insertQueue('ready-a', 'pending');
         $this->insertQueue('delayed-a', 'pending', now()->copy()->addMinutes(5));
@@ -40,7 +41,7 @@ final class StatsOperationalSamplerTest extends TestCase
 
     public function test_missing_attempt_table_does_not_add_fake_busy_ratio_samples(): void
     {
-        $this->freezeTime();
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
         config()->set('javmeta_stats.enabled', true);
         $hour = now('UTC')->startOfHour();
         DB::table('crawl_stats_hourly')->insert([
