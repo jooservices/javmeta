@@ -185,3 +185,9 @@ in [performer identity](../03-operations/performer-identity.md#co-credit-identit
 ## Legacy telemetry maintenance
 
 Legacy OpenObserve stream removal is an operator-only Artisan command, with no browser action. Follow [Removing legacy streams](../03-operations/observability.md#removing-legacy-streams) for dry-run review, complete exports, confirmation and live-stream verification.
+
+## Layout width and cover viewer (JOOXCR-332)
+
+- The content column is fluid: `.wrap` is capped by `--wrap-max` (default 2400px) instead of 1400px, and card grids use the extra width for more columns. The S/M/L card size control keeps working; the default M card is 210px (was 176px), S is 150px and L is 300px.
+- On the movie detail page the cover column is `clamp(340px, 32vw, 620px)` and the cover is shown whole (`object-fit: contain`, no cropping).
+- Clicking a cover that has `data-zoom` (or pressing Enter or Space on it) opens a viewer (`js/lightbox.js`) with the full image and a link to the original. Escape, the close button or a click on the backdrop closes it; focus returns to the cover. Only `http` and `https` sources open.

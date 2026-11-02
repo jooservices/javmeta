@@ -24,10 +24,11 @@ export const errorBox = e => emptyBox('Không tải được dữ liệu', `<spa
 export const loadingBox = () => '<div class="empty"><span class="loader"><i></i><i></i><i></i></span></div>';
 
 /* ---------- covers and avatars ---------- */
-export function cover(m, { dur = false } = {}) {
+export function cover(m, { dur = false, zoom = false } = {}) {
   const h = hueOf(m.code);
+  const zoomable = zoom && /^https?:\/\//i.test(m.cover_url || '');
   const img = m.cover_url ? `<img loading="lazy" referrerpolicy="no-referrer" alt="" src="${esc(m.cover_url)}" onerror="this.remove()">` : '';
-  return `<div class="th" style="--h:${h}">${img}<span class="code">${esc(m.code)}</span>${dur && m.runtime_minutes ? `<span class="dur">${m.runtime_minutes}′</span>` : ''}${m.needs_review ? '<div class="bdg"><span>XEM LẠI</span></div>' : ''}</div>`;
+  return `<div class="th${zoomable ? ' big' : ''}" style="--h:${h}"${zoomable ? ` data-zoom="${esc(m.cover_url)}" data-zoom-label="${esc(m.code)}" tabindex="0" role="button" aria-label="Phóng to ảnh bìa ${esc(m.code)}"` : ''}>${img}<span class="code">${esc(m.code)}</span>${dur && m.runtime_minutes ? `<span class="dur">${m.runtime_minutes}′</span>` : ''}${m.needs_review ? '<div class="bdg"><span>XEM LẠI</span></div>' : ''}</div>`;
 }
 export function avatar(p, cls = '') {
   const name = p.name_romaji || p.name_kanji || p.name_kana || '?';
