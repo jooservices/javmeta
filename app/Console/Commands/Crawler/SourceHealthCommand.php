@@ -109,28 +109,28 @@ final class SourceHealthCommand extends Command
         $recovered = array_values(array_diff($previousBlocked, $blocked));
         if ($new !== []) {
             $channel->deliver(
-                'Source health blocked',
-                'Newly blocked: ' . implode(', ', $new) . '. Blocked now: ' . ($blocked === [] ? 'none' : implode(', ', $blocked)) . '.',
+                '',
+                '',
                 [
+                    'template_key' => 'source.health_blocked',
                     'alert_state' => 'open',
                     'severity' => 'warning',
-                    'newly_blocked_count' => count($new),
-                    'recovered_count' => 0,
-                    'blocked_now_count' => count($blocked),
+                    'newly_blocked' => implode(', ', $new),
+                    'blocked_sources' => $blocked === [] ? 'none' : implode(', ', $blocked),
                 ],
             );
         }
 
         if ($recovered !== []) {
             $channel->deliver(
-                'Source health recovered',
-                'Recovered: ' . implode(', ', $recovered) . '. Blocked now: ' . ($blocked === [] ? 'none' : implode(', ', $blocked)) . '.',
+                '',
+                '',
                 [
+                    'template_key' => 'source.health_recovered',
                     'alert_state' => 'resolved',
                     'severity' => 'info',
-                    'newly_blocked_count' => 0,
-                    'recovered_count' => count($recovered),
-                    'blocked_now_count' => count($blocked),
+                    'recovered_sources' => implode(', ', $recovered),
+                    'blocked_sources' => $blocked === [] ? 'none' : implode(', ', $blocked),
                 ],
             );
         }

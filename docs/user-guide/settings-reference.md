@@ -706,7 +706,7 @@ Số nguyên; từ 1 đến 10. Mã mục: `telegram.bot_max_results`.
 
 ### Múi giờ báo cáo
 
-Ví dụ Asia/Ho_Chi_Minh.
+Múi giờ cho báo cáo và footer thông báo, ví dụ America/Mexico_City.
 
 Văn bản. Mã mục: `report.timezone`.
 

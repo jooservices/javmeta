@@ -58,11 +58,10 @@ final class BackupStatusCommandTest extends TestCase
         $notifier = Mockery::mock(AlertNotifier::class);
         $notifier->shouldReceive('notify')
             ->once()
-            ->with(
-                'Database backup is stale',
-                'The last successful database backup is older than the configured freshness limit.',
-                Mockery::on(fn(array $context): bool => $context['backup_age_seconds'] === 93_601),
-            );
+            ->withArgs(static fn(string $subject, string $body, array $context): bool => str_contains($subject, 'Database backup is stale')
+                && str_contains($body, '93,601 seconds')
+                && $context['backup_age_seconds'] === 93_601
+                && $context['template_key'] === 'backup.stale');
         $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
 
         $this->artisan('javmeta:backup-status')->assertFailed();
@@ -74,8 +73,8 @@ final class BackupStatusCommandTest extends TestCase
     {
         $this->writeManifest(now()->subHours(30)->toIso8601String());
         $notifier = Mockery::mock(AlertNotifier::class);
-        $notifier->shouldReceive('notify')->once()->with('Database backup is stale', Mockery::any(), Mockery::any());
-        $notifier->shouldReceive('notify')->once()->with('Database backup recovered', Mockery::any(), Mockery::any());
+        $notifier->shouldReceive('notify')->once()->withArgs(static fn(string $subject, string $body, array $context): bool => str_contains($subject, 'Database backup is stale') && $context['template_key'] === 'backup.stale');
+        $notifier->shouldReceive('notify')->once()->withArgs(static fn(string $subject, string $body, array $context): bool => str_contains($subject, 'Database backup recovered') && $context['template_key'] === 'backup.recovered');
         $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
 
         $this->artisan('javmeta:backup-status')->assertFailed();
@@ -95,11 +94,12 @@ final class BackupStatusCommandTest extends TestCase
         $notifier = Mockery::mock(AlertNotifier::class);
         $notifier->shouldReceive('notify')
             ->once()
-            ->with(
-                'Backup manifest missing',
-                'No successful database backup manifest is available.',
-                ['alert_state' => 'open', 'severity' => 'warning', 'backup_age_seconds' => -1],
-            );
+            ->withArgs(static fn(string $subject, string $body, array $context): bool => str_contains($subject, 'Backup manifest is missing')
+                && str_contains($body, 'No successful database backup manifest is available')
+                && $context['alert_state'] === 'open'
+                && $context['severity'] === 'critical'
+                && $context['backup_age_seconds'] === -1
+                && $context['template_key'] === 'backup.manifest_missing');
         $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
 
         $this->artisan('javmeta:backup-status')->assertFailed();
@@ -113,11 +113,12 @@ final class BackupStatusCommandTest extends TestCase
         $notifier = Mockery::mock(AlertNotifier::class);
         $notifier->shouldReceive('notify')
             ->once()
-            ->with(
-                'Backup manifest missing',
-                'No successful database backup manifest is available.',
-                ['alert_state' => 'open', 'severity' => 'warning', 'backup_age_seconds' => -1],
-            );
+            ->withArgs(static fn(string $subject, string $body, array $context): bool => str_contains($subject, 'Backup manifest is missing')
+                && str_contains($body, 'No successful database backup manifest is available')
+                && $context['alert_state'] === 'open'
+                && $context['severity'] === 'critical'
+                && $context['backup_age_seconds'] === -1
+                && $context['template_key'] === 'backup.manifest_missing');
         $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
 
         $this->artisan('javmeta:backup-status')->assertFailed();

@@ -14,6 +14,7 @@ use App\Models\ReviewFlag;
 use App\Models\Source;
 use App\Observability\OpenObserveClient;
 use App\Observability\MetricStreams;
+use App\Observability\NotificationMetrics;
 use App\Services\Alerts\AlertMetrics;
 use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Crawl\CrawlerxFetchMethodPlan;
@@ -61,6 +62,7 @@ final class PublishMetricsCommand extends Command
         AlertMetrics $alertMetrics,
         CrawlStatsOperationalSampler $statsSampler,
         NodeEgressProbe $egressProbe,
+        NotificationMetrics $notificationMetrics,
     ): int {
         try {
             $statsSampler->sample();
@@ -97,6 +99,7 @@ final class PublishMetricsCommand extends Command
                 'value' => $archiveWrites->failureCount(),
             ]],
             $this->dependencyProbeMetrics($elasticsearch),
+            $notificationMetrics->points(),
             [[
                 'name' => MetricStreams::NAMES['elasticsearch_request_failures'],
                 'value' => $elasticsearchHealth->failureCount(),

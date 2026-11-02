@@ -16,6 +16,7 @@ export default {
         ${row('Chủ đề', 'Tối là mặc định', `<div class="seg">${['dark', 'light', 'system'].map(t => `<button class="${theme === t ? 'on' : ''}" data-act="settheme" data-v="${t}">${{ dark: 'Tối', light: 'Sáng', system: 'Hệ thống' }[t]}</button>`).join('')}</div>`)}
         ${row('Mật độ', 'Gọn hiển thị nhiều thông tin hơn', `<div class="seg">${['normal', 'compact'].map(t => `<button class="${dens === t ? 'on' : ''}" data-act="setdens" data-v="${t}">${{ normal: 'Vừa', compact: 'Gọn' }[t]}</button>`).join('')}</div>`)}</div>
       <div class="panel"><div class="hd"><h2>Hệ thống</h2></div>
+        ${row('Thông báo', 'Sửa mẫu, xem trước và phục hồi lịch sử thông báo', '<a class="btn sm" href="#/settings/notifications">Quản lý mẫu</a>')}
         ${row('Bảng điều khiển vận hành', 'Số liệu crawl và hàng đợi', `<a class="btn sm" href="${esc(document.querySelector('meta[name=command-center-url]')?.content || '/ops')}">Mở Command Center</a>`)}
         ${row('Đăng xuất', 'Kết thúc phiên của chủ sở hữu', `<form method="post" action="/logout" class="logout-form"><input type="hidden" name="_token" value="${esc(document.querySelector('meta[name=csrf-token]')?.content || '')}"><button class="btn sm" type="submit">Đăng xuất</button></form>`)}
         ${row('API và MCP', 'Cùng dữ liệu cho các công cụ AI', '<span class="chip ok">/api/v1</span>')}</div>

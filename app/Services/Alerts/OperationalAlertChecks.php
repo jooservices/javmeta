@@ -47,10 +47,9 @@ final class OperationalAlertChecks
                     $query->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', now());
                 }));
 
-            $this->alerts->send(
+            $this->alerts->sendTemplate(
                 debounceKey: self::CRAWL_STALLED_KEY,
-                subject: 'Crawl made no progress',
-                body: "Crawl work is waiting but no source succeeded in the last {$window} seconds. Sources: {$slugs}.",
+                templateKey: 'crawl.stalled',
                 context: ['stall_seconds' => $window, 'source_slugs' => $slugs],
                 debounceSeconds: $this->throttle(),
             );
@@ -58,11 +57,7 @@ final class OperationalAlertChecks
             return true;
         }
 
-        $this->alerts->resolve(
-            self::CRAWL_STALLED_KEY,
-            'Crawl progress recovered',
-            'The crawl is making progress again.',
-        );
+        $this->alerts->resolveTemplate(self::CRAWL_STALLED_KEY, 'crawl.stalled_recovered');
 
         return false;
     }
@@ -87,10 +82,9 @@ final class OperationalAlertChecks
             $slugs = (clone $pending)->distinct()->orderBy('source_slug')->limit(20)->pluck('source_slug')->all();
             $sourceSlugs = $slugs === [] ? 'unknown' : implode(', ', array_map('strval', $slugs));
 
-            $this->alerts->send(
+            $this->alerts->sendTemplate(
                 debounceKey: self::QUEUE_PENDING_BACKLOG_KEY,
-                subject: 'Pending crawl backlog is high',
-                body: "{$count} due crawl item(s) are pending (alert limit {$limit}). Sources: {$sourceSlugs}.",
+                templateKey: 'crawl.backlog_high',
                 context: ['pending_due' => $count, 'pending_limit' => $limit, 'source_slugs' => $sourceSlugs],
                 debounceSeconds: $this->throttle(),
             );
@@ -98,12 +92,7 @@ final class OperationalAlertChecks
             return true;
         }
 
-        $this->alerts->resolve(
-            self::QUEUE_PENDING_BACKLOG_KEY,
-            'Pending crawl backlog recovered',
-            'The number of due pending crawl items is below the configured limit.',
-            ['pending_due' => $count, 'pending_limit' => $limit],
-        );
+        $this->alerts->resolveTemplate(self::QUEUE_PENDING_BACKLOG_KEY, 'crawl.backlog_recovered', ['pending_due' => $count, 'pending_limit' => $limit]);
 
         return false;
     }
@@ -123,10 +112,9 @@ final class OperationalAlertChecks
         if ($stuck > 0) {
             $slugs = $this->slugList($stuckQuery);
 
-            $this->alerts->send(
+            $this->alerts->sendTemplate(
                 debounceKey: self::QUEUE_STUCK_KEY,
-                subject: 'Crawl queue is stuck',
-                body: "{$stuck} claimed queue item(s) have not finished for over {$window} seconds. Sources: {$slugs}.",
+                templateKey: 'crawl.queue_stuck',
                 context: ['stuck_claimed' => $stuck, 'stuck_seconds' => $window, 'source_slugs' => $slugs],
                 debounceSeconds: $this->throttle(),
             );
@@ -134,11 +122,7 @@ final class OperationalAlertChecks
             return true;
         }
 
-        $this->alerts->resolve(
-            self::QUEUE_STUCK_KEY,
-            'Crawl queue recovered',
-            'No claimed queue items are stuck any more.',
-        );
+        $this->alerts->resolveTemplate(self::QUEUE_STUCK_KEY, 'crawl.queue_recovered');
 
         return false;
     }

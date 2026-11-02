@@ -10,6 +10,7 @@ use App\Services\Alerts\AlertChannel;
 use App\Services\Alerts\AlertChannelDispatcher;
 use App\Services\Alerts\AlertDispatcher;
 use App\Services\Alerts\AlertSnapshotReader;
+use App\Services\Notifications\NotificationTemplateService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -101,6 +102,28 @@ final class AlertEvaluationServiceTest extends TestCase
         self::assertNotNull(AlertEvent::query()->firstOrFail()->getAttribute('resolved_at'));
         self::assertSame('resolved', $this->sent[2][2]['alert_state']);
         self::assertSame('info', $this->sent[2][2]['severity']);
+        self::assertStringContainsString('[RESOLVED]', $this->sent[2][0]);
+        self::assertStringContainsString('Back to normal.', $this->sent[2][1]);
+    }
+
+    public function test_safety_alerts_render_database_template_and_use_its_default_severity(): void
+    {
+        app(NotificationTemplateService::class)->save(
+            'crawl.success_rate_low',
+            '{level_marker} {level} {success_rate}',
+            'Attempts: {attempts}',
+            true,
+            'critical',
+            null,
+        );
+        $this->useSnapshot($this->snapshot(100, 80));
+
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+
+        self::assertSame('🔴 CRITICAL 80.0', $this->sent[0][0]);
+        self::assertSame('Attempts: 100', $this->sent[0][1]);
+        self::assertSame('crawl.success_rate_low', $this->sent[0][2]['template_key']);
+        self::assertTrue($this->sent[0][2]['template_rendered']);
     }
 
     public function test_small_attempt_sample_does_not_open_an_event(): void

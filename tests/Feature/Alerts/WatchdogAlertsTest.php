@@ -9,6 +9,7 @@ use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Services\Alerts\AlertDispatcher;
 use App\Services\Crawl\WorkerHeartbeat;
+use App\Services\Notifications\NotificationTemplateService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
@@ -43,7 +44,11 @@ final class WatchdogAlertsTest extends TestCase
     /** @return list<string> */
     private function subjects(): array
     {
-        return array_map(static fn(array $row): string => $row[0], $this->sent);
+        return array_map(static function (array $row): string {
+            $subject = strip_tags($row[0]);
+
+            return preg_replace('/^.*\[XCrawler\]\[(?:CRITICAL|WARNING|NOTICE|INFO|RESOLVED)\] /', '', $subject) ?? $subject;
+        }, $this->sent);
     }
 
     public function test_dead_source_alerts_throttles_and_recovers(): void
@@ -51,7 +56,8 @@ final class WatchdogAlertsTest extends TestCase
         $source = Source::factory()->create(['slug' => 'javdb', 'last_success_at' => now()->subDays(2)]);
 
         $this->artisan('crawler:watchdog')->assertSuccessful();
-        $this->assertSame(['Source unhealthy: javdb'], $this->subjects());
+        $this->assertSame(['Source javdb is stale'], $this->subjects());
+        $this->assertSame('<b>🟠 [XCrawler][WARNING] Source javdb is stale</b>', $this->sent[0][0]);
 
         $this->travel(30)->minutes();
         (new WorkerHeartbeat())->beat();
@@ -65,7 +71,7 @@ final class WatchdogAlertsTest extends TestCase
 
         $source->update(['last_success_at' => now()]);
         $this->artisan('crawler:watchdog')->assertSuccessful();
-        $this->assertSame('Source recovered: javdb', $this->subjects()[2]);
+        $this->assertSame('Source javdb recovered', $this->subjects()[2]);
 
         $this->artisan('crawler:watchdog')->assertSuccessful();
         $this->assertCount(3, $this->sent, 'recovery is sent once');
@@ -81,7 +87,7 @@ final class WatchdogAlertsTest extends TestCase
         $source->update(['last_success_at' => now()->subDays(32)]);
         (new WorkerHeartbeat())->beat();
         $this->artisan('crawler:watchdog')->assertSuccessful();
-        $this->assertSame(['Source unhealthy: eporner'], $this->subjects());
+        $this->assertSame(['Source eporner is stale'], $this->subjects());
     }
 
     public function test_stalled_crawl_alerts_and_recovers(): void
@@ -91,11 +97,11 @@ final class WatchdogAlertsTest extends TestCase
         config(['javmeta_alerts.watchdog.source_stale_seconds' => 86400 * 7]);
 
         $this->artisan('crawler:watchdog')->assertSuccessful();
-        $this->assertSame(['Crawl made no progress'], $this->subjects());
+        $this->assertSame(['Crawl has made no progress'], $this->subjects());
 
         $source->update(['last_success_at' => now()]);
         $this->artisan('crawler:watchdog')->assertSuccessful();
-        $this->assertSame(['Crawl made no progress', 'Crawl progress recovered'], $this->subjects());
+        $this->assertSame(['Crawl has made no progress', 'Crawl progress recovered'], $this->subjects());
     }
 
     public function test_idle_crawl_without_due_work_does_not_alert(): void
@@ -160,11 +166,11 @@ final class WatchdogAlertsTest extends TestCase
     {
         Cache::forget(WorkerHeartbeat::CACHE_KEY);
         $this->artisan('crawler:watchdog')->assertSuccessful();
-        $this->assertSame(['Worker heartbeat stale'], $this->subjects());
+        $this->assertSame(['Worker heartbeat is stale'], $this->subjects());
 
         (new WorkerHeartbeat())->beat();
         $this->artisan('crawler:watchdog')->assertSuccessful();
-        $this->assertSame(['Worker heartbeat stale', 'Worker heartbeat recovered'], $this->subjects());
+        $this->assertSame(['Worker heartbeat is stale', 'Worker heartbeat recovered'], $this->subjects());
     }
 
     public function test_alerts_disabled_sends_nothing(): void
@@ -190,7 +196,7 @@ final class WatchdogAlertsTest extends TestCase
 
         $this->artisan('crawler:watchdog')->assertSuccessful();
 
-        $this->assertSame(['Crawl made no progress', 'Crawl queue is stuck'], $this->subjects());
+        $this->assertSame(['Crawl has made no progress', 'Crawl queue is stuck'], $this->subjects());
         $this->assertStringContainsString('javbus', $this->sent[0][1]);
         $this->assertSame('javbus', $this->sent[0][2]['source_slugs']);
         $this->assertStringContainsString('javdb', $this->sent[1][1]);
@@ -208,6 +214,24 @@ final class WatchdogAlertsTest extends TestCase
         $this->assertCount(2, $this->sent);
     }
 
+    public function test_template_dispatch_uses_the_database_default_severity(): void
+    {
+        app(NotificationTemplateService::class)->save(
+            'crawl.backlog_high',
+            '<b>{level_marker} [XCrawler][{level}] Backlog</b>',
+            'Due {pending_due}',
+            true,
+            'critical',
+            null,
+        );
+
+        $dispatcher = $this->app->make(AlertDispatcher::class);
+        $this->assertTrue($dispatcher->sendTemplate('custom-severity', 'crawl.backlog_high', ['pending_due' => 4], 3600));
+
+        $this->assertSame('<b>🔴 [XCrawler][CRITICAL] Backlog</b>', $this->sent[0][0]);
+        $this->assertSame('Due 4', $this->sent[0][1]);
+    }
+
     public function test_disabled_source_recovers(): void
     {
         $source = Source::factory()->create(['slug' => 'javdb', 'last_success_at' => now()->subDays(2)]);
@@ -216,7 +240,7 @@ final class WatchdogAlertsTest extends TestCase
         $source->update(['enabled' => false]);
         $this->artisan('crawler:watchdog')->assertSuccessful();
 
-        $this->assertSame(['Source unhealthy: javdb', 'Source recovered: javdb'], $this->subjects());
+        $this->assertSame(['Source javdb is stale', 'Source javdb recovered'], $this->subjects());
     }
 
     public function test_deleted_source_recovers(): void
@@ -227,6 +251,6 @@ final class WatchdogAlertsTest extends TestCase
         $source->delete();
         $this->artisan('crawler:watchdog')->assertSuccessful();
 
-        $this->assertSame(['Source unhealthy: javdb', 'Source recovered: javdb'], $this->subjects());
+        $this->assertSame(['Source javdb is stale', 'Source javdb recovered'], $this->subjects());
     }
 }

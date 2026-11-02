@@ -4,25 +4,35 @@ JAVMETA sends operational alerts, OpenObserve alerts, crawl summaries, follow
 matches, and owner-bot replies. This page records each path and its delivery
 behavior.
 
-## Operational alert template
+## Database templates
 
-AlertDispatcher messages use one envelope:
+The `notification_templates` table contains one row for each key declared by
+`NotificationRegistry`. The registry is the source for safe English defaults,
+Vietnamese names and usage descriptions, allowed variables, sample values and
+initial enablement. The additive migration seeds missing rows only; later runs
+never overwrite edits. `notification_template_revisions` records the previous
+text, enabled state, severity, version, editor and timestamp before a change.
 
-```
-[XCrawler][<LEVEL>] <title>
-<body>
-<context key>: <value>
-```
+The owner-only **Cài đặt → Thông báo** page lists channel, enabled state, last
+successful delivery and last edit. It supports editing, sample preview, Telegram
+test sends, reset to the registry default and revision restore. All routes are
+login-required and listed in the [guest route matrix](guest-mode.md).
 
-The level follows the severity (INFO, NOTICE, WARNING, CRITICAL, default WARNING) and a
-recovery is shown as RESOLVED. Plain messages read `[XCrawler] <title>`. The
-Telegram notifier adds the `[XCrawler]` prefix and formats scalar context
-fields. The same event and context are written to the application activity log.
+Templates replace only registered `{variable}` placeholders. Saves reject
+unknown/malformed variables and token-shaped secrets; Telegram markup is limited
+to `b`, `i`, `u`, `s`, `code` and `pre` without attributes. Telegram variables
+are HTML-escaped. Missing, disabled or invalid database templates fall back to
+the registry text so a template problem cannot stop an alert. Interactive bot
+replies remain code-driven.
 
-OpenObserve uses the same `[XCrawler][WARNING]` or `[XCrawler][CRITICAL]` prefix,
-followed by the rule name, metric stream, and matching rows. Follow
-messages, hourly reports, and interactive bot replies keep their concise,
-product-specific text.
+`php artisan notifications:list` lists registered templates without writing.
+`php artisan notifications:render <key> --sample` renders registry sample data;
+without `--sample`, it prints the active template text and placeholders.
+
+`observability:import` (alias `obs:import-alerts`) synchronizes the database
+warning and critical OpenObserve templates whenever it is run. The OpenObserve
+template placeholders are translated to its native `{{.field}}` syntax. Editing
+an OpenObserve template therefore takes effect after the next import.
 
 ## Current notification types
 
@@ -95,6 +105,30 @@ and `php artisan alerts:list --hours=24` to inspect history.
 | PostgreSQL connections | Client connections exceed configured maximum | Above 45 |
 | Dispatch age | Due work exists without a recent feed-pool dispatch | Above 60 seconds |
 | Due backlog per hot source | Due pending rows fall below the configured source floor | Below 10 rows |
+
+The safety evaluator rules use the same database templates as the operational
+alert senders. It keeps the configured evaluation, cooldown and channel retry
+behavior while rendering the message text from the registry-backed template.
+
+## Registry-only event types
+
+The rows below have safe English defaults and remain disabled until their
+producer is connected. Their stated triggers are the contract for later wiring.
+
+| Key | Trigger contract | Default |
+| --- | --- | --- |
+| `deploy.success`, `deploy.rolled_back` | Deployment completes on all nodes, or the deployment rollback runs. | Off |
+| `node.joined`, `node.lost` | A node reports its first healthy heartbeat, or misses its heartbeat window. | Off |
+| `horizon.master_missing`, `horizon.supervisor_missing` | Required Horizon master or supervisor is absent. | Off |
+| `queue.failed_jobs_spike`, `database.deadlock_burst`, `queue.retry_permanent_failures` | Failed jobs, deadlocks or permanent retry-channel failures exceed their configured trigger. | Off |
+| `network.egress_ip_changed`, `network.egress_ip_shared` | A node's egress address changes, or multiple nodes share one address. | Off |
+| `browser.host_saturated`, `browser.old_processes`, `flaresolverr.down` | Browser utilization/process age crosses a limit, or FlareSolverr health fails. | Off |
+| `sentry.new_critical_group` | Sentry opens a new critical issue group. | Off |
+| `source.exhausted` | Three listing passes produce no new items while due work is nearly empty. | Off |
+| `catalog.daily_summary` | Daily catalog, crawl, source and worker totals are ready. | Off |
+| `backup.success`, `backup.restore_test` | Backup completes, or a restore verification finishes. | Off |
+| `security.api_key_created`, `security.api_key_revoked`, `security.login_failures`, `security.guest_mode_toggled`, `security.settings_changed` | The corresponding owner action or login-failure threshold occurs. | Off |
+| `startup_gate.blocked` | A required dependency blocks service startup. | Off |
 
 The Telegram follow feature sends directly so it can attach a cover image and
 buttons. The owner bot replies directly so commands remain interactive.

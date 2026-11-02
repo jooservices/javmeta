@@ -118,8 +118,9 @@ final class StagingReadinessTest extends TestCase
         ]);
 
         $this->assertCount(1, $sent);
-        $this->assertSame('Staging readiness recovered', $sent[0][0]);
-        $this->assertStringContainsString('backup, scheduler', $sent[0][1]);
+        $this->assertSame('', $sent[0][0]);
+        $this->assertSame('', $sent[0][1]);
+        $this->assertSame('staging.readiness_recovered', $sent[0][2]['template_key']);
         $this->assertSame(2, $sent[0][2]['resolved_checks']);
         $this->assertSame('resolved', $sent[0][2]['alert_state']);
         $this->assertSame('info', $sent[0][2]['severity']);

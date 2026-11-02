@@ -37,7 +37,7 @@ return [
     ],
     // Hourly Telegram report: totals now and the change since the previous report (javmeta:hourly-report).
     'hourly_report' => [
-        'timezone' => 'Asia/Ho_Chi_Minh',
+        'timezone' => 'America/Mexico_City',
         'state_path' => storage_path('app/private/reports/hourly.json'),
     ],
     'debounce_seconds' => 900,

@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Database\QueryException;
+use App\Services\Notifications\NotificationRegistry;
+use App\Services\Notifications\NotificationTemplateService;
 
 /**
  * The unit/feature suites migrate sqlite only. Production runs Postgres, so
@@ -21,6 +23,11 @@ final class MigrationsTest extends BaseTestCase
         self::assertSame('pgsql', DB::connection()->getDriverName());
 
         self::assertSame(0, Artisan::call('migrate:fresh', ['--force' => true]), Artisan::output());
+        self::assertTrue(Schema::hasTable('notification_templates'));
+        self::assertTrue(Schema::hasTable('notification_template_revisions'));
+        self::assertSame(count(app(NotificationRegistry::class)->all()), app(NotificationTemplateService::class)->count());
+        app(NotificationTemplateService::class)->markSent('follow.match');
+        self::assertSame(1, (int) DB::table('notification_templates')->where('key', 'follow.match')->value('sent_count'));
         $this->leaveInvalidPendingKindIndex();
         $migration = require database_path('migrations/2026_11_02_000002_add_crawl_queue_pending_kind_index.php');
         $migration->up();
@@ -57,6 +64,8 @@ final class MigrationsTest extends BaseTestCase
         self::assertFalse(Schema::hasTable('performer_identity_event_movie_links'));
         self::assertFalse(Schema::hasTable('performer_name_keys'));
         self::assertFalse(Schema::hasTable('performer_name_grams'));
+        self::assertFalse(Schema::hasTable('notification_templates'));
+        self::assertFalse(Schema::hasTable('notification_template_revisions'));
         self::assertNull(DB::selectOne('SELECT to_regclass(?) AS index_name', ['crawl_queue_pending_kind_id_idx'])?->index_name);
 
         DB::table('crawl_queue')->insert([
@@ -116,6 +125,8 @@ final class MigrationsTest extends BaseTestCase
 
         self::assertSame(0, Artisan::call('migrate', ['--force' => true]), Artisan::output());
         self::assertTrue(Schema::hasTable('movies'));
+        self::assertTrue(Schema::hasTable('notification_templates'));
+        self::assertSame(count(app(NotificationRegistry::class)->all()), app(NotificationTemplateService::class)->count());
         $this->assertPendingKindIndex();
     }
 

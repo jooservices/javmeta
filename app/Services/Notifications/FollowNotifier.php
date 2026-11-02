@@ -18,12 +18,16 @@ use Throwable;
  */
 final class FollowNotifier
 {
-    public function __construct(private readonly SettingsService $settings, private readonly DownloadService $downloads) {}
+    public function __construct(
+        private readonly SettingsService $settings,
+        private readonly DownloadService $downloads,
+        private readonly ?NotificationRenderer $renderer = null,
+    ) {}
 
     /** @return array{sent: int, held: int, skipped: string|null} */
     public function run(?CarbonImmutable $now = null): array
     {
-        $now ??= CarbonImmutable::now((string) config('javmeta_alerts.hourly_report.timezone', 'Asia/Ho_Chi_Minh'));
+        $now ??= CarbonImmutable::now((string) config('javmeta_alerts.hourly_report.timezone', 'America/Mexico_City'));
         if (! (bool) $this->settings->get('follow_notifications.enabled')) {
             return ['sent' => 0, 'held' => 0, 'skipped' => 'disabled'];
         }
@@ -106,7 +110,7 @@ final class FollowNotifier
             }
             if ($performers !== []) {
                 foreach (DB::table('movie_performers')->where('movie_id', $row->id)->whereIn('performer_id', $performers)->pluck('performer_id') as $pid) {
-                    $reasons[] = 'diễn viên ' . ($names[$pid] ?? '#' . $pid);
+                    $reasons[] = 'performer ' . ($names[$pid] ?? '#' . $pid);
                 }
             }
             $out[] = ['code' => (string) $row->display_code, 'title' => (string) ($row->title_en ?? $row->title_jp ?? $row->display_code), 'cover' => $row->cover_url, 'reason' => implode(', ', $reasons)];
@@ -147,21 +151,32 @@ final class FollowNotifier
         $base = rtrim((string) $this->settings->get('telegram.api_base'), '/') ?: 'https://api.telegram.org';
         $timeout = max(1, (int) $this->settings->get('telegram.timeout'));
         $url = rtrim((string) config('app.url'), '/') . '/app#/movie/' . rawurlencode($match['code']);
-        $caption = $match['code'] . ' · ' . $match['title'] . "\n" . 'Vì theo dõi: ' . $match['reason'];
-        $buttons = [['text' => 'Mở', 'url' => $url]];
+        $rendered = ($this->renderer ?? app(NotificationRenderer::class))->render('follow.match', [
+            'movie_code' => $match['code'],
+            'movie_title' => $match['title'],
+            'follow_reason' => $match['reason'],
+        ]);
+        $caption = $rendered['title'] . "\n\n" . $rendered['body'];
+        $buttons = [['text' => 'Open', 'url' => $url]];
         if ($this->downloads->enabled()) {
-            $buttons[] = ['text' => 'Tải về', 'callback_data' => 'dl:' . $match['code']];
+            $buttons[] = ['text' => 'Download', 'callback_data' => 'dl:' . $match['code']];
         }
         $keyboard = ['inline_keyboard' => [$buttons]];
 
         try {
             if (is_string($match['cover']) && $match['cover'] !== '') {
-                $response = Http::timeout($timeout)->asJson()->post("{$base}/bot{$token}/sendPhoto", ['chat_id' => $chat, 'photo' => $match['cover'], 'caption' => $caption, 'reply_markup' => $keyboard]);
+                $response = Http::timeout($timeout)->asJson()->post("{$base}/bot{$token}/sendPhoto", ['chat_id' => $chat, 'photo' => $match['cover'], 'caption' => $caption, 'parse_mode' => 'HTML', 'reply_markup' => $keyboard]);
                 if ($response->successful()) {
+                    ($this->renderer ?? app(NotificationRenderer::class))->markSent('follow.match');
+
                     return true;
                 }
             }
-            $response = Http::timeout($timeout)->asJson()->post("{$base}/bot{$token}/sendMessage", ['chat_id' => $chat, 'text' => $caption, 'reply_markup' => $keyboard]);
+            $response = Http::timeout($timeout)->asJson()->post("{$base}/bot{$token}/sendMessage", ['chat_id' => $chat, 'text' => $caption, 'parse_mode' => 'HTML', 'reply_markup' => $keyboard]);
+
+            if ($response->successful()) {
+                ($this->renderer ?? app(NotificationRenderer::class))->markSent('follow.match');
+            }
 
             return $response->successful();
         } catch (Throwable) {

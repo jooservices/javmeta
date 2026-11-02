@@ -129,7 +129,7 @@ final class StagingReadiness
 
         return $token !== '' && $chat !== ''
             ? $this->row('alert_channel', 'pass', 'The Telegram alert channel is configured.')
-            : $this->row('alert_channel', 'fail', 'The Telegram bot token or chat id is missing.', 'Set the Telegram values in .env (keep its ACL) and restart the units.');
+            : $this->row('alert_channel', 'fail', 'The Telegram bot token or chat id is missing.', 'Set the Telegram values on the Cài đặt page and restart the units.');
     }
 
     /** @return array{name: string, status: string, message: string, action: ?string} */
@@ -154,16 +154,29 @@ final class StagingReadiness
         if ($report['status'] === 'fail' && (! is_array($previous) || ($previous['failing'] ?? []) !== $failing)) {
             $first = array_values(array_filter($report['checks'], static fn(array $c): bool => $c['status'] === 'fail'))[0] ?? null;
             $this->channel->deliver(
-                'Staging readiness',
-                'Staging is NOT ready. Failing: ' . implode(', ', $failing) . '. ' . ($first['message'] ?? '') . ' ' . ($first['action'] ?? ''),
-                ['alert_state' => 'open', 'severity' => 'warning'],
+                '',
+                '',
+                [
+                    'template_key' => 'staging.readiness_blocked',
+                    'alert_state' => 'open',
+                    'severity' => 'warning',
+                    'failing_checks' => implode(', ', $failing),
+                    'first_failure' => (string) ($first['message'] ?? ''),
+                    'next_action' => (string) ($first['action'] ?? ''),
+                ],
             );
         } elseif ($report['status'] === 'pass' && is_array($previous) && ($previous['status'] ?? null) === 'fail') {
             $resolved = (array) ($previous['failing'] ?? []);
             $this->channel->deliver(
-                'Staging readiness recovered',
-                'Staging is READY. Recovered checks: ' . ($resolved === [] ? 'previous failure' : implode(', ', $resolved)) . '.',
-                ['alert_state' => 'resolved', 'severity' => 'info', 'resolved_checks' => count($resolved), 'checked_at' => $report['checked_at']],
+                '',
+                '',
+                [
+                    'template_key' => 'staging.readiness_recovered',
+                    'alert_state' => 'resolved',
+                    'severity' => 'info',
+                    'resolved_checks' => count($resolved),
+                    'checked_at' => $report['checked_at'],
+                ],
             );
         }
     }

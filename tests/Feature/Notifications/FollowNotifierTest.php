@@ -77,7 +77,7 @@ final class FollowNotifierTest extends TestCase
         $this->follow('performer', (string) $performerId);
 
         $this->assertSame(1, app(FollowNotifier::class)->run($this->noon())['sent']);
-        Http::assertSent(fn($r) => str_contains($r->url(), '/sendMessage') && str_contains($r['text'], 'diễn viên Aiko Test'));
+        Http::assertSent(fn($r) => str_contains($r->url(), '/sendMessage') && str_contains($r['text'], 'performer Aiko Test') && $r['parse_mode'] === 'HTML');
     }
 
     public function test_quiet_hours_hold_messages_back_and_the_daily_cap_limits_them(): void

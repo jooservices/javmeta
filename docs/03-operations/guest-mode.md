@@ -88,6 +88,14 @@ session or API credential.
 | `POST` | `ui-admin/keys` | Login required | Requires an authenticated super-administrator and creates an API key. |
 | `DELETE` | `ui-admin/keys/{id}` | Login required | Requires an authenticated super-administrator and revokes an API key. |
 | `GET, HEAD` | `ui-admin/keys/{id}/usage` | Login required | Requires an authenticated super-administrator. |
+| `GET, HEAD` | `ui-admin/notifications` | Login required | Requires an authenticated super-administrator; lists notification templates and delivery metadata. |
+| `GET, HEAD` | `ui-admin/notifications/{key}` | Login required | Requires an authenticated super-administrator; returns an editable notification template. |
+| `PUT` | `ui-admin/notifications/{key}` | Login required | Requires an authenticated super-administrator and edits a notification template. |
+| `POST` | `ui-admin/notifications/{key}/preview` | Login required | Requires an authenticated super-administrator and renders an unsaved notification preview. |
+| `POST` | `ui-admin/notifications/{key}/test` | Login required | Requires an authenticated super-administrator and sends a sample message to the configured Telegram owner. |
+| `POST` | `ui-admin/notifications/{key}/reset` | Login required | Requires an authenticated super-administrator and restores a registry default. |
+| `GET, HEAD` | `ui-admin/notifications/{key}/revisions` | Login required | Requires an authenticated super-administrator; returns private template revision history. |
+| `POST` | `ui-admin/notifications/{key}/revisions/{revision}/restore` | Login required | Requires an authenticated super-administrator and restores a selected revision. |
 | `GET, HEAD` | `ui-admin/report/{type}` | Login required | Requires an authenticated super-administrator; returns reports. |
 | `GET, HEAD` | `ui-admin/settings` | Login required | Requires an authenticated super-administrator; may return settings values. |
 | `PUT` | `ui-admin/settings` | Login required | Requires an authenticated super-administrator and changes settings. |
