@@ -173,8 +173,6 @@ final class PublishMetricsCommandTest extends TestCase
 
     public function test_command_publishes_feed_pool_diagnostics_metrics_from_the_previous_minute(): void
     {
-        $this->travelTo('2026-11-02T12:34:00Z');
-
         config()->set([
             'cache.default' => 'array',
             'openobserve.enabled' => true,
