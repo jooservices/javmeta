@@ -94,7 +94,7 @@ final class CrawlerxFailureContractTest extends CrawlerxContractTestCase
     #[DataProvider('retryableFailures')]
     public function test_retryable_failure_at_max_attempts_moves_to_the_retry_lane(\Closure $response, string $errorCode, string $eventKind, int $delaySeconds): void
     {
-        $this->freezeSecond();
+        $this->travelTo('2026-11-02T12:34:00Z');
 
         // A block has three delayed retries (60, 120, 180 s) so it fails on the fourth attempt.
         $attempts = $errorCode === 'challenge' ? 4 : 3;
