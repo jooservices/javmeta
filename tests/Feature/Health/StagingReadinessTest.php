@@ -16,6 +16,13 @@ final class StagingReadinessTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->travelTo('2026-11-02T12:34:00Z');
+    }
+
     /** @return array<string, array{name: string, status: string, message: string, action: ?string}> */
     private function byName(): array
     {

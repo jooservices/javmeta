@@ -33,6 +33,13 @@ final class PublishMetricsCommandTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
+    }
+
     protected function tearDown(): void
     {
         SettingsService::forgetDefaults();
@@ -176,7 +183,6 @@ final class PublishMetricsCommandTest extends TestCase
             'openobserve.timeout' => 1,
         ]);
         Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
-        $this->freezeTime();
         $minute = CarbonImmutable::now()->startOfMinute()->subMinute();
         $key = 'javmeta:feed-pool:diagnostics:' . $minute->timestamp;
         $redis = Mockery::mock();

@@ -12,6 +12,7 @@ final class AlertSnapshotReaderTest extends IntegrationTestCase
 {
     public function test_postgres_snapshot_excludes_skipped_attempts_and_counts_blocked_and_due_rows(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
         self::assertSame('pgsql', DB::connection()->getDriverName());
         DB::table('sources')->insert([
             'slug' => 'alert-source',

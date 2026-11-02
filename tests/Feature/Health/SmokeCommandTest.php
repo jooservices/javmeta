@@ -38,6 +38,7 @@ final class SmokeCommandTest extends TestCase
     {
         parent::setUp();
 
+        $this->travelTo('2026-11-02T12:34:00Z');
         DependencyMonitorTestHelper::bind();
         config()->set([
             'app.url' => 'http://javmeta.test',

@@ -40,6 +40,7 @@ final class AlertsCommandsTest extends TestCase
 
     public function test_alerts_list_includes_an_old_episode_resolved_inside_the_requested_window(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
         AlertEvent::query()->create([
             'rule' => 'old_success_rate',
             'severity' => 'warning',

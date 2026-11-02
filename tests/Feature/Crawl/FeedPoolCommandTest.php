@@ -31,6 +31,13 @@ final class FeedPoolCommandTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->travelTo('2026-11-02T12:34:00Z');
+    }
+
     public function test_feed_pool_command_has_legacy_dispatch_alias_and_limit_default(): void
     {
         $commands = app(Kernel::class)->all();

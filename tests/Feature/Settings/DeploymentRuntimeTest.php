@@ -12,6 +12,7 @@ final class DeploymentRuntimeTest extends TestCase
 {
     public function test_a_started_scheduler_needs_a_fresh_heartbeat_but_workers_do_not(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
         require_once base_path('deploy/lib/readiness.php');
         $heartbeat = app(SchedulerHeartbeat::class);
         Cache::forget(SchedulerHeartbeat::CACHE_KEY);

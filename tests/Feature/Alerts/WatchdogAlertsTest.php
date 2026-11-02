@@ -10,6 +10,7 @@ use App\Models\Source;
 use App\Services\Alerts\AlertDispatcher;
 use App\Services\Crawl\WorkerHeartbeat;
 use App\Services\Notifications\NotificationTemplateService;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
@@ -25,6 +26,7 @@ final class WatchdogAlertsTest extends TestCase
     {
         parent::setUp();
 
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
         Cache::flush();
         $this->sent = [];
         $fake = new class ($this->sent) implements AlertNotifier {

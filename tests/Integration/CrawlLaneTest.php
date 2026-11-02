@@ -20,7 +20,7 @@ final class CrawlLaneTest extends IntegrationTestCase
 {
     public function test_postgres_classification_and_claims_route_to_independent_redis_queues(): void
     {
-        $this->freezeTime();
+        $this->travelTo('2026-11-02T12:34:00Z');
         $suffix = Str::lower(Str::random(12));
         $directQueue = 'direct_lane_' . $suffix;
         $browserQueue = 'browser_lane_' . $suffix;
@@ -97,7 +97,7 @@ final class CrawlLaneTest extends IntegrationTestCase
 
     public function test_postgres_feeder_respects_the_source_budget_across_six_ten_second_runs(): void
     {
-        $this->freezeTime();
+        $this->travelTo('2026-11-02T12:34:00Z');
         $start = now()->startOfMinute();
         $this->travelTo($start);
         $slug = 'paced_' . Str::lower(Str::random(8));

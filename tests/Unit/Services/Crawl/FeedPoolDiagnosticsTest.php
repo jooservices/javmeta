@@ -15,7 +15,7 @@ final class FeedPoolDiagnosticsTest extends TestCase
 {
     public function test_run_counters_have_ttl_and_export_expected_metric_points(): void
     {
-        $minute = now()->startOfMinute();
+        $minute = CarbonImmutable::parse('2026-11-02T12:34:00Z');
         $this->travelTo($minute);
         config([
             'horizon.use' => 'default',

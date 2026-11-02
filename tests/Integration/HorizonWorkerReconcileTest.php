@@ -10,6 +10,7 @@ use App\Services\Workers\HorizonLayoutSnapshot;
 use App\Services\Workers\HorizonWorkerLayout;
 use App\Services\Workers\HorizonWorkerReconciler;
 use App\Services\Workers\ReconcileHorizonScale;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Log;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
@@ -33,6 +34,7 @@ final class HorizonWorkerReconcileTest extends IntegrationTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
         SettingsService::forgetDefaults();
         $this->app->forgetInstance(SettingsService::class);
         $this->store = app(ConfigStore::class);

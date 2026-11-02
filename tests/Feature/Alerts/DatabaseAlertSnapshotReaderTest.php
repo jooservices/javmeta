@@ -17,6 +17,7 @@ final class DatabaseAlertSnapshotReaderTest extends TestCase
 
     public function test_snapshot_excludes_skipped_attempts_and_counts_blocked_and_due_rows(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
         Source::factory()->create([
             'slug' => 'alert-source',
             'enabled' => true,

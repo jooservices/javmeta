@@ -73,7 +73,7 @@ final class CrawlerxFailureContractTest extends CrawlerxContractTestCase
     #[DataProvider('retryableFailures')]
     public function test_retryable_failure_reschedules_the_row(\Closure $response, string $errorCode, string $eventKind, int $delaySeconds): void
     {
-        $this->freezeSecond();
+        $this->travelTo('2026-11-02T12:34:00Z');
         $row = $this->detailRow(attempts: 1);
         $this->respondWith(self::URL, $response(), $response(), $response());
 

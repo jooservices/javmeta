@@ -150,6 +150,8 @@ final class SentryReportingTest extends TestCase
 
     public function test_stale_started_crawl_is_sent_with_worker_lost_tags(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
+
         config()->set('sentry.role', 'scheduler');
         $row = CrawlQueue::factory()->create([
             'source_slug' => 'stale-source',
@@ -174,6 +176,8 @@ final class SentryReportingTest extends TestCase
 
     public function test_stale_unstarted_crawl_is_sent_with_worker_lost_tags(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
+
         config()->set('sentry.role', 'scheduler');
         CrawlQueue::factory()->create([
             'source_slug' => 'stale-unstarted-source',

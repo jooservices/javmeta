@@ -22,7 +22,7 @@ final class FeedDiagnosticsCommandTest extends TestCase
 
     public function test_feed_run_records_exhausted_empty_and_depth_stop_reasons_for_diagnostics(): void
     {
-        $this->travelTo(now()->startOfMinute());
+        $this->travelTo('2026-11-02T12:34:00Z');
         config([
             'javmeta_queues.feed_diagnostics.enabled' => true,
             'javmeta_queues.feed_diagnostics.retention_minutes' => 120,

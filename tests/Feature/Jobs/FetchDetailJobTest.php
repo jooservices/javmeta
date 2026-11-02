@@ -24,6 +24,13 @@ final class FetchDetailJobTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->travelTo('2026-11-02T12:34:00Z');
+    }
+
     public function test_success_delivers_draft_to_sink_and_marks_row_done(): void
     {
         $source = $this->source('onejav');
@@ -179,8 +186,6 @@ final class FetchDetailJobTest extends TestCase
 
         $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_BLOCKED, 'Blocked by site.'));
 
-        $this->travelTo(now());
-
         FetchDetailJob::dispatch($row->id);
 
         self::assertSame([], $sink->drafts);
@@ -291,7 +296,6 @@ final class FetchDetailJobTest extends TestCase
 
     public function test_rate_limited_with_retry_after_reschedules_the_row(): void
     {
-        $this->freezeSecond();
         $row = $this->detailRow($this->source('onejav'));
         $message = fake()->sentence();
 
@@ -312,7 +316,6 @@ final class FetchDetailJobTest extends TestCase
 
     public function test_retryable_failure_without_hint_uses_backoff_by_attempt(): void
     {
-        $this->freezeSecond();
         $row = $this->detailRow($this->source('onejav'));
         $row->forceFill(['attempts' => 1])->save();
 

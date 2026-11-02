@@ -275,6 +275,7 @@ final class UiGuestModeTest extends TestCase
 
     public function test_owner_can_open_a_signed_private_file_in_guest_mode(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
         Storage::fake('local');
         Storage::disk('local')->put('private.txt', 'private owner file');
         $url = URL::temporarySignedRoute('storage.local', now()->addMinutes(5), ['path' => 'private.txt'], absolute: false);
