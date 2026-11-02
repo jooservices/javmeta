@@ -19,7 +19,7 @@ use Throwable;
 /**
  * The owner's Telegram bot: ask for movies and performers, read the status, follow and list follows. It reads updates with
  * short polling (every minute from the scheduler), so no inbound port is opened, and it answers only the owner's chat id.
- * Every switch is a setting in the database. Download commands are not part of it until downloads exist.
+ * Feature switches are database settings; the bot token and chat id come from runtime secrets.
  */
 final class TelegramBot
 {
@@ -33,8 +33,8 @@ final class TelegramBot
         if (! (bool) $this->settings->get('telegram.bot_enabled')) {
             return ['handled' => 0, 'ignored' => 0, 'skipped' => 'disabled'];
         }
-        $token = (string) $this->settings->get('telegram.bot_token');
-        if ($token === '' || (string) $this->settings->get('telegram.chat_id') === '') {
+        $token = $this->telegramToken();
+        if ($token === '' || $this->telegramChatId() === '') {
             return ['handled' => 0, 'ignored' => 0, 'skipped' => 'telegram is not configured'];
         }
 
@@ -106,7 +106,7 @@ final class TelegramBot
         }
         $reply = $this->download(substr($data, 3));
         try {
-            Http::timeout(max(1, (int) $this->settings->get('telegram.timeout')))->asJson()->post($this->url((string) $this->settings->get('telegram.bot_token'), 'answerCallbackQuery'), ['callback_query_id' => (string) ($query['id'] ?? ''), 'text' => $reply]);
+            Http::timeout(max(1, (int) $this->settings->get('telegram.timeout')))->asJson()->post($this->url($this->telegramToken(), 'answerCallbackQuery'), ['callback_query_id' => (string) ($query['id'] ?? ''), 'text' => $reply]);
         } catch (Throwable) {
             // The text answer below still reaches the owner.
         }
@@ -121,7 +121,7 @@ final class TelegramBot
     private function authorized(array $chat, array $sender): bool
     {
         $chatId = (string) ($chat['id'] ?? '');
-        if ($chatId === '' || $chatId !== (string) $this->settings->get('telegram.chat_id')) {
+        if ($chatId === '' || $chatId !== $this->telegramChatId()) {
             return false;
         }
         // Positive chat IDs identify private chats when an older update omits type.
@@ -302,6 +302,20 @@ final class TelegramBot
         return "{$base}/bot{$token}/{$method}";
     }
 
+    private function telegramToken(): string
+    {
+        $token = config('laravel-notifications.channels.telegram.bot_token', '');
+
+        return is_string($token) ? $token : '';
+    }
+
+    private function telegramChatId(): string
+    {
+        $chatId = config('laravel-notifications.channels.telegram.chat_id', '');
+
+        return is_string($chatId) ? $chatId : '';
+    }
+
     /** @param list<array{text: string, url: string}> $buttons */
     private function send(string $chat, string $text, array $buttons): void
     {
@@ -309,7 +323,7 @@ final class TelegramBot
         if ($buttons !== []) {
             $payload['reply_markup'] = ['inline_keyboard' => [$buttons]];
         }
-        $response = Http::timeout(max(1, (int) $this->settings->get('telegram.timeout')))->asJson()->post($this->url((string) $this->settings->get('telegram.bot_token'), 'sendMessage'), $payload);
+        $response = Http::timeout(max(1, (int) $this->settings->get('telegram.timeout')))->asJson()->post($this->url($this->telegramToken(), 'sendMessage'), $payload);
         if (! $response->successful() || $response->json('ok') !== true) {
             throw new RuntimeException('Telegram send failed.');
         }

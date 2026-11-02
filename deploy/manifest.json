@@ -871,15 +871,15 @@
           "default": "",
           "required": true,
           "secret": true,
-          "setting": "telegram.bot_token"
+          "env": true
         },
         {
           "key": "TELEGRAM_CHAT_ID",
           "label": "Telegram owner chat ID",
           "default": "",
           "required": true,
-          "secret": false,
-          "setting": "telegram.chat_id"
+          "secret": true,
+          "env": true
         }
       ]
     }

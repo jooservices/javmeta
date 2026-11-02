@@ -51,6 +51,7 @@ final class ScheduleTest extends TestCase
 
         $expectedFrequencies = [
             'ai:warm' => '*/15 * * * *',
+            'alerts:evaluate' => '* * * * *',
             'crawler:feed-pool' => '* * * * *',
             'crawler:prune-fetch-attempts' => '0 0 * * *',
             'crawler:reclaim' => '* * * * *',
@@ -78,6 +79,7 @@ final class ScheduleTest extends TestCase
         $this->assertSame('* * * * *', $heartbeatEvents[0]->expression);
         $this->assertSame($expectedFrequencies, $actualFrequencies);
         $this->assertTrue($scheduled['crawler:prune-fetch-attempts']->withoutOverlapping);
+        $this->assertTrue($scheduled['alerts:evaluate']->withoutOverlapping);
         $this->assertTrue($scheduled['crawler:feed-pool']->withoutOverlapping);
         $this->assertSame(5, $scheduled['crawler:feed-pool']->repeatSeconds);
         $this->assertTrue($scheduled['crawler:recrawl-incomplete']->withoutOverlapping);

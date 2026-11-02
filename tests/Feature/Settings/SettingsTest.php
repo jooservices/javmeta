@@ -249,17 +249,16 @@ final class SettingsTest extends TestCase
         $this->assertContains('health.startup.primary.web', array_column($settings->all(), 'key'));
     }
 
-    public function test_env_import_dry_run_lists_current_values_and_redacts_secrets_without_writing(): void
+    public function test_env_import_dry_run_omits_telegram_credentials_without_writing(): void
     {
         $previous = $_ENV['NOTIFICATION_TELEGRAM_BOT_TOKEN'] ?? null;
         $_ENV['NOTIFICATION_TELEGRAM_BOT_TOKEN'] = 'test-secret-value';
         try {
             $preview = collect(app(SettingsService::class)->importPreview())->firstWhere('key', 'telegram.bot_token');
-            $this->assertSame('[redacted]', $preview['display'] ?? null);
+            $this->assertNull($preview);
             Artisan::call('settings:import-env', ['--dry-run' => true]);
             $output = Artisan::output();
-            $this->assertStringContainsString('telegram.bot_token', $output);
-            $this->assertStringContainsString('redacted', $output);
+            $this->assertStringNotContainsString('telegram.bot_token', $output);
             $this->assertStringNotContainsString('test-secret-value', $output);
             $this->assertNull($this->store->get('settings.telegram.bot_token'));
         } finally {
@@ -302,18 +301,20 @@ final class SettingsTest extends TestCase
         $this->assertSame(10, $settings->get('media.job_timeout_sec'));
     }
 
-    public function test_a_secret_is_stored_encrypted_and_never_returned(): void
+    public function test_telegram_credentials_are_not_registered_or_saved_as_settings(): void
     {
         $settings = app(SettingsService::class);
-        $result = $settings->set('telegram.bot_token', '123:secret-token');
-
-        $this->assertNull($result['new']);
-        $this->assertSame('123:secret-token', config('javmeta_alerts.telegram.bot_token'));
-        $this->assertSame('123:secret-token', config('laravel-notifications.channels.telegram.bot_token'), 'every config key of the setting is updated');
-        $row = collect($settings->all())->firstWhere('key', 'telegram.bot_token');
-        $this->assertNull($row['value']);
-        $this->assertTrue($row['is_set']);
-        $this->assertStringNotContainsString('secret-token', json_encode($settings->all(), JSON_THROW_ON_ERROR));
+        foreach (['telegram.bot_token', 'telegram.chat_id'] as $key) {
+            $this->assertArrayNotHasKey($key, $settings->definitions());
+            $this->assertNotContains($key, array_column($settings->all(), 'key'));
+            try {
+                $settings->set($key, 'test-secret-value');
+                $this->fail("{$key} must remain a runtime secret, not an editable setting.");
+            } catch (\InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+        $this->assertStringNotContainsString('test-secret-value', json_encode($settings->all(), JSON_THROW_ON_ERROR));
     }
 
     public function test_import_env_stores_the_current_values_once(): void
@@ -639,13 +640,13 @@ final class SettingsTest extends TestCase
         $this->putJson('/ui-admin/settings', [])->assertStatus(422);
     }
 
-    public function test_a_secret_default_comes_from_the_first_config_key_that_has_a_value(): void
+    public function test_telegram_credentials_are_not_imported_from_runtime_config(): void
     {
         config(["javmeta_alerts.telegram.bot_token" => "", "laravel-notifications.channels.telegram.bot_token" => "123:live"]);
         $settings = app(SettingsService::class);
 
-        $this->assertContains("telegram.bot_token", $settings->importDefaults());
-        $this->assertSame("123:live", $this->store->get("settings.telegram.bot_token"));
+        $this->assertNotContains("telegram.bot_token", $settings->importDefaults());
+        $this->assertNull($this->store->get("settings.telegram.bot_token"));
     }
     public static function invalidUrls(): array
     {

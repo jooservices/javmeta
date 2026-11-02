@@ -14,6 +14,7 @@ use App\Models\ReviewFlag;
 use App\Models\Source;
 use App\Observability\OpenObserveClient;
 use App\Observability\MetricStreams;
+use App\Services\Alerts\AlertMetrics;
 use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Crawl\CrawlerxFetchMethodPlan;
 use App\Services\Crawl\FeedPoolDiagnostics;
@@ -54,6 +55,7 @@ final class PublishMetricsCommand extends Command
         FeedPoolDiagnostics $feedPoolDiagnostics,
         SourceGapPolicy $gapPolicy,
         SourceThrottle $throttle,
+        AlertMetrics $alertMetrics,
     ): int {
         if (! $client->enabled()) {
             $this->components->info('OpenObserve disabled; skipping metrics publish.');
@@ -74,6 +76,7 @@ final class PublishMetricsCommand extends Command
             $this->catalogMetrics(),
             $this->failedJobMetrics(),
             $this->postgresCapacityMetrics(),
+            $alertMetrics->points(),
             $this->horizonWorkerMetrics(),
             [[
                 'name' => MetricStreams::NAMES['mongo_archive_write_failures'],

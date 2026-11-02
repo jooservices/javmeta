@@ -32,6 +32,21 @@ final class InstallManifestTest extends TestCase
         $this->assertSame(['application', 'postgres', 'mongo', 'redis', 'elasticsearch', 'embedder', 'flare', 'playwright', 'openobserve', 'sentry', 'legacy', 'ollama', 'telegram'], array_column($manifest['services'], 'id'));
     }
 
+    public function test_telegram_credentials_are_runtime_secrets_not_database_settings(): void
+    {
+        $root = dirname(__DIR__, 3);
+        $manifest = json_decode(file_get_contents($root . '/deploy/manifest.json'), true, flags: JSON_THROW_ON_ERROR);
+        $fields = array_merge(...array_column($manifest['services'], 'fields'));
+        $fields = array_column($fields, null, 'key');
+
+        foreach (['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID'] as $key) {
+            $this->assertTrue($fields[$key]['secret']);
+            $this->assertTrue($fields[$key]['env']);
+            $this->assertSame('', $fields[$key]['default']);
+            $this->assertArrayNotHasKey('setting', $fields[$key]);
+        }
+    }
+
     public function test_probe_rejects_non_http_urls_before_opening_a_socket(): void
     {
         require_once dirname(__DIR__, 3) . '/deploy/lib/probe.php';
