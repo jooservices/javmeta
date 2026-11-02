@@ -63,12 +63,15 @@ final class OllamaChatTelemetryTest extends TestCase
     public function test_it_reports_when_the_shared_search_budget_is_exhausted_before_sending(): void
     {
         config(["javmeta_search.budget_ms" => 1]);
-        $budget = new SearchBudget();
+        $now = 1_000_000_000;
+        $budget = new SearchBudget(static function () use (&$now): int {
+            return $now;
+        });
         $this->app->instance(SearchBudget::class, $budget);
         Http::fake();
 
-        $result = $budget->run(static function () {
-            usleep(5_000);
+        $result = $budget->run(static function () use (&$now) {
+            $now += 1_000_000;
 
             return app(OllamaClient::class)->jsonWithTelemetry('private system prompt', 'private user query');
         });
