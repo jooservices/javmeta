@@ -20,17 +20,9 @@ final class ScheduleTest extends TestCase
 {
     public function test_crawler_and_observability_schedule_has_the_expected_commands_and_frequencies(): void
     {
-        $previousEnvironment = app('env');
-        app()->instance('env', 'local');
-        try {
-            require base_path('routes/console.php');
-        } finally {
-            app()->instance('env', $previousEnvironment);
-        }
-
         $scheduled = [];
         $heartbeatEvents = [];
-        $events = app(Schedule::class)->events();
+        $events = $this->registeredEvents();
         foreach ($events as $event) {
             if ($event instanceof CallbackEvent) {
                 $heartbeatEvents[] = $event;
@@ -64,12 +56,13 @@ final class ScheduleTest extends TestCase
             'follows:notify' => '*/5 * * * *',
             'horizon:reconcile-workers' => '* * * * *',
             'javmeta:backup-status' => '* * * * *',
-            'javmeta:hourly-report' => '0 * * * *',
             'library:scan' => '0 * * * *',
             'node:egress-probe' => '*/2 * * * *',
+            'node:sample' => '* * * * *',
             'obs:publish-metrics' => '* * * * *',
             'perf:warm' => '* * * * *',
             'perf:warm --status-only' => '* * * * *',
+            'report:send' => '* * * * *',
             'search:backfill-embeddings' => '0 * * * *',
             'staging:readiness' => '0 * * * *',
             'telegram:poll' => '* * * * *',
@@ -86,13 +79,16 @@ final class ScheduleTest extends TestCase
         $this->assertTrue($scheduled['crawler:feed-pool']->withoutOverlapping);
         $this->assertSame(5, $scheduled['crawler:feed-pool']->repeatSeconds);
         $this->assertTrue($scheduled['crawler:recrawl-incomplete']->withoutOverlapping);
-        $this->assertTrue($scheduled['javmeta:hourly-report']->withoutOverlapping);
+        $this->assertTrue($scheduled['report:send']->withoutOverlapping);
+        $this->assertTrue($scheduled['report:send']->onOneServer);
         $this->assertTrue($scheduled['search:backfill-embeddings']->withoutOverlapping);
         $this->assertTrue($scheduled['staging:readiness']->withoutOverlapping);
         $this->assertTrue($scheduled['perf:warm']->withoutOverlapping);
         $this->assertSame(10, $scheduled['perf:warm --status-only']->repeatSeconds);
         foreach ($events as $event) {
-            $this->assertFalse($event->onOneServer);
+            if (! str_contains((string) $event->command, 'report:send')) {
+                $this->assertFalse($event->onOneServer);
+            }
         }
     }
 

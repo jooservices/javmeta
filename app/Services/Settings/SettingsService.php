@@ -6,6 +6,7 @@ namespace App\Services\Settings;
 
 use App\Events\SettingsApplied;
 use App\Models\Source;
+use DateTimeZone;
 use InvalidArgumentException;
 use RuntimeException;
 use Illuminate\Support\Env;
@@ -192,10 +193,13 @@ final class SettingsService
                 'min' => $definition['min'] ?? null,
                 'max' => $definition['max'] ?? null,
                 'options' => $definition['options'] ?? null,
+                'item_options' => $definition['item_options'] ?? null,
+                'format' => $definition['format'] ?? null,
                 'restart' => $definition['restart'] ?? null,
                 'apply_after_seconds' => (int) ($definition['apply_after_seconds'] ?? 30),
                 'shape' => $definition['shape'] ?? null,
                 'max_length' => (int) ($definition['max_length'] ?? config('javmeta_settings.validation.max_text_length', 500)),
+                'multiline' => (bool) ($definition['multiline'] ?? false),
                 'source' => $inDatabase ? 'database' : $source,
                 'value' => $isSecret ? null : $current,
                 'is_set' => $isSecret ? (is_string($current) && $current !== '') : null,
@@ -634,6 +638,9 @@ final class SettingsService
         }
         if ($type === 'string_list') {
             $items = $this->validateStringList($key, $value, $fail);
+            if ($key === 'report.channels' && $items === []) {
+                $fail('select at least one delivery channel');
+            }
             foreach ($items as $item) {
                 if (isset($definition['item_options']) && ! in_array($item, $definition['item_options'], true)) {
                     $fail('entries must be one of ' . implode(', ', $definition['item_options']));
@@ -666,8 +673,19 @@ final class SettingsService
             $fail('must be text');
         }
         $text = trim((string) $value);
-        if (mb_strlen($text) > (int) config('javmeta_settings.validation.max_text_length', 500)) {
+        $maxLength = (int) ($definition['max_length'] ?? config('javmeta_settings.validation.max_text_length', 500));
+        if (mb_strlen($text) > $maxLength) {
             $fail('is too long');
+        }
+        if (($definition['format'] ?? null) === 'timezone') {
+            try {
+                new DateTimeZone($text);
+            } catch (\Throwable) {
+                $fail('must be a valid IANA timezone');
+            }
+        }
+        if (($definition['format'] ?? null) === 'time' && $text !== '' && preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $text) !== 1) {
+            $fail('must use HH:MM');
         }
         if (isset($definition['options']) && ! in_array($text, $definition['options'], true)) {
             $fail('must be one of ' . implode(', ', $definition['options']));

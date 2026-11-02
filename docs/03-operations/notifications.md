@@ -34,6 +34,11 @@ warning and critical OpenObserve templates whenever it is run. The OpenObserve
 template placeholders are translated to its native `{{.field}}` syntax. Editing
 an OpenObserve template therefore takes effect after the next import.
 
+OpenObserve uses the same `[XCrawler][WARNING]` or `[XCrawler][CRITICAL]` prefix,
+followed by the rule name, metric stream, and matching rows. Follow
+messages, periodic reports, and interactive bot replies keep their concise,
+product-specific text.
+
 ## Current notification types
 
 | Notification | Trigger and cadence | Delivery |
@@ -50,7 +55,7 @@ an OpenObserve template therefore takes effect after the next import.
 | OpenObserve rules | API error rate >=5%, API p95 >1.5s, dependency down, claimed age >30m, >20 source failures/hour, schedule-aware source stale, crawl dispatch warning/critical, PostgreSQL connections >=85% for 5m | Telegram destination; rule-specific silence windows |
 | Staging readiness | New or changed failing checks; checked hourly; an explicit READY message follows a failure | Telegram |
 | Source health | Newly blocked and recovered sources; checked daily at 04:00 | Telegram |
-| Hourly catalog report | Movie and performer totals and change since the prior successful report | Telegram, hourly |
+| Periodic status report | English XCrawler layout with separate movie/performer crawl ratios, catalogue speed, source status, worker and server samples, and service health | Telegram, every two hours by default |
 | Follow matches | New movie for a followed performer, maker, or series; honors quiet hours and daily cap | Telegram, every 5 minutes |
 | Follow feed | Recent movies matching the owner’s follows, plus new-since-last-visit count | XCrawler UI |
 | Owner Telegram bot | Search, movie details, status, follows, and optional downloads | Long polling every minute; owner chat only |
@@ -133,6 +138,23 @@ producer is connected. Their stated triggers are the contract for later wiring.
 The Telegram follow feature sends directly so it can attach a cover image and
 buttons. The owner bot replies directly so commands remain interactive.
 
+## Periodic status report
+
+The main-node scheduler runs `report:send` every minute. It sends only on the
+configured interval grid (default: even hours in `America/Mexico_City`), skips
+quiet-hour slots without a catch-up, and uses a cache lock plus a unique
+scheduled-slot key to prevent duplicates. `report:send --now` and the owner-only
+**Gửi ngay qua Telegram** action send once without moving the grid. The legacy
+`javmeta:hourly-report` command remains a one-time alias; `--dry-run` prints a
+live preview.
+
+`report_snapshots` stores rendered text, raw numbers, the slot, channel, result
+and timestamp. Retention is controlled by `report.history_days` (default 30
+days); the UI shows the latest 20. The report template is editable under
+Settings → Báo cáo. Report settings, including the sections, interval, timezone,
+quiet hours and top-source limit, are database-backed. See
+[`telemetry.md`](telemetry.md) for status, node and worker metrics.
+
 ## Queue behavior
 
 Crawl, index, and telemetry jobs use Laravel/Horizon queues. Alert notifications
@@ -143,8 +165,10 @@ sends. These sends are not queue-backed.
 
 ## Capacity visibility
 
-Application metrics now include due-source state and PostgreSQL connection
-utilization. OpenObserve alerts when PostgreSQL connection use stays above 85%
-for five minutes. WSL host CPU and RAM are not emitted by the application;
-host-level alerts need a working Prometheus/node-exporter source or a host
-metrics agent before thresholds can be trusted.
+Application metrics include due-source state, PostgreSQL connection
+utilization, report delivery, per-node CPU/memory/disk, and per-lane worker
+counts. OpenObserve alerts when PostgreSQL connection use stays above 85% for
+five minutes. Node samples come from the application every minute and stay in
+shared cache for three hours; worker nodes use the installed node-sample timer.
+Browser-host details are shown only when its health endpoint or optional stats
+endpoint supplies them.

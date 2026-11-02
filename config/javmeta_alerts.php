@@ -35,9 +35,9 @@ return [
         'api_base' => 'https://api.telegram.org',
         'timeout' => 5,
     ],
-    // Hourly Telegram report: totals now and the change since the previous report (javmeta:hourly-report).
+    // Existing local-time behavior for follow notifications and library scans.
     'hourly_report' => [
-        'timezone' => 'America/Mexico_City',
+        'timezone' => 'Asia/Ho_Chi_Minh',
         'state_path' => storage_path('app/private/reports/hourly.json'),
     ],
     'debounce_seconds' => 900,

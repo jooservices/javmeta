@@ -128,6 +128,7 @@ final class MigrationsTest extends BaseTestCase
         self::assertTrue(Schema::hasTable('notification_templates'));
         self::assertSame(count(app(NotificationRegistry::class)->all()), app(NotificationTemplateService::class)->count());
         $this->assertPendingKindIndex();
+        $this->verifyPeriodicReportMigration();
     }
 
     private function assertPendingKindIndex(): void
@@ -150,6 +151,49 @@ final class MigrationsTest extends BaseTestCase
             ['crawl_queue_pending_kind_id_idx'],
         );
         self::assertSame($index->index_oid, $indexAfterRepeat?->index_oid, 'A valid pre-existing index must remain untouched.');
+    }
+
+    private function verifyPeriodicReportMigration(): void
+    {
+        $queueIds = [];
+        foreach (['recent-report-row', 'old-report-row'] as $source) {
+            $queueIds[$source] = DB::table('crawl_queue')->insertGetId([
+                'source_slug' => $source,
+                'url' => 'https://' . $source . '.test/item',
+                'kind' => 'performer_detail',
+                'status' => 'pending',
+                'attempts' => 0,
+                'max_attempts' => 3,
+            ]);
+        }
+
+        foreach (['recent-report-row' => now()->subDays(2), 'old-report-row' => now()->subDays(9)] as $source => $createdAt) {
+            DB::table('crawl_fetch_attempts')->insert([
+                'created_at' => $createdAt,
+                'source_slug' => $source,
+                'crawl_queue_id' => $queueIds[$source],
+                'url_hash' => hash('sha256', $source),
+                'method' => 'GET',
+                'started_at' => $createdAt,
+                'duration_ms' => 100,
+                'outcome' => 'ok',
+            ]);
+        }
+
+        $migration = require database_path('migrations/2026_11_03_000003_add_periodic_report_storage.php');
+        $migration->down();
+        $migration->up();
+
+        self::assertSame('performer_detail', DB::table('crawl_fetch_attempts')->where('source_slug', 'recent-report-row')->value('kind'));
+        self::assertNull(DB::table('crawl_fetch_attempts')->where('source_slug', 'old-report-row')->value('kind'));
+        self::assertTrue(Schema::hasTable('report_snapshots'));
+        self::assertTrue(Schema::hasColumn('crawl_fetch_attempts', 'kind'));
+
+        foreach (['crawl_fetch_attempts_kind_started_idx', 'movies_crawled_at_report_idx', 'performers_first_seen_report_idx'] as $name) {
+            $index = DB::selectOne('SELECT i.indisvalid AS is_valid FROM pg_index AS i WHERE i.indexrelid = to_regclass(?)', [$name]);
+            self::assertNotNull($index, "Missing PostgreSQL report index {$name}.");
+            self::assertTrue($index->is_valid, "PostgreSQL report index {$name} must be valid.");
+        }
     }
 
     private function leaveInvalidPendingKindIndex(): void

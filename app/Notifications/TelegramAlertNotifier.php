@@ -43,6 +43,9 @@ final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
      */
     public function deliver(string $subject, string $body, array $context = []): bool
     {
+        $plainReport = ($context['plain_report'] ?? false) === true;
+        unset($context['plain_report']);
+
         $templateKey = is_string($context['template_key'] ?? null) ? $context['template_key'] : null;
         if ($templateKey !== null && ! ($context['template_rendered'] ?? false)) {
             $rendered = ($this->renderer ?? app(NotificationRenderer::class))->render($templateKey, $context);
@@ -97,7 +100,7 @@ final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
                 ->withBaseUri(rtrim($apiBase !== '' ? $apiBase : 'https://api.telegram.org', '/') . '/')
                 ->withTimeout($timeout > 0 ? $timeout : 5.0)
                 ->build();
-            $message = ($templateRendered ? $subject : $this->prefixed($subject)) . "\n" . $body;
+            $message = (($templateRendered || $plainReport) ? $subject : $this->prefixed($subject)) . "\n" . $body;
             $prepared = $client->requestBuilder()
                 ->post('/bot' . $token . '/sendMessage')
                 ->withJson([

@@ -59,7 +59,7 @@ fi
 sudoers="$(node_value sudoers_dir)/$UNIT_PREFIX-units"
 # Restrict privilege to individual manifest-selected units; scheduler remains opt-in.
 : > "$sudoers"
-units=("$UNIT_PREFIX-horizon" "$UNIT_PREFIX-horizon-reconcile.timer" "$UNIT_PREFIX-embedder" "$EXPORTER_UNIT")
+units=("$UNIT_PREFIX-horizon" "$UNIT_PREFIX-horizon-reconcile.timer" "$UNIT_PREFIX-node-sample.timer" "$UNIT_PREFIX-embedder" "$EXPORTER_UNIT")
 if [[ "$NODE_ROLE" == primary ]]; then units+=("$FPM_UNIT" "$NGINX_UNIT" "$UNIT_PREFIX-scheduler"); fi
 for unit in "${units[@]}"; do
   for action in stop start restart enable is-active; do

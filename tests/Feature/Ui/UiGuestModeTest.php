@@ -220,6 +220,8 @@ final class UiGuestModeTest extends TestCase
             '/ui-admin/keys' => $this->getJson('/ui-admin/keys'),
             'ui-admin key write' => $this->postJson('/ui-admin/keys', ['label' => 'guest']),
             '/ui-admin/report/quality' => $this->getJson('/ui-admin/report/quality'),
+            '/ui-admin/report/periodic' => $this->getJson('/ui-admin/report/periodic'),
+            'ui-admin report send now' => $this->postJson('/ui-admin/report/periodic/send-now'),
             '/ui-admin/settings' => $this->getJson('/ui-admin/settings'),
             'ui-admin settings write' => $this->putJson('/ui-admin/settings', ['settings' => []]),
             'API source cookie write' => $this->putJson('/api/v1/admin/sources/private-source/login-cookies', ['cookies' => 'private']),

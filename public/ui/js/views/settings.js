@@ -17,6 +17,7 @@ export default {
         ${row('Mật độ', 'Gọn hiển thị nhiều thông tin hơn', `<div class="seg">${['normal', 'compact'].map(t => `<button class="${dens === t ? 'on' : ''}" data-act="setdens" data-v="${t}">${{ normal: 'Vừa', compact: 'Gọn' }[t]}</button>`).join('')}</div>`)}</div>
       <div class="panel"><div class="hd"><h2>Hệ thống</h2></div>
         ${row('Thông báo', 'Sửa mẫu, xem trước và phục hồi lịch sử thông báo', '<a class="btn sm" href="#/settings/notifications">Quản lý mẫu</a>')}
+        ${row('Báo cáo định kỳ', 'Xem trước, chỉnh lịch và gửi báo cáo Telegram.', '<a class="btn sm" href="#/settings/report">Mở Báo cáo</a>')}
         ${row('Bảng điều khiển vận hành', 'Số liệu crawl và hàng đợi', `<a class="btn sm" href="${esc(document.querySelector('meta[name=command-center-url]')?.content || '/ops')}">Mở Command Center</a>`)}
         ${row('Đăng xuất', 'Kết thúc phiên của chủ sở hữu', `<form method="post" action="/logout" class="logout-form"><input type="hidden" name="_token" value="${esc(document.querySelector('meta[name=csrf-token]')?.content || '')}"><button class="btn sm" type="submit">Đăng xuất</button></form>`)}
         ${row('API và MCP', 'Cùng dữ liệu cho các công cụ AI', '<span class="chip ok">/api/v1</span>')}</div>
@@ -37,6 +38,8 @@ const input = r => {
   const id = 'st-' + r.key;
   if (r.type === 'bool') return `<label class="sw"><input type="checkbox" id="${id}" data-key="${esc(r.key)}" data-type="bool" ${r.value ? 'checked' : ''}> <span>${r.value ? 'Bật' : 'Tắt'}</span></label>`;
   if (r.type === 'secret') return `<input type="password" id="${id}" data-key="${esc(r.key)}" data-type="secret" autocomplete="new-password" placeholder="${r.is_set ? 'đã đặt, nhập để thay (để trống = giữ nguyên)' : 'chưa đặt'}" style="min-width:240px">`;
+  if (r.multiline) return `<textarea id="${id}" data-key="${esc(r.key)}" data-type="string" rows="6" maxlength="${r.max_length || 500}" style="min-width:min(100%,420px)">${esc(r.value || '')}</textarea>`;
+  if (r.type === 'string_list' && Array.isArray(r.item_options) && r.item_options.length) return `<div role="group" aria-label="${esc(r.label)}">${r.item_options.map(option => `<label class="sw"><input type="checkbox" data-key="${esc(r.key)}" data-type="string_list" value="${esc(option)}" ${(r.value || []).includes(option) ? 'checked' : ''}> <span>${esc(settingOptionLabel(r.group, option))}</span></label>`).join('')}</div>`;
   if (r.type === 'string_list') return `<textarea id="${id}" data-key="${esc(r.key)}" data-type="string_list" rows="3" style="min-width:300px">${esc((r.value || []).join('\n'))}</textarea>`;
   if (Array.isArray(r.options) && r.options.length > 0) return `<select id="${id}" data-key="${esc(r.key)}" data-type="${esc(r.type)}" style="min-width:140px">${r.options.map(option => `<option value="${esc(option)}"${String(option) === String(r.value) ? ' selected' : ''}>${esc(option)}</option>`).join('')}</select>`;
   if (r.type === 'json') {
@@ -65,6 +68,7 @@ function mountSystem(root) {
     panel.querySelectorAll('[data-key]').forEach(el => {
       const t = el.dataset.type;
       if (t === 'bool') settings[el.dataset.key] = el.checked;
+      else if (t === 'string_list' && el.type === 'checkbox') settings[el.dataset.key] = Array.from(panel.querySelectorAll('[data-type="string_list"][type="checkbox"]')).filter(input => input.dataset.key === el.dataset.key && input.checked).map(input => input.value);
       else if (t === 'secret') { if (el.value !== '') settings[el.dataset.key] = el.value; }
       else if (t === 'json') {
         try { settings[el.dataset.key] = JSON.parse(el.value); }
@@ -83,4 +87,10 @@ function mountSystem(root) {
       const errs = err.body?.data?.errors; msg.innerHTML = `<span class="err">${esc(errs ? Object.values(errs).join(' · ') : err.message)}</span>`;
     } finally { b.disabled = false; }
   });
+}
+
+function settingOptionLabel(group, option) {
+  if (group !== 'report') return option;
+
+  return ({ movies: 'Phim', performers: 'Diễn viên', crawl: 'Thu thập dữ liệu', sources: 'Nguồn', fleet: 'Cụm nút', workers: 'Worker', servers: 'Máy chủ', services: 'Dịch vụ', telegram: 'Telegram' })[option] || option;
 }

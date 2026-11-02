@@ -496,24 +496,24 @@ final class SettingsTest extends TestCase
     {
         config([
             'backup.manifest_path' => '/srv/javmeta/releases/20261102/storage/manifest.json',
-            'javmeta_alerts.hourly_report.state_path' => '/srv/javmeta/current/storage/report-state.json',
+            'javmeta_report.node_volume_path' => '/srv/javmeta/current',
         ]);
         SettingsService::forgetDefaults();
 
         $settings = app(SettingsService::class);
         $skipped = $settings->importSkippedPreview();
 
-        $this->assertSame(['report.state_path', 'backup.manifest_path'], array_column($skipped, 'key'));
+        $this->assertSame(['report.node_volume_path', 'backup.manifest_path'], array_column($skipped, 'key'));
         $this->assertSame('code default', $skipped[0]['environment']);
         $this->assertNotContains('backup.manifest_path', array_column($settings->importPreview(), 'key'));
         $settings->importDefaults();
         $this->assertNull($this->store->get('settings.backup.manifest_path'));
-        $this->assertNull($this->store->get('settings.report.state_path'));
+        $this->assertNull($this->store->get('settings.report.node_volume_path'));
     }
 
     public function test_import_env_skips_release_and_current_deployment_paths_and_reports_them(): void
     {
-        $names = ['JAVMETA_BACKUP_MANIFEST', 'JAVMETA_REPORT_STATE_PATH'];
+        $names = ['JAVMETA_BACKUP_MANIFEST'];
         $previous = [];
         foreach ($names as $name) {
             $previous[$name] = [$_ENV[$name] ?? null, $_SERVER[$name] ?? null, getenv($name)];
@@ -521,28 +521,21 @@ final class SettingsTest extends TestCase
         $_ENV['JAVMETA_BACKUP_MANIFEST'] = '/srv/javmeta/releases/20261102/storage/manifest.json';
         $_SERVER['JAVMETA_BACKUP_MANIFEST'] = $_ENV['JAVMETA_BACKUP_MANIFEST'];
         putenv('JAVMETA_BACKUP_MANIFEST=' . $_ENV['JAVMETA_BACKUP_MANIFEST']);
-        $_ENV['JAVMETA_REPORT_STATE_PATH'] = '/srv/javmeta/current/storage/report-state.json';
-        $_SERVER['JAVMETA_REPORT_STATE_PATH'] = $_ENV['JAVMETA_REPORT_STATE_PATH'];
-        putenv('JAVMETA_REPORT_STATE_PATH=' . $_ENV['JAVMETA_REPORT_STATE_PATH']);
-
         try {
             $settings = app(SettingsService::class);
             $skipped = $settings->importSkippedPreview();
-            $this->assertSame(['report.state_path', 'backup.manifest_path'], array_column($skipped, 'key'));
+            $this->assertSame(['backup.manifest_path'], array_column($skipped, 'key'));
             $this->assertSame('deploy-specific path', $skipped[0]['reason']);
 
             Artisan::call('settings:import-env', ['--dry-run' => true]);
             $dryRun = Artisan::output();
             $this->assertStringContainsString('JAVMETA_BACKUP_MANIFEST', $dryRun);
-            $this->assertStringContainsString('JAVMETA_REPORT_STATE_PATH', $dryRun);
             $this->assertStringNotContainsString('/srv/javmeta/releases/', $dryRun);
-            $this->assertStringNotContainsString('/srv/javmeta/current/', $dryRun);
 
             Artisan::call('settings:import-env');
             $import = Artisan::output();
             $this->assertStringContainsString('JAVMETA_BACKUP_MANIFEST', $import);
             $this->assertNull($this->store->get('settings.backup.manifest_path'));
-            $this->assertNull($this->store->get('settings.report.state_path'));
         } finally {
             foreach ($previous as $name => [$env, $server, $process]) {
                 if ($env === null) {
