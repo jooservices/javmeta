@@ -14,6 +14,13 @@ final class SeedCommandTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->travelTo('2026-11-02T12:34:00Z');
+    }
+
     public function test_seed_enqueues_listing_urls_for_selected_source(): void
     {
         $this->syncSources();
@@ -53,7 +60,7 @@ final class SeedCommandTest extends TestCase
         $seed->refresh();
         $this->assertSame(CrawlQueue::STATUS_PENDING, $seed->status);
         $this->assertSame(0, $seed->attempts);
-        $this->assertEqualsWithDelta(now()->addSeconds(120)->getTimestamp(), $seed->next_attempt_at?->getTimestamp(), 3);
+        $this->assertSame(now()->addSeconds(120)->getTimestamp(), $seed->next_attempt_at?->getTimestamp());
         $this->assertNull(CrawlQueue::query()->find($page2->id));
         $this->assertSame(CrawlQueue::STATUS_DONE, $detail->refresh()->status);
     }

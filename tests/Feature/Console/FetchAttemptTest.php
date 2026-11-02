@@ -14,7 +14,7 @@ final class FetchAttemptTest extends TestCase
 
     public function test_prune_preserves_boundary_and_recent_rows(): void
     {
-        $this->freezeTime();
+        $this->travelTo('2026-11-02T12:34:00Z');
         config()->set('javmeta_observability.fetch_attempts_retention_days', 3);
         $this->insert(now()->subDays(3)->subSecond(), 'expired');
         $this->insert(now()->subDays(3), 'boundary');
@@ -26,7 +26,7 @@ final class FetchAttemptTest extends TestCase
 
     public function test_report_filters_source_window_and_groups_outcomes(): void
     {
-        $this->freezeTime();
+        $this->travelTo('2026-11-02T12:34:00Z');
         $this->insert(now(), 'challenge');
         $this->insert(now(), 'challenge');
         $this->insert(now()->subHours(25), 'old');
@@ -40,7 +40,7 @@ final class FetchAttemptTest extends TestCase
 
     public function test_report_limits_errors_to_five_with_deterministic_ties(): void
     {
-        $this->freezeTime();
+        $this->travelTo('2026-11-02T12:34:00Z');
         foreach (['a', 'b', 'c', 'd', 'e', 'f'] as $error) {
             $this->insert(now(), $error);
         }

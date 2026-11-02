@@ -7,6 +7,7 @@ namespace Tests\Unit\Services\Crawl;
 use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Services\Crawl\CrawlQueueService;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -14,6 +15,13 @@ use Tests\TestCase;
 final class CrawlQueueServiceClaimTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
+    }
 
     public function test_claim_next_marks_row_claimed_without_counting_an_attempt(): void
     {

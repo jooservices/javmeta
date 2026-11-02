@@ -27,6 +27,7 @@ final class TelegramDownloadTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->travelTo('2026-10-24T05:00:00Z');
         SettingsService::forgetDefaults();
         $this->app->instance(ConfigStore::class, new FakeConfigStore());
         $this->app->forgetInstance(SettingsService::class);

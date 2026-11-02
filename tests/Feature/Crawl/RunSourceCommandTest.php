@@ -113,6 +113,8 @@ final class RunSourceCommandTest extends TestCase
 
     public function test_run_source_without_slug_seeds_every_enabled_source(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
+
         $sources = [
             fake()->unique()->slug(2) => [
                 'name' => fake()->company(),

@@ -88,6 +88,8 @@ final class CrawlTickCommandTest extends TestCase
 
     public function test_tick_with_real_commands_preserves_the_combined_database_effects(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
+
         $sourceSlug = fake()->unique()->slug(2);
         $otherSourceSlug = fake()->unique()->slug(2);
         $seedUrls = [fake()->unique()->url(), fake()->unique()->url()];

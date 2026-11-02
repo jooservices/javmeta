@@ -43,6 +43,7 @@ final class PerformanceCacheTest extends TestCase
 
     public function test_status_only_keeps_the_short_ttl_without_rebuilding_facets(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
         $this->artisan('perf:warm --status-only')->assertSuccessful();
         $this->assertNotNull(Cache::get('javmeta:status:summary'));
         $this->assertNull(Cache::get('javmeta:facets:' . md5('[]')));

@@ -8,6 +8,7 @@ use App\Contracts\ReportChannel;
 use App\Models\Movie;
 use App\Models\Source;
 use App\Services\Health\StagingReadiness;
+use App\Services\Health\SourceScheduleFreshness;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
@@ -15,6 +16,13 @@ use Tests\TestCase;
 final class StagingReadinessTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->travelTo('2026-11-02T12:34:00Z');
+    }
 
     /** @return array<string, array{name: string, status: string, message: string, action: ?string}> */
     private function byName(): array
@@ -58,6 +66,14 @@ final class StagingReadinessTest extends TestCase
         $this->assertStringContainsString('1/2 enabled sources are current or not yet due', $sources['message']);
         $this->assertStringContainsString('past due: warashi', $sources['message']);
         $this->assertStringContainsString('Not yet due under configured cycle: eporner', $sources['message']);
+    }
+
+    public function test_source_freshness_uses_the_frozen_clock_at_the_stale_cutoff(): void
+    {
+        $freshness = app(SourceScheduleFreshness::class);
+
+        $this->assertFalse($freshness->isPastDue(now()->subSeconds(300), 'unknown-source', 300));
+        $this->assertTrue($freshness->isPastDue(now()->subSeconds(301), 'unknown-source', 300));
     }
 
     public function test_a_failing_run_is_stored_and_alerts_once_until_the_failures_change(): void

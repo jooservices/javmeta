@@ -6,6 +6,7 @@ namespace Tests\Unit\Observability;
 
 use App\Observability\OpenObserveClient;
 use App\Observability\TelemetrySanitizer;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Support\Facades\Http;
@@ -290,6 +291,7 @@ final class OpenObserveClientTest extends TestCase
 
     public function test_circuit_breaker_suppresses_requests_until_the_cooldown_expires(): void
     {
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
         config()->set([
             'openobserve.enabled' => true,
             'openobserve.url' => 'http://openobserve.test',
@@ -313,9 +315,8 @@ final class OpenObserveClientTest extends TestCase
         $client->ingestLogs([['message' => fake()->sentence(4), 'level' => 'warning']]);
         $this->assertSame(3, $attempts);
 
-        \Illuminate\Support\Carbon::setTestNow(now()->addSeconds(30));
+        $this->travel(30)->seconds();
         $client->ingestLogs([['message' => fake()->sentence(4), 'level' => 'warning']]);
-        \Illuminate\Support\Carbon::setTestNow();
 
         $this->assertSame(4, $attempts);
     }

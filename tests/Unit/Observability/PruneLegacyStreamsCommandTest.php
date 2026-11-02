@@ -38,7 +38,7 @@ final class PruneLegacyStreamsCommandTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->travelTo(now()->setDate(2026, 11, 1)->startOfDay());
+        $this->travelTo('2026-11-01T00:00:00Z');
         config()->set(['openobserve.url' => 'http://oo.test', 'openobserve.org' => 'default', 'openobserve.stream_logs' => 'customlive_logs', 'openobserve.stream_metrics' => 'customlive_metrics']);
         $this->directory = base_path('.tmp/prune-' . bin2hex(random_bytes(8)));
         File::ensureDirectoryExists(dirname($this->directory), 0700);

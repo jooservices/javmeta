@@ -14,6 +14,8 @@ final class ReclaimCommandTest extends TestCase
 
     public function test_reclaim_returns_stale_rows_to_pending_and_moves_exhausted_rows_to_retry(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
+
         $pendingRow = CrawlQueue::factory()->create([
             'status' => CrawlQueue::STATUS_CLAIMED,
             'attempts' => 1,

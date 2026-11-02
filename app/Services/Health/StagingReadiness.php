@@ -71,7 +71,8 @@ final class StagingReadiness
         $rows = [];
         $maxAge = (int) config('javmeta_readiness.max_newest_movie_age_minutes', 30);
         $newest = \App\Models\Movie::query()->max('first_seen_at');
-        $ageMinutes = $newest === null ? null : (int) floor((time() - strtotime((string) $newest)) / 60);
+        $now = now()->getTimestamp();
+        $ageMinutes = $newest === null ? null : (int) floor(($now - strtotime((string) $newest)) / 60);
         $rows[] = $ageMinutes !== null && $ageMinutes <= $maxAge
             ? $this->row('newest_movie', 'pass', "The newest movie was added {$ageMinutes} minutes ago.")
             : $this->row('newest_movie', 'fail', $ageMinutes === null ? 'There are no movies.' : "The newest movie is {$ageMinutes} minutes old (limit {$maxAge}).", 'Check Horizon and the scheduler, then `php artisan crawler:sources`.');
@@ -83,6 +84,7 @@ final class StagingReadiness
 
         $enabled = array_values(array_filter((array) ($status['sources'] ?? []), static fn(array $s): bool => (bool) $s['enabled']));
         $defaultStaleSeconds = (int) config('javmeta_alerts.watchdog.source_stale_seconds', 86400);
+        $now = now()->getTimestamp();
         $dead = [];
         $notYetDue = [];
         foreach ($enabled as $source) {
@@ -91,7 +93,7 @@ final class StagingReadiness
             $lastSuccessTimestamp = $lastSuccessAt === null ? false : strtotime($lastSuccessAt);
             if ($lastSuccessTimestamp === false || $this->sourceFreshness->isPastDue($lastSuccessAt, $slug, $defaultStaleSeconds)) {
                 $dead[] = $slug;
-            } elseif ($lastSuccessTimestamp < time() - $defaultStaleSeconds) {
+            } elseif ($lastSuccessTimestamp < $now - $defaultStaleSeconds) {
                 $notYetDue[] = $slug;
             }
         }
@@ -113,7 +115,8 @@ final class StagingReadiness
         $file = storage_path('app/private/backups/latest.json');
         $data = is_file($file) ? json_decode((string) file_get_contents($file), true) : null;
         $at = is_array($data) ? ($data['created_at'] ?? $data['finished_at'] ?? $data['generated_at'] ?? null) : null;
-        $ageHours = is_string($at) && strtotime($at) !== false ? (int) floor((time() - strtotime($at)) / 3600) : null;
+        $now = now()->getTimestamp();
+        $ageHours = is_string($at) && strtotime($at) !== false ? (int) floor(($now - strtotime($at)) / 3600) : null;
         $max = (int) config('javmeta_readiness.max_backup_age_hours', 26);
 
         return $ageHours !== null && $ageHours <= $max

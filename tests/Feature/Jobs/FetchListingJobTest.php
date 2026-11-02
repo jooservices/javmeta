@@ -31,6 +31,7 @@ final class FetchListingJobTest extends TestCase
 
     public function test_success_enqueues_detail_and_next_listing_rows_and_marks_done(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
         $source = $this->source('onejav');
         $row = $this->listingRow($source);
 
@@ -56,10 +57,9 @@ final class FetchListingJobTest extends TestCase
         $this->assertDatabaseHas('crawl_queue', ['source_slug' => 'onejav', 'url' => 'https://onejav.com/torrent/abc123', 'kind' => CrawlQueue::KIND_DETAIL]);
         $this->assertDatabaseHas('crawl_queue', ['source_slug' => 'onejav', 'url' => 'https://onejav.com/new?page=2', 'kind' => CrawlQueue::KIND_LISTING]);
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
-        $this->assertEqualsWithDelta(
+        $this->assertSame(
             now()->addMinutes((int) config('javmeta_sources.defaults.loop.fresh_interval_minutes', 60))->getTimestamp(),
             $row->fresh()->next_attempt_at?->getTimestamp(),
-            3,
         );
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => 'listing_parsed']);
         $this->assertNotNull(Source::query()->find('onejav')?->last_success_at);

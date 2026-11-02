@@ -18,6 +18,7 @@ final class NodeEgressProbeTest extends TestCase
 {
     public function test_node_probe_falls_back_to_next_echo_url_and_caches_until_due(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
         $this->prepareTelemetry();
         config()->set([
             'javmeta_observability.egress_probe_interval_seconds' => 120,

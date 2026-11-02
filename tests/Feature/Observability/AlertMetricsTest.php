@@ -15,6 +15,13 @@ final class AlertMetricsTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->travelTo('2026-11-02T12:34:00Z');
+    }
+
     public function test_metrics_publish_firing_state_and_retained_event_counts(): void
     {
         Source::factory()->create(['slug' => 'javdb', 'enabled' => true]);
