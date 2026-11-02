@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Alerts;
 
 use App\Models\AlertEvent;
+use App\Models\Source;
 use Carbon\CarbonImmutable;
-use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 
 final class AlertEvaluationService
@@ -22,7 +22,25 @@ final class AlertEvaluationService
 
     public function evaluate(): bool
     {
-        if (! (bool) config('javmeta_alerts.enabled', true) || ! $this->intervalElapsed()) {
+        if (! (bool) config('javmeta_alerts.enabled', true)) {
+            return false;
+        }
+
+        $lock = Cache::lock('javmeta:alerts:evaluation', $this->lockLeaseSeconds());
+        if (! $lock->get()) {
+            return false;
+        }
+
+        try {
+            return $this->evaluateLocked();
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function evaluateLocked(): bool
+    {
+        if (! $this->intervalElapsed()) {
             return false;
         }
 
@@ -59,6 +77,7 @@ final class AlertEvaluationService
             $this->resolve($event, (string) $rule, $snapshot);
         }
 
+        $this->retryPendingRecoveries();
         $this->pruneHistory();
         Cache::put(self::LAST_EVALUATED_KEY, now()->getTimestamp(), now()->addDay());
 
@@ -68,17 +87,39 @@ final class AlertEvaluationService
     /** @param array{severity: string, value: float|int, threshold: float|int, context: array<string, mixed>} $condition */
     private function notifyIfDue(AlertEvent $event, string $rule, array $condition): void
     {
-        if (! $this->notificationDue($event)) {
+        $channelState = $this->channelState($event);
+        $now = now()->getTimestamp();
+        $cooldown = $this->cooldownSeconds();
+        $dueChannels = [];
+
+        foreach ($this->dispatcher->enabledChannels() as $channel) {
+            $lastAttempt = $channelState[$channel]['open_attempted_at'] ?? null;
+            if (is_numeric($lastAttempt) && $now - (int) $lastAttempt < $cooldown) {
+                continue;
+            }
+
+            $channelState[$channel]['open_attempted_at'] = $now;
+            $dueChannels[] = $channel;
+        }
+
+        if ($dueChannels === []) {
             return;
         }
 
+        $event->setAttribute('channel_state', $channelState);
+        $event->save();
         $message = $this->messages->format($rule, $condition);
         $delivered = $this->dispatcher->dispatchChannels(
             $message['subject'],
             $message['body'],
             $message['context'],
+            onlyChannels: $dueChannels,
         );
         if ($delivered !== []) {
+            foreach ($delivered as $channel) {
+                $channelState[$channel]['open_notified_at'] = now()->getTimestamp();
+            }
+            $event->setAttribute('channel_state', $channelState);
             $event->setAttribute('notified_at', now());
             $event->save();
         }
@@ -102,11 +143,98 @@ final class AlertEvaluationService
             'context' => $context,
         ];
 
-        $event->fill(['value' => $value, 'threshold' => $threshold, 'resolved_at' => now()])->save();
-        if ((bool) config('javmeta_alerts.recovery_notice', true) && $event->getAttribute('notified_at') !== null) {
-            $message = $this->messages->format($rule, $condition, true);
-            $this->dispatcher->dispatchChannels($message['subject'], $message['body'], $message['context']);
+        $event->fill(['value' => $value, 'threshold' => $threshold, 'resolved_at' => now()]);
+        if (! (bool) config('javmeta_alerts.recovery_notice', true)) {
+            $event->setAttribute('recovery_completed_at', now());
         }
+        $event->save();
+        if ((bool) config('javmeta_alerts.recovery_notice', true)) {
+            $this->attemptRecovery($event, $rule, $condition);
+        }
+    }
+
+    /** @param array{severity: string, value: float|int, threshold: float|int, context: array<string, mixed>} $condition */
+    private function attemptRecovery(AlertEvent $event, string $rule, array $condition): void
+    {
+        $channelState = $this->channelState($event);
+        $openChannels = array_values(array_filter(
+            array_keys($channelState),
+            static fn(string $channel): bool => is_numeric($channelState[$channel]['open_notified_at'] ?? null),
+        ));
+
+        if ($openChannels === []) {
+            $event->setAttribute('recovery_completed_at', now());
+            $event->save();
+
+            return;
+        }
+
+        $maxAttempts = max(1, (int) config('javmeta_alerts.recovery_retry_max_attempts', 3));
+        $cooldown = $this->cooldownSeconds();
+        $now = now()->getTimestamp();
+        $dueChannels = [];
+        foreach ($openChannels as $channel) {
+            $channelAttempts = (int) ($channelState[$channel]['recovery_attempts'] ?? 0);
+            $lastAttempt = $channelState[$channel]['recovery_attempted_at'] ?? null;
+            if (is_numeric($channelState[$channel]['recovery_notified_at'] ?? null)
+                || $channelAttempts >= $maxAttempts
+                || (is_numeric($lastAttempt) && $now - (int) $lastAttempt < $cooldown)) {
+                continue;
+            }
+
+            $channelState[$channel]['recovery_attempts'] = $channelAttempts + 1;
+            $channelState[$channel]['recovery_attempted_at'] = $now;
+            $dueChannels[] = $channel;
+        }
+
+        if ($dueChannels !== []) {
+            $event->setAttribute('channel_state', $channelState);
+            $event->save();
+            $condition['severity'] = 'info';
+            $message = $this->messages->format($rule, $condition, true);
+            $delivered = $this->dispatcher->dispatchChannels(
+                $message['subject'],
+                $message['body'],
+                $message['context'],
+                onlyChannels: $dueChannels,
+            );
+            foreach ($delivered as $channel) {
+                $channelState[$channel]['recovery_notified_at'] = now()->getTimestamp();
+            }
+        }
+
+        $complete = true;
+        foreach ($openChannels as $channel) {
+            if (! is_numeric($channelState[$channel]['recovery_notified_at'] ?? null)
+                && (int) ($channelState[$channel]['recovery_attempts'] ?? 0) < $maxAttempts) {
+                $complete = false;
+                break;
+            }
+        }
+        $event->setAttribute('channel_state', $channelState);
+        if ($complete) {
+            $event->setAttribute('recovery_completed_at', now());
+        }
+        $event->save();
+    }
+
+    private function retryPendingRecoveries(): void
+    {
+        AlertEvent::query()
+            ->whereNotNull('resolved_at')
+            ->whereNull('recovery_completed_at')
+            ->orderBy('resolved_at')
+            ->get()
+            ->each(function (AlertEvent $event): void {
+                $rule = (string) $event->getAttribute('rule');
+                $condition = [
+                    'severity' => 'info',
+                    'value' => (float) $event->getAttribute('value'),
+                    'threshold' => (float) $event->getAttribute('threshold'),
+                    'context' => [],
+                ];
+                $this->attemptRecovery($event, $rule, $condition);
+            });
     }
 
     /** @param array{attempts_by_source: array<string, array{attempts: int, successes: int, blocked: int}>, enabled_sources: list<string>, hot_sources: list<string>, due_by_source: array<string, int>, postgres_connections: int|null, dispatch_age_seconds: int|null, has_due_work: bool} $snapshot */
@@ -124,16 +252,35 @@ final class AlertEvaluationService
         return in_array($source, $snapshot['enabled_sources'], true);
     }
 
-    private function notificationDue(AlertEvent $event): bool
+    /** @return array<string, array<string, int>> */
+    private function channelState(AlertEvent $event): array
     {
-        $notifiedAt = $event->getAttribute('notified_at');
-        if (! $notifiedAt instanceof CarbonInterface) {
-            return true;
-        }
+        $state = $event->getAttribute('channel_state');
 
-        $cooldown = max(1, (int) config('javmeta_alerts.cooldown_minutes', 30));
+        return is_array($state) ? $state : [];
+    }
 
-        return $notifiedAt->lessThanOrEqualTo(now()->subMinutes($cooldown));
+    private function cooldownSeconds(): int
+    {
+        return max(1, (int) config('javmeta_alerts.cooldown_minutes', 30)) * 60;
+    }
+
+    private function lockLeaseSeconds(): int
+    {
+        $sources = Source::query()->where('enabled', true)->count();
+        $pendingRecoveries = AlertEvent::query()
+            ->whereNotNull('resolved_at')
+            ->whereNull('recovery_completed_at')
+            ->count();
+        $channelCount = max(1, count($this->dispatcher->enabledChannels()));
+        $timeout = max(
+            1,
+            (int) config('javmeta_alerts.webhook_timeout_seconds', 5),
+            (int) config('javmeta_alerts.telegram.timeout', 5),
+        );
+        $possibleDispatches = $sources * 2 + 4 + $pendingRecoveries;
+
+        return max(60, $possibleDispatches * $channelCount * $timeout + 60);
     }
 
     private function intervalElapsed(): bool

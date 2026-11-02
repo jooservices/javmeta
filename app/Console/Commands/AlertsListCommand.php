@@ -9,19 +9,21 @@ use Illuminate\Console\Command;
 
 final class AlertsListCommand extends Command
 {
-    protected $signature = 'alerts:list {--hours=24 : Show events started in this many hours}';
+    protected $signature = 'alerts:list {--hours=24 : Show events started or resolved in this many hours}';
 
     protected $description = 'List recent alert history.';
 
     public function handle(): int
     {
         $hours = max(1, (int) $this->option('hours'));
+        $since = now()->subHours($hours);
         $events = AlertEvent::query()
-            ->where(static function ($query) use ($hours): void {
-                $query->where('started_at', '>=', now()->subHours($hours))
+            ->where(static function ($query) use ($since): void {
+                $query->where('started_at', '>=', $since)
+                    ->orWhere('resolved_at', '>=', $since)
                     ->orWhereNull('resolved_at');
             })
-            ->orderByDesc('started_at')
+            ->orderByRaw('COALESCE(resolved_at, started_at) DESC')
             ->get(['rule', 'severity', 'value', 'threshold', 'started_at', 'resolved_at', 'notified_at']);
 
         $this->table(

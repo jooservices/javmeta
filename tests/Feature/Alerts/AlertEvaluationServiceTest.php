@@ -59,6 +59,7 @@ final class AlertEvaluationServiceTest extends TestCase
             'javmeta_alerts.backlog_due_min_per_hot_source' => 10,
             'javmeta_alerts.cooldown_minutes' => 30,
             'javmeta_alerts.recovery_notice' => true,
+            'javmeta_alerts.recovery_retry_max_attempts' => 3,
             'javmeta_alerts.history_retention_days' => 90,
         ]);
     }
@@ -99,6 +100,7 @@ final class AlertEvaluationServiceTest extends TestCase
         self::assertCount(3, $this->sent);
         self::assertNotNull(AlertEvent::query()->firstOrFail()->getAttribute('resolved_at'));
         self::assertSame('resolved', $this->sent[2][2]['alert_state']);
+        self::assertSame('info', $this->sent[2][2]['severity']);
     }
 
     public function test_small_attempt_sample_does_not_open_an_event(): void
@@ -109,6 +111,66 @@ final class AlertEvaluationServiceTest extends TestCase
 
         self::assertSame([], $this->sent);
         self::assertDatabaseCount('alert_events', 0);
+    }
+
+    public function test_open_notice_retries_a_failed_channel_after_cooldown(): void
+    {
+        $telegramOpenAttempts = 0;
+        $telegramRecoveryAttempts = 0;
+        $telegram = new class ($telegramOpenAttempts, $telegramRecoveryAttempts) implements AlertChannel {
+            public function __construct(private int &$openAttempts, private int &$recoveryAttempts) {}
+
+            public function send(string $subject, string $body, array $context = []): bool
+            {
+                if (($context['alert_state'] ?? '') === 'resolved') {
+                    $this->recoveryAttempts++;
+
+                    return true;
+                }
+
+                $this->openAttempts++;
+
+                return $this->openAttempts >= 2;
+            }
+        };
+        $webhookOpenAttempts = 0;
+        $webhookRecoveryAttempts = 0;
+        $webhook = new class ($webhookOpenAttempts, $webhookRecoveryAttempts) implements AlertChannel {
+            public function __construct(private int &$openAttempts, private int &$recoveryAttempts) {}
+
+            public function send(string $subject, string $body, array $context = []): bool
+            {
+                if (($context['alert_state'] ?? '') === 'resolved') {
+                    $this->recoveryAttempts++;
+
+                    return true;
+                }
+
+                $this->openAttempts++;
+
+                return true;
+            }
+        };
+        config(['javmeta_alerts.channels' => ['telegram', 'webhook']]);
+        $this->bindChannels(['telegram' => $telegram, 'webhook' => $webhook]);
+        $this->useSnapshot($this->snapshot(100, 80));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+
+        $this->travel(1)->minute();
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        self::assertSame(1, $telegramOpenAttempts);
+        self::assertSame(1, $webhookOpenAttempts);
+
+        $this->travel(29)->minutes();
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        self::assertSame(2, $telegramOpenAttempts);
+        self::assertSame(2, $webhookOpenAttempts);
+
+        $this->useSnapshot($this->snapshot(100, 90));
+        $this->travel(1)->minute();
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        self::assertSame(1, $telegramRecoveryAttempts);
+        self::assertSame(1, $webhookRecoveryAttempts);
     }
 
     public function test_small_sample_does_not_resolve_an_open_rate_alert(): void
@@ -122,6 +184,102 @@ final class AlertEvaluationServiceTest extends TestCase
 
         self::assertCount(1, $this->sent);
         self::assertNull(AlertEvent::query()->where('rule', 'success_rate')->firstOrFail()->getAttribute('resolved_at'));
+    }
+
+    public function test_recovery_only_goes_to_channels_that_received_the_open_notice(): void
+    {
+        $telegramContexts = [];
+        $telegram = new class ($telegramContexts) implements AlertChannel {
+            /** @param list<array<string, mixed>> $contexts */
+            public function __construct(private array &$contexts) {}
+
+            public function send(string $subject, string $body, array $context = []): bool
+            {
+                $this->contexts[] = $context;
+
+                return ($context['alert_state'] ?? '') === 'resolved';
+            }
+        };
+        $webhook = new class ($this->sent) implements AlertChannel {
+            /** @param list<array{string, string, array<string, mixed>}> $sent */
+            public function __construct(private array &$sent) {}
+
+            public function send(string $subject, string $body, array $context = []): bool
+            {
+                $this->sent[] = [$subject, $body, $context];
+
+                return true;
+            }
+        };
+        config(['javmeta_alerts.channels' => ['telegram', 'webhook']]);
+        $this->bindChannels(['telegram' => $telegram, 'webhook' => $webhook]);
+        $this->useSnapshot($this->snapshot(100, 80));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+
+        $this->travel(1)->minute();
+        $this->useSnapshot($this->snapshot(100, 90));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+
+        self::assertCount(1, $telegramContexts);
+        self::assertSame('open', $telegramContexts[0]['alert_state']);
+        self::assertCount(2, $this->sent);
+        self::assertSame('resolved', $this->sent[1][2]['alert_state']);
+        self::assertSame('info', $this->sent[1][2]['severity']);
+    }
+
+    public function test_failed_recovery_retries_at_cooldown_and_stops_at_the_configured_attempt_limit(): void
+    {
+        $recoveryAttempts = 0;
+        $channel = new class ($recoveryAttempts) implements AlertChannel {
+            public function __construct(private int &$recoveryAttempts) {}
+
+            public function send(string $subject, string $body, array $context = []): bool
+            {
+                if (($context['alert_state'] ?? '') !== 'resolved') {
+                    return true;
+                }
+
+                $this->recoveryAttempts++;
+
+                return false;
+            }
+        };
+        $this->bindChannels(['telegram' => $channel]);
+        $this->useSnapshot($this->snapshot(100, 80));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        $this->travel(1)->minute();
+        $this->useSnapshot($this->snapshot(100, 90));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        self::assertSame(1, $recoveryAttempts);
+
+        $event = AlertEvent::query()->where('rule', 'success_rate')->firstOrFail();
+        self::assertNull($event->getAttribute('recovery_completed_at'));
+        $this->travel(30)->minutes();
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        $this->travel(30)->minutes();
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        self::assertSame(3, $recoveryAttempts);
+        self::assertNotNull($event->fresh()->getAttribute('recovery_completed_at'));
+
+        $this->travel(30)->minutes();
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        self::assertSame(3, $recoveryAttempts);
+    }
+
+    public function test_alert_evaluation_lock_prevents_parallel_episode_creation(): void
+    {
+        $this->useSnapshot($this->snapshot(100, 80));
+        $lock = Cache::lock('javmeta:alerts:evaluation', 180);
+        self::assertTrue($lock->get());
+
+        try {
+            $this->artisan('alerts:evaluate')->assertSuccessful();
+        } finally {
+            $lock->release();
+        }
+
+        self::assertDatabaseCount('alert_events', 0);
+        self::assertSame([], $this->sent);
     }
 
     public function test_database_snapshot_excludes_skipped_attempts_and_uses_two_hundred_responses(): void
@@ -152,6 +310,17 @@ final class AlertEvaluationServiceTest extends TestCase
                 return $this->snapshot;
             }
         });
+    }
+
+    /** @param array<string, AlertChannel> $channels */
+    private function bindChannels(array $channels): void
+    {
+        $dispatcher = new AlertChannelDispatcher($channels);
+        $this->app->instance(AlertChannelDispatcher::class, $dispatcher);
+        $this->app->instance(AlertDispatcher::class, new AlertDispatcher(
+            $this->app->make(AlertNotifier::class),
+            $dispatcher,
+        ));
     }
 
     /** @return array<string, mixed> */

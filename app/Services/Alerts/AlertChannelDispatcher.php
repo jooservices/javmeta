@@ -16,7 +16,7 @@ final class AlertChannelDispatcher
      * @param array<string, mixed> $context
      * @return list<string> Names of channels that accepted the message.
      */
-    public function dispatch(string $subject, string $body, array $context = [], bool $force = false): array
+    public function dispatch(string $subject, string $body, array $context = [], bool $force = false, ?array $onlyChannels = null): array
     {
         if (! $force && ! (bool) config('javmeta_alerts.enabled', true)) {
             return [];
@@ -24,6 +24,10 @@ final class AlertChannelDispatcher
 
         $sent = [];
         foreach ($this->enabledNames() as $name) {
+            if ($onlyChannels !== null && ! in_array($name, $onlyChannels, true)) {
+                continue;
+            }
+
             $channel = $this->channels[$name] ?? null;
             if ($channel === null) {
                 Log::warning('javmeta.alert_channel_unavailable', ['channel' => $name]);
@@ -34,7 +38,14 @@ final class AlertChannelDispatcher
             try {
                 if ($channel->send($subject, $body, $context)) {
                     $sent[] = $name;
+
+                    continue;
                 }
+
+                Log::warning('javmeta.alert_channel_failed', [
+                    'channel' => $name,
+                    'reason' => 'not_delivered',
+                ]);
             } catch (Throwable $exception) {
                 Log::warning('javmeta.alert_channel_failed', [
                     'channel' => $name,

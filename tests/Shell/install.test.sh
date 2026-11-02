@@ -114,6 +114,11 @@ grep -q 'OWNER_PASSWORD=private-owner-password' "$fixture/node.credentials" || f
 owner_runs="$(grep -c 'operations:make-super-admin' "$CALLS" || true)"
 grep -q 'artisan es:setup' "$CALLS" || fail 'missing ES setup'
 grep -q 'artisan crawler:sync-sources' "$CALLS" || fail 'missing source sync'
+grep -q 'artisan settings:purge-telegram-credentials' "$CALLS" || fail 'legacy Telegram credentials were not purged'
+migrate_line="$(grep -n 'artisan migrate --force' "$CALLS" | head -1 | cut -d: -f1)"
+import_line="$(grep -n 'artisan settings:import-env' "$CALLS" | head -1 | cut -d: -f1)"
+purge_line="$(grep -n 'artisan settings:purge-telegram-credentials' "$CALLS" | head -1 | cut -d: -f1)"
+(( migrate_line < import_line && import_line < purge_line )) || fail 'legacy Telegram credentials must be purged after settings import'
 grep -q "CRAWLERX_PLAYWRIGHT_SCRIPT=\"$fixture/node/current/vendor/" "$fixture/node/shared/.env" || fail 'Playwright path not under root'
 # Re-runs preserve the generated key and existing configuration.
 cp "$fixture/node/shared/.env" "$fixture/env-before"

@@ -536,6 +536,12 @@ Gửi một tin khi điều kiện cảnh báo trở lại bình thường.
 
 Bật/tắt. Mã mục: `alerts.recovery_notice`.
 
+### Số lần thử gửi tin phục hồi tối đa
+
+Sau mỗi khoảng nhắc lại, thử gửi lại tin phục hồi chưa tới được kênh; hết số lần này thì dừng.
+
+Số nguyên; từ 1 đến 10. Mã mục: `alerts.recovery_retry_max_attempts`.
+
 ### Kênh nhận cảnh báo
 
 Mỗi dòng chọn một kênh đã bật: telegram hoặc webhook.

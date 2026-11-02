@@ -45,4 +45,32 @@ final class AlertMetricsTest extends TestCase
         self::assertContains(['name' => 'javmeta_alert_event_count', 'value' => 1, 'labels' => ['state' => 'firing', 'severity' => 'warning']], $counts);
         self::assertContains(['name' => 'javmeta_alert_event_count', 'value' => 1, 'labels' => ['state' => 'resolved', 'severity' => 'warning']], $counts);
     }
+
+    public function test_event_counts_include_open_old_episodes_and_recently_resolved_old_episodes(): void
+    {
+        config(['javmeta_alerts.history_retention_days' => 90]);
+        AlertEvent::query()->create([
+            'rule' => 'old_open',
+            'severity' => 'warning',
+            'value' => 80,
+            'threshold' => 85,
+            'started_at' => now()->subDays(120),
+        ]);
+        AlertEvent::query()->create([
+            'rule' => 'old_but_recently_resolved',
+            'severity' => 'warning',
+            'value' => 80,
+            'threshold' => 85,
+            'started_at' => now()->subDays(120),
+            'resolved_at' => now()->subDay(),
+        ]);
+
+        $counts = array_values(array_filter(
+            app(AlertMetrics::class)->points(),
+            static fn(array $point): bool => $point['name'] === MetricStreams::NAMES['alert_event_count'],
+        ));
+
+        self::assertContains(['name' => 'javmeta_alert_event_count', 'value' => 1, 'labels' => ['state' => 'firing', 'severity' => 'warning']], $counts);
+        self::assertContains(['name' => 'javmeta_alert_event_count', 'value' => 1, 'labels' => ['state' => 'resolved', 'severity' => 'warning']], $counts);
+    }
 }

@@ -17,7 +17,7 @@ final class DatabaseAlertSnapshotReader implements AlertSnapshotReader
     /** @return array{attempts_by_source: array<string, array{attempts: int, successes: int, blocked: int}>, enabled_sources: list<string>, hot_sources: list<string>, due_by_source: array<string, int>, postgres_connections: int|null, dispatch_age_seconds: int|null, has_due_work: bool} */
     public function snapshot(CarbonImmutable $cutoff): array
     {
-        $attempts = $this->attemptsBySource($cutoff);
+        $attempts = $this->attemptsBySource($cutoff, CarbonImmutable::now());
         $dueBySource = $this->dueBySource();
         $enabledSources = Source::query()->where('enabled', true)->orderBy('slug')->pluck('slug')->map('strval')->all();
         $hotSources = $this->hotSources($cutoff, array_keys($attempts));
@@ -34,10 +34,10 @@ final class DatabaseAlertSnapshotReader implements AlertSnapshotReader
     }
 
     /** @return array<string, array{attempts: int, successes: int, blocked: int}> */
-    private function attemptsBySource(CarbonImmutable $cutoff): array
+    private function attemptsBySource(CarbonImmutable $cutoff, CarbonImmutable $now): array
     {
         $rows = DB::table('crawl_fetch_attempts')
-            ->where('started_at', '>=', $cutoff)
+            ->whereBetween('started_at', [$cutoff, $now])
             ->where('outcome', '<>', 'skipped')
             ->selectRaw('source_slug, COUNT(*) AS attempts, SUM(CASE WHEN http_status BETWEEN 200 AND 299 THEN 1 ELSE 0 END) AS successes, SUM(CASE WHEN http_status IN (403, 429) OR NULLIF(cf_mitigated, ?) IS NOT NULL THEN 1 ELSE 0 END) AS blocked', [''])
             ->groupBy('source_slug')

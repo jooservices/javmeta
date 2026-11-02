@@ -23,9 +23,15 @@ final class AlertDispatcher
      * @param array<string, mixed> $context
      * @return list<string>
      */
-    public function dispatchChannels(string $subject, string $body, array $context = [], bool $force = false): array
+    public function dispatchChannels(string $subject, string $body, array $context = [], bool $force = false, ?array $onlyChannels = null): array
     {
-        return $this->channels?->dispatch($subject, $body, $context, $force) ?? [];
+        return $this->channels?->dispatch($subject, $body, $context, $force, $onlyChannels) ?? [];
+    }
+
+    /** @return list<string> */
+    public function enabledChannels(): array
+    {
+        return $this->channels?->enabledNames() ?? [];
     }
 
     /**

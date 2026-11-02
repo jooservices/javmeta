@@ -52,6 +52,19 @@ final class AlertRuleEvaluatorTest extends TestCase
         self::assertSame('onejav', $rules['success_rate']['context']['top_sources'][0]);
     }
 
+    public function test_rate_thresholds_compare_unrounded_values(): void
+    {
+        $rules = (new AlertRuleEvaluator())->evaluate($this->snapshot([
+            'javdb' => ['attempts' => 10000, 'successes' => 8496, 'blocked' => 1004],
+        ]));
+
+        self::assertArrayHasKey('success_rate', $rules);
+        self::assertArrayHasKey('blocked_ratio', $rules);
+        self::assertArrayHasKey('source_success_rate:javdb', $rules);
+        self::assertSame(85.0, $rules['success_rate']['value']);
+        self::assertSame(10.0, $rules['blocked_ratio']['value']);
+    }
+
     public function test_capacity_dispatch_and_low_backlog_rules_fire_at_their_limits(): void
     {
         $rules = (new AlertRuleEvaluator())->evaluate($this->snapshot(

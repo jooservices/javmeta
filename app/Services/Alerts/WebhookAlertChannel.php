@@ -18,7 +18,11 @@ final class WebhookAlertChannel implements AlertChannel
 
         Http::acceptJson()
             ->timeout(max(1, (int) config('javmeta_alerts.webhook_timeout_seconds', 5)))
-            ->post($url, ['subject' => $subject, 'message' => $body, 'context' => $context])
+            ->post($url, [
+                'subject' => $subject,
+                'message' => $body,
+                'context' => array_filter($context, static fn(mixed $value): bool => is_scalar($value)),
+            ])
             ->throw();
 
         return true;

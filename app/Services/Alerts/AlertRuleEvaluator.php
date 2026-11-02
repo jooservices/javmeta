@@ -29,7 +29,10 @@ final class AlertRuleEvaluator
             'dispatch_age' => [
                 'value' => $snapshot['has_due_work'] ? ($snapshot['dispatch_age_seconds'] ?? -1) : 0,
                 'threshold' => max(1, (int) config('javmeta_alerts.dispatch_age_max_seconds', 60)),
-                'context' => ['missing' => $snapshot['has_due_work'] && $snapshot['dispatch_age_seconds'] === null],
+                'context' => [
+                    'idle' => ! $snapshot['has_due_work'],
+                    'missing' => $snapshot['has_due_work'] && $snapshot['dispatch_age_seconds'] === null,
+                ],
             ],
             'backlog_depth' => $source === null || ! in_array($source, $snapshot['hot_sources'], true) ? null : [
                 'value' => $snapshot['due_by_source'][$source] ?? 0,
@@ -140,7 +143,7 @@ final class AlertRuleEvaluator
 
     private function percentage(int $part, int $whole): float
     {
-        return round($part * 100 / max(1, $whole), 1);
+        return $part * 100 / max(1, $whole);
     }
 
     /**

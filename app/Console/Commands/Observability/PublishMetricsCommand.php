@@ -28,6 +28,7 @@ use App\Services\Workers\HorizonLayoutSnapshot;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Schema;
 use Carbon\CarbonImmutable;
@@ -76,7 +77,7 @@ final class PublishMetricsCommand extends Command
             $this->catalogMetrics(),
             $this->failedJobMetrics(),
             $this->postgresCapacityMetrics(),
-            $alertMetrics->points(),
+            $this->alertMetricPoints($alertMetrics),
             $this->horizonWorkerMetrics(),
             [[
                 'name' => MetricStreams::NAMES['mongo_archive_write_failures'],
@@ -93,6 +94,18 @@ final class PublishMetricsCommand extends Command
         $this->components->info('Published ' . count($points) . ' metric points.');
 
         return self::SUCCESS;
+    }
+
+    /** @return list<array{name: string, value: int, labels?: array<string, string>}> */
+    private function alertMetricPoints(AlertMetrics $alertMetrics): array
+    {
+        try {
+            return $alertMetrics->points();
+        } catch (Throwable $exception) {
+            Log::warning('javmeta.alert_metrics_failed', ['exception' => $exception::class]);
+
+            return [];
+        }
     }
 
     /**

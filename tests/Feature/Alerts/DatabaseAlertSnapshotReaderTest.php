@@ -56,6 +56,16 @@ final class DatabaseAlertSnapshotReaderTest extends TestCase
             'status' => 'pending',
             'next_attempt_at' => now()->addMinute(),
         ]);
+        DB::table('crawl_fetch_attempts')->insert([
+            'created_at' => now(),
+            'source_slug' => 'alert-source',
+            'url_hash' => hash('sha256', 'future-attempt'),
+            'method' => 'http',
+            'started_at' => now()->addHour(),
+            'duration_ms' => 1,
+            'http_status' => 200,
+            'outcome' => 'ok',
+        ]);
 
         $snapshot = app(DatabaseAlertSnapshotReader::class)->snapshot(CarbonImmutable::now()->subMinutes(15));
 

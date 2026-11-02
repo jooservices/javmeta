@@ -63,11 +63,13 @@ source rules fire together, the overall notice lists the three lowest-rate
 sources and suppresses duplicate source notices for that evaluation.
 
 Open conditions are stored in `alert_events`; one row represents a firing
-episode, with its start, latest value/threshold, last successful notice and
-resolution time. A continuing issue is resent after `alerts.cooldown_minutes`
-(30 by default). A recovery message is sent once only after an open notice was
-delivered. Resolved history is pruned after `alerts.history_retention_days`
-(90 by default); active episodes remain.
+episode, with its start, latest value/threshold, channel delivery state and
+resolution time. Each channel retries an undelivered open notice after
+`alerts.cooldown_minutes` (30 by default), without resending to channels that
+already accepted that attempt. A recovery goes only to channels that received
+the open notice. Failed recoveries retry at the same cooldown, up to
+`alerts.recovery_retry_max_attempts` (3 by default). Resolved history is pruned
+after `alerts.history_retention_days` (90 by default); active episodes remain.
 
 Run `php artisan alerts:metrics` over SSH to inspect current firing gauges and
 retained event counts. `obs:publish-metrics` exports the same points to the

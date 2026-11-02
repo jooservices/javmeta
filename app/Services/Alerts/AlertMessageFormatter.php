@@ -17,7 +17,7 @@ final class AlertMessageFormatter
         $body = $this->body($rule, $condition, $resolved);
         $context = $condition['context'] + [
             'alert_state' => $resolved ? 'resolved' : 'open',
-            'severity' => $condition['severity'],
+            'severity' => $resolved ? 'info' : $condition['severity'],
             'rule' => $rule,
             'value' => $condition['value'],
             'threshold' => $condition['threshold'],
@@ -71,6 +71,10 @@ final class AlertMessageFormatter
         }
 
         if ($rule === 'dispatch_age') {
+            if ((bool) ($condition['context']['idle'] ?? false)) {
+                return "{$prefix}Hiện không còn việc crawl đến hạn.";
+            }
+
             if ((bool) ($condition['context']['missing'] ?? false)) {
                 return "{$prefix}Còn việc đến hạn nhưng chưa ghi nhận lượt điều phối mới (ngưỡng {$this->number($threshold)} giây).";
             }

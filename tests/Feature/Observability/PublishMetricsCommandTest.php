@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Schema;
 use Carbon\CarbonImmutable;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Testing\FakeConfigStore;
@@ -614,5 +615,26 @@ final class PublishMetricsCommandTest extends TestCase
 
             return false;
         });
+    }
+
+    public function test_alert_metric_query_failure_does_not_drop_the_other_metrics(): void
+    {
+        config()->set([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.email' => 'root@javmeta.local',
+            'openobserve.password' => 'secret',
+            'openobserve.timeout' => 1,
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
+        Schema::drop('alert_events');
+
+        $this->artisan('obs:publish-metrics')
+            ->expectsOutputToContain('Published')
+            ->assertSuccessful();
+
+        Http::assertSent(static fn($request): bool => str_contains($request->body(), 'javmeta_crawl_queue_claimed_age_seconds')
+            && ! str_contains($request->body(), 'javmeta_alert_firing'));
     }
 }

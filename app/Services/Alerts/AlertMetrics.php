@@ -38,7 +38,10 @@ final class AlertMetrics
     {
         $retentionDays = max(1, (int) config('javmeta_alerts.history_retention_days', 90));
         $rows = AlertEvent::query()
-            ->where('started_at', '>=', now()->subDays($retentionDays))
+            ->where(static function ($query) use ($retentionDays): void {
+                $query->whereNull('resolved_at')
+                    ->orWhere('resolved_at', '>=', now()->subDays($retentionDays));
+            })
             ->selectRaw("CASE WHEN resolved_at IS NULL THEN 'firing' ELSE 'resolved' END AS state, severity, COUNT(*) AS event_count")
             ->groupBy('state', 'severity')
             ->get();
