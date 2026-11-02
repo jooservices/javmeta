@@ -7,6 +7,7 @@ namespace Tests\Unit\Providers;
 use App\Events\SettingsApplied;
 use App\Services\Crawler\LaravelConfigLoginCookieProvider;
 use JOOservices\CrawlerX\CrawlerXFactory;
+use JOOservices\CrawlerX\Fetch\FetchFallbackChain;
 use Illuminate\Support\Facades\Event;
 use ReflectionClass;
 use ReflectionProperty;
@@ -32,6 +33,15 @@ final class CrawlerxServiceProviderTest extends TestCase
         }
 
         self::assertNull($factory->getProperty('sessionCache')->getValue());
+    }
+
+    public function test_boot_installs_the_configured_playwright_handler_in_the_fetch_chain(): void
+    {
+        $chain = (new ReflectionProperty(CrawlerXFactory::class, 'fetchChain'))->getValue();
+        self::assertInstanceOf(FetchFallbackChain::class, $chain);
+
+        $handlers = (new ReflectionProperty(FetchFallbackChain::class, 'handlers'))->getValue($chain);
+        self::assertInstanceOf(\App\Services\Crawler\PlaywrightTimeoutFetchMethodHandler::class, $handlers['playwright']);
     }
 
     public function test_database_url_change_rebuilds_the_crawler_fetch_chain(): void

@@ -39,4 +39,20 @@ final class SettingsRegistryTest extends TestCase
             }
         }
     }
+
+    public function test_fetch_method_learning_settings_are_registered(): void
+    {
+        $definitions = config('javmeta_settings.definitions');
+
+        foreach ([
+            'timeouts.playwright_seconds',
+            'crawl.fetch_method_window_size',
+            'crawl.fetch_method_failure_threshold',
+            'crawl.fetch_method_window_ttl_seconds',
+            'crawl.fetch_method_preference_ttl_seconds',
+            'crawl.fetch_method_probe_interval',
+        ] as $key) {
+            self::assertArrayHasKey($key, $definitions);
+        }
+    }
 }

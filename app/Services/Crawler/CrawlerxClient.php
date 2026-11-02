@@ -4,23 +4,21 @@ declare(strict_types=1);
 
 namespace App\Services\Crawler;
 
+use App\Services\Crawl\CrawlerxFetchMethodPlan;
+use App\Observability\ObservabilityEmitter;
 use JOOservices\CrawlerX\CrawlerX;
-use JOOservices\CrawlerX\Dto\CrawlOptionsDto;
 use JOOservices\CrawlerX\Dto\FetchMetaDto;
 use JOOservices\CrawlerX\Dto\Entity\GalleryDto;
 use JOOservices\CrawlerX\Dto\Entity\MovieDto;
 use JOOservices\CrawlerX\Dto\Entity\PerformerDto;
-use JOOservices\CrawlerX\Dto\FetchOptionsDto;
 use JOOservices\CrawlerX\Enums\CrawlErrorCode;
 use JOOservices\CrawlerX\Enums\CrawlType;
-use App\Observability\ObservabilityEmitter;
 
 /**
- * Thin adapter over the CrawlerX public API. crawlerx owns every fetch
- * decision; javmeta only passes a time budget (job timeout minus a margin),
- * routes the request explicitly by site and crawl type, and normalizes every
- * outcome into a CrawlerxFetchResult. Never writes to the database. Not final
- * so tests can substitute a fixture-backed fake.
+ * Thin adapter over the CrawlerX public API. CrawlerX performs fetches and
+ * records attempts; javmeta supplies deadlines, learned method order and the
+ * Playwright timeout cap, then normalizes every outcome. Never writes to the
+ * database. Not final so tests can substitute a fixture-backed fake.
  */
 class CrawlerxClient
 {
@@ -87,6 +85,7 @@ class CrawlerxClient
         $started = hrtime(true);
         $result = $this->doFetch($sourceSlug, $url, $type);
         $durationMs = (int) round((hrtime(true) - $started) / 1_000_000);
+        app(CrawlerxFetchMethodPlan::class)->recordAttempts($sourceSlug, $url, $result->attempts);
 
         app(ObservabilityEmitter::class)->emitFetch(
             $sourceSlug,
@@ -111,10 +110,15 @@ class CrawlerxClient
 
     private function doFetch(string $sourceSlug, string $url, CrawlType $type): CrawlerxFetchResult
     {
+        $options = app(CrawlerxFetchMethodPlan::class)->optionsFor(
+            $sourceSlug,
+            $url,
+            (int) config('javmeta_queues.worker_timeout', 180) - self::DEADLINE_MARGIN_SECONDS,
+        );
         $outcome = CrawlerX::url($url)
             ->site($sourceSlug)
             ->type($type)
-            ->options($this->options())
+            ->options($options)
             ->tryCrawl();
 
         if ($outcome->failed()) {
@@ -199,13 +203,6 @@ class CrawlerxClient
         $title = is_string($payload['title'] ?? null) ? $payload['title'] : null;
 
         return CrawlerxFetchResult::gallery(GalleryDto::fromParsed($externalId, $title, $payload));
-    }
-
-    private function options(): CrawlOptionsDto
-    {
-        $deadline = (int) config('javmeta_queues.worker_timeout', 180) - self::DEADLINE_MARGIN_SECONDS;
-
-        return new CrawlOptionsDto(fetch: new FetchOptionsDto(deadlineSeconds: max(1, $deadline)));
     }
 
     private function errorCode(?CrawlErrorCode $code, ?bool $challengeDetected): string

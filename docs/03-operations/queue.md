@@ -163,6 +163,28 @@ between changes. The command logs applied counts; `obs:publish-metrics`
 publishes observed counts as `javmeta_horizon_workers{queue,node}`. Changes to
 queue names or other Horizon options that cannot be safely scaled in place are
 reported as `restart-required` and need an operator-managed Horizon restart.
+
+## Learned fetch method order
+
+CrawlerX keeps each source manifest's method chain unless a source and normalized
+request host have enough recent evidence to prefer a different browser method.
+The shared Laravel cache stores separate Playwright-family and FlareSolverr
+success/failure windows with a TTL. Defaults use the last 10 Playwright outcomes,
+switch after 8 failures when FlareSolverr has succeeded in its recent window,
+keep that preference for 6 hours, and probe Playwright on every 10th request.
+The history expires after one day. These values are database settings on Cài đặt.
+
+While preferred, FlareSolverr moves ahead of the first Playwright method and all
+other methods keep their manifest order. Probe requests use the manifest order;
+a successful Playwright probe restores that order immediately, and an expired
+preference gets another probe on the next request. The probe reuses the current
+crawl job. It does not enqueue another request, and the existing source gap and
+`SourceThrottle` continue to pace each source.
+
+`timeouts.playwright_seconds` (25 seconds by default) limits the Playwright
+handler's browser-service request independently of the overall fetch deadline.
+The timeout releases the worker to continue the same CrawlerX chain, including
+FlareSolverr when the chain still has budget.
 If a saved worker setting is invalid or the settings store cannot be read, the
 reconciler logs the problem and leaves the running layout unchanged.
 

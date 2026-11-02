@@ -26,6 +26,9 @@ environment.
 | `javmeta_crawl_dispatch_stale` | `severity` | 1 when due crawl work has exceeded the warning or critical dispatch-age threshold; 0 otherwise. Thresholds come from database settings. |
 | `javmeta_crawl_queue_avg_attempts` | — | Average attempts for pending and failed queue rows. |
 | `javmeta_crawl_events_5m` | `kind` | Crawl events created in the previous five minutes. |
+| `javmeta_fetch_method_attempts` | `source`, `method`, `outcome` | Fetch method attempts completed and recorded in the previous minute. |
+| `javmeta_fetch_method_preference` | `source`, `method` | Current browser-method preference by source (`1` preferred, `0` otherwise); a source is preferred when any observed host has an active FlareSolverr preference. |
+| `javmeta_playwright_slot_busy_ratio` | — | Estimated Playwright-family slot occupancy over the previous minute, capped at 1.0. |
 | `javmeta_api_requests_1m` | — | API requests recorded in the previous minute. |
 | `javmeta_api_error_rate_1m` | — | Fraction of API requests with a 4xx/5xx response in the previous minute. |
 | `javmeta_api_p50_ms_1m` | — | API response latency p50 in milliseconds. |
@@ -60,6 +63,12 @@ environment.
 
 The seven `javmeta_crawl_run_*_1h` streams are emitted from a fixed suffix list
 in `PublishMetricsCommand`; no other dynamic metric names are generated.
+
+`javmeta_playwright_slot_busy_ratio` divides the completed Playwright-family
+durations recorded in the previous minute by `queue.browser_inflight` slots and
+60 seconds. The attempt counter is a one-minute gauge grouped by source, method
+and outcome. Preference points use source labels only; per-host state stays in
+the shared cache to keep metric cardinality bounded.
 
 The `kind=queue_reclaimed_without_start` series on `javmeta_crawl_events_5m`
 counts stale queue claims returned to pending before a worker started them.
@@ -191,9 +200,9 @@ request gap per source (metric `javmeta_source_gap_seconds`).
 `crawl_fetch_attempts` stores one row per attempted request or visited skip from
 CrawlerX, for listing, detail, performer and gallery jobs. Successful requests
 are included. Older CrawlerX releases without `started_at`, `duration_ms` and
-`outcome` are accepted but do not create diagnostic rows. Deploy this consumer
-independently, then upgrade CrawlerX after its diagnostics release is available;
-no dependency bump or fallback selection change is included here.
+`outcome` are accepted but do not create diagnostic rows. The adapter uses the
+existing CrawlerX method-chain option to apply the learned order per source and
+host; no package dependency bump is required.
 
 Rows contain the source, optional queue ID, SHA-256 URL hash, method, UTC start,
 duration, nullable HTTP status and `cf-mitigated`, outcome, error code and a

@@ -15,6 +15,7 @@ use App\Models\Source;
 use App\Observability\OpenObserveClient;
 use App\Observability\MetricStreams;
 use App\Services\Archive\MongoArchiveWriteHealth;
+use App\Services\Crawl\CrawlerxFetchMethodPlan;
 use App\Services\Health\CrawlDispatchHeartbeat;
 use App\Services\Search\ElasticsearchHttpClient;
 use App\Services\Search\ElasticsearchRequestHealth;
@@ -45,6 +46,7 @@ final class PublishMetricsCommand extends Command
         ElasticsearchRequestHealth $elasticsearchHealth,
         SourceScheduleFreshness $sourceFreshness,
         CrawlDispatchHeartbeat $dispatchHeartbeat,
+        CrawlerxFetchMethodPlan $fetchMethodPlan,
     ): int {
         if (! $client->enabled()) {
             $this->components->info('OpenObserve disabled; skipping metrics publish.');
@@ -57,6 +59,7 @@ final class PublishMetricsCommand extends Command
             $this->queueMetrics(),
             $this->crawlDispatchMetrics($dispatchHeartbeat),
             $this->crawlEventMetrics(),
+            $this->fetchMethodMetrics($fetchMethodPlan),
             $this->apiMetrics(),
             $this->qualityMetrics(),
             $this->crawlRunMetrics(),
@@ -236,6 +239,56 @@ final class PublishMetricsCommand extends Command
                 'value' => (int) $row->getAttribute('c'),
                 'labels' => ['kind' => (string) $row->kind],
             ];
+        }
+
+        return $points;
+    }
+
+    /**
+     * @return list<array{name: string, value: float|int, labels?: array<string, string>}>
+     */
+    private function fetchMethodMetrics(CrawlerxFetchMethodPlan $fetchMethodPlan): array
+    {
+        $points = [];
+        $playwrightDurationMs = 0;
+
+        if (Schema::hasTable('crawl_fetch_attempts')) {
+            $rows = DB::table('crawl_fetch_attempts')
+                ->where('created_at', '>=', now()->subMinute())
+                ->selectRaw('source_slug, method, outcome, COUNT(*) AS attempts, COALESCE(SUM(duration_ms), 0) AS duration_ms')
+                ->groupBy('source_slug', 'method', 'outcome')
+                ->get();
+
+            foreach ($rows as $row) {
+                $source = (string) $row->source_slug;
+                $method = (string) $row->method;
+                $outcome = (string) $row->outcome;
+                $points[] = [
+                    'name' => MetricStreams::NAMES['fetch_method_attempts'],
+                    'value' => (int) $row->attempts,
+                    'labels' => ['source' => $source, 'method' => $method, 'outcome' => $outcome],
+                ];
+
+                if (in_array($method, ['playwright', 'playwright_stealth', 'chrome_stealth'], true) && $outcome !== 'skipped') {
+                    $playwrightDurationMs += (int) $row->duration_ms;
+                }
+            }
+        }
+
+        $slots = max(1, (int) config('javmeta_queues.browser_inflight', 8));
+        $points[] = [
+            'name' => MetricStreams::NAMES['playwright_slot_busy_ratio'],
+            'value' => min(1.0, max(0.0, $playwrightDurationMs / ($slots * 60_000))),
+        ];
+
+        foreach (Source::query()->get(['slug']) as $source) {
+            foreach ($fetchMethodPlan->preferenceValuesForSource((string) $source->slug) as $method => $preferred) {
+                $points[] = [
+                    'name' => MetricStreams::NAMES['fetch_method_preference'],
+                    'value' => $preferred,
+                    'labels' => ['source' => (string) $source->slug, 'method' => $method],
+                ];
+            }
         }
 
         return $points;

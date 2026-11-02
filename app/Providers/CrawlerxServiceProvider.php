@@ -5,9 +5,10 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Events\SettingsApplied;
-use App\Support\BrowserServiceEnvironment;
+use App\Services\Crawler\CrawlerxFetchChainFactory;
 use App\Services\Crawler\LaravelConfigLoginCookieProvider;
 use App\Services\Crawler\SourceLoginCookieStore;
+use App\Support\BrowserServiceEnvironment;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use JOOservices\CrawlerX\CrawlerXFactory;
@@ -43,8 +44,8 @@ final class CrawlerxServiceProvider extends ServiceProvider
 
     private function configureCrawler(): void
     {
-        CrawlerXFactory::configure(
-            logins: new LaravelConfigLoginCookieProvider(fn(): SourceLoginCookieStore => $this->app->make(SourceLoginCookieStore::class)),
-        );
+        $logins = new LaravelConfigLoginCookieProvider(fn(): SourceLoginCookieStore => $this->app->make(SourceLoginCookieStore::class));
+        CrawlerXFactory::configure(logins: $logins);
+        CrawlerXFactory::useFetchChain($this->app->make(CrawlerxFetchChainFactory::class)->create($logins));
     }
 }

@@ -9,6 +9,7 @@ use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Services\Archive\MongoArchiveWriteHealth;
+use App\Services\Crawl\FetchMethodPreference;
 use App\Services\Health\CrawlDispatchHeartbeat;
 use App\Services\Search\ElasticsearchRequestHealth;
 use App\Services\Settings\SettingsService;
@@ -16,6 +17,7 @@ use App\Services\Workers\HorizonLayoutSnapshot;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Redis;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
@@ -71,6 +73,111 @@ final class PublishMetricsCommandTest extends TestCase
                 && str_contains($request->body(), 'javmeta_source_gap_seconds')
                 && ! str_contains($request->body(), 'javmeta_source_circuit_state')
                 && ! str_contains($request->body(), 'javmeta_source_consecutive_failures');
+        });
+    }
+
+    public function test_command_publishes_fetch_attempt_preference_and_playwright_slot_metrics(): void
+    {
+        Source::factory()->create([
+            'slug' => 'javbus',
+            'gap_seconds_default' => 30,
+            'gap_seconds_current' => 30,
+            'enabled' => true,
+        ]);
+        config()->set([
+            'cache.default' => 'array',
+            'javmeta_queues.browser_inflight' => 2,
+            'javmeta_queues.fetch_method_window_size' => 10,
+            'javmeta_queues.fetch_method_failure_threshold' => 8,
+            'javmeta_queues.fetch_method_window_ttl_seconds' => 3600,
+            'javmeta_queues.fetch_method_preference_ttl_seconds' => 3600,
+            'javmeta_queues.fetch_method_probe_interval' => 10,
+        ]);
+        Cache::store('array')->flush();
+        $preference = app(FetchMethodPreference::class);
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            $preference->recordAttempts('javbus', 'www.javbus.com', [
+                ['method' => 'playwright', 'outcome' => 'error'],
+                ['method' => 'flaresolverr', 'outcome' => 'ok'],
+            ]);
+        }
+
+        DB::table('crawl_fetch_attempts')->insert([
+            [
+                'created_at' => now()->subSeconds(10),
+                'source_slug' => 'javbus',
+                'crawl_queue_id' => null,
+                'url_hash' => str_repeat('a', 64),
+                'method' => 'playwright',
+                'started_at' => now()->subSeconds(30),
+                'duration_ms' => 20_000,
+                'http_status' => null,
+                'cf_mitigated' => null,
+                'outcome' => 'error',
+                'error_code' => 'timeout',
+                'error' => null,
+            ],
+            [
+                'created_at' => now()->subSeconds(5),
+                'source_slug' => 'javbus',
+                'crawl_queue_id' => null,
+                'url_hash' => str_repeat('b', 64),
+                'method' => 'playwright',
+                'started_at' => now()->subSeconds(10),
+                'duration_ms' => 10_000,
+                'http_status' => null,
+                'cf_mitigated' => null,
+                'outcome' => 'error',
+                'error_code' => 'timeout',
+                'error' => null,
+            ],
+        ]);
+
+        config()->set([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.email' => 'root@javmeta.local',
+            'openobserve.password' => 'secret',
+            'openobserve.timeout' => 1,
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
+
+        $this->artisan('obs:publish-metrics')->assertSuccessful();
+
+        Http::assertSent(static function ($request): bool {
+            if (! str_contains($request->url(), '/v1/metrics')) {
+                return false;
+            }
+
+            $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [];
+            $metricValue = static function (string $name, array $expectedLabels) use ($metrics): ?float {
+                foreach ($metrics as $metric) {
+                    if (($metric['name'] ?? null) !== $name) {
+                        continue;
+                    }
+                    foreach ($metric['gauge']['dataPoints'] ?? [] as $point) {
+                        $labels = [];
+                        foreach ($point['attributes'] ?? [] as $attribute) {
+                            $labels[$attribute['key']] = $attribute['value']['stringValue'] ?? null;
+                        }
+                        foreach ($expectedLabels as $key => $value) {
+                            if (($labels[$key] ?? null) !== $value) {
+                                continue 2;
+                            }
+                        }
+
+                        return is_numeric($point['asDouble'] ?? null) ? (float) $point['asDouble'] : null;
+                    }
+                }
+
+                return null;
+            };
+
+            return $metricValue('javmeta_fetch_method_attempts', ['source' => 'javbus', 'method' => 'playwright', 'outcome' => 'error']) === 2.0
+                && $metricValue('javmeta_fetch_method_preference', ['source' => 'javbus', 'method' => 'flaresolverr']) === 1.0
+                && $metricValue('javmeta_fetch_method_preference', ['source' => 'javbus', 'method' => 'playwright']) === 0.0
+                && $metricValue('javmeta_playwright_slot_busy_ratio', []) === 0.25;
         });
     }
 
