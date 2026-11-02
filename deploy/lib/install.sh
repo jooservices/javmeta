@@ -212,9 +212,10 @@ control() {
 }
 role_units() {
   local prefix="${answers[UNIT_PREFIX]}"
-  answers[STOP_UNITS]="$prefix-horizon $prefix-horizon-reconcile.timer $prefix-embedder"
+  answers[STOP_UNITS]="$prefix-horizon $prefix-horizon-reconcile.timer $prefix-node-sample.timer $prefix-embedder"
   answers[RESTART_UNITS]="$prefix-embedder $prefix-horizon ${answers[EXPORTER_UNIT]}"
   answers[START_UNITS]="$prefix-horizon-reconcile.timer"
+  if [[ "${answers[NODE_ROLE]}" == worker ]]; then answers[START_UNITS]+=" $prefix-node-sample.timer"; fi
   if [[ "${answers[NODE_ROLE]}" == primary ]]; then
     answers[STOP_UNITS]="$prefix-scheduler ${answers[STOP_UNITS]}"
     answers[RESTART_UNITS]="${answers[FPM_UNIT]} ${answers[NGINX_UNIT]} ${answers[RESTART_UNITS]}"

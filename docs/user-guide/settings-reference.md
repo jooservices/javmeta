@@ -702,19 +702,103 @@ Tối đa 10.
 
 Số nguyên; từ 1 đến 10. Mã mục: `telegram.bot_max_results`.
 
-## Báo cáo hằng giờ
-
-### Múi giờ báo cáo
-
-Múi giờ cho báo cáo và footer thông báo, ví dụ America/Mexico_City.
-
-Văn bản. Mã mục: `report.timezone`.
+## Báo cáo
 
 ### Tệp trạng thái báo cáo
 
 Đường dẫn tệp lưu mốc gửi báo cáo hằng giờ.
 
 Văn bản. Mã mục: `report.state_path`.
+
+### Bật báo cáo định kỳ
+
+Lịch tự động gửi báo cáo trạng thái qua Telegram.
+
+Bật/tắt. Mã mục: `report.enabled`.
+
+### Chu kỳ gửi báo cáo (phút)
+
+Báo cáo chạy theo mốc cố định trong ngày theo múi giờ đã chọn.
+
+Số nguyên; từ 15 đến 1440; chọn: 15, 30, 60, 120, 180, 360, 720, 1440. Mã mục: `report.interval_minutes`.
+
+### Múi giờ báo cáo
+
+Tên múi giờ IANA, ví dụ America/Mexico_City.
+
+Văn bản. Mã mục: `report.timezone`.
+
+### Giờ yên lặng bắt đầu
+
+Để trống để không bật giờ yên lặng; định dạng HH:MM.
+
+Văn bản. Mã mục: `report.quiet_hours_start`.
+
+### Giờ yên lặng kết thúc
+
+Giờ kết thúc không bao gồm; định dạng HH:MM.
+
+Văn bản. Mã mục: `report.quiet_hours_end`.
+
+### Các phần trong báo cáo
+
+Chỉ các phần được chọn mới xuất hiện trong báo cáo.
+
+Danh sách văn bản. Mã mục: `report.sections`.
+
+### Số nguồn tối đa trong danh sách
+
+Giới hạn danh sách nguồn bị chặn hoặc đã hết lượt.
+
+Số nguyên; từ 1 đến 5. Mã mục: `report.top_sources_limit`.
+
+### Kênh gửi báo cáo
+
+Telegram là kênh gửi hiện được bật.
+
+Danh sách văn bản. Mã mục: `report.channels`.
+
+### Số ngày lưu lịch sử báo cáo
+
+Bản báo cáo cũ hơn mức này sẽ được tự động xóa sau lần gửi.
+
+Số nguyên; từ 1 đến 365. Mã mục: `report.history_days`.
+
+### Thời hạn dấu worker bận (giây)
+
+Dấu tự hết hạn nếu tiến trình kết thúc mà không phát sự kiện hoàn tất.
+
+Số nguyên; từ 30 đến 3600. Mã mục: `report.worker_busy_ttl_seconds`.
+
+### Thời gian giữ mẫu nút (phút)
+
+Mẫu CPU, RAM, đĩa và worker được giữ trong Redis dùng chung.
+
+Số nguyên; từ 180 đến 180. Mã mục: `report.sample_retention_minutes`.
+
+### Mẫu nút tối đa bao nhiêu giây thì được xem là mới
+
+Nút không có mẫu mới sẽ hiển thị no data trong báo cáo.
+
+Số nguyên; từ 60 đến 300. Mã mục: `report.sample_max_age_seconds`.
+
+### Thư mục đo dung lượng đĩa của nút
+
+Đường dẫn nằm trên volume ứng dụng của nút.
+
+Văn bản. Mã mục: `report.node_volume_path`.
+
+### Địa chỉ thống kê trình duyệt (tùy chọn)
+
+Endpoint nội bộ trả số tiến trình Chrome và lượt Playwright đang bận/tổng.
+
+Văn bản. Mã mục: `report.browser_stats_url`.
+
+### Mẫu văn bản báo cáo
+
+Văn bản mẫu tiếng Anh. Giữ các biến {header}, {movies}, {performers}, {crawl}, {sources}, {fleet}, {workers}, {servers}, {services}.
+
+Văn bản. Mã mục: `report.template`.
 
 ## Kiểm tra sẵn sàng
 
@@ -951,6 +1035,12 @@ TẮT. Theo văn bản quyết định (JOOXCR-230, chờ duyệt) chỉ câu h�
 Bật/tắt. Mã mục: `ai.cloud_enabled`.
 
 ## Thông báo theo dõi (Telegram)
+
+### Múi giờ thông báo và quét thư viện
+
+Múi giờ cho thông báo theo dõi, footer Telegram và lịch quét thư viện.
+
+Văn bản. Mã mục: `follow_notifications.timezone`.
 
 ### Gửi thông báo phim mới của mục đang theo dõi
 

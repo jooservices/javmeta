@@ -13,6 +13,14 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+Schedule::command('report:send')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->onFailure(static function (): void {
+        Log::error('Scheduled command failed.', ['command' => 'report:send']);
+    });
+
 if (! app()->runningUnitTests()) {
     $scheduleCommand = static function (string $command, array $parameters = []): Event {
         $commandName = explode(' ', trim($command), 2)[0];
@@ -35,6 +43,7 @@ if (! app()->runningUnitTests()) {
     $scheduleCommand('node:egress-probe')->everyTwoMinutes()->withoutOverlapping();
     $scheduleCommand('obs:publish-metrics')->everyMinute();
     $scheduleCommand('alerts:evaluate')->everyMinute()->withoutOverlapping();
+    $scheduleCommand('node:sample')->everyMinute();
     $scheduleCommand('javmeta:backup-status', ['--lenient'])->everyMinute();
     $scheduleCommand('crawler:recrawl-incomplete')->hourly()->withoutOverlapping();
     $scheduleCommand('search:backfill-embeddings')->hourly()->withoutOverlapping();
@@ -50,5 +59,4 @@ if (! app()->runningUnitTests()) {
     // A once-a-minute refresh alone leaves a 45-second hole in the 15-second status cache.
     $scheduleCommand('perf:warm', ['--status-only'])->everyTenSeconds()->withoutOverlapping();
     $scheduleCommand('follows:notify')->everyFiveMinutes()->withoutOverlapping();
-    $scheduleCommand('javmeta:hourly-report')->hourly()->withoutOverlapping();
 }

@@ -44,6 +44,7 @@ final class FetchAttemptRecorder
                 'source_slug' => $queue->source_slug,
                 'lane' => $queue->getAttribute('claimed_lane'),
                 'crawl_queue_id' => $queue->id,
+                'kind' => $queue->kind,
                 'url_hash' => hash('sha256', $queue->url),
                 'method' => mb_substr((string) $attempt['method'], 0, 64),
                 'started_at' => CarbonImmutable::parse($attempt['started_at'])->utc(),

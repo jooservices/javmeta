@@ -45,8 +45,42 @@ const route = url => {
   if (p.startsWith('performers/')) return { data: performer(1) };
   throw new Error('no sample for ' + p);
 };
-const settingsSample = { data: { groups: { queue: 'Hàng đợi', crawl: 'Vòng lặp crawl', worker: 'Worker', browser: 'Trình duyệt', cleanup: 'Dọn dẹp', timeouts: 'Thời gian chờ', telegram: 'Telegram' }, settings: [{ key: 'queue.feed_pool_limit', group: 'queue', label: 'Việc nạp mỗi phút', description: 'd', type: 'int', min: 1, max: 5000, restart: null, apply_after_seconds: 30, source: 'database', value: 300, is_set: null }, { key: 'queue.feed_interval_seconds', group: 'queue', label: 'Chu kỳ nạp hàng đợi (giây)', description: 'Chọn 5, 10, 15, 30 hoặc 60 giây.', type: 'int', min: 5, max: 60, options: [5, 10, 15, 30, 60], apply_after_seconds: 5, source: 'database', value: 10 }, { key: 'crawl.source_gap_overrides', group: 'crawl', label: 'Khoảng request ghi đè theo nguồn (JSON)', description: 'Khoảng gap theo từng nguồn.', type: 'json', shape: 'source_gap_override_map', max_length: 10000, apply_after_seconds: 30, source: 'default', value: {} }, { key: 'worker.node_overrides', group: 'worker', label: 'Ghi đè node', description: 'JSON worker layout', type: 'json', shape: 'node_worker_map', max_length: 500, apply_after_seconds: 900, source: 'environment', value: { main: { default: 2 } }, is_set: null }, { key: 'telegram.bot_token', group: 'telegram', label: 'Token <b>x</b>', description: 'd', type: 'secret', min: null, max: null, restart: null, source: 'default', value: null, is_set: true }] } };
-const adminSample = u => u.includes('/ui-admin/settings') ? settingsSample : u.includes('/ui-admin/notifications') ? { data: [{ key: 'crawl.success_rate_low', name: 'Tỷ lệ crawl thành công thấp', usage: 'Gửi khi tỷ lệ thành công xuống dưới ngưỡng.', channel: 'telegram', enabled: true, last_sent_at: '2026-11-02 17:40:00', updated_at: '2026-11-02 17:00:00' }] } : u.includes('report/quality') ? { data: { movies: 100, performers: 50, movies_by_source: { javdb: 60 }, core_fields: { code: { filled: 100, percent: 100 }, maker: { filled: 80, percent: 80 } }, movies_with_8_of_11: { count: 70, percent: 70 }, completeness_tiers: { 1: 20, 2: 80 }, needs_review: 3 } } : { data: [{ id: 1, prefix: 'jvm_abc', label: 'Key <b>one</b>', status: 'active', abuse_rpm: 60, scopes: ['catalog'], created_at: '2026-10-24T00:00:00Z' }] };
+const settingsSample = {
+  data: {
+    groups: {
+      queue: 'Hàng đợi', crawl: 'Vòng lặp crawl', worker: 'Worker', browser: 'Trình duyệt',
+      cleanup: 'Dọn dẹp', timeouts: 'Thời gian chờ', telegram: 'Telegram', report: 'Báo cáo',
+      follow_notifications: 'Thông báo theo dõi',
+    },
+    settings: [
+      { key: 'queue.feed_pool_limit', group: 'queue', label: 'Việc nạp mỗi phút', description: 'd', type: 'int', min: 1, max: 5000, restart: null, apply_after_seconds: 30, source: 'database', value: 300, is_set: null },
+      { key: 'queue.feed_interval_seconds', group: 'queue', label: 'Chu kỳ nạp hàng đợi (giây)', description: 'Chọn 5, 10, 15, 30 hoặc 60 giây.', type: 'int', min: 5, max: 60, options: [5, 10, 15, 30, 60], apply_after_seconds: 5, source: 'database', value: 10 },
+      { key: 'crawl.source_gap_overrides', group: 'crawl', label: 'Khoảng request ghi đè theo nguồn (JSON)', description: 'Khoảng gap theo từng nguồn.', type: 'json', shape: 'source_gap_override_map', max_length: 10000, apply_after_seconds: 30, source: 'default', value: {} },
+      { key: 'worker.node_overrides', group: 'worker', label: 'Ghi đè node', description: 'JSON worker layout', type: 'json', shape: 'node_worker_map', max_length: 500, apply_after_seconds: 900, source: 'environment', value: { main: { default: 2 } }, is_set: null },
+      { key: 'telegram.bot_token', group: 'telegram', label: 'Token <b>x</b>', description: 'd', type: 'secret', min: null, max: null, restart: null, source: 'default', value: null, is_set: true },
+      { key: 'report.enabled', group: 'report', label: 'Bật báo cáo định kỳ', description: 'Lịch tự động qua Telegram.', type: 'bool', value: true },
+      { key: 'report.interval_minutes', group: 'report', label: 'Chu kỳ gửi báo cáo', description: 'Theo múi giờ đã chọn.', type: 'int', options: [15, 30, 60, 120, 180, 360, 720, 1440], value: 120 },
+      { key: 'report.timezone', group: 'report', label: 'Múi giờ báo cáo', description: 'Tên múi giờ IANA.', type: 'string', value: 'America/Mexico_City' },
+      { key: 'report.sections', group: 'report', label: 'Các phần trong báo cáo', description: 'Chọn mục hiển thị.', type: 'string_list', item_options: ['movies', 'performers', 'crawl', 'sources', 'fleet', 'workers', 'servers', 'services'], value: ['movies', 'crawl'] },
+      { key: 'report.template', group: 'report', label: 'Mẫu văn bản báo cáo', description: 'Mẫu tiếng Anh.', type: 'string', multiline: true, max_length: 1000, value: '{header}\n\n{movies}\n\n{crawl}' },
+    ],
+  },
+};
+const reportSample = {
+  data: {
+    data: { generated_at: '2026-11-02T18:00:00-06:00', window_minutes: 120, movies: { total: 10, since_last: 1, last_24h: 4, avg_per_hour: 1, peak_per_hour: 1 }, sections: ['movies'] },
+    text: '📊 [XCrawler] Report · Nov 2, 18:00 (Mexico) · last 2 h\n\nMovies 10 (+1 since last report · +4 in 24 h)',
+    last: null,
+    history: [],
+  },
+};
+const adminSample = u => {
+  if (u.includes('/ui-admin/settings')) return settingsSample;
+  if (u.includes('/ui-admin/notifications')) return { data: [{ key: 'crawl.success_rate_low', name: 'Tỷ lệ crawl thành công thấp', usage: 'Gửi khi tỷ lệ thành công xuống dưới ngưỡng.', channel: 'telegram', enabled: true, last_sent_at: '2026-11-02 17:40:00', updated_at: '2026-11-02 17:00:00' }] };
+  if (u.includes('/ui-admin/report/periodic')) return reportSample;
+  if (u.includes('report/quality')) return { data: { movies: 100, performers: 50, movies_by_source: { javdb: 60 }, core_fields: { code: { filled: 100, percent: 100 }, maker: { filled: 80, percent: 80 } }, movies_with_8_of_11: { count: 70, percent: 70 }, completeness_tiers: { 1: 20, 2: 80 }, needs_review: 3 } };
+  return { data: [{ id: 1, prefix: 'jvm_abc', label: 'Key <b>one</b>', status: 'active', abuse_rpm: 60, scopes: ['catalog'], created_at: '2026-10-24T00:00:00Z' }] };
+};
 const libSample = u => u.endsWith('/library') ? { data: { files: 3, matched: 2, unmatched: 1, missing: 0, bytes: 5012, by_folder: [{ folder: '/media/<b>a</b>', files: 3, bytes: 5012 }], last_scan_at: '2026-10-24 03:00:00', configured: true } } : u.includes('/codes') ? { data: ['AAA-001'] } : u.includes('/on-disk') ? { data: [{ code: 'AAA-001', files: 1, bytes: 5000 }] } : { data: [{ path: '/media/a/x.mp4', size: 7, folder: '/media/a' }], meta: { total: 1, page: 1, per_page: 100 } };
 const dlSample = u => u.endsWith('/status') ? { data: { enabled: true, files_enabled: true } } : { data: { items: [{ hash: 'aa', name: 'Video <b>x</b>', movie_code: 'AAA-001', state: 'downloading', progress: 42.5, size: 1e9, speed: 2e6, eta: 600, completed: false }, { hash: 'bb', name: 'Done', movie_code: null, state: 'completed', progress: 100, size: 2e9, speed: 0, eta: null, completed: true }] } };
 globalThis.fetch = async url => url.startsWith('/ui-me/media/files') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => ({ data: { data: [{ id: 1, code: 'AAA-001', path: '/generated/video.mp4' }] } }) } : url.startsWith('/ui-me/downloads') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => dlSample(url) } : url.startsWith('/ui-me/library') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => libSample(url) } : url.startsWith('/ui-me/') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => (url.includes('/marks') ? { data: [{ kind: 'favourite', subject: 'movie', key: 'AAA-001' }] } : { data: [movie('AAA-001')], meta: { follows: 2, new_since_last_visit: 1, total: 1 } }) } : url.startsWith('/ui-admin/') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => adminSample(url) } : ({ ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => route(url) });
@@ -110,6 +144,24 @@ assert.match(st, /worker\.node_overrides/); assert.match(st, /textarea[^>]+data-
 assert.match(st, /textarea id="st-crawl\.source_gap_overrides"[^>]+maxlength="10000"/);
 assert.match(st, /<select id="st-queue\.feed_interval_seconds" data-key="queue\.feed_interval_seconds" data-type="int"/);
 for (const value of [5, 10, 15, 30, 60]) assert.match(st, new RegExp(`<option value="${value}"${value === 10 ? ' selected' : ''}>${value}</option>`));
+assert.match(st, /Báo cáo/);
+assert.match(st, /report\.interval_minutes/);
+globalThis.innerWidth = 375;
+const reportView = await load('views/report.js');
+const reportHtml = await run('report', reportView, { params: {}, query: {} });
+assert.match(reportHtml, /Xem trước trực tiếp/);
+assert.match(reportHtml, /Nov 2, 18:00 \(Mexico\)/);
+assert.match(reportHtml, /Chưa có báo cáo nào được gửi/);
+assert.match(reportHtml, /Chưa có lịch sử gửi/);
+assert.match(reportHtml, /data-report-send/);
+assert.match(reportHtml, /data-key="report\.interval_minutes"/);
+assert.match(reportHtml, /data-key="report\.template"/);
+assert.match(reportHtml, /max-width:100%/);
+globalThis.innerWidth = 1280;
+const reportFetch = globalThis.fetch;
+globalThis.fetch = async url => url.startsWith('/ui-admin/') ? Promise.reject(new Error('Offline')) : reportFetch(url);
+assert.match((await reportView.render({ params: {}, query: {} })).html, /Offline/);
+globalThis.fetch = reportFetch;
 settingsSample.data.settings.push({ key: 'telegram.owner_user_id', group: 'telegram', label: 'User ID chủ sở hữu Telegram', description: 'Để trống cho chat riêng.', type: 'int', min: 1, source: 'default', value: null });
 settingsSample.data.settings.push({ key: 'telegram.api_base', group: 'telegram', label: 'Địa chỉ API Telegram', description: 'HTTPS', type: 'string', source: 'default', value: 'https://api.telegram.org', warning: 'URL đã lưu không hợp lệ và đang được bỏ qua. <b>unsafe</b>' });
 settingsSample.data.settings.push({ key: 'worker.queue_overrides', group: 'worker', label: 'Worker override', description: 'JSON worker layout', type: 'json', source: 'database', value: '{"listing":oops', warning: 'Giá trị đã lưu không hợp lệ.' });

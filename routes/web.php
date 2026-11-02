@@ -13,6 +13,7 @@ use App\Http\Controllers\Ui\UiLibraryController;
 use App\Http\Controllers\Ui\UiNotificationTemplateController;
 use App\Http\Controllers\Ui\UiMarksController;
 use App\Http\Controllers\Ui\UiSettingsController;
+use App\Http\Controllers\Ui\UiReportController;
 use App\Http\Controllers\Ui\UiShellController;
 use App\Http\Middleware\EnsureUiOwnerOrGuest;
 use App\Http\Middleware\EnsureSuperAdministrator;
@@ -56,6 +57,8 @@ Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static funct
     Route::post('/ui-admin/keys', [UiAdminController::class, 'createKey']);
     Route::get('/ui-admin/keys/{id}/usage', [UiAdminController::class, 'usage'])->whereNumber('id');
     Route::delete('/ui-admin/keys/{id}', [UiAdminController::class, 'revoke'])->whereNumber('id');
+    Route::get('/ui-admin/report/periodic', [UiReportController::class, 'show']);
+    Route::post('/ui-admin/report/periodic/send-now', [UiReportController::class, 'sendNow']);
     Route::get('/ui-admin/report/{type}', [UiAdminController::class, 'report']);
     Route::get('/ui-me/marks', [UiMarksController::class, 'index']);
     Route::post('/ui-me/marks', [UiMarksController::class, 'toggle']);

@@ -9,6 +9,7 @@ use App\Contracts\ReportChannel;
 use App\Http\Middleware\EnsureSuperAdministrator;
 use App\Http\Middleware\GuestSafeStatusResponse;
 use App\Logging\ArrayLogStore;
+use App\Listeners\WorkerBusyStateListener;
 use App\Notifications\ActivityLogAlertNotifier;
 use App\Notifications\CompositeAlertNotifier;
 use App\Notifications\TelegramAlertNotifier;
@@ -36,6 +37,9 @@ use App\Services\Observability\NodeEgressProbe;
 use App\Services\Ui\UiLoginStateRecorder;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Routing\Events\RouteMatched;
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Queue\Events\JobProcessed;
+use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use JOOservices\LaravelLogging\Contracts\LogStoreInterface;
@@ -45,6 +49,10 @@ class AppServiceProvider extends ServiceProvider
 {
     public function boot(): void
     {
+        Event::listen(JobProcessing::class, [WorkerBusyStateListener::class, 'processing']);
+        Event::listen(JobProcessed::class, [WorkerBusyStateListener::class, 'processed']);
+        Event::listen(JobFailed::class, [WorkerBusyStateListener::class, 'processed']);
+
         Event::listen(RouteMatched::class, static function (RouteMatched $event): void {
             if (in_array($event->route->getName(), ['storage.local', 'storage.local.upload'], true)) {
                 $event->route->middleware(['auth', EnsureSuperAdministrator::class]);

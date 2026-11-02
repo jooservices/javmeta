@@ -7,6 +7,7 @@ namespace Tests\Feature\Alerts;
 use App\Contracts\ReportChannel;
 use App\Models\Movie;
 use App\Models\Performer;
+use App\Services\Alerts\HourlyReport;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
@@ -61,7 +62,7 @@ final class HourlyReportTest extends TestCase
         Movie::factory()->count(3)->create();
         Performer::factory()->count(2)->create();
 
-        $this->artisan('javmeta:hourly-report')->assertSuccessful();
+        self::assertTrue($this->report()->run()['sent']);
 
         $this->assertCount(1, $this->sent);
         $this->assertStringContainsString('Movies       3 (no previous value', $this->sent[0]['body']);
@@ -74,11 +75,11 @@ final class HourlyReportTest extends TestCase
     {
         Movie::factory()->count(3)->create();
         Performer::factory()->count(2)->create();
-        $this->artisan('javmeta:hourly-report')->assertSuccessful();
+        $this->report()->run();
 
         Movie::factory()->count(5)->create();
         Performer::factory()->count(1)->create();
-        $this->artisan('javmeta:hourly-report')->assertSuccessful();
+        $this->report()->run();
 
         $this->assertCount(2, $this->sent);
         $this->assertStringContainsString('Movies       8 (+5 in ', $this->sent[1]['body']);
@@ -88,8 +89,8 @@ final class HourlyReportTest extends TestCase
     public function test_no_change_is_reported_as_plus_zero(): void
     {
         Movie::factory()->count(2)->create();
-        $this->artisan('javmeta:hourly-report')->assertSuccessful();
-        $this->artisan('javmeta:hourly-report')->assertSuccessful();
+        $this->report()->run();
+        $this->report()->run();
 
         $this->assertStringContainsString('Movies       2 (+0 in ', $this->sent[1]['body']);
         $this->assertStringContainsString('Performers   0 (+0)', $this->sent[1]['body']);
@@ -98,16 +99,16 @@ final class HourlyReportTest extends TestCase
     public function test_a_failed_send_keeps_the_old_values_so_the_next_hour_reports_the_full_increase(): void
     {
         Movie::factory()->count(2)->create();
-        $this->artisan('javmeta:hourly-report')->assertSuccessful();
+        $this->report()->run();
         $before = (string) file_get_contents($this->state);
 
         Movie::factory()->count(4)->create();
         $this->deliver = false;
-        $this->artisan('javmeta:hourly-report')->assertFailed();
+        self::assertFalse($this->report()->run()['sent']);
         $this->assertSame($before, (string) file_get_contents($this->state));
 
         $this->deliver = true;
-        $this->artisan('javmeta:hourly-report')->assertSuccessful();
+        self::assertTrue($this->report()->run()['sent']);
         $this->assertStringContainsString('Movies       6 (+4 in ', $this->sent[1]['body']);
     }
 
@@ -115,11 +116,15 @@ final class HourlyReportTest extends TestCase
     {
         Movie::factory()->count(1)->create();
 
-        $this->artisan('javmeta:hourly-report', ['--dry-run' => true])
-            ->expectsOutputToContain('Movies       1')
-            ->assertSuccessful();
+        $result = $this->report()->run(dryRun: true);
+        self::assertStringContainsString('Movies       1', $result['message']);
 
         $this->assertSame([], $this->sent);
         $this->assertFileDoesNotExist($this->state);
+    }
+
+    private function report(): HourlyReport
+    {
+        return app(HourlyReport::class);
     }
 }

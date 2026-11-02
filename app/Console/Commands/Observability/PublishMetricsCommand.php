@@ -28,6 +28,9 @@ use App\Services\Search\ElasticsearchRequestHealth;
 use App\Services\Health\SourceScheduleFreshness;
 use App\Services\Observability\NodeEgressProbe;
 use App\Services\Workers\HorizonLayoutSnapshot;
+use App\Services\Report\NodeSampleAggregator;
+use App\Services\Report\NodeSampleStore;
+use App\Services\Report\ReportMetrics;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -63,6 +66,9 @@ final class PublishMetricsCommand extends Command
         CrawlStatsOperationalSampler $statsSampler,
         NodeEgressProbe $egressProbe,
         NotificationMetrics $notificationMetrics,
+        NodeSampleStore $nodeSamples,
+        NodeSampleAggregator $sampleAggregator,
+        ReportMetrics $reportMetrics,
     ): int {
         try {
             $statsSampler->sample();
@@ -94,6 +100,8 @@ final class PublishMetricsCommand extends Command
             $this->postgresCapacityMetrics(),
             $this->alertMetricPoints($alertMetrics),
             $this->horizonWorkerMetrics(),
+            $this->nodeMetrics($nodeSamples, $sampleAggregator),
+            $reportMetrics->points(),
             [[
                 'name' => MetricStreams::NAMES['mongo_archive_write_failures'],
                 'value' => $archiveWrites->failureCount(),
@@ -191,6 +199,45 @@ final class PublishMetricsCommand extends Command
         } catch (Throwable) {
             return [];
         }
+    }
+
+    /** @return list<array{name: string, value: float|int, labels: array<string, string>}> */
+    private function nodeMetrics(NodeSampleStore $samples, NodeSampleAggregator $aggregator): array
+    {
+        $now = CarbonImmutable::now();
+        $nodes = $aggregator->aggregate(
+            $samples->all(),
+            $now->subMinutes(3),
+            $now,
+            max(60, (int) config('javmeta_report.sample_max_age_seconds', 180)),
+        );
+        $points = [];
+        foreach ($nodes as $node => $sample) {
+            foreach ([
+                'cpu_latest' => 'node_cpu_percent',
+                'mem_available_bytes' => 'node_mem_available_bytes',
+                'disk_used_percent' => 'node_disk_used_percent',
+            ] as $field => $metric) {
+                if (is_numeric($sample[$field] ?? null)) {
+                    $points[] = [
+                        'name' => MetricStreams::NAMES[$metric],
+                        'value' => $sample[$field],
+                        'labels' => ['node' => $node],
+                    ];
+                }
+            }
+            foreach ((array) ($sample['workers']['lanes'] ?? []) as $lane => $counts) {
+                foreach (['busy', 'idle', 'total'] as $state) {
+                    $points[] = [
+                        'name' => MetricStreams::NAMES['workers'],
+                        'value' => (int) ($counts[$state] ?? 0),
+                        'labels' => ['node' => $node, 'lane' => (string) $lane, 'state' => $state],
+                    ];
+                }
+            }
+        }
+
+        return $points;
     }
 
     /**

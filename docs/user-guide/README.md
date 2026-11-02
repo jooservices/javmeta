@@ -20,6 +20,7 @@ Dành cho chủ sở hữu. Mở `/app` và đăng nhập bằng tài khoản đ
 | Crawl & nguồn | [Tình trạng thu thập](crawl.md) |
 | Quản trị | [Khoá API và chất lượng dữ liệu](admin.md) |
 | Cài đặt | [Cách sửa và lưu](settings.md), [mẫu thông báo](notifications.md), [tra cứu mọi nhóm và từng mục](settings-reference.md) |
+| Báo cáo | [Lịch, nội dung, xem trước và lịch sử Telegram](report.md) |
 | Vận hành (Command Center) | [Hai tên miền](domains.md) |
 
 Ngoài menu: [Telegram](telegram.md) · [Phím tắt](shortcuts.md) · [Hướng dẫn lập trình viên (English)](../developer-guide/README.md).
