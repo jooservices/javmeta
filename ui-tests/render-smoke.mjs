@@ -104,6 +104,12 @@ for (const code of ['JAVBTC-DERIVED-' + 'A'.repeat(64), 'TOKYOHOT-SLUG-JAPANESE_
   const longDetail = await (await load('views/movie.js')).render({ params: { code }, query: {} });
   assert.match(longDetail.html, /overflow-wrap:anywhere/, 'long source codes must wrap within the movie detail');
   assert.ok(longDetail.html.includes(`data-v="${code}"`), 'copy keeps the full source identity');
+  if (code.includes('-DERIVED-')) {
+    assert.ok(!longDetail.html.includes('>' + code + '<'), 'a derived hash is never shown as the visible code');
+    assert.match(longDetail.html, /JAVBTC · #AAAAAA/, 'derived codes show a short internal label');
+    assert.match(longDetail.html, /chưa có mã chuẩn/);
+    assert.match(longDetail.html, /Sao chép mã nội bộ/);
+  }
   assert.ok(longDetail.html.includes(`#/movie/${encodeURIComponent(code)}?tab=codes`), 'source-code navigation keeps the full identity');
 }
 globalThis.innerWidth = 1280;

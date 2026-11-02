@@ -1,4 +1,4 @@
-import { $, $$, esc, fmt, debounce, copyText, titleOf } from './util.js';
+import { $, $$, esc, fmt, debounce, copyText, titleOf, codeLabel } from './util.js';
 import { ic } from './icons.js';
 import { initLightbox } from './lightbox.js';
 import { api } from './api.js';
@@ -141,7 +141,7 @@ async function omniDraw() {
     const { data: sg } = await api('suggest', { q, limit: 5 });
     if ($('#omq').value.trim() !== q) return;
     OM.items = [
-      ...(sg.movies || []).map(x => ({ g: 'Phim', href: href.movie(x.code), label: `${x.code} · ${x.title || ''}`, sub: x.maker || '' })),
+      ...(sg.movies || []).map(x => ({ g: 'Phim', href: href.movie(x.code), label: `${codeLabel(x.code)} · ${x.title || ''}`, sub: x.maker || '' })),
       ...(sg.performers || []).map(x => ({ g: 'Diễn viên', href: href.performer(x.id), label: x.name || `#${x.id}`, sub: `#${x.id}`, p: { id: x.id, name_romaji: x.name } })),
       ...(sg.makers || []).map(x => ({ g: 'Maker', href: href.facet('maker', x.name), label: x.name, sub: `${fmt(x.movie_count)} phim` })),
       ...(sg.series || []).map(x => ({ g: 'Series', href: href.facet('series', x.name), label: x.name, sub: `${fmt(x.movie_count)} phim` })),

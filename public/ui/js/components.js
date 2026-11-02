@@ -1,4 +1,4 @@
-import { esc, fmt, hueOf, initials, titleOf, queryString, $ } from './util.js';
+import { esc, fmt, hueOf, initials, titleOf, queryString, codeLabel, $ } from './util.js';
 import { ic } from './icons.js';
 import { api, pagination } from './api.js';
 
@@ -28,7 +28,7 @@ export function cover(m, { dur = false, zoom = false } = {}) {
   const h = hueOf(m.code);
   const zoomable = zoom && /^https?:\/\//i.test(m.cover_url || '');
   const img = m.cover_url ? `<img loading="lazy" referrerpolicy="no-referrer" alt="" src="${esc(m.cover_url)}" onerror="this.remove()">` : '';
-  return `<div class="th${zoomable ? ' big' : ''}" style="--h:${h}"${zoomable ? ` data-zoom="${esc(m.cover_url)}" data-zoom-label="${esc(m.code)}" tabindex="0" role="button" aria-label="Phóng to ảnh bìa ${esc(m.code)}"` : ''}>${img}<span class="code">${esc(m.code)}</span>${dur && m.runtime_minutes ? `<span class="dur">${m.runtime_minutes}′</span>` : ''}${m.needs_review ? '<div class="bdg"><span>XEM LẠI</span></div>' : ''}</div>`;
+  return `<div class="th${zoomable ? ' big' : ''}" style="--h:${h}"${zoomable ? ` data-zoom="${esc(m.cover_url)}" data-zoom-label="${esc(codeLabel(m.code))}" tabindex="0" role="button" aria-label="Phóng to ảnh bìa ${esc(codeLabel(m.code))}"` : ''}>${img}<span class="code" title="${esc(m.code)}">${esc(codeLabel(m.code))}</span>${dur && m.runtime_minutes ? `<span class="dur">${m.runtime_minutes}′</span>` : ''}${m.needs_review ? '<div class="bdg"><span>XEM LẠI</span></div>' : ''}</div>`;
 }
 export function avatar(p, cls = '') {
   const name = p.name_romaji || p.name_kanji || p.name_kana || '?';
@@ -49,7 +49,7 @@ export function movieCard(m, i = 0) {
    <div class="chips mini">${disk.codes.has(m.code) ? '<span class="chip ok">Trên máy</span>' : ''}${genres}${(m.genres || []).length > 2 ? `<span class="chip">+${m.genres.length - 2}</span>` : ''}</div></div>`;
 }
 export function movieRow(m) {
-  return `<tr class="row"><td class="mono">${a(href.movie(m.code), esc(m.code))}</td><td>${esc(titleOf(m))}</td>
+  return `<tr class="row"><td class="mono">${a(href.movie(m.code), esc(codeLabel(m.code)))}</td><td>${esc(titleOf(m))}</td>
    <td class="muted">${(m.performers || []).slice(0, 3).map(p => a(href.performer(p.id), esc(performerName(p)))).join(', ')}</td>
    <td>${facetLink('maker', m.maker)}</td><td>${facetLink('series', m.series)}</td>
    <td class="mono">${esc(m.release_date || '—')}</td><td class="mono">${m.runtime_minutes ? m.runtime_minutes + '′' : '—'}</td>

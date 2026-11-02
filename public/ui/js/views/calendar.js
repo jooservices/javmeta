@@ -1,4 +1,4 @@
-import { esc, fmt, titleOf } from '../util.js';
+import { esc, fmt, titleOf, codeLabel } from '../util.js';
 import { api } from '../api.js';
 import { head, a, href, errorBox } from '../components.js';
 
@@ -20,7 +20,7 @@ export default {
     for (let i = 0; i < lead; i++) cells.push('<div class="calcell off"></div>');
     for (let d = 1; d <= days; d++) {
       const key = `${month}-${pad(d)}`, day = byDay[key];
-      const items = day ? day.movies.slice(0, 3).map(x => `<div class="ell">${a(href.movie(x.code), esc(x.code), 'lnk')}</div>`).join('') + (day.count > 3 ? `<div class="dim">+${fmt(day.count - 3)} nữa</div>` : '') : '';
+      const items = day ? day.movies.slice(0, 3).map(x => `<div class="ell">${a(href.movie(x.code), esc(codeLabel(x.code)), 'lnk')}</div>`).join('') + (day.count > 3 ? `<div class="dim">+${fmt(day.count - 3)} nữa</div>` : '') : '';
       cells.push(`<div class="calcell ${day ? 'has' : ''}"><div class="calhead"><b>${d}</b>${day ? `<a class="chip mono" href="${href.movies({ released_from: key, released_to: key })}">${fmt(day.count)}</a>` : ''}</div>${items}</div>`);
     }
     const nav = `<div class="seg"><a style="padding:3px 9px" href="#/calendar?month=${shift(month, -1)}">‹</a><a class="on" style="padding:3px 9px" href="#/calendar">Hôm nay</a><a style="padding:3px 9px" href="#/calendar?month=${shift(month, 1)}">›</a></div>`;
