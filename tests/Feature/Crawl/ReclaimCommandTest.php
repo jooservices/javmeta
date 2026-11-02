@@ -12,7 +12,7 @@ final class ReclaimCommandTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_reclaim_returns_stale_rows_to_pending_and_fails_exhausted_rows(): void
+    public function test_reclaim_returns_stale_rows_to_pending_and_moves_exhausted_rows_to_retry(): void
     {
         $pendingRow = CrawlQueue::factory()->create([
             'status' => CrawlQueue::STATUS_CLAIMED,
@@ -40,7 +40,9 @@ final class ReclaimCommandTest extends TestCase
         $this->assertSame(CrawlQueue::STATUS_PENDING, $pendingRow->status);
         $this->assertNull($pendingRow->claimed_at);
         $this->assertNull($pendingRow->locked_by);
-        $this->assertSame(CrawlQueue::STATUS_FAILED, $exhaustedRow->status);
+        $this->assertSame(CrawlQueue::STATUS_RETRY_PENDING, $exhaustedRow->status);
+        $this->assertSame(1, $exhaustedRow->retry_round);
+        $this->assertSame(0, $exhaustedRow->attempts);
         $this->assertNull($exhaustedRow->claimed_at);
         $this->assertNull($exhaustedRow->locked_by);
     }

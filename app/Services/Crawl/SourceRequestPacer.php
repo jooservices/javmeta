@@ -22,14 +22,14 @@ redis.call('SET', KEYS[1], start, 'PX', ARGV[2])
 return start - now
 LUA;
 
-    public function reserveStart(string $sourceSlug, float $gapSeconds): int
+    public function reserveStart(string $sourceSlug, float $gapSeconds, string $lane = 'direct'): int
     {
         $gapMicroseconds = (int) round($gapSeconds * 1_000_000);
         $ttlMilliseconds = max(60_000, (int) ceil($gapMicroseconds * 2 / 1000));
         $wait = Redis::connection((string) config('horizon.use', 'default'))->eval(
             self::RESERVE_START,
             [
-                'javmeta:source-gap:start:' . rawurlencode($sourceSlug),
+                'javmeta:source-gap:start:' . $lane . ':' . rawurlencode($sourceSlug),
                 (string) $gapMicroseconds,
                 (string) $ttlMilliseconds,
             ],

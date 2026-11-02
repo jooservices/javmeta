@@ -37,6 +37,7 @@ foreach ($schema['groups'] as $group => $label) {
             $details[] = match ($definition['shape'] ?? '') {
                 'queue_worker_map' => 'mỗi hàng đợi đã biết nhận 1–32 worker',
                 'node_worker_map' => 'ghi đè theo vai trò hoặc role@hostname; worker từ 1 đến 32',
+                'retry_fetch_profile' => 'các khóa hợp lệ: flaresolverr_url, playwright_url, http_proxy_url, egress_label, preferred_methods',
                 default => 'cấu trúc do ứng dụng quy định',
             };
         }

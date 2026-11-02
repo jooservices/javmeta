@@ -73,4 +73,16 @@ final class CrawlerxFetchMethodPlanTest extends TestCase
             $probe->fetch?->chain?->methods,
         );
     }
+
+    public function test_retry_profile_method_order_overrides_the_learned_normal_order(): void
+    {
+        $options = app(CrawlerxFetchMethodPlan::class)->retryOptionsFor(
+            'javbus',
+            'https://www.javbus.com/abc',
+            150,
+            ['preferred_methods' => [FetchMethod::Http->value], 'http_proxy_url' => 'http://retry-proxy.internal:8080'],
+        );
+
+        self::assertSame(FetchMethod::Http, $options->fetch?->chain?->methods[0] ?? null);
+    }
 }

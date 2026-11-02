@@ -14,20 +14,24 @@ final class HorizonWorkerLayout
         $queueConfig = (array) config('javmeta_queues');
         $queues = (array) ($queueConfig['horizon_names'] ?? []);
         $browserQueues = (array) ($queueConfig['browser_names'] ?? []);
+        $retryQueues = (array) ($queueConfig['retry_names'] ?? []);
         $default = max(1, (int) ($queueConfig['workers_per_queue'] ?? 1));
         $direct = $queueConfig['direct_workers_per_queue'] ?? null;
         $browser = max(1, (int) ($queueConfig['browser_workers_per_queue'] ?? $default));
+        $retry = max(1, (int) ($queueConfig['retry']['workers_per_queue'] ?? 1));
         $queueOverrides = (array) ($queueConfig['worker_queue_overrides'] ?? []);
         $nodeOverrides = $this->nodeOverrides((array) ($queueConfig['worker_node_overrides'] ?? []));
         $default = max(1, (int) ($nodeOverrides['default'] ?? $default));
         $direct = $nodeOverrides['direct'] ?? $direct;
         $browser = max(1, (int) ($nodeOverrides['browser'] ?? $browser));
+        $retry = max(1, (int) ($nodeOverrides['retry'] ?? $retry));
         $queueOverrides = [...$queueOverrides, ...(array) ($nodeOverrides['queues'] ?? [])];
 
         $supervisors = [];
         foreach ($queues as $queue) {
             $isBrowser = in_array($queue, $browserQueues, true);
-            $workers = $isBrowser ? $browser : ($direct === null ? $default : max(1, (int) $direct));
+            $isRetry = in_array($queue, $retryQueues, true);
+            $workers = $isRetry ? $retry : ($isBrowser ? $browser : ($direct === null ? $default : max(1, (int) $direct)));
             $workers = max(1, min(32, (int) ($queueOverrides[$queue] ?? $workers)));
             $supervisorName = $queue === 'observability' ? 'api-observability' : 'crawler-' . $queue;
             $supervisors[$supervisorName] = [

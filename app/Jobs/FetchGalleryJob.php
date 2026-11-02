@@ -65,7 +65,7 @@ final class FetchGalleryJob implements ShouldQueue
             return;
         }
 
-        $result = $client->fetchGallery($row->source_slug, $row->url);
+        $result = $client->fetchQueueRow($row);
         app(FetchAttemptRecorder::class)->record($row, $result);
         if (! $result->ok || $result->gallery === null) {
             $this->onCrawlFailure($row, $source, $result, $activity, $throttle);

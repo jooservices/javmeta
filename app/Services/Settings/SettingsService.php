@@ -6,6 +6,7 @@ namespace App\Services\Settings;
 
 use App\Events\SettingsApplied;
 use App\Models\Source;
+use JOOservices\CrawlerX\Enums\FetchMethod;
 use InvalidArgumentException;
 use RuntimeException;
 use Illuminate\Support\Env;
@@ -617,7 +618,20 @@ final class SettingsService
             return $items;
         }
         if ($type === 'int_list') {
-            return $this->validateIntList($value, $fail);
+            $items = $this->validateIntList($value, $fail);
+            if (isset($definition['max_items']) && count($items) > (int) $definition['max_items']) {
+                $fail('has too many entries');
+            }
+            foreach ($items as $item) {
+                if (isset($definition['min_item']) && $item < (int) $definition['min_item']) {
+                    $fail('entries must be at least ' . $definition['min_item']);
+                }
+                if (isset($definition['max_item']) && $item > (int) $definition['max_item']) {
+                    $fail('entries must be at most ' . $definition['max_item']);
+                }
+            }
+
+            return $items;
         }
         if ($type === 'json') {
             return $this->validateJson($key, $definition, $value, $fail);
@@ -677,10 +691,15 @@ final class SettingsService
 
         $crawlQueues = array_values((array) config('javmeta_queues.names', []));
         $browserQueues = array_values((array) config('javmeta_queues.browser_names', []));
+        $retryQueues = array_values((array) config('javmeta_queues.retry_names', []));
         foreach ($crawlQueues as $index => $queue) {
             $browserQueue = $browserQueues[$index] ?? null;
             if (in_array($queue, $items, true) && is_string($browserQueue) && ! in_array($browserQueue, $items, true)) {
                 $items[] = $browserQueue;
+            }
+            if ((in_array($queue, $items, true) || (is_string($browserQueue) && in_array($browserQueue, $items, true)))
+                && isset($retryQueues[$index]) && ! in_array($retryQueues[$index], $items, true)) {
+                $items[] = $retryQueues[$index];
             }
         }
 
@@ -780,7 +799,7 @@ final class SettingsService
     private function storedValue(string $key, array $definition, mixed $stored): mixed
     {
         $value = $this->fromStorage($definition, $stored);
-        if (($definition['shape'] ?? null) === 'source_gap_override_map') {
+        if (in_array($definition['shape'] ?? null, ['source_gap_override_map', 'retry_fetch_profile'], true)) {
             return $this->validate($key, $definition, $value);
         }
 
@@ -807,6 +826,11 @@ final class SettingsService
      */
     private function validateJsonShape(string $key, string $shape, array $value, callable $fail): void
     {
+        if ($shape === 'retry_fetch_profile') {
+            $this->validateRetryFetchProfile($value, $fail);
+
+            return;
+        }
         if ($shape === 'source_gap_override_map') {
             $knownSources = array_fill_keys(array_map('strval', array_keys((array) config('javmeta_sources.sources', []))), true);
             if (Schema::hasTable('sources')) {
@@ -868,10 +892,52 @@ final class SettingsService
                     }
                     continue;
                 }
-                if (! in_array($name, ['default', 'direct', 'browser'], true) || ! is_int($workers) || $workers < 1 || $workers > 32) {
-                    $fail('node overrides may define default, direct, and browser worker counts from 1 to 32');
+                if (! in_array($name, ['default', 'direct', 'browser', 'retry'], true) || ! is_int($workers) || $workers < 1 || $workers > 32) {
+                    $fail('node overrides may define default, direct, browser, and retry worker counts from 1 to 32');
                 }
             }
+        }
+    }
+
+    /** @param array<array-key, mixed> $value
+     *  @param callable(string): never $fail
+     */
+    private function validateRetryFetchProfile(array $value, callable $fail): void
+    {
+        $allowed = ['flaresolverr_url', 'playwright_url', 'http_proxy_url', 'egress_label', 'preferred_methods'];
+        if (array_diff(array_keys($value), $allowed) !== []) {
+            $fail('contains unsupported fetch profile fields');
+        }
+        foreach (['flaresolverr_url', 'playwright_url', 'http_proxy_url'] as $field) {
+            $url = $value[$field] ?? null;
+            if ($url === null || $url === '') {
+                continue;
+            }
+            if (! is_string($url)) {
+                $fail("{$field} must be an HTTP or HTTPS URL");
+            }
+            $parts = parse_url($url);
+            if (! is_array($parts) || ! in_array(strtolower((string) ($parts['scheme'] ?? '')), ['http', 'https'], true) || ! isset($parts['host'])) {
+                $fail("{$field} must be an HTTP or HTTPS URL");
+            }
+            if (isset($parts['user']) || isset($parts['pass'])) {
+                $fail("{$field} must not contain credentials; use an unauthenticated endpoint");
+            }
+        }
+        $egress = $value['egress_label'] ?? null;
+        if ($egress !== null && (! is_string($egress) || strlen($egress) > 64 || preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]*$/', $egress) !== 1)) {
+            $fail('egress_label must use at most 64 letters, numbers, dots, underscores, or hyphens');
+        }
+        $methods = $value['preferred_methods'] ?? [];
+        if (! is_array($methods) || ! array_is_list($methods) || count($methods) > count(FetchMethod::cases())) {
+            $fail('preferred_methods must be an ordered list of fetch methods');
+        }
+        $allowedMethods = array_map(static fn(FetchMethod $method): string => $method->value, FetchMethod::cases());
+        if (array_filter($methods, static fn(mixed $method): bool => ! is_string($method) || ! in_array($method, $allowedMethods, true)) !== []) {
+            $fail('preferred_methods contains an unsupported fetch method');
+        }
+        if (count(array_unique($methods)) !== count($methods)) {
+            $fail('preferred_methods must not contain duplicates');
         }
     }
 

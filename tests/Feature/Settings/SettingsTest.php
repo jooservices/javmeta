@@ -115,6 +115,34 @@ final class SettingsTest extends TestCase
         $this->assertSame('Chu kỳ nạp hàng đợi (giây)', $setting['label']);
     }
 
+    public function test_retry_fetch_profile_is_database_backed_validated_and_applied(): void
+    {
+        $settings = app(SettingsService::class);
+        $profile = [
+            'flaresolverr_url' => 'http://retry-browser.internal:8191',
+            'playwright_url' => 'http://retry-playwright.internal:3000',
+            'http_proxy_url' => 'http://retry-egress.internal:8080',
+            'egress_label' => 'clean-egress',
+            'preferred_methods' => ['http', 'playwright'],
+        ];
+        $settings->set('retry.fetch_profile', $profile);
+
+        self::assertSame($profile, config('javmeta_queues.retry.fetch_profile'));
+        self::assertSame($profile, $settings->get('retry.fetch_profile'));
+        try {
+            $settings->set('retry.fetch_profile', ['http_proxy_url' => 'ftp://invalid.test']);
+            self::fail('Retry profile must reject non-HTTP proxy URLs.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame($profile, config('javmeta_queues.retry.fetch_profile'));
+        }
+        try {
+            $settings->set('retry.fetch_profile', ['preferred_methods' => ['unknown']]);
+            self::fail('Retry profile must reject unknown fetch methods.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame($profile, config('javmeta_queues.retry.fetch_profile'));
+        }
+    }
+
     public function test_crawl_dispatch_alert_thresholds_are_saved_database_settings(): void
     {
         $settings = app(SettingsService::class);
@@ -149,7 +177,7 @@ final class SettingsTest extends TestCase
     {
         $settings = app(SettingsService::class);
         $settings->set('worker.queue_names', ['listing', 'detail', 'browser_detail', 'observability']);
-        $this->assertSame(['listing', 'detail', 'browser_detail', 'observability', 'browser_listing'], config('javmeta_queues.horizon_names'));
+        $this->assertSame(['listing', 'detail', 'browser_detail', 'observability', 'browser_listing', 'retry_listing', 'retry_detail'], config('javmeta_queues.horizon_names'));
         $settings->set('worker.queue_overrides', ['listing' => 2, 'browser_detail' => 1]);
         $this->assertSame(['listing' => 2, 'browser_detail' => 1], config('javmeta_queues.worker_queue_overrides'));
         foreach ([

@@ -20,7 +20,7 @@ final class HorizonWorkerLayoutTest extends TestCase
             'javmeta_queues.worker_queue_overrides' => ['listing' => 5],
             'javmeta_queues.worker_node_overrides' => [
                 'main' => ['default' => 6, 'browser' => 7, 'queues' => ['search' => 8]],
-                'main@node.one' => ['direct' => 9, 'queues' => ['observability' => 3]],
+                'main@node.one' => ['direct' => 9, 'retry' => 10, 'queues' => ['observability' => 3]],
             ],
         ]);
 
@@ -30,6 +30,7 @@ final class HorizonWorkerLayoutTest extends TestCase
         $this->assertSame(7, $supervisors['crawler-browser_listing']['maxProcesses']);
         $this->assertSame(8, $supervisors['crawler-search']['maxProcesses']);
         $this->assertSame(9, $supervisors['crawler-detail']['maxProcesses']);
+        $this->assertSame(10, $supervisors['crawler-retry_listing']['maxProcesses']);
         $this->assertSame(3, $supervisors['api-observability']['maxProcesses']);
     }
 

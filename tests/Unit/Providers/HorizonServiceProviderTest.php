@@ -12,6 +12,7 @@ final class HorizonServiceProviderTest extends TestCase
     {
         $names = ['listing', 'detail', 'performer_listing', 'performer_detail', 'gallery', 'search'];
         $names = [...$names, 'browser_listing', 'browser_detail', 'browser_performer_listing', 'browser_performer_detail', 'browser_gallery'];
+        $names = [...$names, 'retry_listing', 'retry_detail', 'retry_performer_listing', 'retry_performer_detail', 'retry_gallery'];
         $horizonNames = [...$names, 'observability'];
         $this->assertSame($horizonNames, config('javmeta_queues.horizon_names'));
         $this->assertSame($names, config('javmeta_queues.feed_pool_names'));
@@ -24,7 +25,10 @@ final class HorizonServiceProviderTest extends TestCase
 
             foreach ($supervisors as $name => $supervisor) {
                 $this->assertSame('redis', $supervisor['connection']);
-                $this->assertSame(config(str_contains($name, 'browser_') ? 'javmeta_queues.browser_workers_per_queue' : 'javmeta_queues.workers_per_queue'), $supervisor['maxProcesses']);
+                $expectedWorkers = str_contains($name, 'browser_')
+                    ? config('javmeta_queues.browser_workers_per_queue')
+                    : (str_contains($name, 'retry_') ? config('javmeta_queues.retry.workers_per_queue') : config('javmeta_queues.workers_per_queue'));
+                $this->assertSame($expectedWorkers, $supervisor['maxProcesses']);
                 $this->assertSame(180, $supervisor['timeout']);
                 $queue = $name === 'api-observability' ? 'observability' : substr($name, strlen('crawler-'));
                 $this->assertSame([$queue], $supervisor['queue']);

@@ -86,7 +86,7 @@ final class CrawlQueueServiceTest extends TestCase
             return str_contains($script, "redis.call('TIME')")
                 && str_contains($script, 'last + gap')
                 && $keyCount === 1
-                && $arguments === ['javmeta:source-gap:start:paced-site', '250000', '60000'];
+                && $arguments === ['javmeta:source-gap:start:direct:paced-site', '250000', '60000'];
         })->andReturn(0);
         Redis::shouldReceive('connection')->once()->with('default')->andReturn($redis);
 
@@ -96,7 +96,7 @@ final class CrawlQueueServiceTest extends TestCase
         self::assertNotNull($started?->started_at);
     }
 
-    public function test_a_blocked_crawl_is_retried_after_60_then_120_then_180_seconds_then_fails(): void
+    public function test_a_blocked_crawl_uses_backoff_then_enters_the_separate_retry_lane(): void
     {
         Carbon::setTestNow('2026-10-19 10:00:00');
         $service = new CrawlQueueService();
@@ -107,15 +107,12 @@ final class CrawlQueueServiceTest extends TestCase
             $service->markFailed($row, CrawlErrorCode::Blocked, 'Blocked.', true);
 
             $row->refresh();
-            $this->assertSame(CrawlQueue::STATUS_PENDING, $row->status, "attempt {$attempt}");
-            $this->assertSame(now()->addSeconds($delay)->getTimestamp(), $row->next_attempt_at?->getTimestamp(), "attempt {$attempt}");
+            $this->assertSame($attempt < 3 ? CrawlQueue::STATUS_PENDING : CrawlQueue::STATUS_RETRY_PENDING, $row->status, "attempt {$attempt}");
+            $expectedDelay = $attempt < 3 ? $delay : 1800;
+            $this->assertSame(now()->addSeconds($expectedDelay)->getTimestamp(), $row->next_attempt_at?->getTimestamp(), "attempt {$attempt}");
         }
-
-        $row->forceFill(['status' => CrawlQueue::STATUS_CLAIMED, 'attempts' => 4])->save();
-        $service->markFailed($row, CrawlErrorCode::Blocked, 'Blocked.', true);
-
-        $this->assertSame(CrawlQueue::STATUS_FAILED, $row->refresh()->status);
-        $this->assertNull($row->next_attempt_at);
+        $this->assertSame(1, $row->retry_round);
+        $this->assertSame(0, $row->attempts);
         Carbon::setTestNow();
     }
 
@@ -130,7 +127,8 @@ final class CrawlQueueServiceTest extends TestCase
 
         $row->forceFill(['status' => CrawlQueue::STATUS_CLAIMED, 'attempts' => 3])->save();
         $service->markFailed($row, CrawlErrorCode::Challenge, 'Challenge.', true);
-        $this->assertSame(CrawlQueue::STATUS_FAILED, $row->refresh()->status);
+        $this->assertSame(CrawlQueue::STATUS_RETRY_PENDING, $row->refresh()->status);
+        $this->assertSame(1, $row->retry_round);
     }
 
     public function test_rows_of_a_disabled_source_are_not_claimed(): void
@@ -198,7 +196,7 @@ final class CrawlQueueServiceTest extends TestCase
         $reclaimed = (new CrawlQueueService())->reclaimStaleClaimed(900);
 
         $this->assertSame(1, $reclaimed);
-        $this->assertSame(CrawlQueue::STATUS_FAILED, $row->refresh()->status);
+        $this->assertSame(CrawlQueue::STATUS_RETRY_PENDING, $row->refresh()->status);
         $this->assertSame(CrawlErrorCode::WorkerLost->value, $row->error_code);
         $this->assertNotNull($row->last_error);
         $this->assertNotNull($row->last_failed_at);
@@ -241,7 +239,8 @@ final class CrawlQueueServiceTest extends TestCase
         (new FetchDetailJob($row->id))->failed(new RuntimeException('Request failed at https://user:pass@example.test/path?token=secret'));
 
         $row->refresh();
-        $this->assertSame(CrawlQueue::STATUS_FAILED, $row->status);
+        $this->assertSame(CrawlQueue::STATUS_RETRY_PENDING, $row->status);
+        $this->assertSame(1, $row->retry_round);
         $this->assertSame(CrawlErrorCode::WorkerFailed->value, $row->error_code);
         $this->assertStringNotContainsString('pass', $row->last_error);
         $this->assertStringNotContainsString('secret', $row->last_error);
@@ -285,6 +284,107 @@ final class CrawlQueueServiceTest extends TestCase
         (new CrawlQueueService())->markFailed($row, CrawlErrorCode::Unknown, '', false);
 
         $this->assertSame('Crawl failed without an error message.', $row->refresh()->last_error);
+    }
+
+    public function test_retry_rounds_use_configured_delays_then_fail_permanently_with_the_last_error(): void
+    {
+        Carbon::setTestNow('2026-11-02 10:00:00');
+        config([
+            'javmeta_queues.retry.max_rounds' => 2,
+            'javmeta_queues.retry.delays_seconds' => [60, 120],
+            'javmeta_queues.retry.attempts_per_round' => 3,
+        ]);
+        $row = CrawlQueue::factory()->create([
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'attempts' => 3,
+            'max_attempts' => 3,
+            'claimed_lane' => 'direct',
+        ]);
+        $service = new CrawlQueueService();
+
+        $service->markFailed($row, CrawlErrorCode::Network, 'normal lane failed', true);
+        self::assertSame(CrawlQueue::STATUS_RETRY_PENDING, $row->refresh()->status);
+        self::assertSame(1, $row->retry_round);
+        self::assertSame(0, $row->attempts);
+        self::assertSame(now()->addSeconds(60)->getTimestamp(), $row->next_attempt_at?->getTimestamp());
+
+        $row->forceFill(['status' => CrawlQueue::STATUS_CLAIMED, 'claimed_lane' => 'retry', 'attempts' => 3])->save();
+        $service->markFailed($row, CrawlErrorCode::Network, 'retry round one failed', true);
+        self::assertSame(CrawlQueue::STATUS_RETRY_PENDING, $row->refresh()->status);
+        self::assertSame(2, $row->retry_round);
+        self::assertSame(0, $row->attempts);
+        self::assertSame(now()->addSeconds(120)->getTimestamp(), $row->next_attempt_at?->getTimestamp());
+
+        $row->forceFill(['status' => CrawlQueue::STATUS_CLAIMED, 'claimed_lane' => 'retry', 'attempts' => 3])->save();
+        $service->markFailed($row, CrawlErrorCode::Network, 'final error retained', true);
+        self::assertSame(CrawlQueue::STATUS_FAILED, $row->refresh()->status);
+        self::assertSame(2, $row->retry_round);
+        self::assertSame('final error retained', $row->last_error);
+        $this->assertDatabaseHas('crawl_retry_metrics', [
+            'source_slug' => $row->source_slug,
+            'round' => 2,
+            'outcome' => 'failed_permanent',
+            'value' => 1,
+        ]);
+        Carbon::setTestNow();
+    }
+
+    public function test_retry_lane_claims_only_due_retry_rows(): void
+    {
+        $source = Source::factory()->create();
+        $normal = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'kind' => CrawlQueue::KIND_DETAIL,
+            'status' => CrawlQueue::STATUS_PENDING,
+            'next_attempt_at' => null,
+        ]);
+        $retry = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'kind' => CrawlQueue::KIND_DETAIL,
+            'status' => CrawlQueue::STATUS_RETRY_PENDING,
+            'retry_round' => 1,
+            'next_attempt_at' => null,
+        ]);
+        $service = new CrawlQueueService();
+
+        $retryClaim = $service->claimNext('retry-worker', CrawlQueue::KIND_DETAIL, [], 'retry');
+        $normalClaim = $service->claimNext('direct-worker', CrawlQueue::KIND_DETAIL, [], 'direct');
+
+        self::assertSame($retry->id, $retryClaim?->id);
+        self::assertSame('retry', $retryClaim?->claimed_lane);
+        self::assertSame($normal->id, $normalClaim?->id);
+        self::assertSame('direct', $normalClaim?->claimed_lane);
+    }
+
+    public function test_historical_import_is_sliced_and_does_not_touch_young_or_terminal_failures(): void
+    {
+        Carbon::setTestNow('2026-11-02 10:00:00');
+        config(['javmeta_queues.retry.delays_seconds' => [60], 'javmeta_queues.retry.import_slice_size' => 1]);
+        $source = Source::factory()->create();
+        $old = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug, 'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::Timeout->value, 'attempts' => 3,
+            'last_failed_at' => now()->subSeconds(61),
+        ]);
+        $young = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug, 'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::Timeout->value, 'attempts' => 3,
+            'last_failed_at' => now()->subSeconds(59),
+        ]);
+        $terminal = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug, 'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::ParseFailed->value, 'attempts' => 1,
+            'last_failed_at' => now()->subMinutes(10),
+        ]);
+        $service = new CrawlQueueService();
+
+        self::assertSame(1, $service->importHistoricalFailures(true, $source->slug));
+        self::assertSame(1, $service->importHistoricalFailures(false, $source->slug));
+        self::assertSame(CrawlQueue::STATUS_RETRY_PENDING, $old->refresh()->status);
+        self::assertSame(1, $old->retry_round);
+        self::assertSame(CrawlQueue::STATUS_FAILED, $young->refresh()->status);
+        self::assertSame(CrawlQueue::STATUS_FAILED, $terminal->refresh()->status);
+        Carbon::setTestNow();
     }
 
     public function test_failed_status_writes_are_centralized_in_the_crawl_queue_service(): void

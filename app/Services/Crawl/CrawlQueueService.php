@@ -20,9 +20,6 @@ use RuntimeException;
 
 final class CrawlQueueService
 {
-    /** Retry delay by attempt number when crawlerx gives no Retry-After hint. */
-    private const RETRY_BACKOFF_SECONDS = [60, 300, 1800];
-
     private readonly SourceGapPolicy $sourceGapPolicy;
     private readonly SourceRequestPacer $sourceRequestPacer;
 
@@ -50,7 +47,7 @@ final class CrawlQueueService
                 DB::select('SELECT pg_advisory_xact_lock(?)', [281]);
             }
             $query = CrawlQueue::query()
-                ->where('status', CrawlQueue::STATUS_PENDING)
+                ->where('status', $lane === 'retry' ? CrawlQueue::STATUS_RETRY_PENDING : CrawlQueue::STATUS_PENDING)
                 ->where(function ($q): void {
                     $q->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', now());
                 })
@@ -60,7 +57,9 @@ final class CrawlQueueService
                 $query->where('kind', $kind);
             }
 
-            if ($lane !== null && config('javmeta_queues.lanes_enabled', true)) {
+            if ($lane === 'retry') {
+                // Retry rows use their own queue status and never enter a direct/browser claim.
+            } elseif ($lane !== null && config('javmeta_queues.lanes_enabled', true)) {
                 $browser = app(CrawlLaneService::class)->browserSources();
                 if ($lane === 'browser') {
                     $query->whereIn('source_slug', $browser);
@@ -76,7 +75,7 @@ final class CrawlQueueService
             $query->whereNotIn('source_slug', $this->sourcesHeldByBlockDelay());
 
             // Fairness: a source waits until its claimed work across every crawl kind has room.
-            $sourcesAtInflightLimit = $this->sourcesAtInflightLimit();
+            $sourcesAtInflightLimit = $this->sourcesAtInflightLimit($lane);
             $eligibleQuery = clone $query;
             if ($excludeSources !== []) {
                 $eligibleQuery->whereNotIn('source_slug', $excludeSources);
@@ -199,11 +198,15 @@ final class CrawlQueueService
      *
      * @return array<string, array{waiting: int, started: int, latest_started_at: ?CarbonImmutable}>
      */
-    public function pacingActivityBySource(DateTimeInterface $since): array
+    public function pacingActivityBySource(DateTimeInterface $since, ?string $lane = null): array
     {
         $activity = [];
         $claims = CrawlQueue::query()
             ->where('status', CrawlQueue::STATUS_CLAIMED)
+            ->when($lane === 'retry', static fn(Builder $query) => $query->where('claimed_lane', 'retry'))
+            ->when($lane !== null && $lane !== 'retry', static fn(Builder $query) => $query->where(static function (Builder $nested): void {
+                $nested->whereNull('claimed_lane')->orWhere('claimed_lane', '!=', 'retry');
+            }))
             ->select('source_slug')
             ->selectRaw('SUM(CASE WHEN started_at IS NULL THEN 1 ELSE 0 END) AS waiting')
             ->selectRaw(
@@ -230,13 +233,18 @@ final class CrawlQueueService
         }
 
         $attempts = DB::table('crawl_fetch_attempts')
-            ->where('created_at', '>=', $since)
-            ->where('started_at', '>=', $since)
-            ->where('outcome', '!=', 'skipped')
-            ->select('source_slug')
+            ->leftJoin('crawl_queue', 'crawl_queue.id', '=', 'crawl_fetch_attempts.crawl_queue_id')
+            ->when($lane === 'retry', static fn($query) => $query->where('crawl_queue.claimed_lane', 'retry'))
+            ->when($lane !== null && $lane !== 'retry', static fn($query) => $query->where(static function ($nested): void {
+                $nested->whereNull('crawl_queue.id')->orWhereNull('crawl_queue.claimed_lane')->orWhere('crawl_queue.claimed_lane', '!=', 'retry');
+            }))
+            ->where('crawl_fetch_attempts.created_at', '>=', $since)
+            ->where('crawl_fetch_attempts.started_at', '>=', $since)
+            ->where('crawl_fetch_attempts.outcome', '!=', 'skipped')
+            ->select('crawl_fetch_attempts.source_slug')
             ->selectRaw('COUNT(*) AS total')
-            ->selectRaw('MAX(started_at) AS latest_started_at')
-            ->groupBy('source_slug')
+            ->selectRaw('MAX(crawl_fetch_attempts.started_at) AS latest_started_at')
+            ->groupBy('crawl_fetch_attempts.source_slug')
             ->get();
 
         foreach ($attempts as $row) {
@@ -257,12 +265,16 @@ final class CrawlQueueService
      *
      * @return list<string>
      */
-    private function sourcesAtInflightLimit(): array
+    private function sourcesAtInflightLimit(?string $lane = null): array
     {
-        $limit = max(1, (int) config('javmeta_queues.per_source_inflight', 4));
+        $limit = max(1, (int) config($lane === 'retry' ? 'javmeta_queues.retry.per_source_inflight' : 'javmeta_queues.per_source_inflight', 4));
 
         $query = CrawlQueue::query()
             ->where('status', CrawlQueue::STATUS_CLAIMED)
+            ->when($lane === 'retry', static fn(Builder $query) => $query->where('claimed_lane', 'retry'))
+            ->when($lane !== null && $lane !== 'retry', static fn(Builder $query) => $query->where(static function (Builder $nested): void {
+                $nested->whereNull('claimed_lane')->orWhere('claimed_lane', '!=', 'retry');
+            }))
             ->select('source_slug')
             ->groupBy('source_slug')
             ->havingRaw('COUNT(*) >= ?', [$limit]);
@@ -271,13 +283,21 @@ final class CrawlQueueService
 
         // The browser services (FlareSolverr, Playwright on the Dev VM) serve every Cloudflare source at once: when the rows
         // claimed by those sources reach the shared cap, none of them is claimed until some finish.
+        if ($lane === 'retry') {
+            return $atLimit;
+        }
+
         $cap = (int) config('javmeta_queues.browser_inflight', 0);
         $browserSources = app(CrawlLaneService::class)->browserSources();
         if ($cap > 0 && $browserSources !== []) {
             $claimed = CrawlQueue::query()->where('status', CrawlQueue::STATUS_CLAIMED)
                 ->where(static function ($query) use ($browserSources): void {
                     // Retain browser claims after reclassification, and include escalated/legacy claims.
-                    $query->where('claimed_lane', 'browser')->orWhereIn('source_slug', $browserSources);
+                    $query->where(static function ($laneQuery): void {
+                        $laneQuery->whereNull('claimed_lane')->orWhere('claimed_lane', '!=', 'retry');
+                    })->where(static function ($browserQuery) use ($browserSources): void {
+                        $browserQuery->where('claimed_lane', 'browser')->orWhereIn('source_slug', $browserSources);
+                    });
                 })->count();
             if ($claimed >= $cap) {
                 $atLimit = array_values(array_unique([...$atLimit, ...$browserSources]));
@@ -433,21 +453,55 @@ final class CrawlQueueService
         ?int $retryAfterSeconds = null,
     ): void {
         $safeMessage = self::sanitizeErrorMessage($message);
-        $blockDelay = $this->blockDelay($errorCode, $row);
-        $willRetry = $blockDelay !== null
-            ? $blockDelay > 0
-            : $retryable && $row->attempts < $row->max_attempts;
+        $policy = app(CrawlRetryPolicy::class);
+        $isRetryable = $policy->shouldRetry($errorCode, $retryable);
+        $isRetryLane = $row->claimed_lane === 'retry' || $row->status === CrawlQueue::STATUS_RETRY_PENDING;
+        $attemptLimit = $isRetryLane
+            ? max(1, (int) config('javmeta_queues.retry.attempts_per_round', 3))
+            : max(1, (int) $row->max_attempts);
+        $attemptsRemain = $row->attempts < $attemptLimit;
+        $maxRounds = max(1, (int) config('javmeta_queues.retry.max_rounds', 3));
+        $round = (int) $row->retry_round;
+        $nextStatus = CrawlQueue::STATUS_FAILED;
+        $nextAttemptAt = null;
+        $nextRound = $round;
+
+        if ($isRetryable && $attemptsRemain) {
+            $nextStatus = $isRetryLane ? CrawlQueue::STATUS_RETRY_PENDING : CrawlQueue::STATUS_PENDING;
+            $delay = $this->retryBackoffSeconds($row, $errorCode, $retryAfterSeconds);
+            if ($isRetryLane) {
+                $delay = max(1, $delay);
+            }
+            $nextAttemptAt = now()->addSeconds(max(1, (int) $delay));
+        } elseif ($isRetryable && $round < $maxRounds) {
+            $nextStatus = CrawlQueue::STATUS_RETRY_PENDING;
+            $nextRound = max(1, $round + 1);
+            $nextAttemptAt = now()->addSeconds($this->retryRoundDelay($nextRound));
+        }
+
+        if (! $isRetryLane && $isRetryable && ! $attemptsRemain) {
+            $nextStatus = CrawlQueue::STATUS_RETRY_PENDING;
+            $nextRound = 1;
+            $nextAttemptAt = now()->addSeconds($this->retryRoundDelay($nextRound));
+        }
+
 
         $row->forceFill([
-            'status' => $willRetry ? CrawlQueue::STATUS_PENDING : CrawlQueue::STATUS_FAILED,
+            'status' => $nextStatus,
+            'retry_round' => $nextRound,
+            'attempts' => $nextRound !== $round ? 0 : $row->attempts,
             'claimed_at' => null,
             'started_at' => null,
             'locked_by' => null,
-            'next_attempt_at' => $willRetry ? ($blockDelay > 0 ? now()->addSeconds(max($blockDelay, (int) $retryAfterSeconds)) : $this->retryAt($row, $retryAfterSeconds)) : null,
+            'next_attempt_at' => $nextAttemptAt,
             'error_code' => $errorCode->value,
             'last_error' => $safeMessage,
             'last_failed_at' => now(),
         ])->save();
+
+        if ($isRetryLane && $nextStatus === CrawlQueue::STATUS_FAILED) {
+            app(CrawlRetryMetrics::class)->increment((string) $row->source_slug, max(1, $round), 'failed_permanent', (string) ($row->retry_egress_label ?? 'default'));
+        }
     }
 
     public function startClaimedRow(int $id, string $expectedKind, ?string $claimToken): ?CrawlQueue
@@ -475,9 +529,13 @@ final class CrawlQueueService
             if ($this->sourceGapPolicy->isOverridden($sourceSlug)) {
                 $source = Source::query()->find($sourceSlug);
                 if ($source instanceof Source) {
+                    $retryMultiplier = $row->claimed_lane === 'retry'
+                        ? max(1.0, (float) config('javmeta_queues.retry.pacing_gap_multiplier', 2.0))
+                        : 1.0;
                     $wait = $this->sourceRequestPacer->reserveStart(
                         $sourceSlug,
-                        $this->sourceGapPolicy->adaptiveGap($source),
+                        $this->sourceGapPolicy->adaptiveGap($source) * $retryMultiplier,
+                        (string) ($row->claimed_lane ?? 'direct'),
                     );
                     $this->sourceRequestPacer->wait($wait);
                 }
@@ -487,6 +545,9 @@ final class CrawlQueueService
                 'started_at' => now(),
                 'claimed_at' => now(),
                 'attempts' => $row->attempts + 1,
+                'retry_egress_label' => $row->claimed_lane === 'retry'
+                    ? (string) data_get(config('javmeta_queues.retry.fetch_profile', []), 'egress_label', 'default')
+                    : $row->retry_egress_label,
             ])->save();
 
             return $row->refresh();
@@ -548,7 +609,7 @@ final class CrawlQueueService
                             $row,
                             CrawlErrorCode::WorkerLost,
                             'Worker claim expired before the crawl row was completed.',
-                            $row->attempts < $row->max_attempts,
+                            true,
                             0,
                         );
                         $lostRows[] = [
@@ -591,22 +652,6 @@ final class CrawlQueueService
         ])->save();
     }
 
-    /**
-     * Seconds to wait before retrying a blocked or challenged crawl: the configured delay for this retry
-     * (60, 120, 180 by default). 0 means the delays are used up and the row fails; null means the error is not a block.
-     */
-    private function blockDelay(CrawlErrorCode $errorCode, CrawlQueue $row): ?int
-    {
-        if (! in_array($errorCode, [CrawlErrorCode::Blocked, CrawlErrorCode::Challenge], true)) {
-            return null;
-        }
-
-        /** @var list<int> $delays */
-        $delays = array_values((array) config('javmeta_sources.defaults.queue.block_delays_seconds', [60, 120, 180]));
-
-        return (int) ($delays[max($row->attempts, 1) - 1] ?? 0);
-    }
-
     /** @return list<string> */
     private function sourcesHeldByBlockDelay(): array
     {
@@ -619,19 +664,99 @@ final class CrawlQueueService
             ->all();
     }
 
-    private function retryAt(CrawlQueue $row, ?int $retryAfterSeconds): Carbon
+    private function retryBackoffSeconds(CrawlQueue $row, CrawlErrorCode $errorCode, ?int $retryAfterSeconds): int
     {
-        if ($retryAfterSeconds === 0) {
-            return now();
+        if (in_array($errorCode, [CrawlErrorCode::Blocked, CrawlErrorCode::Challenge], true)) {
+            /** @var list<int> $blockDelays */
+            $blockDelays = array_values((array) config('javmeta_sources.defaults.queue.block_delays_seconds', []));
+            $blockDelay = $blockDelays[max($row->attempts, 1) - 1] ?? null;
+            if (is_numeric($blockDelay) && (int) $blockDelay > 0) {
+                return max((int) $blockDelay, max(1, (int) $retryAfterSeconds));
+            }
         }
-
         if ($retryAfterSeconds !== null && $retryAfterSeconds > 0) {
-            return now()->addSeconds($retryAfterSeconds);
+            return $retryAfterSeconds;
+        }
+        /** @var list<int> $backoff */
+        $backoff = array_values((array) config('javmeta_sources.defaults.queue.retry_backoff_seconds', [60, 300, 1800]));
+        $index = min(max($row->attempts, 1), max(1, count($backoff))) - 1;
+
+        return max(1, (int) ($backoff[$index] ?? 1800));
+    }
+
+    private function retryRoundDelay(int $round): int
+    {
+        /** @var list<int> $delays */
+        $delays = array_values((array) config('javmeta_queues.retry.delays_seconds', [1800, 7200, 21600]));
+
+        return max(1, (int) ($delays[$round - 1] ?? end($delays) ?: 21600));
+    }
+
+    public function requeuePermanentFailure(CrawlQueue $row): bool
+    {
+        $code = CrawlErrorCode::tryFrom((string) $row->error_code);
+        if ($row->status !== CrawlQueue::STATUS_FAILED || ! $code instanceof CrawlErrorCode || ! app(CrawlRetryPolicy::class)->isRetryableCode($code)) {
+            return false;
         }
 
-        $index = min(max($row->attempts, 1), count(self::RETRY_BACKOFF_SECONDS)) - 1;
+        $row->forceFill([
+            'status' => CrawlQueue::STATUS_RETRY_PENDING,
+            'attempts' => 0,
+            'retry_round' => 1,
+            'next_attempt_at' => now()->addSeconds($this->retryRoundDelay(1)),
+            'claimed_at' => null,
+            'started_at' => null,
+            'locked_by' => null,
+        ])->save();
 
-        return now()->addSeconds(self::RETRY_BACKOFF_SECONDS[$index]);
+        return true;
+    }
+
+    public function requeuePermanentFailuresForSource(string $source): int
+    {
+        $rows = CrawlQueue::query()->where('source_slug', $source)->where('status', CrawlQueue::STATUS_FAILED)
+            ->orderBy('id')->get();
+        $count = 0;
+        foreach ($rows as $row) {
+            $count += $this->requeuePermanentFailure($row) ? 1 : 0;
+        }
+
+        return $count;
+    }
+
+    public function importHistoricalFailures(bool $dryRun, ?string $source = null, ?int $sliceSize = null): int
+    {
+        $delay = max(1, $this->retryRoundDelay(1));
+        $cutoff = now()->subSeconds($delay);
+        $slice = max(1, $sliceSize ?? (int) config('javmeta_queues.retry.import_slice_size', 100));
+        $eligible = CrawlQueue::query()->where('status', CrawlQueue::STATUS_FAILED)
+            ->whereNotNull('last_failed_at')->where('last_failed_at', '<=', $cutoff);
+        if ($source !== null) {
+            $eligible->where('source_slug', $source);
+        }
+
+        $retryableCodes = app(CrawlRetryPolicy::class)->retryableCodeValues();
+        $eligible->whereIn('error_code', $retryableCodes);
+        if ($dryRun) {
+            return $eligible->count();
+        }
+
+        $imported = 0;
+        $eligible->chunkById($slice, function (Collection $rows) use (&$imported, $cutoff, $retryableCodes): void {
+            $ids = $rows->modelKeys();
+            $imported += CrawlQueue::query()->whereIn('id', $ids)
+                ->where('status', CrawlQueue::STATUS_FAILED)
+                ->where('last_failed_at', '<=', $cutoff)
+                ->whereIn('error_code', $retryableCodes)
+                ->update([
+                    'status' => CrawlQueue::STATUS_RETRY_PENDING,
+                    'attempts' => 0,
+                    'retry_round' => 1,
+                    'next_attempt_at' => now(),
+                ]);
+        });
+
+        return $imported;
     }
 
     private function nextSourceAttemptAt(?Source $source): Carbon

@@ -104,11 +104,14 @@ final class QueueAttemptLifecycleTest extends TestCase
             self::assertSame(1, $queue->reclaimStaleClaimed(900));
             self::assertSame(CrawlQueue::STATUS_PENDING, $row->refresh()->status);
             self::assertSame(1, $row->attempts);
+            self::assertSame(now()->addSeconds(60)->timestamp, $row->next_attempt_at?->timestamp);
             $this->assertDatabaseMissing('crawl_events', [
                 'source_slug' => $source->slug,
                 'kind' => CrawlEvent::KIND_QUEUE_RECLAIMED_WITHOUT_START,
             ]);
 
+            self::assertNull($queue->claimNext('new-feed'));
+            Carbon::setTestNow(now()->addSeconds(60));
             $newClaim = $queue->claimNext('new-feed');
             self::assertSame($row->id, $newClaim?->id);
             self::assertSame(1, $newClaim?->attempts);

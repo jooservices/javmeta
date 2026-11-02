@@ -23,6 +23,7 @@ return [
             'stale_claim_timeout_seconds' => 900,
             // A blocked crawl is retried after these delays; the database setting overrides this default.
             'block_delays_seconds' => [60, 120, 180],
+            'retry_backoff_seconds' => [60, 300, 1800],
         ],
         'loop' => [
             // Re-read page-one listing seeds on this interval even while later pages are still being crawled.

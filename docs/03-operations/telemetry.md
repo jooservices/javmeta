@@ -25,7 +25,10 @@ environment.
 | `javmeta_crawl_queue_claimed_age_seconds` | — | Age in seconds of the oldest claimed queue row; `-1` means none is claimed. |
 | `javmeta_crawl_dispatch_age_seconds` | — | Seconds since the feed pool last dispatched a crawl job; `-1` means no dispatch is recorded. |
 | `javmeta_crawl_dispatch_stale` | `severity` | 1 when due crawl work has exceeded the warning or critical dispatch-age threshold; 0 otherwise. Thresholds come from database settings. |
-| `javmeta_crawl_queue_avg_attempts` | — | Average attempts for pending and failed queue rows. |
+| `javmeta_crawl_queue_avg_attempts` | — | Average attempts for pending, retry-pending and failed queue rows. |
+| `javmeta_retry_pending` | `source`, `round`, `egress` | Current retry-lane rows grouped by retry round and safe egress label; value is rows. |
+| `javmeta_retry_success_total` | `source`, `round`, `egress` | Cumulative retry-lane successes, grouped by successful round and egress. |
+| `javmeta_retry_failed_permanent_total` | `source`, `round`, `egress` | Cumulative retry-lane rows that exhausted their rounds or reached a terminal error. |
 | `javmeta_feed_source_budget` | `source_slug` | Per-source budget from the latest feed run in the previous minute: `max(1, floor(horizon / gap))`; the one-second minimum applies when no override is active. |
 | `javmeta_feed_source_started` | `source_slug` | Per-source requests started in the pacing horizon, from the latest feed run in the previous minute. |
 | `javmeta_feed_source_waiting` | `source_slug` | Per-source claimed rows without a start time, from the latest feed run in the previous minute. |
@@ -84,6 +87,16 @@ the minute. `javmeta_feed_run_ms` is the average duration across runs in that
 minute. Buckets use the database-configured diagnostics retention and TTL. The
 application has no Prometheus text endpoint; these metrics use the existing
 OpenObserve OTLP metrics path.
+
+Retry metrics are emitted by `obs:publish-metrics`. Pending is a point-in-time
+gauge; the two `_total` metrics are cumulative counters stored in
+`crawl_retry_metrics`. The `egress` label contains only the configured label,
+never a proxy URL. A falling `javmeta_retry_pending` gauge with a rising
+`javmeta_retry_success_total` is the expected recovery signal; a rising
+`javmeta_retry_failed_permanent_total` indicates the configured rounds did not
+recover the source pages. Read counters over SSH with
+`php artisan crawler:retry-stats [--source=slug]`; inspect row-level state with
+`php artisan crawler:retry-list [--source=slug] [--round=1]`.
 
 `javmeta_playwright_slot_busy_ratio` divides the completed Playwright-family
 durations recorded in the previous minute by `queue.browser_inflight` slots and

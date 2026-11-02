@@ -74,7 +74,7 @@ API span telemetry uses deterministic sampling based on the trace ID (10% by def
 
 The depth check covers ready jobs. Reserved and delayed Redis jobs do not count toward this buffer. A Redis depth-query failure stops the feed-pool command before it claims rows.
 
-Claiming a crawl row does not increment `attempts`. A worker increments it once when it starts the current claim, and the claim token prevents an older buffered job from starting after that claim has been reclaimed. Stale claims that never started return to pending with the same attempt count; stale started claims retain the existing worker-lost retry behavior. Existing claimed rows are marked started by the schema migration because the previous schema cannot distinguish buffered jobs from jobs already running.
+Claiming a crawl row does not increment `attempts`. A worker increments it once when it starts the current claim, and the claim token prevents an older buffered job from starting after that claim has been reclaimed. Stale claims that never started return to their lane with the same attempt count; stale started claims use the same normal-attempt backoff and retry-lane state machine as other transient failures. Existing claimed rows are marked started by the schema migration because the previous schema cannot distinguish buffered jobs from jobs already running.
 
 Each stale claim reclaimed before worker start creates a `queue_reclaimed_without_start` crawl event. The count is reported for the previous five minutes by `javmeta_crawl_events_5m` with `kind=queue_reclaimed_without_start`.
 
@@ -172,14 +172,14 @@ increments when claim selection or a source-gate check finds a row (up to one
 per call); it does not estimate rows scanned internally by the database engine.
 
 
-## Direct and browser lanes
+## Direct, browser and retry lanes
 
 `crawl.lanes_enabled` (Settings UI, default true) separates the five crawl kinds into
 `listing`, `detail`, `performer_listing`, `performer_detail`, `gallery` and their
-`browser_` counterparts. Search indexes application data rather than fetching a
-source; `search` and `observability` keep their existing queues. Every queue has
-its own Horizon supervisor and wait metric; deployment readiness checks both crawl
-lanes, including while the split is disabled so already queued browser jobs drain.
+`browser_` counterparts. The five `retry_` queues form a third, always separate
+lane. Each lane queue has its own Horizon supervisor; retry workers default to
+one process per queue. Search indexes application data rather than fetching a
+source; `search` and `observability` keep their existing queues.
 
 The static `queue.browser_sources` list is the default browser lane. The complete
 04:00 `crawler:source-health` run also aggregates the preceding 24 hours of
@@ -215,6 +215,52 @@ between changes. The command logs applied counts; `obs:publish-metrics`
 publishes observed counts as `javmeta_horizon_workers{queue,node}`. Changes to
 queue names or other Horizon options that cannot be safely scaled in place are
 reported as `restart-required` and need an operator-managed Horizon restart.
+
+## Delayed retry lane
+
+The normal lane gets up to `crawl.max_attempts` attempts per URL. Transient
+failures return to `pending` with the configured `crawl.retry_backoff_seconds`
+(default 60, 300 and 1,800 seconds); a `Retry-After` hint is respected. Once the
+normal attempts are exhausted, the row enters `retry_pending`, round 1, and is
+not eligible for a normal or browser claim. The retry lane waits the configured
+round delay (default 1,800 seconds, then 7,200, then 21,600), uses
+`retry.attempts_per_round` attempts (default 3), then advances a round or marks
+the row permanently `failed` after `retry.max_rounds` (default 3). The final
+`error_code`, `last_error` and `last_failed_at` remain on the row.
+
+| Error codes | Retry decision |
+| --- | --- |
+| `blocked`, `challenge` | Retryable; normal backoff first, then retry rounds. |
+| `rate_limited`, `timeout`, `network`, `worker_failed`, `worker_lost` | Retry only when the fetch result is marked retryable. |
+| `soft404`, `not_found`, `gone`, `parse_failed`, `normalization_failed`, `normalizer_missing`, `unsupported_url`, `ambiguous_url`, `adapter_not_found`, `auth_required`, `ssrf_blocked`, `unknown`, `unknown_source`, `legacy_unclassified` | Terminal; do not retry automatically or by requeue command. |
+
+`retry.feed_pool_limit` (default 5 jobs per minute) and
+`retry.pacing_horizon_seconds` (60 seconds) are independent from direct/browser
+budgets. Retry pacing multiplies each source gap by `retry.pacing_gap_multiplier`
+(default 2), reserves request starts in a separate lane key, and caps retry
+inflight work with `retry.per_source_inflight` (default 1). It cannot consume the
+normal lane's dispatch budget. Retry queue depth defaults to 10 jobs per queue.
+
+The database setting `retry.fetch_profile` is empty by default. Optional fields
+are `flaresolverr_url`, `playwright_url`, `http_proxy_url`, `egress_label` and
+ordered `preferred_methods`. This lets an operator route retry fetches through
+different browser endpoints or a proxy and identify the egress in metrics without
+deploying. Endpoint URLs must not include credentials. Empty profile values use
+the normal fetch endpoints and method planning.
+
+Use `php artisan crawler:retry-list [--source=slug] [--round=1]` to inspect
+retry rows, `php artisan crawler:retry-requeue <id>` or
+`php artisan crawler:retry-requeue --source=slug` to requeue terminal transient
+failures, and `php artisan crawler:retry-import --dry-run` before importing old
+failures. The import only considers transient `failed` rows older than the first
+retry delay and processes them in `retry.import_slice_size` slices (default 100);
+run without `--dry-run` only after reviewing the count. It never changes recent
+rows or terminal parse/SSRF/gone errors. Run `php artisan crawler:retry-stats
+[--source=slug]` over SSH to read pending counts and cumulative successes and
+permanent failures by retry round and egress label. `javmeta_retry_pending`,
+`javmeta_retry_success_total` and `javmeta_retry_failed_permanent_total` report
+recovery and egress labels; see [telemetry](telemetry.md#metrics). The regular
+`javmeta_crawl_queue_depth{status=retry_pending}` gauge also includes this work.
 
 ## Learned fetch method order
 

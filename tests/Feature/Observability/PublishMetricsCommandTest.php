@@ -25,6 +25,7 @@ use Carbon\CarbonImmutable;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Testing\FakeConfigStore;
 use Mockery;
+use ReflectionMethod;
 use Tests\TestCase;
 
 final class PublishMetricsCommandTest extends TestCase
@@ -126,6 +127,33 @@ final class PublishMetricsCommandTest extends TestCase
         $this->artisan('obs:publish-metrics')->assertSuccessful();
 
         Http::assertSent(static fn($request): bool => str_contains($request->url(), '/v1/metrics'));
+    }
+
+    public function test_retry_metrics_publish_pending_success_and_permanent_failure_with_egress_labels(): void
+    {
+        $row = CrawlQueue::factory()->create([
+            'status' => CrawlQueue::STATUS_RETRY_PENDING,
+            'retry_round' => 2,
+            'retry_egress_label' => 'clean-egress',
+        ]);
+        DB::table('crawl_retry_metrics')->insert([
+            ['source_slug' => $row->source_slug, 'round' => 2, 'outcome' => 'success', 'egress_label' => 'clean-egress', 'value' => 4],
+            ['source_slug' => $row->source_slug, 'round' => 1, 'outcome' => 'failed_permanent', 'egress_label' => 'clean-egress', 'value' => 2],
+        ]);
+        $method = new ReflectionMethod(PublishMetricsCommand::class, 'queueMetrics');
+        /** @var list<array{name: string, value: float|int, labels?: array<string, string>}> $points */
+        $points = $method->invoke(app(PublishMetricsCommand::class));
+        $retryPoints = collect($points)->whereIn('name', [
+            'javmeta_retry_pending', 'javmeta_retry_success_total', 'javmeta_retry_failed_permanent_total',
+        ]);
+
+        self::assertCount(3, $retryPoints);
+        self::assertSame(1, $retryPoints->firstWhere('name', 'javmeta_retry_pending')['value']);
+        self::assertSame(4, $retryPoints->firstWhere('name', 'javmeta_retry_success_total')['value']);
+        self::assertSame(2, $retryPoints->firstWhere('name', 'javmeta_retry_failed_permanent_total')['value']);
+        foreach ($retryPoints as $point) {
+            self::assertSame('clean-egress', $point['labels']['egress']);
+        }
     }
 
     public function test_command_publishes_feed_pool_diagnostics_metrics_from_the_previous_minute(): void
