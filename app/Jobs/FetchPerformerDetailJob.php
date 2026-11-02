@@ -66,10 +66,6 @@ final class FetchPerformerDetailJob implements ShouldQueue
             return;
         }
 
-        if (! $this->paceBeforeRequest($row, $source, $throttle)) {
-            return;
-        }
-
         $result = $client->fetchPerformerDetail($row->source_slug, $row->url);
         app(FetchAttemptRecorder::class)->record($row, $result);
         if (! $result->ok || $result->performer === null) {

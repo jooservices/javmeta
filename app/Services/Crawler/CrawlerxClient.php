@@ -203,14 +203,9 @@ class CrawlerxClient
 
     private function options(): CrawlOptionsDto
     {
-        return new CrawlOptionsDto(fetch: new FetchOptionsDto(deadlineSeconds: self::fetchDeadlineSeconds()));
-    }
+        $deadline = (int) config('javmeta_queues.worker_timeout', 180) - self::DEADLINE_MARGIN_SECONDS;
 
-    public static function fetchDeadlineSeconds(): int
-    {
-        $workerTimeout = (int) config('javmeta_queues.worker_timeout', 180);
-
-        return max(1, $workerTimeout - self::DEADLINE_MARGIN_SECONDS);
+        return new CrawlOptionsDto(fetch: new FetchOptionsDto(deadlineSeconds: max(1, $deadline)));
     }
 
     private function errorCode(?CrawlErrorCode $code, ?bool $challengeDetected): string
