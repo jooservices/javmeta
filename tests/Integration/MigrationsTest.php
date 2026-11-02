@@ -180,7 +180,7 @@ final class MigrationsTest extends BaseTestCase
             ]);
         }
 
-        $migration = require database_path('migrations/2026_11_03_000002_add_periodic_report_storage.php');
+        $migration = require database_path('migrations/2026_11_03_000003_add_periodic_report_storage.php');
         $migration->down();
         $migration->up();
 
