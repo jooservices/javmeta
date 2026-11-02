@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Models\Source;
 use App\Services\Crawl\FeedPoolDiagnostics;
+use App\Services\Crawl\SourceGapPolicy;
+use App\Services\Crawl\SourceThrottle;
 use Illuminate\Console\Command;
 use Throwable;
 
@@ -14,7 +17,7 @@ final class FeedDiagnosticsCommand extends Command
 
     protected $description = 'Show retained feed pool budgets, dispatches, and stop reasons.';
 
-    public function handle(FeedPoolDiagnostics $diagnostics): int
+    public function handle(FeedPoolDiagnostics $diagnostics, SourceGapPolicy $gapPolicy, SourceThrottle $throttle): int
     {
         $requestedMinutes = filter_var($this->option('minutes'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 1440]]);
         if ($requestedMinutes === false) {
@@ -40,11 +43,23 @@ final class FeedDiagnosticsCommand extends Command
         if ($report['sources'] === []) {
             $this->info('No per-source feed data was recorded in this window.');
         } else {
+            $sources = Source::query()->whereIn('slug', array_keys($report['sources']))->get()->keyBy('slug');
             $rows = [];
             foreach ($report['sources'] as $source => $metrics) {
-                $rows[] = [$source, $metrics['budget'], $metrics['started'], $metrics['waiting'], $metrics['dispatched']];
+                $model = $sources->get($source);
+                $gap = $gapPolicy->describe($source, $model instanceof Source ? $model : null);
+                $rows[] = [
+                    $source,
+                    $metrics['budget'],
+                    $metrics['started'],
+                    $metrics['waiting'],
+                    $metrics['dispatched'],
+                    number_format($gap['effective']['default'], 2),
+                    $gap['overridden'] ? 'yes' : 'no',
+                    $model instanceof Source ? number_format($throttle->currentGap($model), 2) : '-',
+                ];
             }
-            $this->table(['Source', 'Budget', 'Started', 'Waiting', 'Dispatched'], $rows);
+            $this->table(['Source', 'Budget', 'Started', 'Waiting', 'Dispatched', 'Effective gap (s)', 'Override', 'Adaptive gap (s)'], $rows);
         }
 
         if ($report['stop_reasons'] === []) {

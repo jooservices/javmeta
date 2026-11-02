@@ -39,6 +39,7 @@ return [
 
     'validation' => [
         'max_text_length' => 500,
+        'max_json_length' => 10000,
         'max_list_items' => 100,
         'max_json_entries' => 50,
     ],
@@ -132,6 +133,7 @@ return [
         'crawl.fetch_method_window_ttl_seconds' => ['group' => 'crawl', 'label' => 'Thời hạn kết quả học phương thức (giây)', 'description' => 'Thời gian giữ cửa sổ thành công và thất bại trong cache dùng chung.', 'type' => 'int', 'config' => ['javmeta_queues.fetch_method_window_ttl_seconds'], 'min' => 60, 'max' => 2592000],
         'crawl.fetch_method_preference_ttl_seconds' => ['group' => 'crawl', 'label' => 'Thời gian ưu tiên FlareSolverr (giây)', 'description' => 'Thời hạn ưu tiên FlareSolverr sau khi Playwright vượt ngưỡng lỗi; probe thành công sẽ bỏ ưu tiên sớm.', 'type' => 'int', 'config' => ['javmeta_queues.fetch_method_preference_ttl_seconds'], 'min' => 60, 'max' => 604800],
         'crawl.fetch_method_probe_interval' => ['group' => 'crawl', 'label' => 'Khoảng request giữa các lần probe Playwright', 'description' => 'Cứ mỗi số request này, thử Playwright trước để phát hiện khi nguồn đã hoạt động lại.', 'type' => 'int', 'config' => ['javmeta_queues.fetch_method_probe_interval'], 'min' => 1, 'max' => 1000],
+        'crawl.source_gap_overrides' => ['group' => 'crawl', 'label' => 'Khoảng request ghi đè theo nguồn (JSON)', 'description' => 'Ánh xạ mã nguồn sang min, default và max từ 0,25 đến 600 giây; để trống thì giữ nhịp mặc định của từng nguồn.', 'type' => 'json', 'shape' => 'source_gap_override_map', 'max_length' => 10000, 'config' => ['javmeta_queues.source_gap_overrides']],
         'queue.browser_inflight' => ['group' => 'browser', 'label' => 'Việc dùng trình duyệt cùng lúc (tổng)', 'description' => 'Giới hạn chung các job dùng FlareSolverr hoặc Playwright để tránh quá tải dịch vụ.', 'type' => 'int', 'config' => ['javmeta_queues.browser_inflight'], 'min' => 0, 'max' => 64],
         'queue.browser_depth_limit' => ['group' => 'browser', 'label' => 'Độ sâu queue trình duyệt', 'description' => 'Số job chờ tối đa trong mỗi queue làn trình duyệt.', 'type' => 'int', 'config' => ['javmeta_queues.browser_depth_limit'], 'min' => 1, 'max' => 100000],
         'queue.browser_sources' => ['group' => 'browser', 'label' => 'Nguồn cần trình duyệt (mỗi dòng một mã nguồn)', 'description' => 'Danh sách nguồn bắt buộc dùng dịch vụ trình duyệt.', 'type' => 'string_list', 'config' => ['javmeta_queues.browser_sources']],

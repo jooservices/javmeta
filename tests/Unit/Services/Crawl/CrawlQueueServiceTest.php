@@ -33,6 +33,32 @@ final class CrawlQueueServiceTest extends TestCase
         $this->assertSame(1, CrawlQueue::query()->where('source_slug', $source->slug)->where('url', $url)->count());
     }
 
+    public function test_enqueue_uses_override_gap_for_the_first_due_time(): void
+    {
+        Carbon::setTestNow('2026-10-19 10:00:00');
+        try {
+            config()->set('javmeta_queues.source_gap_overrides', [
+                'paced-site' => ['min' => 10.0, 'default' => 20.0, 'max' => 30.0],
+            ]);
+            $source = Source::factory()->create([
+                'slug' => 'paced-site',
+                'gap_seconds_min' => 5,
+                'gap_seconds_default' => 10,
+                'gap_seconds_max' => 60,
+                'gap_seconds_current' => 5.0,
+            ]);
+
+            $row = (new CrawlQueueService())->enqueue('https://paced-site.test/one', $source->slug, CrawlQueue::KIND_LISTING);
+
+            $this->assertSame(
+                now()->addSeconds(10)->format('Y-m-d H:i:s.u'),
+                $row->next_attempt_at?->format('Y-m-d H:i:s.u'),
+            );
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_a_blocked_crawl_is_retried_after_60_then_120_then_180_seconds_then_fails(): void
     {
         Carbon::setTestNow('2026-10-19 10:00:00');

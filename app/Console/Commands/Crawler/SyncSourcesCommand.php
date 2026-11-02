@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands\Crawler;
 
 use App\Models\Source;
+use App\Services\Crawl\SourceGapPolicy;
 use Illuminate\Console\Command;
 use Illuminate\Support\Arr;
 
@@ -14,7 +15,7 @@ final class SyncSourcesCommand extends Command
 
     protected $description = 'Synchronize configured JAVMeta sources.';
 
-    public function handle(): int
+    public function handle(SourceGapPolicy $gapPolicy): int
     {
         $sources = config('javmeta_sources.sources', []);
         if (! is_array($sources) || $sources === []) {
@@ -26,19 +27,27 @@ final class SyncSourcesCommand extends Command
                 continue;
             }
 
-            $defaultGap = (float) Arr::get($source, 'gap_seconds_default', config('javmeta_sources.defaults.fallback_gap_seconds.default', 30));
+            $gaps = $gapPolicy->describe($slug)['effective'];
+            $defaultGap = $gaps['default'];
             $existing = Source::query()->find($slug);
             $attributes = [
                 'name' => (string) Arr::get($source, 'name'),
                 'base_url' => (string) Arr::get($source, 'base_url'),
                 'priority' => (int) Arr::get($source, 'priority'),
                 'needs_proxy' => (bool) Arr::get($source, 'needs_proxy', config('javmeta_sources.defaults.needs_proxy', false)),
-                'gap_seconds_default' => $defaultGap,
-                'gap_seconds_min' => (float) Arr::get($source, 'gap_seconds_min', config('javmeta_sources.defaults.fallback_gap_seconds.min', 30)),
-                'gap_seconds_max' => (float) Arr::get($source, 'gap_seconds_max', config('javmeta_sources.defaults.fallback_gap_seconds.max', 120)),
+                'gap_seconds_default' => $gaps['default'],
+                'gap_seconds_min' => $gaps['min'],
+                'gap_seconds_max' => $gaps['max'],
             ];
 
             if ($existing instanceof Source) {
+                if ($gapPolicy->isOverridden($slug)) {
+                    $attributes['gap_seconds_current'] = $gapPolicy->clamp(
+                        (float) $existing->gap_seconds_current,
+                        $gaps,
+                    );
+                }
+
                 // The database is the only on/off switch: an existing row is never given an `enabled` value here.
                 $existing->forceFill($attributes)->save();
 

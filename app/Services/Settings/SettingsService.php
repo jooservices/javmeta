@@ -172,7 +172,7 @@ final class SettingsService
                 'restart' => $definition['restart'] ?? null,
                 'apply_after_seconds' => (int) ($definition['apply_after_seconds'] ?? 30),
                 'shape' => $definition['shape'] ?? null,
-                'max_length' => (int) config('javmeta_settings.validation.max_text_length', 500),
+                'max_length' => (int) ($definition['max_length'] ?? config('javmeta_settings.validation.max_text_length', 500)),
                 'source' => $inDatabase ? 'database' : $source,
                 'value' => $isSecret ? null : $current,
                 'is_set' => $isSecret ? (is_string($current) && $current !== '') : null,
@@ -708,6 +708,9 @@ final class SettingsService
     private function validateJson(string $key, array $definition, mixed $value, callable $fail): array
     {
         if (is_string($value)) {
+            if (mb_strlen($value) > (int) config('javmeta_settings.validation.max_json_length', 10000)) {
+                $fail('is too long');
+            }
             if (! str_starts_with(ltrim($value), '{')) {
                 $fail('must be a JSON object');
             }
@@ -719,6 +722,9 @@ final class SettingsService
         }
         if (! is_array($value) || (array_is_list($value) && $value !== [])) {
             $fail('must be a JSON object');
+        }
+        if (mb_strlen(json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)) > (int) config('javmeta_settings.validation.max_json_length', 10000)) {
+            $fail('is too long');
         }
         if (count($value) > (int) config('javmeta_settings.validation.max_json_entries', 50)) {
             $fail('has too many entries');
@@ -779,6 +785,28 @@ final class SettingsService
      */
     private function validateJsonShape(string $key, string $shape, array $value, callable $fail): void
     {
+        if ($shape === 'source_gap_override_map') {
+            foreach ($value as $slug => $bounds) {
+                if (! is_string($slug) || preg_match('/^[a-z0-9][a-z0-9_-]*$/', $slug) !== 1 || ! is_array($bounds) || array_is_list($bounds)) {
+                    $fail('must map source slugs to min, default, and max gap values');
+                }
+                $fields = array_keys($bounds);
+                sort($fields);
+                if ($fields !== ['default', 'max', 'min']) {
+                    $fail('each source must define only min, default, and max');
+                }
+                foreach ($bounds as $gap) {
+                    if ((! is_int($gap) && ! is_float($gap)) || ! is_finite((float) $gap) || $gap < 0.25 || $gap > 600) {
+                        $fail('gap values must be numbers from 0.25 to 600 seconds');
+                    }
+                }
+                if ($bounds['min'] > $bounds['default'] || $bounds['default'] > $bounds['max']) {
+                    $fail('each source must satisfy min <= default <= max');
+                }
+            }
+
+            return;
+        }
         if ($shape === 'queue_worker_map') {
             $queues = (array) config('javmeta_queues.horizon_names', []);
             foreach ($value as $queue => $workers) {

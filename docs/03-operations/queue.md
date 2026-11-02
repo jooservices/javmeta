@@ -117,7 +117,27 @@ horizon 60 seconds), and its jobs are delayed so that they start one gap apart. 
 earlier run count against the budget. The gap adapts to the answers of the site: rate limits, blocks and challenges
 double it up to `queue.gap_blocked_max_seconds` (default 600); timeouts and network errors raise it by half up to the
 source maximum; parse and not-found errors do not change it; every success lowers it by 10 percent of the distance to
-its minimum. The current gap is in `crawler:sources`, the status API and the metric `javmeta_source_gap_seconds`.
+its minimum. The current adaptive gap is in `crawler:sources`, the status API and the metric `javmeta_source_gap_seconds`.
+
+`crawl.source_gap_overrides` is a database setting on Cài đặt → Vòng lặp crawl.
+It maps source slugs to `{ "min": 20, "default": 30, "max": 60 }`; every value
+must be from 0.25 to 600 seconds and satisfy `min <= default <= max`. With an
+empty map, source definitions and existing adaptive behavior are unchanged.
+`crawler:sync-sources` applies configured overrides to source rows and clamps
+their current adaptive value to the override bounds. The feeder uses that
+effective adaptive gap for its source budget and job delays. Inspect the source
+definition, override, effective bounds and current adaptive value with
+`php artisan crawler:source-gap [slug] [--json]`.
+
+The PostgreSQL claim path also has the partial index
+`crawl_queue_pending_kind_id_idx` on `(kind, id)` for pending rows. Its migration
+uses `CREATE INDEX CONCURRENTLY IF NOT EXISTS`; a valid index already present is
+left in place, and an invalid leftover is dropped concurrently before retry.
+The integration test checks its columns, pending predicate, validity and
+idempotent repeat. A pinned `EXPLAIN` plan is not stable across environments:
+PostgreSQL chooses plans from table size, row distribution and collected
+statistics. To inspect a representative plan, run `ANALYZE crawl_queue` and
+`EXPLAIN` the production claim predicate on the target database.
 
 ## Feed pool diagnostics
 
@@ -132,10 +152,11 @@ ignored by the feed command.
 Run `php artisan crawler:feed-diagnostics --minutes=10` to read retained data
 over SSH. The command caps its window at the configured retention period. The
 per-source table shows the latest budget, started and waiting snapshot in the
-window, plus dispatched rows summed over the window. Started counts requests
+window, plus dispatched rows summed over the window, effective default gap,
+whether an override is active, and current adaptive gap. Started counts requests
 recorded within `queue.pacing_horizon_seconds`; waiting counts claimed rows
-without a start time. Budget is `max(1, floor(horizon / max(1, gap)))`, matching
-the feeder's minimum-one claim allowance. Stop-reason classification matches
+without a start time. The budget uses the effective adaptive gap; without an
+override, the legacy one-second minimum remains in force. Stop-reason classification matches
 the due rows for each queue kind and lane in the claim statement. Reasons are
 counted by queue and lane: `exhausted_budget`, `no_due_rows`, `depth`,
 `global_cap`, `advisory_lock`, `per_source_inflight` and `interval_not_elapsed`.

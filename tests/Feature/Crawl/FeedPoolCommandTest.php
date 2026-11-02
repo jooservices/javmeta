@@ -327,6 +327,26 @@ final class FeedPoolCommandTest extends TestCase
         $this->assertSame(4, CrawlQueue::query()->where('status', CrawlQueue::STATUS_PENDING)->count());
     }
 
+    public function test_feed_pool_uses_an_override_when_calculating_source_budget_and_delays(): void
+    {
+        config([
+            'javmeta_queues.pacing_horizon_seconds' => 60,
+            'javmeta_queues.per_source_inflight' => 50,
+            'javmeta_queues.source_gap_overrides' => [
+                'paced' => ['min' => 20.0, 'default' => 20.0, 'max' => 40.0],
+            ],
+        ]);
+        $this->pacedSource('paced', 5.0);
+        CrawlQueue::factory()->count(6)->create(['source_slug' => 'paced', 'kind' => CrawlQueue::KIND_DETAIL]);
+        Queue::fake();
+
+        $this->artisan('crawler:feed-pool')->assertSuccessful();
+
+        Queue::assertPushed(FetchDetailJob::class, 3);
+        $delays = Queue::pushed(FetchDetailJob::class)->map(static fn(FetchDetailJob $job): int => (int) $job->delay)->values()->all();
+        self::assertSame([0, 20, 40], $delays);
+    }
+
     public function test_six_feed_runs_share_the_source_budget_and_keep_waiting_delays_contiguous(): void
     {
         $start = now()->startOfMinute();

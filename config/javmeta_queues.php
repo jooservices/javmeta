@@ -30,6 +30,7 @@ return [
     'direct_workers_per_queue' => null,
     'worker_queue_overrides' => [],
     'worker_node_overrides' => [],
+    'source_gap_overrides' => [],
 
     /** Queue names included in the feed-pool queue set; only crawl kinds map to crawl_queue rows. */
     'feed_pool_names' => [...$workerQueueNames, ...array_values($browserQueueNames)],

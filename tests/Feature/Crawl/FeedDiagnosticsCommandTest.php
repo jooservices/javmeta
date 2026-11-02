@@ -10,8 +10,10 @@ use App\Jobs\FetchListingJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Artisan;
 use Mockery;
 use RuntimeException;
+use Symfony\Component\Console\Output\BufferedOutput;
 use Tests\TestCase;
 
 final class FeedDiagnosticsCommandTest extends TestCase
@@ -56,15 +58,22 @@ final class FeedDiagnosticsCommandTest extends TestCase
             'status' => CrawlQueue::STATUS_PENDING,
             'next_attempt_at' => null,
         ]);
-
         $this->artisan('crawler:feed-pool')->assertSuccessful();
 
         self::assertSame(1, $hash['s|budgeted|budget']);
         self::assertSame(1, $hash['q|gallery|direct|exhausted_budget']);
-        $this->artisan('crawler:feed-diagnostics', ['--minutes' => 10])
-            ->expectsOutputToContain('budgeted')
-            ->expectsOutputToContain('exhausted_budget')
-            ->assertSuccessful();
+        config()->set('javmeta_queues.source_gap_overrides', [
+            'budgeted' => ['min' => 10, 'default' => 20, 'max' => 30],
+        ]);
+        $output = new BufferedOutput();
+        self::assertSame(0, Artisan::call('crawler:feed-diagnostics', ['--minutes' => 10], $output));
+        $display = $output->fetch();
+        self::assertStringContainsString('budgeted', $display);
+        self::assertStringContainsString('Effective gap (s)', $display);
+        self::assertStringContainsString('20.00', $display);
+        self::assertStringContainsString('yes', $display);
+        self::assertStringContainsString('30.00', $display);
+        self::assertStringContainsString('exhausted_budget', $display);
     }
 
     public function test_instrumentation_redis_failure_does_not_break_feed_dispatch(): void

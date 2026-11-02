@@ -21,6 +21,7 @@ final class MigrationsTest extends BaseTestCase
         self::assertSame('pgsql', DB::connection()->getDriverName());
 
         self::assertSame(0, Artisan::call('migrate:fresh', ['--force' => true]), Artisan::output());
+        $this->assertPendingKindIndex();
         foreach (['movies', 'movie_sources', 'movie_observations', 'performers', 'performer_sources', 'performer_identity_events', 'performer_identity_reviews', 'performer_identity_event_movie_links', 'crawl_queue', 'sources'] as $table) {
             self::assertTrue(Schema::hasTable($table), "missing table {$table}");
         }
@@ -47,6 +48,7 @@ final class MigrationsTest extends BaseTestCase
         self::assertFalse(Schema::hasTable('performer_identity_event_movie_links'));
         self::assertFalse(Schema::hasTable('performer_name_keys'));
         self::assertFalse(Schema::hasTable('performer_name_grams'));
+        self::assertNull(DB::selectOne('SELECT to_regclass(?) AS index_name', ['crawl_queue_pending_kind_id_idx'])?->index_name);
 
         DB::table('crawl_queue')->insert([
             'source_slug' => 'legacy-source',
@@ -68,6 +70,7 @@ final class MigrationsTest extends BaseTestCase
         ]);
 
         self::assertSame(0, Artisan::call('migrate', ['--force' => true]), Artisan::output());
+        $this->assertPendingKindIndex();
         $legacyRow = DB::table('crawl_queue')->where('source_slug', 'legacy-source')->first();
         self::assertSame('legacy_unclassified', $legacyRow?->error_code);
         self::assertSame('Failure reason not recorded before JAVM-37.', $legacyRow?->last_error);
@@ -100,8 +103,32 @@ final class MigrationsTest extends BaseTestCase
 
         self::assertSame(0, Artisan::call('migrate:reset', ['--force' => true]), Artisan::output());
         self::assertFalse(Schema::hasTable('movies'));
+        self::assertNull(DB::selectOne('SELECT to_regclass(?) AS index_name', ['crawl_queue_pending_kind_id_idx'])?->index_name);
 
         self::assertSame(0, Artisan::call('migrate', ['--force' => true]), Artisan::output());
         self::assertTrue(Schema::hasTable('movies'));
+        $this->assertPendingKindIndex();
+    }
+
+    private function assertPendingKindIndex(): void
+    {
+        $index = DB::selectOne(
+            "SELECT CASE WHEN i.indisvalid THEN 1 ELSE 0 END AS is_valid, pg_get_expr(i.indpred, i.indrelid) AS predicate, i.indexrelid::text AS index_oid FROM pg_index AS i WHERE i.indexrelid = to_regclass(?)",
+            ['crawl_queue_pending_kind_id_idx'],
+        );
+
+        self::assertNotNull($index, 'The concurrent claim index must exist.');
+        self::assertSame(1, (int) $index->is_valid);
+        self::assertStringContainsString("status = 'pending'", (string) $index->predicate);
+        $indexDefinition = DB::selectOne("SELECT pg_get_indexdef(to_regclass('crawl_queue_pending_kind_id_idx')) AS definition");
+        self::assertStringContainsString('(kind, id)', (string) $indexDefinition?->definition);
+
+        $migration = require database_path('migrations/2026_11_02_000002_add_crawl_queue_pending_kind_index.php');
+        $migration->up();
+        $indexAfterRepeat = DB::selectOne(
+            'SELECT i.indexrelid::text AS index_oid FROM pg_index AS i WHERE i.indexrelid = to_regclass(?)',
+            ['crawl_queue_pending_kind_id_idx'],
+        );
+        self::assertSame($index->index_oid, $indexAfterRepeat?->index_oid, 'A valid pre-existing index must remain untouched.');
     }
 }

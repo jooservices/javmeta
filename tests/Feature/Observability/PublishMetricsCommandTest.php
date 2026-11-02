@@ -54,6 +54,9 @@ final class PublishMetricsCommandTest extends TestCase
             'gap_seconds_current' => 30,
             'last_success_at' => now()->subMinutes(5),
         ]);
+        config()->set('javmeta_queues.source_gap_overrides', [
+            'javdb' => ['min' => 10, 'default' => 15, 'max' => 20],
+        ]);
 
         config()->set([
             'openobserve.enabled' => true,
@@ -70,8 +73,29 @@ final class PublishMetricsCommandTest extends TestCase
         $this->artisan('obs:publish-metrics')->assertSuccessful();
 
         Http::assertSent(function ($request): bool {
+            $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [];
+            $effective = null;
+            foreach ($metrics as $metric) {
+                if (($metric['name'] ?? null) !== 'javmeta_source_gap_effective_seconds') {
+                    continue;
+                }
+                foreach ($metric['gauge']['dataPoints'] ?? [] as $point) {
+                    $labels = [];
+                    foreach ($point['attributes'] ?? [] as $attribute) {
+                        $labels[$attribute['key']] = $attribute['value']['stringValue'] ?? null;
+                    }
+                    if (($labels['source_slug'] ?? null) === 'javdb') {
+                        $effective = [
+                            'gap' => (float) ($point['asDouble'] ?? 0),
+                            'source' => $labels['gap_source'] ?? null,
+                        ];
+                    }
+                }
+            }
+
             return str_contains($request->url(), '/v1/metrics')
                 && str_contains($request->body(), 'javmeta_source_gap_seconds')
+                && $effective === ['gap' => 15.0, 'source' => 'override']
                 && ! str_contains($request->body(), 'javmeta_source_circuit_state')
                 && ! str_contains($request->body(), 'javmeta_source_consecutive_failures');
         });
