@@ -11,11 +11,21 @@ final class HorizonReconcileWorkersCommand extends Command
 {
     protected $signature = 'horizon:reconcile-workers';
 
-    protected $description = 'Compare the running Horizon layout with database settings and restart this node when needed.';
+    protected $description = 'Apply safe worker-count changes to this Horizon node and report layouts needing a manual restart.';
 
     public function handle(HorizonWorkerReconciler $reconciler): int
     {
-        $result = $reconciler->reconcile(fn(): int => $this->call('horizon:terminate'));
+        $result = $reconciler->reconcile();
+        if ($result['status'] === 'restart-required') {
+            $this->components->warn('Worker reconciliation: manual Horizon restart required.');
+
+            return self::SUCCESS;
+        }
+        if (in_array($result['status'], ['invalid-settings', 'settings-unavailable'], true)) {
+            $this->components->warn('Worker reconciliation: settings are invalid or unavailable; keeping the current layout.');
+
+            return self::SUCCESS;
+        }
         $this->components->info('Worker reconciliation: ' . $result['status'] . '.');
 
         return self::SUCCESS;

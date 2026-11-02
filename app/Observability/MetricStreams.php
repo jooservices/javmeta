@@ -49,6 +49,7 @@ final class MetricStreams
         'elasticsearch_request_failures' => self::PREFIX . 'elasticsearch_request_failures',
         'dep_up' => self::PREFIX . 'dep_up',
         'backup_last_success_age_seconds' => self::PREFIX . 'backup_last_success_age_seconds',
+        'horizon_workers' => self::PREFIX . 'horizon_workers',
         'search_embedding_backfill_missing' => self::PREFIX . 'search_embedding_backfill_missing',
         'search_embedding_backfill_fixed' => self::PREFIX . 'search_embedding_backfill_fixed',
     ];

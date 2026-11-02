@@ -62,6 +62,24 @@ final class HorizonWorkerLayout
         ];
     }
 
+    /** @param array<string, array<string, mixed>> $supervisors
+     *  @return array<string, int>
+     */
+    public static function workerCounts(array $supervisors): array
+    {
+        $counts = [];
+        foreach ($supervisors as $supervisor) {
+            $queue = $supervisor['queue'][0] ?? null;
+            if (is_string($queue)) {
+                $counts[$queue] = max(0, (int) ($supervisor['maxProcesses'] ?? 0));
+            }
+        }
+
+        ksort($counts);
+
+        return $counts;
+    }
+
     public function apply(): array
     {
         $snapshot = $this->snapshot();

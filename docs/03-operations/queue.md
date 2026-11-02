@@ -148,8 +148,42 @@ sources. Settings are database-backed and Vietnamese-labelled in Cài đặt.
 
 `queue.workers_per_queue`, `worker.direct_workers_per_queue` and
 `worker.browser_workers_per_queue` control workers; queue and node overrides
-take precedence. Horizon reads them at startup and `horizon:reconcile-workers`
-applies changes automatically. Each lane gets its own feed-pool dispatch budget (the
+take precedence. A `worker@hostname` override applies only when both the node
+role and hostname match. Horizon reads the database layout at startup, and the
+per-node `horizon:reconcile-workers` timer checks for changes every minute. A
+worker-count-only change is sent to each live supervisor through Horizon's
+in-process `Scale` command: the master stays running, no deployment is needed,
+and every queue keeps at least one worker. Scale-down signals only the excess
+worker processes; Laravel finishes their running job before they exit. Keep
+`worker.stop_grace_seconds` at least as large as `queue.worker_timeout` so a
+worker has time to finish its longest permitted job. Stable per-node jitter and
+a fleet lock serialize changes across nodes; after a scale-down, the lock stays
+held through the configured grace window. A node waits at least ten minutes
+between changes. The command logs applied counts; `obs:publish-metrics`
+publishes observed counts as `javmeta_horizon_workers{queue,node}`. Changes to
+queue names or other Horizon options that cannot be safely scaled in place are
+reported as `restart-required` and need an operator-managed Horizon restart.
+If a saved worker setting is invalid or the settings store cannot be read, the
+reconciler logs the problem and leaves the running layout unchanged.
+
+### Worker count canary (staging or test only)
+
+1. Choose a non-production worker node and one queue with a small test backlog.
+   Record the current count in Horizon or from the
+   `javmeta_horizon_workers{queue,node}` metric.
+2. In Cài đặt, set `worker.node_overrides` for that exact `worker@hostname` and
+   set only the target queue to a different count. Keep the value between 1 and
+   32. This scopes the canary to that node and queue.
+3. Wait for the per-node reconciliation timer (normally within the 10-minute
+   cooldown; allow up to 15 minutes for the timer and configured jitter). Check
+   the Horizon process count, the metric, and the `Horizon worker counts
+   reconciled.` log entry. Confirm the Horizon master PID did not change and
+   that other nodes retain their previous counts.
+4. Restore the original node override or remove the canary entry, then verify
+   the queue returns to its recorded count. Do not use this procedure on a
+   production node.
+
+Each lane gets its own feed-pool dispatch budget (the
 `--limit`/`queue.feed_pool_limit` value per lane), so a full direct backlog cannot
 consume the browser dispatch budget. Queue depth limits are independent:
 `queue.depth_limit` and `queue.browser_depth_limit`. Pacing and per-source

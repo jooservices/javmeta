@@ -271,7 +271,7 @@ final class SettingsTest extends TestCase
         $this->assertSame(7, (int) $this->store->get('settings.queue.per_source_inflight'));
     }
 
-    public function test_legacy_environment_values_are_first_boot_fallbacks_until_imported(): void
+    public function test_worker_environment_values_are_import_only_bootstrap_defaults(): void
     {
         $previousEnv = $_ENV['JAVMETA_WORKERS_PER_QUEUE'] ?? null;
         $previousServer = $_SERVER['JAVMETA_WORKERS_PER_QUEUE'] ?? null;
@@ -280,15 +280,21 @@ final class SettingsTest extends TestCase
         $_SERVER['JAVMETA_WORKERS_PER_QUEUE'] = '4';
         putenv('JAVMETA_WORKERS_PER_QUEUE=4');
         try {
+            config(['javmeta_queues.workers_per_queue' => 1]);
             $settings = app(SettingsService::class);
             $settings->apply();
 
             $row = collect($settings->all())->firstWhere('key', 'queue.workers_per_queue');
-            $this->assertSame(4, config('javmeta_queues.workers_per_queue'));
-            $this->assertSame(4, $row['value']);
-            $this->assertSame('environment', $row['source']);
+            $this->assertSame(1, config('javmeta_queues.workers_per_queue'));
+            $this->assertSame(1, $row['value']);
+            $this->assertSame('default', $row['source']);
+            $preview = collect($settings->importPreview())->firstWhere('key', 'queue.workers_per_queue');
+            $this->assertSame(4, $preview['value']);
+            $this->assertSame('environment', $preview['source']);
             $this->assertContains('queue.workers_per_queue', $settings->importDefaults());
             $this->assertSame(4, $this->store->get('settings.queue.workers_per_queue'));
+            $settings->apply();
+            $this->assertSame(4, config('javmeta_queues.workers_per_queue'));
         } finally {
             if ($previousEnv === null) {
                 unset($_ENV['JAVMETA_WORKERS_PER_QUEUE']);
@@ -306,6 +312,125 @@ final class SettingsTest extends TestCase
                 putenv('JAVMETA_WORKERS_PER_QUEUE=' . $previousProcess);
             }
         }
+    }
+
+    public function test_all_worker_environment_definitions_are_import_only(): void
+    {
+        foreach (app(SettingsService::class)->definitions() as $key => $definition) {
+            if (($definition['group'] ?? null) !== 'worker' && $key !== 'queue.worker_timeout') {
+                continue;
+            }
+            if (($definition['legacy_env'] ?? []) === []) {
+                continue;
+            }
+
+            $this->assertTrue($definition['bootstrap_only'] ?? false, "{$key} must not read env at runtime.");
+        }
+    }
+
+    public function test_worker_environment_cleanup_lists_only_settings_already_saved_in_the_database(): void
+    {
+        $this->store->set('settings.queue.workers_per_queue', 3);
+        $before = $this->store->group('settings');
+
+        Artisan::call('settings:env-cleanup', ['--dry-run' => true]);
+        $output = Artisan::output();
+
+        $this->assertStringContainsString('JAVMETA_WORKERS_PER_QUEUE', $output);
+        $this->assertStringNotContainsString('JAVMETA_BROWSER_WORKERS_PER_QUEUE', $output);
+        $this->assertSame($before, $this->store->group('settings'));
+    }
+
+    public function test_import_env_skips_release_paths_in_code_defaults(): void
+    {
+        config([
+            'backup.manifest_path' => '/srv/javmeta/releases/20261102/storage/manifest.json',
+            'javmeta_alerts.hourly_report.state_path' => '/srv/javmeta/current/storage/report-state.json',
+        ]);
+        SettingsService::forgetDefaults();
+
+        $settings = app(SettingsService::class);
+        $skipped = $settings->importSkippedPreview();
+
+        $this->assertSame(['report.state_path', 'backup.manifest_path'], array_column($skipped, 'key'));
+        $this->assertSame('code default', $skipped[0]['environment']);
+        $this->assertNotContains('backup.manifest_path', array_column($settings->importPreview(), 'key'));
+        $settings->importDefaults();
+        $this->assertNull($this->store->get('settings.backup.manifest_path'));
+        $this->assertNull($this->store->get('settings.report.state_path'));
+    }
+
+    public function test_import_env_skips_release_and_current_deployment_paths_and_reports_them(): void
+    {
+        $names = ['JAVMETA_BACKUP_MANIFEST', 'JAVMETA_REPORT_STATE_PATH'];
+        $previous = [];
+        foreach ($names as $name) {
+            $previous[$name] = [$_ENV[$name] ?? null, $_SERVER[$name] ?? null, getenv($name)];
+        }
+        $_ENV['JAVMETA_BACKUP_MANIFEST'] = '/srv/javmeta/releases/20261102/storage/manifest.json';
+        $_SERVER['JAVMETA_BACKUP_MANIFEST'] = $_ENV['JAVMETA_BACKUP_MANIFEST'];
+        putenv('JAVMETA_BACKUP_MANIFEST=' . $_ENV['JAVMETA_BACKUP_MANIFEST']);
+        $_ENV['JAVMETA_REPORT_STATE_PATH'] = '/srv/javmeta/current/storage/report-state.json';
+        $_SERVER['JAVMETA_REPORT_STATE_PATH'] = $_ENV['JAVMETA_REPORT_STATE_PATH'];
+        putenv('JAVMETA_REPORT_STATE_PATH=' . $_ENV['JAVMETA_REPORT_STATE_PATH']);
+
+        try {
+            $settings = app(SettingsService::class);
+            $skipped = $settings->importSkippedPreview();
+            $this->assertSame(['report.state_path', 'backup.manifest_path'], array_column($skipped, 'key'));
+            $this->assertSame('deploy-specific path', $skipped[0]['reason']);
+
+            Artisan::call('settings:import-env', ['--dry-run' => true]);
+            $dryRun = Artisan::output();
+            $this->assertStringContainsString('JAVMETA_BACKUP_MANIFEST', $dryRun);
+            $this->assertStringContainsString('JAVMETA_REPORT_STATE_PATH', $dryRun);
+            $this->assertStringNotContainsString('/srv/javmeta/releases/', $dryRun);
+            $this->assertStringNotContainsString('/srv/javmeta/current/', $dryRun);
+
+            Artisan::call('settings:import-env');
+            $import = Artisan::output();
+            $this->assertStringContainsString('JAVMETA_BACKUP_MANIFEST', $import);
+            $this->assertNull($this->store->get('settings.backup.manifest_path'));
+            $this->assertNull($this->store->get('settings.report.state_path'));
+        } finally {
+            foreach ($previous as $name => [$env, $server, $process]) {
+                if ($env === null) {
+                    unset($_ENV[$name]);
+                } else {
+                    $_ENV[$name] = $env;
+                }
+                if ($server === null) {
+                    unset($_SERVER[$name]);
+                } else {
+                    $_SERVER[$name] = $server;
+                }
+                if ($process === false) {
+                    putenv($name);
+                } else {
+                    putenv($name . '=' . $process);
+                }
+            }
+        }
+    }
+
+    public function test_worker_floor_and_grace_period_are_enforced_before_saving(): void
+    {
+        $settings = app(SettingsService::class);
+        foreach ([['queue.workers_per_queue', 0], ['worker.stop_grace_seconds', 179]] as [$key, $value]) {
+            try {
+                $settings->set($key, $value);
+                $this->fail("{$key}={$value} should be refused");
+            } catch (\InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+
+        $this->assertNull($this->store->get('settings.queue.workers_per_queue'));
+        $this->assertNull($this->store->get('settings.worker.stop_grace_seconds'));
+        $settings->set('worker.stop_grace_seconds', 240);
+        $settings->set('queue.worker_timeout', 200);
+        $this->assertSame(240, $settings->get('worker.stop_grace_seconds'));
+        $this->assertSame(200, $settings->get('queue.worker_timeout'));
     }
 
     public function test_import_env_removes_partial_writes_when_a_store_write_fails(): void

@@ -12,12 +12,15 @@ use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Health\CrawlDispatchHeartbeat;
 use App\Services\Search\ElasticsearchRequestHealth;
 use App\Services\Settings\SettingsService;
+use App\Services\Workers\HorizonLayoutSnapshot;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Redis;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Testing\FakeConfigStore;
+use Mockery;
 use Tests\TestCase;
 
 final class PublishMetricsCommandTest extends TestCase
@@ -68,6 +71,51 @@ final class PublishMetricsCommandTest extends TestCase
                 && str_contains($request->body(), 'javmeta_source_gap_seconds')
                 && ! str_contains($request->body(), 'javmeta_source_circuit_state')
                 && ! str_contains($request->body(), 'javmeta_source_consecutive_failures');
+        });
+    }
+
+    public function test_command_publishes_applied_horizon_worker_counts_by_queue_and_node(): void
+    {
+        config()->set([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.email' => 'root@javmeta.local',
+            'openobserve.password' => 'secret',
+            'openobserve.timeout' => 1,
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
+        $snapshot = [
+            'node' => 'worker-node-one',
+            'supervisors' => [
+                'crawler-listing' => ['queue' => ['listing'], 'maxProcesses' => 3],
+            ],
+        ];
+        $redis = Mockery::mock();
+        $redis->shouldReceive('smembers')->once()->with(HorizonLayoutSnapshot::NODE_REGISTRY_KEY)->andReturn(['worker-node-one']);
+        $redis->shouldReceive('get')->once()->with(HorizonLayoutSnapshot::key('worker-node-one'))->andReturn(json_encode(['snapshot' => $snapshot], JSON_THROW_ON_ERROR));
+        Redis::shouldReceive('connection')->once()->with('default')->andReturn($redis);
+
+        $this->artisan('obs:publish-metrics')->assertSuccessful();
+
+        Http::assertSent(static function ($request): bool {
+            $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [];
+            foreach ($metrics as $metric) {
+                if (($metric['name'] ?? null) !== 'javmeta_horizon_workers') {
+                    continue;
+                }
+                $point = $metric['gauge']['dataPoints'][0] ?? [];
+                $labels = [];
+                foreach ($point['attributes'] ?? [] as $attribute) {
+                    $labels[$attribute['key']] = $attribute['value']['stringValue'] ?? null;
+                }
+
+                return ($point['asDouble'] ?? null) === 3.0
+                    && ($labels['queue'] ?? null) === 'listing'
+                    && ($labels['node'] ?? null) === 'worker-node-one';
+            }
+
+            return false;
         });
     }
 

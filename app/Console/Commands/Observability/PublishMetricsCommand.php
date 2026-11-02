@@ -19,9 +19,11 @@ use App\Services\Health\CrawlDispatchHeartbeat;
 use App\Services\Search\ElasticsearchHttpClient;
 use App\Services\Search\ElasticsearchRequestHealth;
 use App\Services\Health\SourceScheduleFreshness;
+use App\Services\Workers\HorizonLayoutSnapshot;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
 
@@ -61,6 +63,7 @@ final class PublishMetricsCommand extends Command
             $this->catalogMetrics(),
             $this->failedJobMetrics(),
             $this->postgresCapacityMetrics(),
+            $this->horizonWorkerMetrics(),
             [[
                 'name' => MetricStreams::NAMES['mongo_archive_write_failures'],
                 'value' => $archiveWrites->failureCount(),
@@ -110,6 +113,28 @@ final class PublishMetricsCommand extends Command
         }
 
         return $points;
+    }
+
+    /** @return list<array{name: string, value: int, labels: array{queue: string, node: string}}> */
+    private function horizonWorkerMetrics(): array
+    {
+        try {
+            $redis = Redis::connection(config('horizon.use', 'default'));
+            $snapshots = [];
+            foreach ((array) $redis->smembers(HorizonLayoutSnapshot::NODE_REGISTRY_KEY) as $node) {
+                if (! is_string($node) || $node === '') {
+                    continue;
+                }
+                $payload = json_decode((string) $redis->get(HorizonLayoutSnapshot::key($node)), true);
+                if (is_array($payload['snapshot'] ?? null)) {
+                    $snapshots[] = $payload['snapshot'];
+                }
+            }
+
+            return HorizonLayoutSnapshot::metricPoints($snapshots);
+        } catch (Throwable) {
+            return [];
+        }
     }
 
     /**

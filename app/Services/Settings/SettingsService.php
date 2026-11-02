@@ -8,6 +8,7 @@ use App\Events\SettingsApplied;
 use InvalidArgumentException;
 use RuntimeException;
 use Illuminate\Support\Env;
+use Illuminate\Support\Facades\Log;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Support\ConfigType;
 use Throwable;
@@ -23,6 +24,9 @@ final class SettingsService
 
     /** @var array<string, mixed>|null the config values before any database value was applied */
     private static ?array $defaults = null;
+
+    /** @var list<string> */
+    private array $invalidWorkerSettings = [];
 
     public function __construct(private readonly ConfigStore $store) {}
 
@@ -47,6 +51,7 @@ final class SettingsService
             return false;
         }
 
+        $this->invalidWorkerSettings = [];
         $this->captureDefaults();
         $applied = [];
         foreach ($this->definitions() as $key => $definition) {
@@ -55,7 +60,22 @@ final class SettingsService
             if (! $isSaved && $source !== 'environment') {
                 continue;
             }
-            $value = $this->effectiveValue($key, $definition, $isSaved ? $this->fromStorage($definition, $saved[$key]) : $fallback);
+            $value = $isSaved
+                ? $this->effectiveValue($key, $definition, $this->fromStorage($definition, $saved[$key]))
+                : $fallback;
+            if ($isSaved && $this->isWorkerSetting($key, $definition)) {
+                try {
+                    $value = $this->validate($key, $definition, $value);
+                    $this->assertStoredWorkerGrace($key, $value);
+                } catch (Throwable $exception) {
+                    Log::warning('Invalid stored worker setting ignored; keeping the current layout.', [
+                        'key' => $key,
+                        'reason' => $exception->getMessage(),
+                    ]);
+                    $this->invalidWorkerSettings[] = $key;
+                    continue;
+                }
+            }
             if ($this->urlWarning($key, $definition, $value) !== null) {
                 $value = $this->default($key);
             }
@@ -113,7 +133,18 @@ final class SettingsService
             $isSecret = $definition['type'] === 'secret';
             $inDatabase = array_key_exists($key, $saved);
             [$fallback, $source] = $inDatabase ? [null, 'database'] : $this->fallbackValue($key, $definition);
-            $current = $this->effectiveValue($key, $definition, $inDatabase ? $this->fromStorage($definition, $saved[$key]) : $fallback);
+            $current = $inDatabase
+                ? $this->effectiveValue($key, $definition, $this->fromStorage($definition, $saved[$key]))
+                : $fallback;
+            if ($inDatabase && $this->isWorkerSetting($key, $definition)) {
+                try {
+                    $current = $this->validate($key, $definition, $current);
+                } catch (Throwable) {
+                    $current = $this->default($key);
+                    $inDatabase = false;
+                    $source = 'default';
+                }
+            }
             $warning = $this->urlWarning($key, $definition, $current);
             if ($warning !== null) {
                 $current = $this->default($key);
@@ -189,47 +220,26 @@ final class SettingsService
     /** @return list<array{key: string, value: mixed, display: mixed, source: string}> */
     public function importPreview(): array
     {
-        $this->captureDefaults();
-        $saved = $this->store->group(self::GROUP);
-        $rows = [];
-        foreach ($this->definitions() as $key => $definition) {
-            if (array_key_exists($key, $saved)) {
-                continue;
-            }
-            $source = 'default';
-            $raw = $this->legacyValue($definition);
-            if ($raw !== null) {
-                $source = 'environment';
-            }
-            $value = $raw ?? $this->default($key);
-            if ($value === null || $value === '') {
-                continue;
-            }
-            try {
-                $value = $this->validate($key, $definition, $value);
-            } catch (InvalidArgumentException) {
-                $value = $this->default($key);
-                $source = 'default';
-            }
-            if ($value === null || $value === '') {
-                continue;
-            }
-            $rows[] = [
-                'key' => $key,
-                'value' => $value,
-                'display' => $definition['type'] === 'secret' ? '[redacted]' : $value,
-                'source' => $source,
-            ];
-        }
+        return $this->importPlan()['rows'];
+    }
 
-        return $rows;
+    /** @return list<array{key: string, environment: string, reason: string}> */
+    public function importSkippedPreview(): array
+    {
+        return $this->importPlan()['skipped'];
+    }
+
+    /** @return list<string> */
+    public function invalidWorkerSettings(): array
+    {
+        return $this->invalidWorkerSettings;
     }
 
     /** Copy the current effective settings into the database once; returns the keys written. */
     public function importDefaults(): array
     {
         $entries = [];
-        foreach ($this->importPreview() as $row) {
+        foreach ($this->importPlan()['rows'] as $row) {
             $definition = $this->definitions()[$row['key']];
             $entries[self::GROUP . '.' . $row['key']] = [
                 'value' => $this->toStorage($definition, $row['value']),
@@ -260,6 +270,23 @@ final class SettingsService
         return array_map(static fn(string $path): string => substr($path, strlen(self::GROUP) + 1), array_keys($entries));
     }
 
+    /** @return list<array{setting: string, environment: string}> */
+    public function redundantEnvironmentKeys(): array
+    {
+        $saved = $this->store->group(self::GROUP);
+        $rows = [];
+        foreach ($this->definitions() as $key => $definition) {
+            if (! array_key_exists($key, $saved)) {
+                continue;
+            }
+            foreach ((array) ($definition['legacy_env'] ?? []) as $environment) {
+                $rows[] = ['setting' => $key, 'environment' => (string) $environment];
+            }
+        }
+
+        return $rows;
+    }
+
     public function get(string $key): mixed
     {
         $definition = $this->definitions()[$key] ?? throw new InvalidArgumentException("Unknown setting {$key}.");
@@ -279,6 +306,18 @@ final class SettingsService
         $inDatabase = array_key_exists($key, $saved);
         [$fallback] = $inDatabase ? [null, 'database'] : $this->fallbackValue($key, $definition);
         $value = $this->effectiveValue($key, $definition, $inDatabase ? $this->fromStorage($definition, $saved[$key]) : $fallback);
+        if ($inDatabase && $this->isWorkerSetting($key, $definition)) {
+            try {
+                $value = $this->validate($key, $definition, $value);
+            } catch (Throwable $exception) {
+                Log::warning('Invalid stored worker setting ignored; using the code default.', [
+                    'key' => $key,
+                    'reason' => $exception->getMessage(),
+                ]);
+
+                return $this->default($key);
+            }
+        }
 
         return $this->urlWarning($key, $definition, $value) === null ? $value : $this->default($key);
     }
@@ -324,6 +363,9 @@ final class SettingsService
      */
     private function fallbackValue(string $key, array $definition): array
     {
+        if (($definition['bootstrap_only'] ?? false) === true) {
+            return [$this->default($key), 'default'];
+        }
         $legacy = $this->legacyValue($definition);
         if ($legacy === null) {
             return [$this->default($key), 'default'];
@@ -360,6 +402,99 @@ final class SettingsService
     public static function forgetDefaults(): void
     {
         self::$defaults = null;
+    }
+
+    /** @param array<string, mixed> $definition */
+    private function isWorkerSetting(string $key, array $definition): bool
+    {
+        return ($definition['group'] ?? null) === 'worker' || $key === 'queue.worker_timeout';
+    }
+
+    private function assertStoredWorkerGrace(string $key, mixed $value): void
+    {
+        if ($key === 'worker.stop_grace_seconds' && (int) $value < (int) config('javmeta_queues.worker_timeout')) {
+            throw new InvalidArgumentException('worker.stop_grace_seconds must be at least queue.worker_timeout.');
+        }
+        if ($key === 'queue.worker_timeout' && (int) $value > (int) config('javmeta_queues.stop_grace_seconds')) {
+            throw new InvalidArgumentException('queue.worker_timeout must not exceed worker.stop_grace_seconds.');
+        }
+    }
+
+    /** @return array{rows: list<array{key: string, value: mixed, display: mixed, source: string}>, skipped: list<array{key: string, environment: string, reason: string}>} */
+    private function importPlan(): array
+    {
+        $this->captureDefaults();
+        $saved = $this->store->group(self::GROUP);
+        $rows = [];
+        $skipped = [];
+        foreach ($this->definitions() as $key => $definition) {
+            if (array_key_exists($key, $saved)) {
+                continue;
+            }
+            $legacy = $this->legacyEntry($definition);
+            $sourceValue = $legacy['value'] ?? $this->default($key);
+            if ($this->isDeploySpecificPath($sourceValue)) {
+                $skipped[] = [
+                    'key' => $key,
+                    'environment' => $legacy['name'] ?? 'code default',
+                    'reason' => 'deploy-specific path',
+                ];
+                continue;
+            }
+            $source = $legacy === null ? 'default' : 'environment';
+            $value = $sourceValue;
+            if ($value === null || $value === '') {
+                continue;
+            }
+            try {
+                $value = $this->validate($key, $definition, $value);
+            } catch (InvalidArgumentException) {
+                $value = $this->default($key);
+                $source = 'default';
+            }
+            if ($value === null || $value === '') {
+                continue;
+            }
+            $rows[] = [
+                'key' => $key,
+                'value' => $value,
+                'display' => $definition['type'] === 'secret' ? '[redacted]' : $value,
+                'source' => $source,
+            ];
+        }
+
+        return ['rows' => $rows, 'skipped' => $skipped];
+    }
+
+    /** @return array{name: string, value: mixed}|null */
+    private function legacyEntry(array $definition): ?array
+    {
+        foreach ((array) ($definition['legacy_env'] ?? []) as $name) {
+            $value = Env::get((string) $name);
+            if ($value !== false && $value !== null && $value !== '') {
+                return ['name' => (string) $name, 'value' => $value];
+            }
+        }
+
+        return null;
+    }
+
+    private function isDeploySpecificPath(mixed $value): bool
+    {
+        if (is_array($value)) {
+            foreach ($value as $part) {
+                if ($this->isDeploySpecificPath($part)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        if (! is_string($value)) {
+            return false;
+        }
+
+        return preg_match('~(?:^|[\\\\/])(?:releases?[\\\\/][^\\\\/\\s]+|current|release-[^\\\\/\\s]+|builds?[\\\\/][^\\\\/\\s]+)(?:[\\\\/]|$)~i', $value) === 1;
     }
 
     /** @param array<string, mixed> $definition */
@@ -618,14 +753,7 @@ final class SettingsService
 
     private function legacyValue(array $definition): mixed
     {
-        foreach ((array) ($definition['legacy_env'] ?? []) as $name) {
-            $value = Env::get((string) $name);
-            if ($value !== false && $value !== null && $value !== '') {
-                return $value;
-            }
-        }
-
-        return null;
+        return $this->legacyEntry($definition)['value'] ?? null;
     }
 
     /** @param list<string> $keys */
@@ -644,6 +772,10 @@ final class SettingsService
         $fetchService = (int) $candidate('timeouts.fetch_service_seconds');
         if ($fetchClient <= $fetchService) {
             throw new InvalidArgumentException('queue.worker_timeout must exceed timeouts.fetch_service_seconds.');
+        }
+        $stopGrace = (int) $candidate('worker.stop_grace_seconds');
+        if ($stopGrace < $fetchClient) {
+            throw new InvalidArgumentException('worker.stop_grace_seconds must be at least queue.worker_timeout.');
         }
 
         $retryAfter = (int) $candidate('queue.retry_after_seconds');
