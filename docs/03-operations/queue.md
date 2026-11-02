@@ -172,7 +172,9 @@ The shared Laravel cache stores separate Playwright-family and FlareSolverr
 success/failure windows with a TTL. Defaults use the last 10 Playwright outcomes,
 switch after 8 failures when FlareSolverr has succeeded in its recent window,
 keep that preference for 6 hours, and probe Playwright on every 10th request.
-The history expires after one day. These values are database settings on Cài đặt.
+The history expires after one day. If the configured failure threshold exceeds
+the window size, the effective threshold is capped at the window size. These
+values are database settings on Cài đặt.
 
 While preferred, FlareSolverr moves ahead of the first Playwright method and all
 other methods keep their manifest order. Probe requests use the manifest order;
@@ -183,8 +185,11 @@ crawl job. It does not enqueue another request, and the existing source gap and
 
 `timeouts.playwright_seconds` (25 seconds by default) limits the Playwright
 handler's browser-service request independently of the overall fetch deadline.
-The timeout releases the worker to continue the same CrawlerX chain, including
-FlareSolverr when the chain still has budget.
+The browser-services config endpoint publishes the lower of this cap and
+`browser.playwright_request_timeout_ms` as `playwright_request_ms`, so the remote
+service can stop work and release its slot. The timeout also releases the worker
+to continue the same CrawlerX chain, including FlareSolverr when the chain still
+has budget.
 If a saved worker setting is invalid or the settings store cannot be read, the
 reconciler logs the problem and leaves the running layout unchanged.
 

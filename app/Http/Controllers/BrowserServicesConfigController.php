@@ -16,11 +16,15 @@ final class BrowserServicesConfigController
         foreach ($settings->all() as $setting) {
             $values[$setting['key']] = $setting['value'];
         }
+        $playwrightRequestTimeoutMs = min(
+            (int) $values['browser.playwright_request_timeout_ms'],
+            (int) config('javmeta_queues.playwright_timeout_seconds', 25) * 1000,
+        );
         $data = [
             'concurrency' => ['browser_max' => $values['browser.max_concurrency']],
             'queues' => ['browser_max' => $values['browser.max_queue'], 'crawl_depth_max' => $values['queue.browser_depth_limit']],
             'timeouts' => [
-                'playwright_request_ms' => $values['browser.playwright_request_timeout_ms'],
+                'playwright_request_ms' => $playwrightRequestTimeoutMs,
                 'flaresolverr_max_ms' => $values['browser.flaresolverr_max_timeout_ms'],
                 'gateway_wait_ms' => $values['browser.gateway_wait_timeout_ms'],
                 'gateway_client_ms' => $values['browser.gateway_client_timeout_ms'],

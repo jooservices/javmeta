@@ -336,7 +336,7 @@ Số nguyên; từ 1 đến 150. Mã mục: `timeouts.fetch_service_seconds`.
 
 ### Timeout tối đa Playwright (giây)
 
-Dừng riêng lần gọi Playwright sau thời gian này để giải phóng slot browser.
+Dừng lần gọi Playwright và giới hạn timeout browser service qua API cấu hình để giải phóng slot.
 
 Số nguyên; từ 1 đến 45. Mã mục: `timeouts.playwright_seconds`.
 
@@ -362,7 +362,7 @@ Số nguyên; từ 1 đến 100. Mã mục: `crawl.fetch_method_window_size`.
 
 ### Số lỗi Playwright để ưu tiên FlareSolverr
 
-Cần đạt ngưỡng này trong cửa sổ và có ít nhất một lần FlareSolverr thành công gần đây.
+Cần đạt ngưỡng này trong cửa sổ và có ít nhất một lần FlareSolverr thành công gần đây; ngưỡng thực tế không vượt kích thước cửa sổ.
 
 Số nguyên; từ 1 đến 100. Mã mục: `crawl.fetch_method_failure_threshold`.
 

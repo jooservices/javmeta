@@ -93,8 +93,8 @@ final class FetchMethodPreference
                     $state['requests_since_probe'] = 0;
                 }
 
-                $this->saveState($key, $state);
                 $this->rememberHost($sourceSlug, $host);
+                $this->saveState($key, $state);
             });
         } catch (Throwable) {
             // A cache outage must leave the existing CrawlerX method order intact.
@@ -160,12 +160,12 @@ final class FetchMethodPreference
     private function rememberHost(string $sourceSlug, string $host): void
     {
         $key = $this->hostIndexKey($sourceSlug);
-        $lock = Cache::lock($key . ':lock', 5);
-        if (! $lock->get()) {
+        $hosts = Cache::get($key, []);
+        if (is_array($hosts) && in_array($host, $hosts, true)) {
             return;
         }
 
-        try {
+        Cache::lock($key . ':lock', 5)->block(5, function () use ($key, $host): void {
             $hosts = Cache::get($key, []);
             $hosts = is_array($hosts) ? $hosts : [];
             if (! in_array($host, $hosts, true)) {
@@ -175,9 +175,7 @@ final class FetchMethodPreference
                 (int) config('javmeta_queues.fetch_method_window_ttl_seconds', 86400),
                 (int) config('javmeta_queues.fetch_method_preference_ttl_seconds', 21600),
             ));
-        } finally {
-            $lock->release();
-        }
+        });
     }
 
     /** @return array{playwright: list<array{succeeded: bool, recorded_at: int}>, flaresolverr: list<array{succeeded: bool, recorded_at: int}>, preferred_until: int, requests_since_probe: int} */

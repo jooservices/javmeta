@@ -42,6 +42,7 @@ final class BrowserServicesConfigTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('data.concurrency.browser_max', 2)
             ->assertJsonPath('data.queues.browser_max', 100)
+            ->assertJsonPath('data.timeouts.playwright_request_ms', 25_000)
             ->assertJsonPath('data.retry.retry_after_seconds', 240)
             ->assertJsonStructure(['data' => ['version', 'timeouts', 'thresholds', 'cleanup']]);
         $etag = $response->headers->get('ETag');
@@ -49,8 +50,10 @@ final class BrowserServicesConfigTest extends TestCase
         $this->get('/api/v1/config/browser-services', [...$config, 'If-None-Match' => $etag])->assertStatus(304)->assertHeader('ETag', $etag);
 
         app(SettingsService::class)->set('browser.max_concurrency', 4);
+        app(SettingsService::class)->set('timeouts.playwright_seconds', 10);
         $updated = $this->getJson('/api/v1/config/browser-services', $all)->assertOk();
-        $updated->assertJsonPath('data.concurrency.browser_max', 4);
+        $updated->assertJsonPath('data.concurrency.browser_max', 4)
+            ->assertJsonPath('data.timeouts.playwright_request_ms', 10_000);
         $this->assertNotSame($etag, $updated->headers->get('ETag'));
     }
 }
