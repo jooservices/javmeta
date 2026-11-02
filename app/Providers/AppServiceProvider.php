@@ -32,6 +32,7 @@ use App\Services\Normalize\Normalizers\JableSourceNormalizer;
 use App\Services\Normalize\SourceNormalizerRegistry;
 use App\Services\Persist\MoviePersister;
 use App\Services\Persist\PerformerPersister;
+use App\Services\Observability\NodeEgressProbe;
 use App\Services\Ui\UiLoginStateRecorder;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Routing\Events\RouteMatched;
@@ -98,6 +99,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(TelemetrySanitizer::class);
         $this->app->singleton(OpenObserveClient::class);
         $this->app->singleton(ObservabilityEmitter::class);
+        $this->app->singleton(NodeEgressProbe::class);
 
         if ($this->app->environment('testing')) {
             $this->app->singleton(LogStoreInterface::class, ArrayLogStore::class);

@@ -78,4 +78,33 @@ final class SettingsRegistryTest extends TestCase
         self::assertSame(10000, $definition['max_length']);
         self::assertSame([], config('javmeta_queues.source_gap_overrides'));
     }
+
+    public function test_egress_observability_settings_are_registered_with_safe_defaults(): void
+    {
+        $definitions = config('javmeta_settings.definitions');
+
+        foreach ([
+            'observability.egress_probe_urls',
+            'observability.egress_probe_interval_seconds',
+            'observability.browser_egress_probe_interval_seconds',
+            'observability.egress_probe_timeout_seconds',
+            'observability.egress_changes_stream',
+            'observability.record_egress_ip',
+        ] as $key) {
+            self::assertArrayHasKey($key, $definitions);
+            self::assertSame('observability', $definitions[$key]['group']);
+        }
+
+        self::assertSame(120, config('javmeta_observability.egress_probe_interval_seconds'));
+        self::assertSame(900, config('javmeta_observability.browser_egress_probe_interval_seconds'));
+        self::assertSame(5, config('javmeta_observability.egress_probe_timeout_seconds'));
+        self::assertSame('xcrawler_logs', config('javmeta_observability.egress_changes_stream'));
+        self::assertTrue(config('javmeta_observability.record_egress_ip'));
+        self::assertSame([
+            'https://ifconfig.me',
+            'https://icanhazip.com',
+            'https://checkip.amazonaws.com',
+            'https://api.ipify.org',
+        ], config('javmeta_observability.egress_probe_urls'));
+    }
 }

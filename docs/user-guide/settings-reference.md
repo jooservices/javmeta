@@ -762,6 +762,42 @@ Số thập phân; từ 0 đến 1. Mã mục: `observability.trace_sample_rate`
 
 Số thập phân; từ 0 đến 1. Mã mục: `observability.sentry_traces_sample_rate`.
 
+### Địa chỉ kiểm tra IP mạng ra
+
+Mỗi dòng là một dịch vụ trả về IPv4 công khai; lần lượt thử theo thứ tự khi node kiểm tra.
+
+Danh sách văn bản. Mã mục: `observability.egress_probe_urls`.
+
+### Chu kỳ kiểm tra IP node (giây)
+
+Worker kiểm tra IP mạng ra theo chu kỳ này bằng timer riêng trên từng node.
+
+Số nguyên; từ 60 đến 86400. Mã mục: `observability.egress_probe_interval_seconds`.
+
+### Chu kỳ kiểm tra IP trình duyệt (giây)
+
+Gửi một yêu cầu nhẹ qua mỗi browser host theo chu kỳ này.
+
+Số nguyên; từ 60 đến 86400. Mã mục: `observability.browser_egress_probe_interval_seconds`.
+
+### Timeout kiểm tra IP mạng ra (giây)
+
+Giới hạn tổng thời gian của mỗi lần kiểm tra IP, tối đa 5 giây.
+
+Số nguyên; từ 1 đến 5. Mã mục: `observability.egress_probe_timeout_seconds`.
+
+### Luồng log khi IP mạng ra thay đổi
+
+Luồng OpenObserve nhận một bản ghi có IP cũ, IP mới, node và thời điểm thay đổi.
+
+Văn bản. Mã mục: `observability.egress_changes_stream`.
+
+### Ghi IP mạng ra vào dữ liệu crawl
+
+Tắt để giữ node nhưng để trống IP mạng ra trong attempts, log và span.
+
+Bật/tắt. Mã mục: `observability.record_egress_ip`.
+
 ## Thống kê crawl
 
 ### Bật thống kê crawl dài hạn

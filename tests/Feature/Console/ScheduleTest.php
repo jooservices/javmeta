@@ -66,6 +66,7 @@ final class ScheduleTest extends TestCase
             'javmeta:backup-status' => '* * * * *',
             'javmeta:hourly-report' => '0 * * * *',
             'library:scan' => '0 * * * *',
+            'node:egress-probe' => '*/2 * * * *',
             'obs:publish-metrics' => '* * * * *',
             'perf:warm' => '* * * * *',
             'perf:warm --status-only' => '* * * * *',

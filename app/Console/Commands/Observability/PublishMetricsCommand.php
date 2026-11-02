@@ -25,6 +25,7 @@ use App\Services\Health\CrawlDispatchHeartbeat;
 use App\Services\Search\ElasticsearchHttpClient;
 use App\Services\Search\ElasticsearchRequestHealth;
 use App\Services\Health\SourceScheduleFreshness;
+use App\Services\Observability\NodeEgressProbe;
 use App\Services\Workers\HorizonLayoutSnapshot;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -59,6 +60,7 @@ final class PublishMetricsCommand extends Command
         SourceThrottle $throttle,
         AlertMetrics $alertMetrics,
         CrawlStatsOperationalSampler $statsSampler,
+        NodeEgressProbe $egressProbe,
     ): int {
         try {
             $statsSampler->sample();
@@ -79,6 +81,9 @@ final class PublishMetricsCommand extends Command
             $this->crawlDispatchMetrics($dispatchHeartbeat),
             $this->crawlEventMetrics(),
             $this->fetchMethodMetrics($fetchMethodPlan),
+            $this->fetchEgressMetrics(),
+            $this->nodeEgressMetrics($egressProbe),
+            $this->browserEgressMetrics($egressProbe),
             $this->apiMetrics(),
             $this->qualityMetrics(),
             $this->crawlRunMetrics(),
@@ -338,6 +343,98 @@ final class PublishMetricsCommand extends Command
                     'labels' => ['source' => (string) $source->slug, 'method' => $method],
                 ];
             }
+        }
+
+        return $points;
+    }
+
+    /** @return list<array{name: string, value: float|int, labels?: array<string, string>}> */
+    private function fetchEgressMetrics(): array
+    {
+        if (! Schema::hasTable('crawl_fetch_attempts') || ! Schema::hasColumn('crawl_fetch_attempts', 'egress_ip')) {
+            return [];
+        }
+
+        $since = now()->subMinute();
+        $rows = DB::table('crawl_fetch_attempts')
+            ->where('created_at', '>=', $since)
+            ->selectRaw('source_slug, method, egress_ip, outcome, COUNT(*) AS attempts')
+            ->groupBy('source_slug', 'method', 'egress_ip', 'outcome')
+            ->get();
+        $points = [];
+        foreach ($rows as $row) {
+            $points[] = [
+                'name' => MetricStreams::NAMES['fetch_attempts_by_egress'],
+                'value' => (int) $row->attempts,
+                'labels' => [
+                    'source' => (string) $row->source_slug,
+                    'method' => (string) $row->method,
+                    'egress_ip' => is_string($row->egress_ip) ? $row->egress_ip : 'unknown',
+                    'outcome' => (string) $row->outcome,
+                ],
+            ];
+        }
+
+        $egressRows = DB::table('crawl_fetch_attempts')
+            ->where('created_at', '>=', $since)
+            ->selectRaw('egress_ip, SUM(CASE WHEN outcome <> ? THEN 1 ELSE 0 END) AS attempts', ['skipped'])
+            ->selectRaw('SUM(CASE WHEN outcome <> ? AND (http_status IN (403, 429) OR NULLIF(cf_mitigated, ?) IS NOT NULL) THEN 1 ELSE 0 END) AS blocked', ['skipped', ''])
+            ->groupBy('egress_ip')
+            ->get();
+        foreach ($egressRows as $row) {
+            $attempts = max(0, (int) $row->attempts);
+            $blocked = max(0, (int) $row->blocked);
+            $points[] = [
+                'name' => MetricStreams::NAMES['block_ratio_by_egress'],
+                'value' => $attempts > 0 ? min(1.0, $blocked / $attempts) : 0.0,
+                'labels' => ['egress_ip' => is_string($row->egress_ip) ? $row->egress_ip : 'unknown'],
+            ];
+        }
+
+        return $points;
+    }
+
+    /** @return list<array{name: string, value: float|int, labels?: array<string, string>}> */
+    private function nodeEgressMetrics(NodeEgressProbe $probe): array
+    {
+        $points = [];
+        foreach ($probe->nodeStatuses() as $status) {
+            $labels = ['node' => $status['node']];
+            $points[] = [
+                'name' => MetricStreams::NAMES['node_egress_changes_total'],
+                'value' => $status['change_count'],
+                'labels' => $labels,
+            ];
+            $points[] = [
+                'name' => MetricStreams::NAMES['node_egress_probe_ok'],
+                'value' => $status['probe_ok'] ? 1 : 0,
+                'labels' => $labels,
+            ];
+            if ($status['ip'] !== null) {
+                $points[] = [
+                    'name' => MetricStreams::NAMES['node_egress_info'],
+                    'value' => 1,
+                    'labels' => ['node' => $status['node'], 'ip' => $status['ip']],
+                ];
+            }
+        }
+
+        return $points;
+    }
+
+    /** @return list<array{name: string, value: float|int, labels?: array<string, string>}> */
+    private function browserEgressMetrics(NodeEgressProbe $probe): array
+    {
+        $points = [];
+        foreach ($probe->browserStatuses() as $status) {
+            if ($status['ip'] === null) {
+                continue;
+            }
+            $points[] = [
+                'name' => MetricStreams::NAMES['browser_egress_info'],
+                'value' => 1,
+                'labels' => ['host' => $status['host'], 'ip' => $status['ip']],
+            ];
         }
 
         return $points;

@@ -31,6 +31,9 @@ final class MigrationsTest extends BaseTestCase
 
         self::assertTrue(Schema::hasTable('performer_name_keys'));
         self::assertTrue(Schema::hasTable('performer_name_grams'));
+        foreach (['egress_ip', 'node', 'egress_kind'] as $column) {
+            self::assertTrue(Schema::hasColumn('crawl_fetch_attempts', $column), "missing crawl fetch attempt column {$column}");
+        }
 
         // Roll back every migration from the failed reasons backfill (JAVM-37) onwards: new migrations extend the range, so count the files.
         $steps = count(array_filter(
@@ -42,6 +45,9 @@ final class MigrationsTest extends BaseTestCase
         self::assertFalse(Schema::hasColumn('movies', 'recrawl_status'));
         self::assertFalse(Schema::hasColumn('crawl_queue', 'is_recrawl'));
         self::assertFalse(Schema::hasColumn('crawl_queue', 'started_at'));
+        foreach (['egress_ip', 'node', 'egress_kind'] as $column) {
+            self::assertFalse(Schema::hasColumn('crawl_fetch_attempts', $column), "crawl fetch attempt column {$column} survived rollback");
+        }
         self::assertFalse(Schema::hasColumn('performers', 'retired_date'));
         self::assertFalse(Schema::hasColumn('crawl_queue', 'error_code'));
         self::assertFalse(Schema::hasColumn('performers', 'canonical_performer_id'));

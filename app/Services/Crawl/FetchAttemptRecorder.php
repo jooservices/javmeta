@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Crawl;
 
 use App\Models\CrawlQueue;
+use App\Services\Observability\NodeEgressProbe;
 use App\Services\Crawler\CrawlerxFetchResult;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +27,7 @@ final class FetchAttemptRecorder
     private function persist(CrawlQueue $queue, CrawlerxFetchResult $result): void
     {
         $rows = [];
+        $lane = $queue->getAttribute('claimed_lane') === 'browser' ? 'browser' : 'direct';
         foreach ($result->attempts as $attempt) {
             // Field presence is the compatibility gate for pre-diagnostics CrawlerX releases.
             if (! isset($attempt['method'], $attempt['started_at'], $attempt['duration_ms'], $attempt['outcome'])) {
@@ -35,6 +37,7 @@ final class FetchAttemptRecorder
                 || ! is_int($attempt['duration_ms']) || ! in_array($attempt['outcome'], ['ok', 'error', 'skipped'], true)) {
                 continue;
             }
+            $egress = app(NodeEgressProbe::class)->contextForLane($lane, $attempt['method']);
             $status = $attempt['http_status'] ?? null;
             $rows[] = [
                 'created_at' => now(),
@@ -50,6 +53,9 @@ final class FetchAttemptRecorder
                 'outcome' => $attempt['outcome'],
                 'error_code' => is_string($attempt['error_code'] ?? null) ? mb_substr((string) $attempt['error_code'], 0, 64) : null,
                 'error' => $this->sanitize(is_string($attempt['error'] ?? null) ? $attempt['error'] : null),
+                'egress_ip' => $egress['egress_ip'],
+                'node' => $egress['node'],
+                'egress_kind' => $egress['egress_kind'],
             ];
         }
         if ($rows !== []) {

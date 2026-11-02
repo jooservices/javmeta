@@ -211,6 +211,7 @@ final class PublishMetricsCommandTest extends TestCase
             'javmeta_queues.fetch_method_preference_ttl_seconds' => 3600,
             'javmeta_queues.fetch_method_probe_interval' => 10,
         ]);
+        Cache::setDefaultDriver('array');
         Cache::store('array')->flush();
         $preference = app(FetchMethodPreference::class);
         for ($attempt = 0; $attempt < 10; $attempt++) {
@@ -661,5 +662,98 @@ final class PublishMetricsCommandTest extends TestCase
 
         Http::assertSent(static fn($request): bool => str_contains($request->body(), 'javmeta_crawl_queue_claimed_age_seconds')
             && ! str_contains($request->body(), 'javmeta_alert_firing'));
+    }
+
+    public function test_command_publishes_egress_metrics_with_disposable_telemetry_configuration(): void
+    {
+        config()->set([
+            'cache.default' => 'array',
+            'javmeta_browser.playwright_url' => 'http://browser-a.test',
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.stream_logs' => 'egress-test-logs',
+            'openobserve.email' => 'root@javmeta.local',
+            'openobserve.password' => 'test-only',
+            'openobserve.timeout' => 1,
+        ]);
+        Cache::setDefaultDriver('array');
+        Cache::store('array')->flush();
+        $node = mb_substr(preg_replace('/[^A-Za-z0-9_.-]/', '-', (string) gethostname()) ?? 'local', 0, 64);
+        Cache::put('javmeta:egress:' . $node, ['ip' => '198.51.100.9', 'probe_ok' => true]);
+        Cache::forever('javmeta:egress-meta:' . $node, ['last_known_ip' => '198.51.100.9', 'change_count' => 3]);
+        Cache::put('javmeta:browser-egress:browser-a.test', ['ip' => '203.0.113.9', 'probe_ok' => true]);
+        $startedAt = now()->subSeconds(10);
+        DB::table('crawl_fetch_attempts')->insert([
+            [
+                'created_at' => $startedAt,
+                'source_slug' => 'ffjav',
+                'crawl_queue_id' => null,
+                'url_hash' => str_repeat('a', 64),
+                'method' => 'playwright',
+                'started_at' => $startedAt,
+                'duration_ms' => 400,
+                'http_status' => 403,
+                'cf_mitigated' => 'challenge',
+                'outcome' => 'error',
+                'egress_ip' => '198.51.100.9',
+                'node' => $node,
+                'egress_kind' => 'node',
+            ],
+            [
+                'created_at' => $startedAt,
+                'source_slug' => 'ffjav',
+                'crawl_queue_id' => null,
+                'url_hash' => str_repeat('b', 64),
+                'method' => 'playwright',
+                'started_at' => $startedAt,
+                'duration_ms' => 200,
+                'http_status' => 200,
+                'cf_mitigated' => null,
+                'outcome' => 'ok',
+                'egress_ip' => '198.51.100.9',
+                'node' => $node,
+                'egress_kind' => 'node',
+            ],
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
+
+        $this->artisan('obs:publish-metrics')->assertSuccessful();
+
+        $requests = Http::recorded()->map(static fn(array $pair) => $pair[0]);
+        $request = $requests->first(static fn($candidate): bool => str_contains($candidate->url(), '/v1/metrics'));
+        self::assertNotNull($request, 'The metrics endpoint was not called.');
+        $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [];
+        $hasPoint = static function (string $name, array $expectedLabels, float $value) use ($metrics): bool {
+            foreach ($metrics as $metric) {
+                if (($metric['name'] ?? null) !== $name) {
+                    continue;
+                }
+                foreach ($metric['gauge']['dataPoints'] ?? [] as $point) {
+                    $labels = [];
+                    foreach ($point['attributes'] ?? [] as $attribute) {
+                        $labels[$attribute['key']] = $attribute['value']['stringValue'] ?? null;
+                    }
+                    foreach ($expectedLabels as $key => $expected) {
+                        if (($labels[$key] ?? null) !== $expected) {
+                            continue 2;
+                        }
+                    }
+
+                    if ((float) ($point['asDouble'] ?? 0) === $value) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        };
+
+        self::assertTrue($hasPoint('javmeta_fetch_attempts_by_egress', ['source' => 'ffjav', 'method' => 'playwright', 'egress_ip' => '198.51.100.9', 'outcome' => 'error'], 1.0));
+        self::assertTrue($hasPoint('javmeta_block_ratio_by_egress', ['egress_ip' => '198.51.100.9'], 0.5));
+        self::assertTrue($hasPoint('javmeta_node_egress_info', ['node' => $node, 'ip' => '198.51.100.9'], 1.0));
+        self::assertTrue($hasPoint('javmeta_node_egress_changes_total', ['node' => $node], 3.0));
+        self::assertTrue($hasPoint('javmeta_node_egress_probe_ok', ['node' => $node], 1.0));
+        self::assertTrue($hasPoint('javmeta_browser_egress_info', ['host' => 'browser-a.test', 'ip' => '203.0.113.9'], 1.0));
     }
 }
