@@ -111,4 +111,22 @@ final class NotificationPolicyDispatcherTest extends TestCase
         self::assertSame(82, (int) $warnings[0]['value']);
         self::assertSame(85, (int) $warnings[0]['threshold']);
     }
+
+    public function test_notice_event_is_sent_only_once_for_the_same_event(): void
+    {
+        $service = app(NotificationPolicyService::class);
+        $notice = $service->get('node.joined');
+        self::assertNotNull($notice);
+        $service->save('node.joined', [...$notice, 'enabled' => true], null);
+
+        $dispatcher = app(NotificationPolicyDispatcher::class);
+        $context = ['notification_cause' => 'node:worker-1'];
+        $first = $dispatcher->prepare('node.joined', $context);
+        self::assertTrue($first['allowed']);
+        $dispatcher->recordSent($first);
+
+        $repeat = $dispatcher->prepare('node.joined', $context);
+        self::assertFalse($repeat['allowed']);
+        self::assertSame('duplicate_event', $repeat['reason']);
+    }
 }
