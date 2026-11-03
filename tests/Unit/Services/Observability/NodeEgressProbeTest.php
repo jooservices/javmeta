@@ -68,18 +68,25 @@ final class NodeEgressProbeTest extends TestCase
     public function test_each_configured_node_writes_its_own_probe_row(): void
     {
         $this->prepareTelemetry();
-        config()->set([
-            'javmeta_observability.egress_probe_urls' => ['https://echo.test'],
-            'sentry.node' => 'xcrawler',
-        ]);
+        config()->set('javmeta_observability.egress_probe_urls', ['https://echo.test']);
         Cache::setDefaultDriver('array');
         $legacyNode = NodeIdentity::hostname();
+        $nodeAddresses = [
+            'fixture-xcrawler-a' => '198.51.100.10',
+            'fixture-xcrawler-b' => '198.51.100.11',
+            'fixture-xcrawler-c' => '198.51.100.12',
+            'fixture-xcrawler-d' => '198.51.100.13',
+        ];
+        $configuredNodes = array_slice(
+            array_keys(array_filter($nodeAddresses, static fn(string $node): bool => $node !== $legacyNode, ARRAY_FILTER_USE_KEY)),
+            0,
+            3,
+        );
+        config()->set('sentry.node', $configuredNodes[0]);
         Cache::forever('javmeta:egress:nodes', [$legacyNode]);
         Cache::put('javmeta:egress:' . $legacyNode, ['ip' => '192.0.2.10', 'probe_ok' => true]);
         Cache::forever('javmeta:egress-meta:' . $legacyNode, ['last_known_ip' => '192.0.2.10', 'change_count' => 1]);
-        if ($legacyNode !== 'xcrawler') {
-            self::assertNotContains($legacyNode, array_column(app(NodeEgressProbe::class)->nodeStatuses(), 'node'));
-        }
+        self::assertNotContains($legacyNode, array_column(app(NodeEgressProbe::class)->nodeStatuses(), 'node'));
         $this->fakeTransport(
             new Response(200, [], '198.51.100.10'),
             new Response(200, [], '198.51.100.11'),
@@ -87,22 +94,42 @@ final class NodeEgressProbeTest extends TestCase
         );
 
         $probe = app(NodeEgressProbe::class);
-        foreach ([
-            'xcrawler' => '198.51.100.10',
-            'xcrawler-worker-1' => '198.51.100.11',
-            'xcrawler-worker-2' => '198.51.100.12',
-        ] as $node => $ip) {
+        foreach ($configuredNodes as $node) {
             config()->set('sentry.node', $node);
             $probe->probeNodeIfDue();
-            self::assertSame($ip, Cache::get('javmeta:egress:' . $node)['ip']);
+            self::assertSame($nodeAddresses[$node], Cache::get('javmeta:egress:' . $node)['ip']);
         }
 
-        self::assertSame(
-            ['xcrawler', 'xcrawler-worker-1', 'xcrawler-worker-2'],
-            array_column($probe->nodeStatuses(), 'node'),
-        );
+        self::assertSame($configuredNodes, array_column($probe->nodeStatuses(), 'node'));
         self::assertSame('192.0.2.10', Cache::get('javmeta:egress:' . $legacyNode)['ip']);
         self::assertSame(1, Cache::get('javmeta:egress-meta:' . $legacyNode)['change_count']);
+    }
+
+    public function test_hostname_entry_for_another_configured_node_is_preserved(): void
+    {
+        $this->prepareTelemetry();
+        $hostname = NodeIdentity::hostname();
+        $node = $hostname === 'fixture-worker-a' ? 'fixture-worker-b' : 'fixture-worker-a';
+        config()->set([
+            'javmeta_observability.egress_probe_urls' => ['https://echo.test'],
+            'sentry.node' => $node,
+        ]);
+        Cache::setDefaultDriver('array');
+        Cache::forever('javmeta:egress:nodes', [$hostname]);
+        Cache::put('javmeta:egress:' . $hostname, [
+            'ip' => '192.0.2.20',
+            'probe_ok' => true,
+            'last_probe_at' => '2026-11-02T12:34:00+00:00',
+        ]);
+        Cache::forever('javmeta:egress-meta:' . $hostname, ['configured_node' => $hostname]);
+        $this->fakeTransport(new Response(200, [], '198.51.100.20'));
+
+        $probe = app(NodeEgressProbe::class);
+        $probe->probeNodeIfDue();
+
+        self::assertContains($hostname, Cache::get('javmeta:egress:nodes'));
+        self::assertContains($hostname, array_column($probe->nodeStatuses(), 'node'));
+        self::assertSame($node, Cache::get('javmeta:egress-meta:' . $node)['configured_node']);
     }
 
     public function test_probe_change_updates_counter_and_emits_a_structured_log(): void

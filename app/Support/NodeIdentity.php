@@ -25,6 +25,11 @@ final class NodeIdentity
 
     private static function normalize(string $node): string
     {
-        return mb_substr(preg_replace('/[^A-Za-z0-9_.-]/', '-', $node) ?? 'local', 0, 64);
+        $normalized = preg_replace('/[^A-Za-z0-9_.-]/', '-', $node) ?? 'local';
+        if (mb_strlen($normalized) <= 64) {
+            return $normalized;
+        }
+
+        return mb_substr($normalized, 0, 31) . '-' . substr(hash('sha256', $normalized), 0, 32);
     }
 }

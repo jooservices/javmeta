@@ -72,7 +72,7 @@ final class NodeEgressProbe
         $nodes = $this->cachedNodeIds();
         $node = $this->nodeId();
         $legacyHostname = NodeIdentity::hostname();
-        if ($legacyHostname !== $node) {
+        if ($legacyHostname !== $node && ! $this->hasActiveConfiguredNode($legacyHostname)) {
             $nodes = array_values(array_filter(
                 $nodes,
                 static fn(string $cachedNode): bool => $cachedNode !== $legacyHostname,
@@ -204,7 +204,6 @@ final class NodeEgressProbe
             $meta['last_change_at'] = $lastChangeAt;
             $meta['change_count'] = $changeCount;
         }
-
         $probedAt = CarbonImmutable::now()->toIso8601String();
         Cache::put($cacheKey, [
             'ip' => $ip,
@@ -212,11 +211,15 @@ final class NodeEgressProbe
             'probe_error' => $probeError,
             'last_probe_at' => $probedAt,
         ], max(1, $interval * 2));
-        Cache::forever($metaKey, [
+        $storedMeta = [
             'last_known_ip' => $ip !== null ? $ip : $oldIp,
             'last_change_at' => $lastChangeAt,
             'change_count' => $changeCount,
-        ]);
+        ];
+        if ($kind === 'node') {
+            $storedMeta['configured_node'] = $identity;
+        }
+        Cache::forever($metaKey, $storedMeta);
 
         if ($changed) {
             $this->publishChange($kind, $identity, $oldIp, $ip, $lastChangeAt);
@@ -620,7 +623,7 @@ final class NodeEgressProbe
             }
             $nodes = $this->cachedNodeIds();
             $legacyNode = NodeIdentity::hostname();
-            if ($legacyNode !== $node) {
+            if ($legacyNode !== $node && ! $this->hasActiveConfiguredNode($legacyNode)) {
                 $nodes = array_values(array_filter($nodes, static fn(string $cachedNode): bool => $cachedNode !== $legacyNode));
             }
             $nodes[] = $node;
@@ -638,6 +641,22 @@ final class NodeEgressProbe
                 }
             }
         }
+    }
+
+    private function hasActiveConfiguredNode(string $node): bool
+    {
+        try {
+            $meta = Cache::get($this->nodeMetaKey($node), []);
+            $probe = Cache::get($this->nodeCacheKey($node), []);
+        } catch (Throwable) {
+            // Keep the row when cache metadata is unavailable; pruning could hide an active node.
+            return true;
+        }
+
+        return is_array($meta)
+            && ($meta['configured_node'] ?? null) === $node
+            && is_array($probe)
+            && is_string($probe['last_probe_at'] ?? null);
     }
 
     private function isDue(mixed $lastProbeAt, int $interval): bool

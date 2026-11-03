@@ -65,14 +65,24 @@ final class EgressReportCommandTest extends TestCase
         Cache::store('array')->flush();
         $node = 'xcrawler';
         $legacyNode = NodeIdentity::hostname();
-        $nodes = ['xcrawler', 'xcrawler-worker-1', 'xcrawler-worker-2'];
+        $workerCandidates = [
+            'xcrawler-worker-a' => '198.51.100.13',
+            'xcrawler-worker-b' => '198.51.100.14',
+            'xcrawler-worker-c' => '198.51.100.15',
+        ];
+        $workerNodes = array_slice(
+            array_keys(array_filter($workerCandidates, static fn(string $worker): bool => $worker !== $legacyNode, ARRAY_FILTER_USE_KEY)),
+            0,
+            2,
+        );
+        $nodes = ['xcrawler', ...$workerNodes];
         if ($legacyNode !== $node) {
             $nodes[] = $legacyNode;
             Cache::put('javmeta:egress:' . $legacyNode, ['ip' => '192.0.2.15', 'probe_ok' => true]);
         }
         Cache::forever('javmeta:egress:nodes', $nodes);
-        foreach (['xcrawler-worker-1' => '198.51.100.13', 'xcrawler-worker-2' => '198.51.100.14'] as $worker => $ip) {
-            Cache::put('javmeta:egress:' . $worker, ['ip' => $ip, 'probe_ok' => true]);
+        foreach ($workerNodes as $worker) {
+            Cache::put('javmeta:egress:' . $worker, ['ip' => $workerCandidates[$worker], 'probe_ok' => true]);
         }
         Cache::put('javmeta:egress:' . $node, ['ip' => '198.51.100.12', 'probe_ok' => true]);
         Cache::forever('javmeta:egress-meta:' . $node, [
@@ -99,17 +109,17 @@ final class EgressReportCommandTest extends TestCase
         self::assertSame(0, $tester->getStatusCode(), $output);
         self::assertStringContainsString($node, $output);
         self::assertStringContainsString('198.51.100.12', $output);
-        self::assertStringContainsString('xcrawler-worker-1', $output);
-        self::assertStringContainsString('198.51.100.13', $output);
-        self::assertStringContainsString('xcrawler-worker-2', $output);
-        self::assertStringContainsString('198.51.100.14', $output);
+        foreach ($workerNodes as $worker) {
+            self::assertStringContainsString($worker, $output);
+            self::assertStringContainsString($workerCandidates[$worker], $output);
+        }
         self::assertStringContainsString('203.0.113.12', $output);
         self::assertStringContainsString('2026-11-01T10:00:00+00:00', $output);
         self::assertStringContainsString('xcrawler', $output);
         self::assertStringContainsString('browser-b.test', $output);
         self::assertStringContainsString('Browser service returned HTTP 503.', $output);
         if ($legacyNode !== $node) {
-            self::assertStringNotContainsString($legacyNode, $output);
+            self::assertDoesNotMatchRegularExpression('/\|\s*' . preg_quote($legacyNode, '/') . '\s*\|/', $output);
         }
     }
 
