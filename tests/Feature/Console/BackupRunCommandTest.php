@@ -123,7 +123,8 @@ final class BackupRunCommandTest extends TestCase
                     && str_contains($body, 'previous manifest was left unchanged')),
                 Mockery::on(fn(array $context): bool => ($context['store'] ?? '') === 'postgres'
                     && ($context['severity'] ?? '') === 'warning'),
-            );
+            )
+            ->andReturn(true);
         $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
 
         $this->artisan('javmeta:backup-run')->assertFailed();
