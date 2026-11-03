@@ -35,6 +35,8 @@ use App\Services\Persist\MoviePersister;
 use App\Services\Persist\PerformerPersister;
 use App\Services\Observability\NodeEgressProbe;
 use App\Services\Ui\UiLoginStateRecorder;
+use App\Services\Report\ProcWorkerProcessSource;
+use App\Services\Report\WorkerProcessSource;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Routing\Events\RouteMatched;
 use Illuminate\Queue\Events\JobFailed;
@@ -108,6 +110,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(OpenObserveClient::class);
         $this->app->singleton(ObservabilityEmitter::class);
         $this->app->singleton(NodeEgressProbe::class);
+        $this->app->singleton(WorkerProcessSource::class, ProcWorkerProcessSource::class);
 
         if ($this->app->environment('testing')) {
             $this->app->singleton(LogStoreInterface::class, ArrayLogStore::class);
