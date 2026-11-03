@@ -64,6 +64,37 @@ final class ReportDataBuilderTest extends TestCase
         self::assertSame(1, $data['performers']['last_24h']);
     }
 
+    public function test_daily_report_uses_the_backup_manifest_for_current_and_stale_status(): void
+    {
+        config([
+            'cache.default' => 'array',
+            'javmeta_report.sections' => [],
+            'backup.stale_after_seconds' => 26 * 60 * 60,
+        ]);
+        Cache::store('array')->flush();
+        $at = CarbonImmutable::parse('2026-11-03 12:00:00 UTC');
+        $manifestPath = tempnam(storage_path('app'), 'report-backup-');
+        self::assertNotFalse($manifestPath);
+        config(['backup.manifest_path' => $manifestPath]);
+
+        try {
+            file_put_contents($manifestPath, json_encode([
+                'created_at' => $at->subHours(2)->toIso8601String(),
+            ], JSON_THROW_ON_ERROR));
+            $current = app(ReportDataBuilder::class)->build($at, 1440);
+            self::assertSame('Successful', $current['backup']['status']);
+            self::assertSame($at->subHours(2)->toIso8601String(), $current['backup']['at']);
+
+            file_put_contents($manifestPath, json_encode([
+                'created_at' => $at->subHours(27)->toIso8601String(),
+            ], JSON_THROW_ON_ERROR));
+            $stale = app(ReportDataBuilder::class)->build($at, 1440);
+            self::assertSame('Failed or stale', $stale['backup']['status']);
+        } finally {
+            unlink($manifestPath);
+        }
+    }
+
     public function test_daily_and_periodic_snapshots_can_share_the_same_scheduled_time(): void
     {
         $scheduledFor = CarbonImmutable::parse('2026-11-03 08:00:00 America/Mexico_City');

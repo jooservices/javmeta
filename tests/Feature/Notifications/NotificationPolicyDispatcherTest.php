@@ -67,6 +67,34 @@ final class NotificationPolicyDispatcherTest extends TestCase
         self::assertTrue($due['allowed']);
     }
 
+    public function test_periodic_and_daily_digest_sends_obey_their_configured_cooldowns(): void
+    {
+        $dispatcher = app(NotificationPolicyDispatcher::class);
+        foreach ([['report.periodic', 'periodic_report', 120], ['report.daily', 'daily_report', 1440]] as [$key, $cause, $minutes]) {
+            $decision = $dispatcher->prepare($key, [
+                'notification_cause' => $cause,
+                'notification_digest' => true,
+            ]);
+            self::assertTrue($decision['allowed']);
+            $dispatcher->recordSent($decision);
+
+            $repeat = $dispatcher->prepare($key, [
+                'notification_cause' => $cause,
+                'notification_digest' => true,
+            ]);
+            self::assertFalse($repeat['allowed']);
+            self::assertSame('cooldown', $repeat['reason']);
+
+            CarbonImmutable::setTestNow(CarbonImmutable::now()->addMinutes($minutes));
+            $due = $dispatcher->prepare($key, [
+                'notification_cause' => $cause,
+                'notification_digest' => true,
+            ]);
+            self::assertTrue($due['allowed']);
+            $dispatcher->release($due);
+        }
+    }
+
     public function test_quiet_mode_allows_only_critical_and_security_events(): void
     {
         app(SettingsService::class)->set('notifications.quiet_mode', true);

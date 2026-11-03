@@ -75,6 +75,10 @@ final class NotificationPolicyDispatcher
                 return $this->suppress($key, $policyKey, $causeKey, 'quiet_mode', false);
             }
             if ($digest) {
+                if ($this->isCoolingDown($event, (int) $policy['cooldown_minutes'])) {
+                    return $this->suppress($key, $policyKey, $causeKey, 'cooldown', false);
+                }
+
                 return $this->reserveDecision($key, $policyKey, $causeKey, $tier, false);
             }
 

@@ -12,6 +12,7 @@ use App\Services\Notifications\NotificationPolicyService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Throwable;
 
 final class ReportDataBuilder
 {
@@ -244,6 +245,25 @@ final class ReportDataBuilder
     /** @return array{status: string, at: string|null} */
     private function backupStatus(CarbonImmutable $at): array
     {
+        $manifestPath = trim((string) config('backup.manifest_path', ''));
+        if ($manifestPath !== '' && is_file($manifestPath) && is_readable($manifestPath)) {
+            try {
+                $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+                $createdAt = $manifest['created_at'] ?? null;
+                if (is_string($createdAt) && $createdAt !== '') {
+                    $backupAt = CarbonImmutable::parse($createdAt);
+                    $ageSeconds = max(0, $at->getTimestamp() - $backupAt->getTimestamp());
+                    $threshold = max(1, (int) config('backup.stale_after_seconds', 26 * 60 * 60));
+
+                    return [
+                        'status' => $ageSeconds > $threshold ? 'Failed or stale' : 'Successful',
+                        'at' => $backupAt->toIso8601String(),
+                    ];
+                }
+            } catch (Throwable) {
+                // Fall back to the most recent recorded backup alert when the manifest cannot be read.
+            }
+        }
         if (! Schema::hasTable('notification_policy_events')) {
             return ['status' => 'No recent backup status recorded', 'at' => null];
         }

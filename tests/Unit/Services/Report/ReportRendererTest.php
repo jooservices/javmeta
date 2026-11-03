@@ -72,6 +72,24 @@ final class ReportRendererTest extends TestCase
         self::assertStringContainsString("Events\n🟡 NOTICE egress.changed · Nov 3, 05:00\n🔵 INFO source.exhausted · Nov 3, 04:00", $text);
     }
 
+    public function test_report_renders_open_warnings_with_age_value_and_threshold(): void
+    {
+        $text = (new ReportRenderer())->render([
+            'generated_at' => '2026-11-03T12:00:00Z',
+            'window_minutes' => 120,
+            'sections' => [],
+            'warnings' => [[
+                'key' => 'crawl.success_rate_low',
+                'tier' => 'warning',
+                'opened_at' => '2026-11-03T10:30:00Z',
+                'value' => 82,
+                'threshold' => 85,
+            ]],
+        ]);
+
+        self::assertStringContainsString("Warnings\n⚠️ crawl.success_rate_low · open since Nov 3, 04:30 · value 82 · threshold 85", $text);
+    }
+
     public function test_independent_section_selection_keeps_crawl_without_catalog_totals(): void
     {
         $text = (new ReportRenderer())->render([

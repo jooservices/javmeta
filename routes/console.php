@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Services\Health\SchedulerHeartbeat;
+use App\Services\Settings\SettingsService;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -21,16 +22,19 @@ Schedule::command('report:send')
         Log::error('Scheduled command failed.', ['command' => 'report:send']);
     });
 
+$settings = empty(config('app.key')) ? null : app(SettingsService::class);
+
 Schedule::command('report:send-daily')
-    ->dailyAt((string) config('javmeta_report.daily_time', '08:00'))
-    ->timezone((string) config('javmeta_report.daily_timezone', 'America/Mexico_City'))
+    ->dailyAt((string) ($settings?->get('report.daily_time') ?? config('javmeta_report.daily_time', '08:00')))
+    ->timezone((string) ($settings?->get('report.daily_timezone') ?? config('javmeta_report.daily_timezone', 'America/Mexico_City')))
     ->withoutOverlapping()
     ->onOneServer()
     ->onFailure(static function (): void {
         Log::error('Scheduled command failed.', ['command' => 'report:send-daily']);
     });
 
-if ((bool) config('javmeta_report.legacy_hourly_enabled', false) && ! (bool) config('javmeta_report.enabled', true)) {
+if ((bool) ($settings?->get('report.legacy_hourly_enabled') ?? config('javmeta_report.legacy_hourly_enabled', false))
+    && ! (bool) ($settings?->get('report.enabled') ?? config('javmeta_report.enabled', true))) {
     Schedule::command('javmeta:hourly-report')->hourly()->withoutOverlapping()
         ->onFailure(static function (): void {
             Log::error('Scheduled command failed.', ['command' => 'javmeta:hourly-report']);

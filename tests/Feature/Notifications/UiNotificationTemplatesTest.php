@@ -43,7 +43,10 @@ final class UiNotificationTemplatesTest extends TestCase
 
     public function test_owner_can_list_and_read_notification_templates(): void
     {
-        $this->getJson('/ui-admin/notifications')->assertOk()->assertJsonPath('data.0.key', 'crawl.success_rate_low');
+        $this->getJson('/ui-admin/notifications')->assertOk()
+            ->assertJsonPath('data.0.key', 'crawl.success_rate_low')
+            ->assertJsonPath('data.0.name', 'Tỷ lệ crawl thành công thấp')
+            ->assertJsonPath('data.0.usage', 'Gửi khi tỷ lệ thành công xuống dưới ngưỡng.');
         $this->getJson('/ui-admin/notifications/crawl.dispatch_delayed')
             ->assertOk()
             ->assertJsonPath('data.default_severity', 'warning')
