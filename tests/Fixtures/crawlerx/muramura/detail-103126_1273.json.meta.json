@@ -1,0 +1,10 @@
+{
+  "source_url": "https://www.muramura.tv/dyn/phpauto/movie_details/movie_id/103126_1273.json",
+  "final_url": "https://www.muramura.tv/dyn/phpauto/movie_details/movie_id/103126_1273.json",
+  "captured_at": "2026-11-02T18:05:24.660Z",
+  "http_status": 200,
+  "content_hash": "75992bd39704dec4b5fb521e1af97c256ab2a31b1d83259ad76fe920056be4c9",
+  "target_type": "detail",
+  "fetch_method": "http",
+  "sanitized": false
+}

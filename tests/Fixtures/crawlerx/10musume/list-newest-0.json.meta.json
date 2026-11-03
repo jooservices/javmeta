@@ -1,0 +1,10 @@
+{
+  "source_url": "https://www.10musume.com/dyn/phpauto/movie_lists/list_newest_0.json",
+  "final_url": "https://www.10musume.com/dyn/phpauto/movie_lists/list_newest_0.json",
+  "captured_at": "2026-11-02T18:08:01.000Z",
+  "http_status": 200,
+  "content_hash": "6bfb374a9c12294a733739f6c27546f57b8cb29c5e5f53f845df6a6953b17465",
+  "target_type": "listing",
+  "fetch_method": "http",
+  "sanitized": false
+}

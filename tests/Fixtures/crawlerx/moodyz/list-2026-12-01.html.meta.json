@@ -1,0 +1,10 @@
+{
+  "source_url": "https://moodyz.com/works/list/date/2026-12-01",
+  "final_url": "https://moodyz.com/works/list/date/2026-12-01",
+  "captured_at": "2026-11-03T00:00:00+00:00",
+  "http_status": 200,
+  "content_hash": "013fdbaabd9cea9fcb86fcc8078ac82640f7d924a94a7631d616624a711fb606",
+  "target_type": "listing",
+  "fetch_method": "http",
+  "sanitized": false
+}

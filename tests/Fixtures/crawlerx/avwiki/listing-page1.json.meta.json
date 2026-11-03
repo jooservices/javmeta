@@ -1,0 +1,19 @@
+{
+  "source_url": "https://av-wiki.net/wp-json/wp/v2/posts?per_page=2&page=1&_embed=1",
+  "final_url": "https://av-wiki.net/wp-json/wp/v2/posts?per_page=2&page=1&_embed=1",
+  "captured_at": "2026-11-02T22:59:43Z",
+  "http_status": 200,
+  "content_hash": "b0156c681458a8f0f9f44c6d6a7472250839e325f1907593fd467e2a1194e447",
+  "target_type": "listing",
+  "fetch_method": "http",
+  "sanitized": false,
+  "response_headers": {
+    "X-WP-Total": [
+      "191763"
+    ],
+    "X-WP-TotalPages": [
+      "95882"
+    ]
+  },
+  "provenance_note": "Site publishes with future release dates: REST date/date_gmt of the captured posts (2026-11-06) are later than captured_at (2026-11-02T22:59:43Z). Captured data is unaltered and the capture clock was verified correct (UTC)."
+}

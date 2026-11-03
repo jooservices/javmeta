@@ -23,6 +23,20 @@ final class CrawlerxPaginationContractTest extends CrawlerxContractTestCase
         // The XCity index pages (all idols, a kana row) lead to the real paged lists rather than to a page 2.
         'xcity|performer-index.html',
         'xcity|performer-kana-a.html',
+        // These captured Maker CMS release/genre pages have no next-page link.
+        'attackers|list-2026-12-01.html',
+        'dasdas|list-2026-11-24.html',
+        'dasdas|list-genre-335.html',
+        'fitch|list-2026-12-01.html',
+        'ideapocket|list-2026-12-01.html',
+        'kawaiikawaii|list-2026-11-03.html',
+        'kawaiikawaii|list-2026-12-01.html',
+        'madonna|list-2026-12-01.html',
+        'moodyz|list-2026-11-03.html',
+        'moodyz|list-2026-12-01.html',
+        'premiumbeauty|list-2026-11-17.html',
+        'premiumbeauty|list-genre-218.html',
+        's1|list-2026-11-24.html',
     ];
 
     /** @return array<string, array{string, string, string, string}> */
