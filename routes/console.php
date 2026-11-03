@@ -22,7 +22,11 @@ Schedule::command('report:send')
         Log::error('Scheduled command failed.', ['command' => 'report:send']);
     });
 
-$settings = empty(config('app.key')) ? null : app(SettingsService::class);
+// E2E switches its SQLite bootstrap connection to the namespaced PostgreSQL database in setUp.
+$settings = null;
+if (! empty(config('app.key')) && (! app()->runningUnitTests() || app()->resolved(SettingsService::class))) {
+    $settings = app(SettingsService::class);
+}
 
 Schedule::command('report:send-daily')
     ->dailyAt((string) ($settings?->get('report.daily_time') ?? config('javmeta_report.daily_time', '08:00')))
