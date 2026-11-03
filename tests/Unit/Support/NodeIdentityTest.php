@@ -9,11 +9,32 @@ use Tests\TestCase;
 
 final class NodeIdentityTest extends TestCase
 {
-    public function test_current_uses_the_trimmed_and_normalized_configured_name(): void
+    public function test_current_hashes_a_configured_name_when_normalization_changes_it(): void
     {
         config(['sentry.node' => ' xcrawler worker:1 ']);
 
-        self::assertSame('xcrawler-worker-1', NodeIdentity::current());
+        self::assertSame(
+            'xcrawler-worker-1-' . substr(hash('sha256', 'xcrawler worker:1'), 0, 32),
+            NodeIdentity::current(),
+        );
+    }
+
+    public function test_current_keeps_configured_names_that_normalize_to_the_same_slug_distinct(): void
+    {
+        config(['sentry.node' => 'worker/a']);
+        $slash = NodeIdentity::current();
+
+        config(['sentry.node' => 'worker a']);
+        $space = NodeIdentity::current();
+
+        self::assertNotSame($slash, $space);
+    }
+
+    public function test_current_keeps_names_that_need_no_normalization_unchanged(): void
+    {
+        config(['sentry.node' => 'worker-a']);
+
+        self::assertSame('worker-a', NodeIdentity::current());
     }
 
     public function test_current_keeps_long_configured_names_distinct_within_sixty_four_characters(): void

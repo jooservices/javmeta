@@ -17,6 +17,17 @@ use Throwable;
 final class NodeEgressProbe
 {
     private const NODE_INDEX_KEY = 'javmeta:egress:nodes';
+    // PHP's reserved-range filter omits some non-global ranges such as TEST-NET and multicast.
+    private const NON_GLOBAL_IPV4_RANGES = [
+        '100.64.0.0/10',
+        '192.0.0.0/24',
+        '192.0.2.0/24',
+        '192.88.99.0/24',
+        '198.18.0.0/15',
+        '198.51.100.0/24',
+        '203.0.113.0/24',
+        '224.0.0.0/4',
+    ];
 
     public function __construct(private readonly ClientBuilder $clientBuilder) {}
 
@@ -72,7 +83,7 @@ final class NodeEgressProbe
         $nodes = $this->cachedNodeIds();
         $node = $this->nodeId();
         $legacyHostname = NodeIdentity::hostname();
-        if ($legacyHostname !== $node && ! $this->hasActiveConfiguredNode($legacyHostname)) {
+        if ($legacyHostname !== $node && ! $this->hasLiveNodeProbe($legacyHostname)) {
             $nodes = array_values(array_filter(
                 $nodes,
                 static fn(string $cachedNode): bool => $cachedNode !== $legacyHostname,
@@ -387,7 +398,7 @@ final class NodeEgressProbe
 
         try {
             $rawBody = (string) $attempt['response']->getBody();
-        } catch (\Throwable) {
+        } catch (Throwable) {
             return ['ip' => null, 'error' => 'Browser service response body could not be read.'];
         }
 
@@ -413,7 +424,7 @@ final class NodeEgressProbe
             return ['ip' => null, 'error' => 'Playwright fetch returned no page content.'];
         }
 
-        $ip = $this->parseIpv4($html);
+        $ip = $this->parsePublicIpv4($html);
 
         return [
             'ip' => $ip,
@@ -457,7 +468,13 @@ final class NodeEgressProbe
             return ['ip' => null, 'error' => $attempt['error']];
         }
 
-        $body = json_decode((string) $attempt['response']->getBody(), true);
+        try {
+            $rawBody = (string) $attempt['response']->getBody();
+        } catch (Throwable) {
+            return ['ip' => null, 'error' => 'Browser service response body could not be read.'];
+        }
+
+        $body = json_decode($rawBody, true);
         if (! is_array($body)) {
             return ['ip' => null, 'error' => 'Browser service returned invalid JSON.'];
         }
@@ -466,7 +483,7 @@ final class NodeEgressProbe
         }
 
         $solution = is_array($body['solution'] ?? null) ? $body['solution'] : [];
-        $ip = $this->parseIpv4(is_string($solution['response'] ?? null) ? $solution['response'] : '');
+        $ip = $this->parsePublicIpv4(is_string($solution['response'] ?? null) ? $solution['response'] : '');
 
         return [
             'ip' => $ip,
@@ -532,6 +549,64 @@ final class NodeEgressProbe
         }
 
         return null;
+    }
+
+    private function parsePublicIpv4(string $body): ?string
+    {
+        $ip = $this->parseIpv4($body);
+        if ($ip === null || ! $this->isPublicIpv4($ip)) {
+            return null;
+        }
+
+        return $ip;
+    }
+
+    private function isPublicIpv4(string $ip): bool
+    {
+        if (filter_var(
+            $ip,
+            FILTER_VALIDATE_IP,
+            FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE,
+        ) === false) {
+            return false;
+        }
+
+        if (in_array($ip, ['192.0.0.9', '192.0.0.10'], true)) {
+            return true;
+        }
+
+        foreach (self::NON_GLOBAL_IPV4_RANGES as $range) {
+            if ($this->isInIpv4Range($ip, $range)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function isInIpv4Range(string $ip, string $range): bool
+    {
+        [$network, $prefixLength] = explode('/', $range, 2);
+        $addressBytes = inet_pton($ip);
+        $networkBytes = inet_pton($network);
+        if ($addressBytes === false || $networkBytes === false) {
+            return false;
+        }
+
+        $prefixLength = (int) $prefixLength;
+        $fullBytes = intdiv($prefixLength, 8);
+        if (substr($addressBytes, 0, $fullBytes) !== substr($networkBytes, 0, $fullBytes)) {
+            return false;
+        }
+
+        $remainingBits = $prefixLength % 8;
+        if ($remainingBits === 0) {
+            return true;
+        }
+
+        $mask = (0xFF << (8 - $remainingBits)) & 0xFF;
+
+        return (ord($addressBytes[$fullBytes]) & $mask) === (ord($networkBytes[$fullBytes]) & $mask);
     }
 
     private function isHttpUrl(string $url): bool
@@ -623,7 +698,7 @@ final class NodeEgressProbe
             }
             $nodes = $this->cachedNodeIds();
             $legacyNode = NodeIdentity::hostname();
-            if ($legacyNode !== $node && ! $this->hasActiveConfiguredNode($legacyNode)) {
+            if ($legacyNode !== $node && ! $this->hasLiveNodeProbe($legacyNode)) {
                 $nodes = array_values(array_filter($nodes, static fn(string $cachedNode): bool => $cachedNode !== $legacyNode));
             }
             $nodes[] = $node;
@@ -643,19 +718,16 @@ final class NodeEgressProbe
         }
     }
 
-    private function hasActiveConfiguredNode(string $node): bool
+    private function hasLiveNodeProbe(string $node): bool
     {
         try {
-            $meta = Cache::get($this->nodeMetaKey($node), []);
             $probe = Cache::get($this->nodeCacheKey($node), []);
         } catch (Throwable) {
-            // Keep the row when cache metadata is unavailable; pruning could hide an active node.
+            // Keep the row when cache state is unavailable; pruning could hide a live node.
             return true;
         }
 
-        return is_array($meta)
-            && ($meta['configured_node'] ?? null) === $node
-            && is_array($probe)
+        return is_array($probe)
             && is_string($probe['last_probe_at'] ?? null);
     }
 

@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Http;
 use JOOservices\Client\Client\ClientBuilder;
 use JOOservices\Client\Testing\FakeTransport;
 use Nyholm\Psr7\Response;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\StreamInterface;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -87,11 +89,10 @@ final class NodeEgressProbeTest extends TestCase
         Cache::put('javmeta:egress:' . $legacyNode, ['ip' => '192.0.2.10', 'probe_ok' => true]);
         Cache::forever('javmeta:egress-meta:' . $legacyNode, ['last_known_ip' => '192.0.2.10', 'change_count' => 1]);
         self::assertNotContains($legacyNode, array_column(app(NodeEgressProbe::class)->nodeStatuses(), 'node'));
-        $this->fakeTransport(
-            new Response(200, [], '198.51.100.10'),
-            new Response(200, [], '198.51.100.11'),
-            new Response(200, [], '198.51.100.12'),
-        );
+        $this->fakeTransport(...array_map(
+            static fn(string $node): Response => new Response(200, [], $nodeAddresses[$node]),
+            $configuredNodes,
+        ));
 
         $probe = app(NodeEgressProbe::class);
         foreach ($configuredNodes as $node) {
@@ -105,7 +106,7 @@ final class NodeEgressProbeTest extends TestCase
         self::assertSame(1, Cache::get('javmeta:egress-meta:' . $legacyNode)['change_count']);
     }
 
-    public function test_hostname_entry_for_another_configured_node_is_preserved(): void
+    public function test_live_legacy_hostname_entry_for_another_configured_node_is_preserved(): void
     {
         $this->prepareTelemetry();
         $hostname = NodeIdentity::hostname();
@@ -121,7 +122,7 @@ final class NodeEgressProbeTest extends TestCase
             'probe_ok' => true,
             'last_probe_at' => '2026-11-02T12:34:00+00:00',
         ]);
-        Cache::forever('javmeta:egress-meta:' . $hostname, ['configured_node' => $hostname]);
+        Cache::forever('javmeta:egress-meta:' . $hostname, ['last_known_ip' => '192.0.2.20', 'change_count' => 1]);
         $this->fakeTransport(new Response(200, [], '198.51.100.20'));
 
         $probe = app(NodeEgressProbe::class);
@@ -192,16 +193,16 @@ final class NodeEgressProbeTest extends TestCase
         Cache::setDefaultDriver('array');
         $transport = $this->fakeTransport(new Response(200, [], json_encode([
             'exitCode' => 0,
-            'stdout' => json_encode(['html' => "203.0.113.40\n"], JSON_THROW_ON_ERROR),
+            'stdout' => json_encode(['html' => "8.8.8.8\n"], JSON_THROW_ON_ERROR),
         ], JSON_THROW_ON_ERROR)));
 
         $probe = app(NodeEgressProbe::class);
         $probe->probeBrowserHostsIfDue();
 
-        self::assertSame('203.0.113.40', $probe->currentBrowserIp('browser-a.test'));
-        self::assertSame('203.0.113.40', $probe->browserStatuses()[0]['ip']);
+        self::assertSame('8.8.8.8', $probe->currentBrowserIp('browser-a.test'));
+        self::assertSame('8.8.8.8', $probe->browserStatuses()[0]['ip']);
         self::assertSame('browser_host', $probe->contextForLane('browser')['egress_kind']);
-        self::assertSame('203.0.113.40', $probe->contextForLane('browser')['egress_ip']);
+        self::assertSame('8.8.8.8', $probe->contextForLane('browser')['egress_ip']);
         self::assertCount(1, $transport->recorded());
         self::assertLessThanOrEqual(5, $transport->recorded()[0]['options']->timeout);
     }
@@ -217,13 +218,13 @@ final class NodeEgressProbeTest extends TestCase
         Cache::setDefaultDriver('array');
         $this->fakeTransport(new Response(200, [], json_encode([
             'exitCode' => 0,
-            'stdout' => json_encode(['html' => '<html><body><pre>203.0.113.41</pre></body></html>'], JSON_THROW_ON_ERROR),
+            'stdout' => json_encode(['html' => '<html><body><pre>8.8.4.4</pre></body></html>'], JSON_THROW_ON_ERROR),
         ], JSON_THROW_ON_ERROR)));
 
         $probe = app(NodeEgressProbe::class);
         $probe->probeBrowserHostsIfDue();
 
-        self::assertSame('203.0.113.41', $probe->currentBrowserIp('browser-a.test'));
+        self::assertSame('8.8.4.4', $probe->currentBrowserIp('browser-a.test'));
         self::assertNull($probe->browserStatuses()[0]['last_probe_error']);
     }
 
@@ -238,7 +239,7 @@ final class NodeEgressProbeTest extends TestCase
         Cache::setDefaultDriver('array');
         $this->fakeTransport(new Response(200, [], json_encode([
             'exitCode' => 0,
-            'stdout' => json_encode(['html' => '<html><script>window.ip = "203.0.113.41";</script></html>'], JSON_THROW_ON_ERROR),
+            'stdout' => json_encode(['html' => '<html><script>window.ip = "8.8.4.4";</script></html>'], JSON_THROW_ON_ERROR),
         ], JSON_THROW_ON_ERROR)));
 
         $probe = app(NodeEgressProbe::class);
@@ -266,6 +267,72 @@ final class NodeEgressProbeTest extends TestCase
         $probe->probeBrowserHostsIfDue();
 
         self::assertNull($probe->currentBrowserIp('browser-a.test'));
+    }
+
+    public function test_browser_host_probe_rejects_private_ipv4_addresses(): void
+    {
+        $this->prepareTelemetry();
+        config()->set([
+            'javmeta_browser.playwright_url' => 'http://browser-a.test',
+            'javmeta_browser.flaresolverr_url' => '',
+            'javmeta_observability.egress_probe_urls' => ['https://ifconfig.me'],
+        ]);
+        Cache::setDefaultDriver('array');
+        $this->fakeTransport(new Response(200, [], json_encode([
+            'exitCode' => 0,
+            'stdout' => json_encode(['html' => '<pre>10.0.0.5</pre>'], JSON_THROW_ON_ERROR),
+        ], JSON_THROW_ON_ERROR)));
+
+        $probe = app(NodeEgressProbe::class);
+        $probe->probeBrowserHostsIfDue();
+
+        self::assertNull($probe->currentBrowserIp('browser-a.test'));
+        self::assertSame('Echo page did not return a public IPv4 address.', $probe->browserStatuses()[0]['last_probe_error']);
+    }
+
+    public function test_browser_host_probe_rejects_reserved_ipv4_addresses(): void
+    {
+        $this->prepareTelemetry();
+        config()->set([
+            'javmeta_browser.playwright_url' => 'http://browser-a.test',
+            'javmeta_browser.flaresolverr_url' => '',
+            'javmeta_observability.egress_probe_urls' => ['https://ifconfig.me'],
+        ]);
+        Cache::setDefaultDriver('array');
+        $this->fakeTransport(new Response(200, [], json_encode([
+            'exitCode' => 0,
+            'stdout' => json_encode(['html' => '<pre>127.0.0.1</pre>'], JSON_THROW_ON_ERROR),
+        ], JSON_THROW_ON_ERROR)));
+
+        $probe = app(NodeEgressProbe::class);
+        $probe->probeBrowserHostsIfDue();
+
+        self::assertNull($probe->currentBrowserIp('browser-a.test'));
+        self::assertSame('Echo page did not return a public IPv4 address.', $probe->browserStatuses()[0]['last_probe_error']);
+    }
+
+    public function test_flaresolverr_body_read_failure_updates_the_probe_status(): void
+    {
+        $this->prepareTelemetry();
+        config()->set([
+            'javmeta_browser.playwright_url' => '',
+            'javmeta_browser.flaresolverr_url' => 'http://flare-a.test/v1',
+            'javmeta_observability.egress_probe_urls' => ['https://ifconfig.me'],
+        ]);
+        Cache::setDefaultDriver('array');
+        $stream = $this->createStub(StreamInterface::class);
+        $stream->method('__toString')->willThrowException(new RuntimeException('read failed'));
+        $response = $this->createStub(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn(200);
+        $response->method('getBody')->willReturn($stream);
+        $this->fakeTransport($response);
+
+        $probe = app(NodeEgressProbe::class);
+        $probe->probeBrowserHostsIfDue();
+
+        self::assertNull($probe->currentBrowserIp('flare-a.test'));
+        self::assertSame('Browser service response body could not be read.', $probe->browserStatuses()[0]['last_probe_error']);
+        self::assertFalse($probe->browserStatuses()[0]['probe_ok']);
     }
 
     public function test_browser_host_probe_reports_invalid_playwright_output(): void
@@ -325,7 +392,7 @@ final class NodeEgressProbeTest extends TestCase
         Cache::setDefaultDriver('array');
         $this->fakeTransport(new Response(200, [], json_encode([
             'exitCode' => '0',
-            'stdout' => json_encode(['html' => '203.0.113.41'], JSON_THROW_ON_ERROR),
+            'stdout' => json_encode(['html' => '8.8.4.4'], JSON_THROW_ON_ERROR),
         ], JSON_THROW_ON_ERROR)));
 
         $probe = app(NodeEgressProbe::class);
@@ -353,14 +420,14 @@ final class NodeEgressProbeTest extends TestCase
             new Response(503),
             new Response(200, [], json_encode([
                 'exitCode' => 0,
-                'stdout' => json_encode(['html' => '203.0.113.40'], JSON_THROW_ON_ERROR),
+                'stdout' => json_encode(['html' => '8.8.8.8'], JSON_THROW_ON_ERROR),
             ], JSON_THROW_ON_ERROR)),
         );
 
         $probe = app(NodeEgressProbe::class);
         $probe->probeBrowserHostsIfDue();
 
-        self::assertSame('203.0.113.40', $probe->currentBrowserIp('browser-a.test'));
+        self::assertSame('8.8.8.8', $probe->currentBrowserIp('browser-a.test'));
         self::assertNull($probe->browserStatuses()[0]['last_probe_error']);
         self::assertCount(2, $transport->recorded());
     }
@@ -401,7 +468,7 @@ final class NodeEgressProbeTest extends TestCase
         Http::fake(['openobserve.test/*' => Http::response([], 200)]);
     }
 
-    private function fakeTransport(Response|RuntimeException ...$responses): FakeTransport
+    private function fakeTransport(ResponseInterface|RuntimeException ...$responses): FakeTransport
     {
         $transport = new FakeTransport();
         foreach ($responses as $response) {
