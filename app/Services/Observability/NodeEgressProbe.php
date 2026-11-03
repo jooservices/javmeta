@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Observability;
 
 use App\Observability\ObservabilityEmitter;
+use App\Support\NodeIdentity;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use JOOservices\Client\Client\ClientBuilder;
@@ -16,6 +17,17 @@ use Throwable;
 final class NodeEgressProbe
 {
     private const NODE_INDEX_KEY = 'javmeta:egress:nodes';
+    // PHP's reserved-range filter omits some non-global ranges such as TEST-NET and multicast.
+    private const NON_GLOBAL_IPV4_RANGES = [
+        '100.64.0.0/10',
+        '192.0.0.0/24',
+        '192.0.2.0/24',
+        '192.88.99.0/24',
+        '198.18.0.0/15',
+        '198.51.100.0/24',
+        '203.0.113.0/24',
+        '224.0.0.0/4',
+    ];
 
     public function __construct(private readonly ClientBuilder $clientBuilder) {}
 
@@ -65,11 +77,19 @@ final class NodeEgressProbe
         return null;
     }
 
-    /** @return list<array{node: string, ip: ?string, probe_ok: bool, last_change_at: ?string, change_count: int}> */
+    /** @return list<array{node: string, ip: ?string, probe_ok: bool, last_probe_error: ?string, last_change_at: ?string, change_count: int}> */
     public function nodeStatuses(): array
     {
         $nodes = $this->cachedNodeIds();
-        $nodes[] = $this->nodeId();
+        $node = $this->nodeId();
+        $legacyHostname = NodeIdentity::hostname();
+        if ($legacyHostname !== $node && ! $this->hasLiveNodeProbe($legacyHostname)) {
+            $nodes = array_values(array_filter(
+                $nodes,
+                static fn(string $cachedNode): bool => $cachedNode !== $legacyHostname,
+            ));
+        }
+        $nodes[] = $node;
         $nodes = array_values(array_unique($nodes));
         sort($nodes);
         $statuses = [];
@@ -80,7 +100,7 @@ final class NodeEgressProbe
         return $statuses;
     }
 
-    /** @return list<array{host: string, ip: ?string, probe_ok: bool, last_change_at: ?string, change_count: int}> */
+    /** @return list<array{host: string, ip: ?string, probe_ok: bool, last_probe_error: ?string, last_change_at: ?string, change_count: int}> */
     public function browserStatuses(): array
     {
         $statuses = [];
@@ -90,6 +110,7 @@ final class NodeEgressProbe
                 'host' => $host,
                 'ip' => $status['ip'],
                 'probe_ok' => $status['probe_ok'],
+                'last_probe_error' => $status['last_probe_error'],
                 'last_change_at' => $status['last_change_at'],
                 'change_count' => $status['change_count'],
             ];
@@ -155,8 +176,8 @@ final class NodeEgressProbe
                 return;
             }
 
-            $ip = $this->lookupBrowserIp($target);
-            $this->storeResult('browser', $host, $ip, $interval);
+            $result = $this->lookupBrowserIp($target);
+            $this->storeResult('browser', $host, $result['ip'], $interval, $result['error']);
         } catch (Throwable) {
             // Browser services are optional and never gate crawling.
         } finally {
@@ -177,7 +198,7 @@ final class NodeEgressProbe
         $this->rememberNode($node);
     }
 
-    private function storeResult(string $kind, string $identity, ?string $ip, int $interval): void
+    private function storeResult(string $kind, string $identity, ?string $ip, int $interval, ?string $probeError = null): void
     {
         $cacheKey = $kind === 'node' ? $this->nodeCacheKey($identity) : $this->browserCacheKey($identity);
         $metaKey = $kind === 'node' ? $this->nodeMetaKey($identity) : $this->browserMetaKey($identity);
@@ -194,18 +215,22 @@ final class NodeEgressProbe
             $meta['last_change_at'] = $lastChangeAt;
             $meta['change_count'] = $changeCount;
         }
-
         $probedAt = CarbonImmutable::now()->toIso8601String();
         Cache::put($cacheKey, [
             'ip' => $ip,
             'probe_ok' => $ip !== null,
+            'probe_error' => $probeError,
             'last_probe_at' => $probedAt,
         ], max(1, $interval * 2));
-        Cache::forever($metaKey, [
+        $storedMeta = [
             'last_known_ip' => $ip !== null ? $ip : $oldIp,
             'last_change_at' => $lastChangeAt,
             'change_count' => $changeCount,
-        ]);
+        ];
+        if ($kind === 'node') {
+            $storedMeta['configured_node'] = $identity;
+        }
+        Cache::forever($metaKey, $storedMeta);
 
         if ($changed) {
             $this->publishChange($kind, $identity, $oldIp, $ip, $lastChangeAt);
@@ -257,17 +282,46 @@ final class NodeEgressProbe
     }
 
     /** @param array{kind: string, url: string} $target */
-    private function lookupBrowserIp(array $target): ?string
+    /** @return array{ip: ?string, error: ?string} */
+    private function lookupBrowserIp(array $target): array
     {
         $urls = config('javmeta_observability.egress_probe_urls', []);
-        $url = is_array($urls) && is_string($urls[0] ?? null) ? $urls[0] : null;
-        if ($url === null || ! $this->isHttpUrl($url)) {
-            return null;
+        if (! is_array($urls)) {
+            return ['ip' => null, 'error' => 'No valid egress probe URL is configured.'];
         }
 
-        return $target['kind'] === 'playwright'
-            ? $this->requestPlaywrightIp($target['url'], $url)
-            : $this->requestFlareSolverrIp($target['url'], $url);
+        $timeout = $this->interval('egress_probe_timeout_seconds', 5);
+        $deadline = hrtime(true) + ($timeout * 1_000_000_000);
+        $attempted = false;
+        $lastError = null;
+        foreach ($urls as $url) {
+            if (! is_string($url) || ! $this->isHttpUrl($url)) {
+                continue;
+            }
+
+            $remaining = ($deadline - hrtime(true)) / 1_000_000_000;
+            if ($remaining < 0.05) {
+                $lastError = 'Probe time limit reached before an echo URL succeeded.';
+                break;
+            }
+
+            $attempted = true;
+            $result = $target['kind'] === 'playwright'
+                ? $this->requestPlaywrightIp($target['url'], $url, $remaining)
+                : $this->requestFlareSolverrIp($target['url'], $url, $remaining);
+            if ($result['ip'] !== null) {
+                return $result;
+            }
+
+            $lastError = $result['error'];
+        }
+
+        return [
+            'ip' => null,
+            'error' => $attempted
+                ? ($lastError ?? 'No public IPv4 address was returned.')
+                : 'No valid egress probe URL is configured.',
+        ];
     }
 
     private function browserHostForMethod(?string $method): ?string
@@ -310,19 +364,20 @@ final class NodeEgressProbe
         }
     }
 
-    private function requestPlaywrightIp(string $endpoint, string $url): ?string
+    /** @return array{ip: ?string, error: ?string} */
+    private function requestPlaywrightIp(string $endpoint, string $url, float $timeout): array
     {
-        $timeout = $this->interval('egress_probe_timeout_seconds', 5);
+        $timeoutMilliseconds = max(1, (int) ceil($timeout * 1000));
         $payload = [
             'script' => 'playwright',
             'config' => [
                 'url' => $url,
-                'readyTimeoutMs' => $timeout * 1000,
+                'readyTimeoutMs' => $timeoutMilliseconds,
                 'settleAfterReadyMs' => 0,
                 'readyMarkers' => [],
                 'browser' => 'chromium',
                 'headless' => true,
-                'navigationTimeoutMs' => $timeout * 1000,
+                'navigationTimeoutMs' => $timeoutMilliseconds,
                 'viewport' => ['width' => 800, 'height' => 600],
                 'locale' => 'en-US',
                 'timezoneId' => 'UTC',
@@ -336,70 +391,222 @@ final class NodeEgressProbe
             ],
         ];
 
-        try {
-            $response = $this->browserRequest(rtrim($endpoint, '/') . '/fetch', $payload, $timeout);
-            if ($response === null) {
-                return null;
-            }
-            $body = json_decode((string) $response->getBody(), true);
-            $stdout = is_array($body) && is_string($body['stdout'] ?? null) ? $body['stdout'] : '';
-            $result = json_decode($stdout, true);
-
-            return is_array($result) && (int) ($body['exitCode'] ?? 1) === 0
-                ? $this->parseIpv4(is_string($result['html'] ?? null) ? $result['html'] : '')
-                : null;
-        } catch (Throwable) {
-            return null;
+        $attempt = $this->browserRequest(rtrim($endpoint, '/') . '/fetch', $payload, $timeout);
+        if ($attempt['response'] === null) {
+            return ['ip' => null, 'error' => $attempt['error']];
         }
+
+        try {
+            $rawBody = (string) $attempt['response']->getBody();
+        } catch (Throwable) {
+            return ['ip' => null, 'error' => 'Browser service response body could not be read.'];
+        }
+
+        $body = json_decode($rawBody, true);
+        if (! is_array($body)) {
+            return ['ip' => null, 'error' => 'Browser service returned invalid JSON.'];
+        }
+        $exitCode = $body['exitCode'] ?? null;
+        if (! is_int($exitCode)) {
+            return ['ip' => null, 'error' => 'Playwright fetch returned an invalid response.'];
+        }
+        if ($exitCode !== 0) {
+            return ['ip' => null, 'error' => $this->playwrightFailureReason($exitCode, $body['stderr'] ?? null)];
+        }
+
+        $stdout = is_string($body['stdout'] ?? null) ? $body['stdout'] : '';
+        $result = json_decode($stdout, true);
+        if (! is_array($result)) {
+            return ['ip' => null, 'error' => 'Playwright fetch returned invalid output.'];
+        }
+        $html = $result['html'] ?? null;
+        if (! is_string($html)) {
+            return ['ip' => null, 'error' => 'Playwright fetch returned no page content.'];
+        }
+
+        $ip = $this->parsePublicIpv4($html);
+
+        return [
+            'ip' => $ip,
+            'error' => $ip === null ? 'Echo page did not return a public IPv4 address.' : null,
+        ];
     }
 
-    private function requestFlareSolverrIp(string $endpoint, string $url): ?string
+    private function playwrightFailureReason(int $exitCode, mixed $stderr): string
     {
-        $timeout = $this->interval('egress_probe_timeout_seconds', 5);
-        try {
-            $response = $this->browserRequest($endpoint, [
-                'cmd' => 'request.get',
-                'url' => $url,
-                'maxTimeout' => $timeout * 1000,
-            ], $timeout);
-            if ($response === null) {
-                return null;
-            }
-            $body = json_decode((string) $response->getBody(), true);
-            $solution = is_array($body) && is_array($body['solution'] ?? null) ? $body['solution'] : [];
-
-            return is_array($body) && ($body['status'] ?? null) === 'ok'
-                ? $this->parseIpv4(is_string($solution['response'] ?? null) ? $solution['response'] : '')
-                : null;
-        } catch (Throwable) {
-            return null;
+        $details = is_string($stderr) ? trim($stderr) : '';
+        if ($details === '') {
+            return 'Playwright fetch exited with code ' . $exitCode . '.';
         }
+
+        $details = preg_replace('~https?://\S+~i', '[URL]', $details) ?? $details;
+        $details = preg_replace('/[\x00-\x1F\x7F]+/', ' ', $details) ?? $details;
+        $details = trim(preg_replace('/\s+/', ' ', $details) ?? $details);
+
+        $details = strtolower($details);
+        $reason = match (true) {
+            str_contains($details, 'timeout'), str_contains($details, 'timed out') => 'Playwright fetch timed out',
+            str_contains($details, 'browser launch failed'), str_contains($details, 'could not launch') => 'Playwright browser could not start',
+            str_contains($details, 'ssrf_blocked') => 'Playwright fetch target was blocked',
+            str_contains($details, 'err_name_not_resolved'), str_contains($details, 'could not resolve') => 'Playwright could not resolve the echo host',
+            str_contains($details, 'err_connection_refused'), str_contains($details, 'connection refused') => 'Playwright could not connect to the echo host',
+            default => 'Playwright fetch failed',
+        };
+
+        return $reason . ' (exit code ' . $exitCode . ').';
     }
 
-    /** @param array<string, mixed> $payload */
-    private function browserRequest(string $url, array $payload, int $timeout): ?ResponseInterface
+    /** @return array{ip: ?string, error: ?string} */
+    private function requestFlareSolverrIp(string $endpoint, string $url, float $timeout): array
     {
-        $client = $this->clientBuilder
-            ->withTimeout($timeout)
-            ->withConnectTimeout($timeout)
-            ->withProxy('')
-            ->withRedirects(false)
-            ->build();
-        $response = $client->sendRequest(new Request(
-            'POST',
-            $url,
-            ['Accept' => 'application/json', 'Content-Type' => 'application/json'],
-            json_encode($payload, JSON_THROW_ON_ERROR),
-        ));
+        $attempt = $this->browserRequest($endpoint, [
+            'cmd' => 'request.get',
+            'url' => $url,
+            'maxTimeout' => (int) ceil($timeout * 1000),
+        ], $timeout);
+        if ($attempt['response'] === null) {
+            return ['ip' => null, 'error' => $attempt['error']];
+        }
 
-        return $response->getStatusCode() >= 200 && $response->getStatusCode() < 300 ? $response : null;
+        try {
+            $rawBody = (string) $attempt['response']->getBody();
+        } catch (Throwable) {
+            return ['ip' => null, 'error' => 'Browser service response body could not be read.'];
+        }
+
+        $body = json_decode($rawBody, true);
+        if (! is_array($body)) {
+            return ['ip' => null, 'error' => 'Browser service returned invalid JSON.'];
+        }
+        if (($body['status'] ?? null) !== 'ok') {
+            return ['ip' => null, 'error' => 'FlareSolverr returned a failed response.'];
+        }
+
+        $solution = is_array($body['solution'] ?? null) ? $body['solution'] : [];
+        $ip = $this->parsePublicIpv4(is_string($solution['response'] ?? null) ? $solution['response'] : '');
+
+        return [
+            'ip' => $ip,
+            'error' => $ip === null ? 'Echo page did not return a public IPv4 address.' : null,
+        ];
+    }
+
+    /** @param array<string, mixed> $payload
+     *  @return array{response: ?ResponseInterface, error: ?string}
+     */
+    private function browserRequest(string $url, array $payload, float $timeout): array
+    {
+        try {
+            $client = $this->clientBuilder
+                ->withTimeout($timeout)
+                ->withConnectTimeout($timeout)
+                ->withProxy('')
+                ->withRedirects(false)
+                ->build();
+            $response = $client->sendRequest(new Request(
+                'POST',
+                $url,
+                ['Accept' => 'application/json', 'Content-Type' => 'application/json'],
+                json_encode($payload, JSON_THROW_ON_ERROR),
+            ));
+        } catch (Throwable $exception) {
+            return ['response' => null, 'error' => $this->probeExceptionReason($exception)];
+        }
+
+        if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) {
+            return ['response' => null, 'error' => 'Browser service returned HTTP ' . $response->getStatusCode() . '.'];
+        }
+
+        return ['response' => $response, 'error' => null];
+    }
+
+    private function probeExceptionReason(Throwable $exception): string
+    {
+        $message = strtolower($exception->getMessage());
+        if (str_contains($message, 'timeout') || str_contains($message, 'timed out')) {
+            return 'Browser service request timed out.';
+        }
+        if (str_contains($message, 'connection refused')) {
+            return 'Browser service refused the connection.';
+        }
+        if (str_contains($message, 'could not resolve') || str_contains($message, 'name or service not known')) {
+            return 'Browser service host could not be resolved.';
+        }
+
+        return 'Browser service request failed (' . class_basename($exception) . ').';
     }
 
     private function parseIpv4(string $body): ?string
     {
-        $candidate = trim($body);
+        $visibleContent = preg_replace('~<(script|style)\b[^>]*>.*?</\1\s*>~is', ' ', $body) ?? $body;
+        $candidate = trim(html_entity_decode(
+            strip_tags($visibleContent),
+            ENT_QUOTES | ENT_HTML5 | ENT_SUBSTITUTE,
+            'UTF-8',
+        ));
+        if (filter_var($candidate, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
+            return $candidate;
+        }
 
-        return filter_var($candidate, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false ? $candidate : null;
+        return null;
+    }
+
+    private function parsePublicIpv4(string $body): ?string
+    {
+        $ip = $this->parseIpv4($body);
+        if ($ip === null || ! $this->isPublicIpv4($ip)) {
+            return null;
+        }
+
+        return $ip;
+    }
+
+    private function isPublicIpv4(string $ip): bool
+    {
+        if (filter_var(
+            $ip,
+            FILTER_VALIDATE_IP,
+            FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE,
+        ) === false) {
+            return false;
+        }
+
+        if (in_array($ip, ['192.0.0.9', '192.0.0.10'], true)) {
+            return true;
+        }
+
+        foreach (self::NON_GLOBAL_IPV4_RANGES as $range) {
+            if ($this->isInIpv4Range($ip, $range)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function isInIpv4Range(string $ip, string $range): bool
+    {
+        [$network, $prefixLength] = explode('/', $range, 2);
+        $addressBytes = inet_pton($ip);
+        $networkBytes = inet_pton($network);
+        if ($addressBytes === false || $networkBytes === false) {
+            return false;
+        }
+
+        $prefixLength = (int) $prefixLength;
+        $fullBytes = intdiv($prefixLength, 8);
+        if (substr($addressBytes, 0, $fullBytes) !== substr($networkBytes, 0, $fullBytes)) {
+            return false;
+        }
+
+        $remainingBits = $prefixLength % 8;
+        if ($remainingBits === 0) {
+            return true;
+        }
+
+        $mask = (0xFF << (8 - $remainingBits)) & 0xFF;
+
+        return (ord($addressBytes[$fullBytes]) & $mask) === (ord($networkBytes[$fullBytes]) & $mask);
     }
 
     private function isHttpUrl(string $url): bool
@@ -433,7 +640,7 @@ final class NodeEgressProbe
         return $targets;
     }
 
-    /** @return array{node: string, ip: ?string, probe_ok: bool, last_change_at: ?string, change_count: int} */
+    /** @return array{node: string, ip: ?string, probe_ok: bool, last_probe_error: ?string, last_change_at: ?string, change_count: int} */
     private function status(string $identity, string $cacheKey, string $metaKey): array
     {
         try {
@@ -450,6 +657,7 @@ final class NodeEgressProbe
             'node' => $identity,
             'ip' => is_string($current['ip'] ?? null) ? $current['ip'] : null,
             'probe_ok' => (bool) ($current['probe_ok'] ?? false),
+            'last_probe_error' => is_string($current['probe_error'] ?? null) ? $current['probe_error'] : null,
             'last_change_at' => is_string($meta['last_change_at'] ?? null) ? $meta['last_change_at'] : null,
             'change_count' => max(0, (int) ($meta['change_count'] ?? 0)),
         ];
@@ -489,6 +697,10 @@ final class NodeEgressProbe
                 return;
             }
             $nodes = $this->cachedNodeIds();
+            $legacyNode = NodeIdentity::hostname();
+            if ($legacyNode !== $node && ! $this->hasLiveNodeProbe($legacyNode)) {
+                $nodes = array_values(array_filter($nodes, static fn(string $cachedNode): bool => $cachedNode !== $legacyNode));
+            }
             $nodes[] = $node;
             $nodes = array_values(array_unique($nodes));
             sort($nodes);
@@ -504,6 +716,19 @@ final class NodeEgressProbe
                 }
             }
         }
+    }
+
+    private function hasLiveNodeProbe(string $node): bool
+    {
+        try {
+            $probe = Cache::get($this->nodeCacheKey($node), []);
+        } catch (Throwable) {
+            // Keep the row when cache state is unavailable; pruning could hide a live node.
+            return true;
+        }
+
+        return is_array($probe)
+            && is_string($probe['last_probe_at'] ?? null);
     }
 
     private function isDue(mixed $lastProbeAt, int $interval): bool
@@ -526,10 +751,7 @@ final class NodeEgressProbe
 
     private function nodeId(): string
     {
-        $hostname = gethostname();
-        $node = is_string($hostname) && trim($hostname) !== '' ? trim($hostname) : 'local';
-
-        return mb_substr(preg_replace('/[^A-Za-z0-9_.-]/', '-', $node) ?? 'local', 0, 64);
+        return NodeIdentity::current();
     }
 
     private function nodeCacheKey(string $node): string

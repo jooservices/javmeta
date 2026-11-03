@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Notifications;
 
 use App\Observability\TelemetrySanitizer;
+use App\Support\NodeIdentity;
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
 use Throwable;
@@ -133,7 +134,7 @@ final class NotificationRenderer
         $variables['state_prefix'] = $resolved ? 'Back to normal. ' : '';
         $variables['time'] = $this->timeValue($variables['time'] ?? null, $live);
         if (array_key_exists('node', $variables)) {
-            $node = $values['node'] ?? ($live ? (gethostname() ?: $variables['node']) : $variables['node']);
+            $node = $values['node'] ?? ($live ? NodeIdentity::current() : $variables['node']);
             $variables['node'] = $this->stringValue($node);
         }
 

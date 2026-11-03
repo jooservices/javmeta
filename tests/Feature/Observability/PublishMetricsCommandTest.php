@@ -720,7 +720,9 @@ final class PublishMetricsCommandTest extends TestCase
     {
         config()->set([
             'cache.default' => 'array',
+            'sentry.node' => 'xcrawler',
             'javmeta_browser.playwright_url' => 'http://browser-a.test',
+            'javmeta_browser.flaresolverr_url' => 'http://browser-b.test/v1',
             'openobserve.enabled' => true,
             'openobserve.url' => 'http://openobserve.test',
             'openobserve.org' => 'default',
@@ -731,10 +733,15 @@ final class PublishMetricsCommandTest extends TestCase
         ]);
         Cache::setDefaultDriver('array');
         Cache::store('array')->flush();
-        $node = mb_substr(preg_replace('/[^A-Za-z0-9_.-]/', '-', (string) gethostname()) ?? 'local', 0, 64);
+        $node = 'xcrawler';
         Cache::put('javmeta:egress:' . $node, ['ip' => '198.51.100.9', 'probe_ok' => true]);
         Cache::forever('javmeta:egress-meta:' . $node, ['last_known_ip' => '198.51.100.9', 'change_count' => 3]);
         Cache::put('javmeta:browser-egress:browser-a.test', ['ip' => '203.0.113.9', 'probe_ok' => true]);
+        Cache::put('javmeta:browser-egress:browser-b.test', [
+            'ip' => null,
+            'probe_ok' => false,
+            'probe_error' => 'Browser service returned HTTP 503.',
+        ]);
         $startedAt = now()->subSeconds(10);
         DB::table('crawl_fetch_attempts')->insert([
             [
@@ -807,5 +814,7 @@ final class PublishMetricsCommandTest extends TestCase
         self::assertTrue($hasPoint('javmeta_node_egress_changes_total', ['node' => $node], 3.0));
         self::assertTrue($hasPoint('javmeta_node_egress_probe_ok', ['node' => $node], 1.0));
         self::assertTrue($hasPoint('javmeta_browser_egress_info', ['host' => 'browser-a.test', 'ip' => '203.0.113.9'], 1.0));
+        self::assertTrue($hasPoint('javmeta_browser_egress_probe_ok', ['host' => 'browser-a.test'], 1.0));
+        self::assertTrue($hasPoint('javmeta_browser_egress_probe_ok', ['host' => 'browser-b.test'], 0.0));
     }
 }

@@ -31,6 +31,7 @@ final class MetricStreams
         'node_egress_changes_total' => self::PREFIX . 'node_egress_changes_total',
         'node_egress_probe_ok' => self::PREFIX . 'node_egress_probe_ok',
         'browser_egress_info' => self::PREFIX . 'browser_egress_info',
+        'browser_egress_probe_ok' => self::PREFIX . 'browser_egress_probe_ok',
         'playwright_slot_busy_ratio' => self::PREFIX . 'playwright_slot_busy_ratio',
         'flaresolverr_slot_busy_ratio' => self::PREFIX . 'flaresolverr_slot_busy_ratio',
         'stats_movies_per_hour' => self::PREFIX . 'stats_movies_per_hour',

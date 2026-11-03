@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Console;
 
+use App\Support\NodeIdentity;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -56,12 +57,33 @@ final class EgressReportCommandTest extends TestCase
     {
         config()->set([
             'cache.default' => 'array',
+            'sentry.node' => 'xcrawler',
             'javmeta_browser.playwright_url' => 'http://browser-a.test',
+            'javmeta_browser.flaresolverr_url' => 'http://browser-b.test/v1',
         ]);
         Cache::setDefaultDriver('array');
         Cache::store('array')->flush();
-        $hostname = is_string(gethostname()) ? gethostname() : 'local';
-        $node = mb_substr(preg_replace('/[^A-Za-z0-9_.-]/', '-', trim($hostname)) ?? 'local', 0, 64);
+        $node = 'xcrawler';
+        $legacyNode = NodeIdentity::hostname();
+        $workerCandidates = [
+            'xcrawler-worker-a' => '198.51.100.13',
+            'xcrawler-worker-b' => '198.51.100.14',
+            'xcrawler-worker-c' => '198.51.100.15',
+        ];
+        $workerNodes = array_slice(
+            array_keys(array_filter($workerCandidates, static fn(string $worker): bool => $worker !== $legacyNode, ARRAY_FILTER_USE_KEY)),
+            0,
+            2,
+        );
+        $nodes = ['xcrawler', ...$workerNodes];
+        if ($legacyNode !== $node) {
+            $nodes[] = $legacyNode;
+            Cache::put('javmeta:egress:' . $legacyNode, ['ip' => '192.0.2.15', 'probe_ok' => true]);
+        }
+        Cache::forever('javmeta:egress:nodes', $nodes);
+        foreach ($workerNodes as $worker) {
+            Cache::put('javmeta:egress:' . $worker, ['ip' => $workerCandidates[$worker], 'probe_ok' => true]);
+        }
         Cache::put('javmeta:egress:' . $node, ['ip' => '198.51.100.12', 'probe_ok' => true]);
         Cache::forever('javmeta:egress-meta:' . $node, [
             'last_known_ip' => '198.51.100.12',
@@ -74,6 +96,11 @@ final class EgressReportCommandTest extends TestCase
             'last_change_at' => '2026-11-01T11:00:00+00:00',
             'change_count' => 2,
         ]);
+        Cache::put('javmeta:browser-egress:browser-b.test', [
+            'ip' => null,
+            'probe_ok' => false,
+            'probe_error' => 'Browser service returned HTTP 503.',
+        ]);
 
         $tester = new CommandTester(app('Illuminate\\Contracts\\Console\\Kernel')->all()['crawler:egress-status']);
         $tester->execute([]);
@@ -82,8 +109,18 @@ final class EgressReportCommandTest extends TestCase
         self::assertSame(0, $tester->getStatusCode(), $output);
         self::assertStringContainsString($node, $output);
         self::assertStringContainsString('198.51.100.12', $output);
+        foreach ($workerNodes as $worker) {
+            self::assertStringContainsString($worker, $output);
+            self::assertStringContainsString($workerCandidates[$worker], $output);
+        }
         self::assertStringContainsString('203.0.113.12', $output);
         self::assertStringContainsString('2026-11-01T10:00:00+00:00', $output);
+        self::assertStringContainsString('xcrawler', $output);
+        self::assertStringContainsString('browser-b.test', $output);
+        self::assertStringContainsString('Browser service returned HTTP 503.', $output);
+        if ($legacyNode !== $node) {
+            self::assertDoesNotMatchRegularExpression('/\|\s*' . preg_quote($legacyNode, '/') . '\s*\|/', $output);
+        }
     }
 
     private function insertAttempt(string $source, string $ip, int $status, ?string $cfMitigated, string $outcome, int $duration): void

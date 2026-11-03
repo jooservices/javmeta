@@ -376,14 +376,22 @@ byte cost is unavailable until fetch attempts expose response byte counts.
 
 Each Horizon node checks its public IPv4 using the ordered
 `observability.egress_probe_urls` list (default: ifconfig.me, icanhazip.com,
-checkip.amazonaws.com, api.ipify.org). The request timeout is capped at five
-seconds and proxy environment variables are ignored. The result lives in the
-shared cache at `javmeta:egress:{node}` for twice the configured probe interval;
-workers read this cache while recording an attempt and never wait for a probe.
+checkip.amazonaws.com, api.ipify.org). The configured `JAVMETA_NODE_NAME`
+(`config('sentry.node')`) identifies its cache row. When that value is blank or
+`unknown`, the node uses its OS hostname instead. Rows under the old OS hostname
+are omitted from status when the configured name differs and no live probe is
+recorded for that hostname. Legacy cache
+values are left untouched. The request timeout is capped at five seconds across
+the ordered URL list and proxy environment
+variables are ignored. The result lives in the shared cache at
+`javmeta:egress:{node}` for twice the configured probe interval; workers read
+this cache while recording an attempt and never wait for a probe.
 The scheduler checks every two minutes, and the per-node Horizon reconcile
 timer also invokes `node:egress-probe`, so worker nodes do not need a scheduler.
-Browser-lane probes navigate to the first echo URL through each configured
-Playwright or FlareSolverr host and cache the address per browser host.
+Browser-lane probes navigate through each configured Playwright or FlareSolverr
+host, trying the echo URLs in order within the same timeout budget. The cache
+records a safe last-error reason when a browser request, response, or echo URL
+fails; a later successful probe clears that error.
 
 The Cài đặt / Giám sát page owns the probe URL list, node interval (120 seconds),
 browser interval (900 seconds), timeout (5 seconds), `record_egress_ip` switch
@@ -399,7 +407,8 @@ rows store nullable `egress_ip`, `node` and `egress_kind` (`node` or
 as an empty OTLP string attribute on spans.
 
 Run `php artisan crawler:egress-status` to see each cached node and browser
-host address, probe health, last change time and change count. Run
+host address, probe health, last probe error, last change time and change count.
+The browser-host `Probe OK` metric is also emitted as a zero/one gauge. Run
 `php artisan crawler:egress-report --hours=24 --by=egress` to sort IP/source
 pairs by blocked attempts; `--by=source` groups source/IP pairs and `--by=node`
 adds node to the grouping. The report shows attempts, successful outcomes,
@@ -414,6 +423,7 @@ duration in milliseconds. `--hours` accepts 1 through 87600.
 | `javmeta_node_egress_changes_total` | `node` | Cumulative address changes observed by this node |
 | `javmeta_node_egress_probe_ok` | `node` | Gauge 1 for a successful latest probe, else 0 |
 | `javmeta_browser_egress_info` | `host`, `ip` | Gauge 1 while the browser host has a cached public IP |
+| `javmeta_browser_egress_probe_ok` | `host` | Gauge 1 for a successful latest probe, else 0 |
 | `javmeta_fetch_attempts_by_egress` | `source`, `method`, `egress_ip`, `outcome` | Attempt count in the previous minute; unavailable IP is `unknown` |
 | `javmeta_block_ratio_by_egress` | `egress_ip` | Blocked / non-skipped attempts in the previous minute, from 0 to 1 |
 

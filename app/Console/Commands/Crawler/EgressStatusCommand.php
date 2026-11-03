@@ -23,12 +23,12 @@ final class EgressStatusCommand extends Command
             $rows[] = $this->statusRow('browser_host', $status['host'], $status);
         }
 
-        $this->table(['Type', 'Node or host', 'Current IP', 'Probe OK', 'Last change (UTC)', 'Changes'], $rows);
+        $this->table(['Type', 'Node or host', 'Current IP', 'Probe OK', 'Last probe error', 'Last change (UTC)', 'Changes'], $rows);
 
         return self::SUCCESS;
     }
 
-    /** @param array{ip: ?string, probe_ok: bool, last_change_at: ?string, change_count: int} $status
+    /** @param array{ip: ?string, probe_ok: bool, last_probe_error: ?string, last_change_at: ?string, change_count: int} $status
      *  @return list<string|int>
      */
     private function statusRow(string $kind, string $identity, array $status): array
@@ -38,6 +38,7 @@ final class EgressStatusCommand extends Command
             $identity,
             $status['ip'] ?? '-',
             $status['probe_ok'] ? 'yes' : 'no',
+            $status['last_probe_error'] ?? '-',
             $status['last_change_at'] ?? '-',
             $status['change_count'],
         ];

@@ -6,11 +6,13 @@ namespace Tests\Unit\Observability;
 
 use App\Observability\OpenObserveClient;
 use App\Observability\TelemetrySanitizer;
+use App\Services\Observability\NodeEgressProbe;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use stdClass;
 use Tests\TestCase;
 
 final class OpenObserveClientTest extends TestCase
@@ -219,6 +221,29 @@ final class OpenObserveClientTest extends TestCase
             }
 
             return false;
+        });
+    }
+
+    public function test_egress_fallback_uses_the_configured_node_name(): void
+    {
+        config()->set([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.stream_logs' => 'egress-test-logs',
+            'sentry.node' => 'xcrawler',
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response([], 200)]);
+        Log::flushSharedContext();
+        app()->instance(NodeEgressProbe::class, new stdClass());
+
+        (new OpenObserveClient(new TelemetrySanitizer()))->ingestLogs([['event' => 'crawl_event']]);
+
+        Http::assertSent(static function (ClientRequest $request): bool {
+            $record = $request->data()[0] ?? [];
+
+            return str_contains($request->url(), '/egress-test-logs/_json')
+                && ($record['node'] ?? null) === 'xcrawler';
         });
     }
 

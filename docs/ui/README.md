@@ -143,10 +143,11 @@ Settings warns when a legacy service base URL is invalid and uses the config def
 
 Cài đặt → **Sức khỏe khi khởi động** controls primary-role policy, retry timing, web snapshot TTL and Artisan command exceptions. PostgreSQL, Redis and MongoDB remain primary; Elasticsearch defaults to primary on web and secondary on workers. A red primary health snapshot returns 503 before the owner login flow; `/api/health` and `/api/health/live` remain available for diagnosis. See [startup health operations](../03-operations/startup-health.md).
 
-Cài đặt → **Giám sát** includes the node and browser-host public IP probe URLs,
-intervals and timeout, the `record_egress_ip` switch, and the OpenObserve stream
-for address-change records. Operators can review cached addresses and crawl
-block counts with `crawler:egress-status` and `crawler:egress-report`; see
+Cài đặt → **Giám sát** includes the node and browser-host public IP probe
+URLs, intervals and timeout, the `record_egress_ip` switch, and the OpenObserve
+stream for address-change records. Operators can review cached addresses,
+browser probe failure reasons, and crawl block counts with
+`crawler:egress-status` and `crawler:egress-report`; see
 [egress telemetry](../03-operations/telemetry.md#egress-ip-attribution-jooxcr-314).
 
 ## Fetch diagnostics retention
