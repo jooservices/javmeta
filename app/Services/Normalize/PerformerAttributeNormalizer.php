@@ -44,7 +44,7 @@ final class PerformerAttributeNormalizer
             return ['value' => null, 'rh' => null];
         }
 
-        $value = preg_replace('/^(?:BLOOD\s+)?TYPE\s*[:：]?\s*|\s+(?:BLOOD\s+)?TYPE$/u', '', $value) ?? $value;
+        $value = preg_replace('/(?:^(?:BLOOD\s+)?TYPE\s*[:：]?\s*|\s+(?:BLOOD\s+)?TYPE$)/u', '', $value) ?? $value;
         $value = str_replace(['血液型', '型'], '', $value);
         $value = preg_replace('/\s+/u', '', $value) ?? $value;
         $rh = null;
