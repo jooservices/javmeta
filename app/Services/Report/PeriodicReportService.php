@@ -136,13 +136,7 @@ final class PeriodicReportService
                 // A retention cleanup failure must not change a delivered report's result.
             }
             $this->metrics->record($result, $sent ? now()->timestamp : null);
-            if ($policyDecision !== null) {
-                if ($sent) {
-                    $policyDispatcher->recordSent($policyDecision);
-                } else {
-                    $policyDispatcher->release($policyDecision);
-                }
-            }
+            $this->settlePolicy($policyDispatcher, $policyDecision, $sent);
 
             return ['sent' => $sent, 'duplicate' => false, 'text' => $text, 'result' => $result];
         } catch (Throwable) {
@@ -153,13 +147,7 @@ final class PeriodicReportService
                     // A failed cache cleanup must not mask the original report failure.
                 }
             }
-            if ($policyDispatcher !== null && $policyDecision !== null) {
-                if ($sent) {
-                    $policyDispatcher->recordSent($policyDecision);
-                } else {
-                    $policyDispatcher->release($policyDecision);
-                }
-            }
+            $this->settlePolicy($policyDispatcher, $policyDecision, $sent);
             try {
                 $this->metrics->record('failed');
             } catch (Throwable) {
@@ -169,6 +157,19 @@ final class PeriodicReportService
             return ['sent' => false, 'duplicate' => false, 'text' => '', 'result' => 'failed'];
         } finally {
             $lock->release();
+        }
+    }
+
+    /** Records the policy send when the report was delivered, otherwise releases the reservation. */
+    private function settlePolicy(?\App\Services\Notifications\NotificationPolicyDispatcher $dispatcher, mixed $decision, bool $sent): void
+    {
+        if ($dispatcher === null || $decision === null) {
+            return;
+        }
+        if ($sent) {
+            $dispatcher->recordSent($decision);
+        } else {
+            $dispatcher->release($decision);
         }
     }
 
