@@ -382,7 +382,13 @@ final class NodeEgressProbe
             return ['ip' => null, 'error' => $attempt['error']];
         }
 
-        $body = json_decode((string) $attempt['response']->getBody(), true);
+        try {
+            $rawBody = (string) $attempt['response']->getBody();
+        } catch (\Throwable) {
+            return ['ip' => null, 'error' => 'Browser service response body could not be read.'];
+        }
+
+        $body = json_decode($rawBody, true);
         if (! is_array($body)) {
             return ['ip' => null, 'error' => 'Browser service returned invalid JSON.'];
         }
@@ -520,16 +526,6 @@ final class NodeEgressProbe
         ));
         if (filter_var($candidate, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
             return $candidate;
-        }
-
-        if (preg_match_all('/(?<![0-9A-Fa-f:.])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![0-9A-Fa-f:.])/', $candidate, $matches) === false) {
-            return null;
-        }
-
-        foreach ($matches[0] as $ip) {
-            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
-                return $ip;
-            }
         }
 
         return null;

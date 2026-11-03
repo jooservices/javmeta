@@ -221,6 +221,26 @@ final class NodeEgressProbeTest extends TestCase
         self::assertSame('Echo page did not return a public IPv4 address.', $probe->browserStatuses()[0]['last_probe_error']);
     }
 
+    public function test_browser_host_probe_ignores_an_address_that_is_only_mentioned_in_the_page(): void
+    {
+        $this->prepareTelemetry();
+        config()->set([
+            'javmeta_browser.playwright_url' => 'http://browser-a.test',
+            'javmeta_browser.flaresolverr_url' => '',
+            'javmeta_observability.egress_probe_urls' => ['https://ifconfig.me'],
+        ]);
+        Cache::setDefaultDriver('array');
+        $this->fakeTransport(new Response(200, [], json_encode([
+            'exitCode' => 0,
+            'stdout' => json_encode(['html' => '<html><body>Blocked. See <a href="https://1.1.1.1/help">https://1.1.1.1/help</a></body></html>'], JSON_THROW_ON_ERROR),
+        ], JSON_THROW_ON_ERROR)));
+
+        $probe = app(NodeEgressProbe::class);
+        $probe->probeBrowserHostsIfDue();
+
+        self::assertNull($probe->currentBrowserIp('browser-a.test'));
+    }
+
     public function test_browser_host_probe_reports_invalid_playwright_output(): void
     {
         $this->prepareTelemetry();
