@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Exceptions\InvalidFilterException;
+use App\Services\Normalize\PerformerAttributeNormalizer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -33,12 +34,13 @@ final class CatalogController extends BaseApiController
         $sort = (string) $request->query('sort', $kind === 'years' ? 'name' : 'movie_count');
         $perPage = (int) $request->query('per_page', 50);
         $page = max(1, (int) $request->query('page', 1));
+        $includeUnknown = $kind === 'blood_types' && $request->boolean('include_unknown');
         if (! in_array($sort, ['movie_count', 'name'], true) || $perPage < 1 || $perPage > 200) {
             throw new InvalidFilterException('Invalid sort or per_page.', ['sort' => ['movie_count or name'], 'per_page' => ['1 to 200']]);
         }
 
-        $key = 'javmeta:catalog:' . md5(json_encode([$kind, $q, $sort, $perPage, $page], JSON_THROW_ON_ERROR));
-        $result = Cache::remember($key, 120, fn(): array => $this->load($kind, $q, $sort, $perPage, $page));
+        $key = 'javmeta:catalog:' . md5(json_encode([$kind, $q, $sort, $perPage, $page, $includeUnknown], JSON_THROW_ON_ERROR));
+        $result = Cache::remember($key, 120, fn(): array => $this->load($kind, $q, $sort, $perPage, $page, $includeUnknown));
 
         return $this->respondWithData(
             data: $result['items'],
@@ -48,10 +50,10 @@ final class CatalogController extends BaseApiController
     }
 
     /** @return array{items: list<array<string, mixed>>, total: int} */
-    private function load(string $kind, string $q, string $sort, int $perPage, int $page): array
+    private function load(string $kind, string $q, string $sort, int $perPage, int $page, bool $includeUnknown = false): array
     {
         if (isset(self::PERFORMER_KINDS[$kind])) {
-            return $this->loadPerformers(self::PERFORMER_KINDS[$kind], $q, $sort, $perPage, $page);
+            return $this->loadPerformers(self::PERFORMER_KINDS[$kind], $q, $sort, $perPage, $page, $includeUnknown);
         }
 
         $nameColumn = match ($kind) {
@@ -86,20 +88,56 @@ final class CatalogController extends BaseApiController
     }
 
     /** @return array{items: list<array{name: string, performer_count: int}>, total: int} */
-    private function loadPerformers(string $column, string $q, string $sort, int $perPage, int $page): array
+    private function loadPerformers(string $column, string $q, string $sort, int $perPage, int $page, bool $includeUnknown): array
     {
-        $base = DB::table('performers')->whereNull('canonical_performer_id')->whereNotNull($column)->where($column, '<>', '')
-            ->selectRaw($column . ' AS name, COUNT(*) AS performer_count')->groupBy($column);
-        if ($q !== '') {
-            $base->whereRaw('LOWER(' . $column . ') LIKE ?', ['%' . mb_strtolower(str_replace(['%', '_'], ['\\%', '\\_'], $q)) . '%']);
+        $normalizer = app(PerformerAttributeNormalizer::class);
+        $normalizedColumn = 'LOWER(' . $column . ')';
+        $groups = DB::table('performers')->whereNull('canonical_performer_id')->whereNotNull($column)->where($column, '<>', '')
+            ->selectRaw($normalizedColumn . ' AS raw_name, COUNT(*) AS performer_count')->groupByRaw($normalizedColumn)->get();
+        $counts = [];
+        $matchesQuery = [];
+        $unknownCount = 0;
+        foreach ($groups as $group) {
+            $rawName = (string) $group->raw_name;
+            $name = $normalizer->facetValue($column, $rawName);
+            if ($name === null) {
+                if ($column === 'blood_type') {
+                    $unknownCount += (int) $group->performer_count;
+                }
+                continue;
+            }
+            $counts[$name] = ($counts[$name] ?? 0) + (int) $group->performer_count;
+            $matchesQuery[$name] = ($matchesQuery[$name] ?? false)
+                || $q === '' || stripos($name, $q) !== false || stripos($rawName, $q) !== false;
+        }
+        if ($column === 'blood_type' && $includeUnknown) {
+            $unknownCount += (int) DB::table('performers')->whereNull('canonical_performer_id')
+                ->where(function ($query): void {
+                    $query->whereNull('blood_type')->orWhere('blood_type', '=', '');
+                })->count();
+            if ($q === '' || stripos('Unknown', $q) !== false) {
+                $counts['Unknown'] = $unknownCount;
+                $matchesQuery['Unknown'] = true;
+            }
         }
 
-        $total = (int) DB::query()->fromSub(clone $base, 'c')->count();
-        $order = $sort === 'name' ? 'name ASC' : 'performer_count DESC, name ASC';
-        $rows = DB::query()->fromSub($base, 'c')->orderByRaw($order)->forPage($page, $perPage)->get(['name', 'performer_count']);
+        $items = [];
+        foreach ($counts as $name => $count) {
+            if (! $matchesQuery[$name]) {
+                continue;
+            }
+            $items[] = ['name' => $name, 'performer_count' => $count];
+        }
+        if ($sort === 'name') {
+            usort($items, static fn(array $left, array $right): int => strcmp($left['name'], $right['name']));
+        } else {
+            usort($items, static fn(array $left, array $right): int => $right['performer_count'] <=> $left['performer_count'] ?: strcmp($left['name'], $right['name']));
+        }
+        $total = count($items);
+        $items = array_slice($items, ($page - 1) * $perPage, $perPage);
 
         return [
-            'items' => $rows->map(static fn($r): array => ['name' => (string) $r->name, 'performer_count' => (int) $r->performer_count])->all(),
+            'items' => $items,
             'total' => $total,
         ];
     }

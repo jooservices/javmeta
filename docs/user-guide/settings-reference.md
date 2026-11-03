@@ -1437,3 +1437,41 @@ Văn bản. Mã mục: `health.startup.flaresolverr_url`.
 Địa chỉ dịch vụ Playwright phụ; để trống nếu không dùng.
 
 Văn bản. Mã mục: `health.startup.playwright_url`.
+
+## Performer normalization
+
+### Nhóm máu hợp lệ
+
+Các nhóm máu chuẩn mà bộ chuẩn hóa chấp nhận: A, B, O và AB.
+
+Text list. Setting key: `normalization.blood_types`.
+
+### Cỡ cúp hợp lệ
+
+Các cỡ cúp chuẩn mà bộ chuẩn hóa chấp nhận, từ A đến K.
+
+Text list. Setting key: `normalization.cups`.
+
+### Giá trị rác trong hồ sơ
+
+Bản đồ JSON từ trường hồ sơ đến các giá trị rác hoặc giữ chỗ; khi so khớp sẽ bỏ qua hoa thường và khoảng trắng.
+
+JSON object; application-defined structure. Setting key: `normalization.junk_tokens`.
+
+### Khoảng giá trị trường hồ sơ
+
+Giới hạn tối thiểu và tối đa dạng JSON cho số đo theo centimet, ngày sinh và ngày ra mắt; giá trị tối đa của ngày có thể là today.
+
+JSON object; application-defined structure. Setting key: `normalization.field_ranges`.
+
+### Tên chuẩn và bí danh địa danh Nhật Bản
+
+Bản đồ JSON từ tỉnh, thành phố và bí danh Nhật Bản sang tên địa danh chuẩn; có thể thêm hoặc sửa bí danh tại đây.
+
+JSON object; application-defined structure. Setting key: `normalization.location_aliases`.
+
+### Kích thước lô backfill
+
+Số hồ sơ diễn viên xử lý trước mỗi mốc tiếp tục; có thể ghi đè bằng tùy chọn --chunk.
+
+Integer; from 1 to 5000. Setting key: `normalization.backfill_chunk_size`.

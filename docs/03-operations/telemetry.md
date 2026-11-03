@@ -83,6 +83,7 @@ environment.
 | `javmeta_search_embedding_backfill_missing` | `entity` | Movie or performer documents found missing from Elasticsearch or without an embedding during the latest backfill run. |
 | `javmeta_search_embedding_backfill_fixed` | `entity` | Movie or performer documents successfully indexed with an embedding during the latest backfill run. |
 | `javmeta_notification_sent_total` | `notification_key`, `channel` | Cumulative count of successful sends for each registered template. Unit: messages. Latest gauge is the total since the template row was created; use a difference between samples for sends during an interval. `environment` and `role` are attached by the shared metrics client. |
+| `javmeta_normalize_rejected_total` | `entity`, `field`, `source` | Cumulative rejected performer profile values. Unit: values. The database counter is emitted by `obs:publish-metrics`; a rising value identifies a source/field still returning junk or outside the configured range. |
 
 The seven `javmeta_crawl_run_*_1h` streams are emitted from a fixed suffix list
 in `PublishMetricsCommand`; no other dynamic metric names are generated.
@@ -94,6 +95,19 @@ and `role` labels. Its unit is successfully delivered messages. Group by key and
 channel, then compare the latest value with an earlier sample to count sends in
 that interval. Failed or skipped Telegram delivery does not increment it; a key
 with no point yet has had no successful delivery.
+
+### Performer normalization (JOOXCR-341)
+
+`javmeta_normalize_rejected_total{entity,field,source}` is a cumulative count of
+non-empty values rejected by performer normalization. Its unit is values; labels
+are the bounded entity name (`performer`), canonical field name (for example
+`blood_type`, `cup`, `height_cm`, or `location`), and source slug. Raw rejected
+values are never included. `obs:publish-metrics` exports the database-backed
+counters. Read the current grouped report over SSH with
+`php artisan performers:normalization-report`; compare that output with a later
+run or the metric samples to confirm whether xcity/avjoho placeholder counts
+have stopped increasing. The expected result after source cleanup is zero new
+rejections for those fields and sources; historical totals remain cumulative.
 
 Feed-pool metrics are emitted by `obs:publish-metrics` from the previous
 complete minute's Redis bucket. Budget, started and waiting are the latest

@@ -268,6 +268,83 @@ final class SettingsTest extends TestCase
         self::assertSame($persistedOverride, $settings->get('crawl.source_gap_overrides'));
     }
 
+    public function test_performer_normalization_ranges_and_japan_location_aliases_are_editable_database_settings(): void
+    {
+        $settings = app(SettingsService::class);
+        $bloodTypes = config('javmeta_normalization.blood_types');
+        $cups = config('javmeta_normalization.cups');
+        $junkTokens = config('javmeta_normalization.junk_tokens');
+        $ranges = config('javmeta_normalization.field_ranges');
+        $backfillChunkSize = config('javmeta_normalization.backfill_chunk_size');
+        $settings->set('normalization.blood_types', $bloodTypes);
+        $settings->set('normalization.cups', $cups);
+        $settings->set('normalization.junk_tokens', $junkTokens);
+        $settings->set('normalization.field_ranges', $ranges);
+        $settings->set('normalization.backfill_chunk_size', $backfillChunkSize);
+
+        self::assertSame($bloodTypes, $settings->get('normalization.blood_types'));
+        self::assertSame($cups, $settings->get('normalization.cups'));
+        self::assertSame($junkTokens, $settings->get('normalization.junk_tokens'));
+        self::assertSame($ranges, $settings->get('normalization.field_ranges'));
+        self::assertSame($backfillChunkSize, $settings->get('normalization.backfill_chunk_size'));
+        self::assertSame($ranges, config('javmeta_normalization.field_ranges'));
+
+        try {
+            $settings->set('normalization.blood_types', ['Trans']);
+            self::fail('Blood types outside A, B, O, and AB must be rejected.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame(['A', 'B', 'O', 'AB'], $settings->get('normalization.blood_types'));
+        }
+
+        $aliases = ['tokyo' => '東京都', '東京都' => '東京都'];
+        $settings->set('normalization.location_aliases', $aliases);
+        self::assertSame($aliases, $settings->get('normalization.location_aliases'));
+        self::assertSame($aliases, config('javmeta_normalization.location_aliases'));
+
+        foreach ([
+            ['normalization.blood_types', ['A', 'X']],
+            ['normalization.blood_types', []],
+            ['normalization.cups', ['A', 'Z']],
+            ['normalization.cups', []],
+            ['normalization.backfill_chunk_size', 0],
+            ['normalization.backfill_chunk_size', 5001],
+        ] as [$key, $value]) {
+            try {
+                $settings->set($key, $value);
+                self::fail("Invalid canonical allow-list {$key} must be rejected.");
+            } catch (\InvalidArgumentException) {
+                self::assertSame($bloodTypes, $settings->get('normalization.blood_types'));
+                self::assertSame($cups, $settings->get('normalization.cups'));
+            }
+        }
+
+        foreach ([['unknown' => ['–']], ['blood_type' => ['']]] as $invalidJunkTokens) {
+            try {
+                $settings->set('normalization.junk_tokens', $invalidJunkTokens);
+                self::fail('Junk tokens must use known fields and non-empty values.');
+            } catch (\InvalidArgumentException) {
+                self::assertSame($junkTokens, $settings->get('normalization.junk_tokens'));
+            }
+        }
+
+        foreach ([
+            ['height_cm' => ['min' => 1, 'max' => 500]],
+            ['' => '東京都'],
+            [...$ranges, 'birth_date' => ['min' => '2024-02-30', 'max' => 'today']],
+        ] as $invalid) {
+            try {
+                $key = array_key_exists('height_cm', $invalid) ? 'normalization.field_ranges' : 'normalization.location_aliases';
+                if (array_key_exists('birth_date', $invalid)) {
+                    $key = 'normalization.field_ranges';
+                }
+                $settings->set($key, $invalid);
+                self::fail('Incomplete normalization settings must be rejected.');
+            } catch (\InvalidArgumentException) {
+                self::assertSame($ranges, $settings->get('normalization.field_ranges'));
+            }
+        }
+    }
+
     public function test_malformed_stored_source_gap_json_uses_the_code_default(): void
     {
         $this->store->set('settings.crawl.source_gap_overrides', '{');
@@ -684,6 +761,13 @@ final class SettingsTest extends TestCase
         $sourceGapSetting = collect($page->json('data.settings'))->firstWhere('key', 'crawl.source_gap_overrides');
         $this->assertSame('json', $sourceGapSetting['type']);
         $this->assertSame(10000, $sourceGapSetting['max_length']);
+        $bloodTypes = collect($page->json('data.settings'))->firstWhere('key', 'normalization.blood_types');
+        $this->assertSame(['A', 'B', 'O', 'AB'], $bloodTypes['item_options']);
+        $chunkSize = collect($page->json('data.settings'))->firstWhere('key', 'normalization.backfill_chunk_size');
+        $this->assertSame('int', $chunkSize['type']);
+        $this->assertSame(5000, $chunkSize['max']);
+        $locationAliases = collect($page->json('data.settings'))->firstWhere('key', 'normalization.location_aliases');
+        $this->assertSame(500000, $locationAliases['max_length']);
 
         $this->putJson('/ui-admin/settings', ['settings' => ['queue.feed_pool_limit' => 120, 'alerts.enabled' => false]])->assertOk()->assertJsonPath('data.applied.0', 'queue.feed_pool_limit')->assertJsonPath('data.apply_after_seconds', 30);
         $this->assertSame(120, collect($this->getJson('/ui-admin/settings')->json('data.settings'))->firstWhere('key', 'queue.feed_pool_limit')['value']);

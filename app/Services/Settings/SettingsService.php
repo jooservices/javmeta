@@ -638,6 +638,7 @@ final class SettingsService
         }
         if ($type === 'string_list') {
             $items = $this->validateStringList($key, $value, $fail);
+            $items = PerformerNormalizationSettingsValidator::normalizeAllowList($key, $items, $fail);
             if ($key === 'report.channels' && $items === []) {
                 $fail('select at least one delivery channel');
             }
@@ -796,10 +797,10 @@ final class SettingsService
         if (! is_array($value) || (array_is_list($value) && $value !== [])) {
             $fail('must be a JSON object');
         }
-        if ($maxLength !== null && mb_strlen(json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)) > $maxLength) {
+        if ($maxLength !== null && mb_strlen(json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) > $maxLength) {
             $fail('is too long');
         }
-        if (count($value) > (int) config('javmeta_settings.validation.max_json_entries', 50)) {
+        if (count($value) > (int) ($definition['max_entries'] ?? config('javmeta_settings.validation.max_json_entries', 50))) {
             $fail('has too many entries');
         }
         $this->validateJsonShape($key, (string) ($definition['shape'] ?? ''), $value, $fail);
@@ -869,6 +870,9 @@ final class SettingsService
      */
     private function validateJsonShape(string $key, string $shape, array $value, callable $fail): void
     {
+        if (PerformerNormalizationSettingsValidator::validateJsonShape($shape, $value, $fail)) {
+            return;
+        }
         if ($shape === 'retry_fetch_profile') {
             app(RetryFetchProfileValidator::class)->validate($value, $fail);
 

@@ -37,6 +37,7 @@ return [
         'capture' => 'Ghi luồng',
         'ui_security' => 'Bảo mật giao diện',
         'startup_health' => 'Sức khỏe khi khởi động',
+        'normalization' => 'Performer normalization',
     ],
 
     'validation' => [
@@ -287,5 +288,12 @@ return [
         'domains.command_center_host' => ['group' => 'domains', 'label' => 'Tên miền Command Center', 'description' => 'Trang vận hành (/ops). Đăng nhập ở tên miền này vào thẳng /ops; giao diện XCrawler trỏ nút Vận hành về đây. Để trống nếu không tách tên miền.', 'type' => 'string', 'config' => ['javmeta_domains.command_center_host']],
         'backup.manifest_path' => ['group' => 'backup', 'label' => 'Đường dẫn manifest sao lưu', 'description' => 'Tệp trạng thái được lệnh backup cập nhật sau khi hoàn tất.', 'type' => 'string', 'legacy_env' => ['JAVMETA_BACKUP_MANIFEST'], 'config' => ['backup.manifest_path']],
         'backup.stale_after_seconds' => ['group' => 'cleanup', 'label' => 'Bản sao lưu coi là cũ sau (giây)', 'description' => 'Dùng cho cảnh báo sao lưu hằng phút.', 'type' => 'int', 'legacy_env' => ['JAVMETA_BACKUP_STALE_AFTER_SECONDS'], 'config' => ['backup.stale_after_seconds'], 'min' => 3600, 'max' => 2592000],
+
+        'normalization.blood_types' => ['group' => 'normalization', 'label' => 'Nhóm máu hợp lệ', 'description' => 'Các nhóm máu chuẩn mà bộ chuẩn hóa chấp nhận: A, B, O và AB.', 'type' => 'string_list', 'item_options' => ['A', 'B', 'O', 'AB'], 'config' => ['javmeta_normalization.blood_types']],
+        'normalization.cups' => ['group' => 'normalization', 'label' => 'Cỡ cúp hợp lệ', 'description' => 'Các cỡ cúp chuẩn mà bộ chuẩn hóa chấp nhận, từ A đến K.', 'type' => 'string_list', 'item_options' => ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'], 'config' => ['javmeta_normalization.cups']],
+        'normalization.junk_tokens' => ['group' => 'normalization', 'label' => 'Giá trị rác trong hồ sơ', 'description' => 'Bản đồ JSON từ trường hồ sơ đến các giá trị rác hoặc giữ chỗ; khi so khớp sẽ bỏ qua hoa thường và khoảng trắng.', 'type' => 'json', 'shape' => 'performer_junk_tokens', 'max_entries' => 10, 'max_length' => 12000, 'config' => ['javmeta_normalization.junk_tokens']],
+        'normalization.field_ranges' => ['group' => 'normalization', 'label' => 'Khoảng giá trị trường hồ sơ', 'description' => 'Giới hạn tối thiểu và tối đa dạng JSON cho số đo theo centimet, ngày sinh và ngày ra mắt; giá trị tối đa của ngày có thể là today.', 'type' => 'json', 'shape' => 'performer_field_ranges', 'max_entries' => 6, 'max_length' => 2000, 'config' => ['javmeta_normalization.field_ranges']],
+        'normalization.location_aliases' => ['group' => 'normalization', 'label' => 'Tên chuẩn và bí danh địa danh Nhật Bản', 'description' => 'Bản đồ JSON từ tỉnh, thành phố và bí danh Nhật Bản sang tên địa danh chuẩn; có thể thêm hoặc sửa bí danh tại đây.', 'type' => 'json', 'shape' => 'performer_location_aliases', 'max_entries' => 7000, 'max_length' => 500000, 'config' => ['javmeta_normalization.location_aliases']],
+        'normalization.backfill_chunk_size' => ['group' => 'normalization', 'label' => 'Kích thước lô backfill', 'description' => 'Số hồ sơ diễn viên xử lý trước mỗi mốc tiếp tục; có thể ghi đè bằng tùy chọn --chunk.', 'type' => 'int', 'min' => 1, 'max' => 5000, 'config' => ['javmeta_normalization.backfill_chunk_size']],
     ],
 ];

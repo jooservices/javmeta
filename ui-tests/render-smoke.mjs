@@ -152,6 +152,22 @@ assert.match(st, /<select id="st-queue\.feed_interval_seconds" data-key="queue\.
 for (const value of [5, 10, 15, 30, 60]) assert.match(st, new RegExp(`<option value="${value}"${value === 10 ? ' selected' : ''}>${value}</option>`));
 assert.match(st, /Báo cáo/);
 assert.match(st, /report\.interval_minutes/);
+settingsSample.data.groups.normalization = 'Performer normalization';
+settingsSample.data.settings.push(
+  { key: 'normalization.blood_types', group: 'normalization', label: 'Allowed blood types', description: 'A, B, O, AB', type: 'string_list', item_options: ['A', 'B', 'O', 'AB'], source: 'default', value: ['A', 'B', 'O', 'AB'] },
+  { key: 'normalization.cups', group: 'normalization', label: 'Allowed cup sizes', description: 'A through K', type: 'string_list', item_options: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'], source: 'default', value: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'] },
+  { key: 'normalization.field_ranges', group: 'normalization', label: 'Performer profile field ranges', description: 'Measurement and date ranges.', type: 'json', max_length: 2000, value: { height_cm: { min: 100, max: 250 } } },
+  { key: 'normalization.location_aliases', group: 'normalization', label: 'Japanese prefecture and city aliases', description: 'Canonical names and aliases.', type: 'json', max_length: 500000, value: { Tokyo: '東京都', '東京都': '東京都' } },
+);
+globalThis.innerWidth = 375;
+const normalizationSettings = await run('normalization-settings', await load('views/settings.js'), { params: {}, query: {} });
+assert.match(normalizationSettings, /Performer normalization/);
+assert.match(normalizationSettings, /normalization\.blood_types/);
+assert.match(normalizationSettings, /normalization\.cups/);
+assert.match(normalizationSettings, /data-type="string_list" value="K" checked/);
+assert.match(normalizationSettings, /textarea id="st-normalization\.location_aliases"[^>]+maxlength="500000"/);
+assert.match(normalizationSettings, /style="min-width:min\(100%,420px\);font-family:monospace"/);
+globalThis.innerWidth = 1280;
 globalThis.innerWidth = 375;
 const reportView = await load('views/report.js');
 const reportHtml = await run('report', reportView, { params: {}, query: {} });

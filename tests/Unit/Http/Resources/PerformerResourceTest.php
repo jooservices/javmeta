@@ -39,6 +39,7 @@ final class PerformerResourceTest extends TestCase
         $performer = $this->performer([
             'birth_date' => '1990-01-02',
             'debut_date' => '2010-03-04',
+            'blood_rh' => '+',
             'attrs' => ['note' => 'profile'],
             'movies_count' => 2,
         ]);
@@ -51,6 +52,7 @@ final class PerformerResourceTest extends TestCase
 
         self::assertSame('1990-01-02', $payload['birth_date']);
         self::assertSame('2010-03-04', $payload['debut_date']);
+        self::assertSame('+', $payload['blood_rh']);
         self::assertSame(['Aoi A.'], $payload['aliases']);
         self::assertSame(['note' => 'profile'], $payload['attrs']);
         self::assertSame(2, $payload['linked_title_count']);
@@ -103,6 +105,7 @@ final class PerformerResourceTest extends TestCase
             aliases: ['Aoi A.'],
             profileUrl: 'https://javdb.test/actors/42',
             imageUrl: 'https://images.test/aoi.jpg',
+            bloodRh: '+',
         );
         $request = Request::create('/api/v1/performers/actor-42');
 
@@ -113,6 +116,7 @@ final class PerformerResourceTest extends TestCase
         self::assertSame('actor-42', $summary['id']);
         self::assertSame(['Aoi A.'], $summary['aliases']);
         self::assertNull($detail['birth_date']);
+        self::assertNull($detail['blood_rh']);
         self::assertSame([], $detail['attrs']);
         self::assertSame(['images' => [], 'galleries' => []], $detail['photos']);
     }
