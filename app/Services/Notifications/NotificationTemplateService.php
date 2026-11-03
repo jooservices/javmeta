@@ -13,7 +13,7 @@ use Throwable;
 
 final class NotificationTemplateService
 {
-    private const ENABLED_CACHE_PREFIX = 'javmeta:notification-policy-enabled:';
+    private const ENABLED_CACHE_PREFIX = 'javmeta:notification-policy-enabled:v2:';
 
     public function __construct(
         private readonly NotificationRegistry $registry,
@@ -70,7 +70,7 @@ final class NotificationTemplateService
 
         $row = DB::table('notification_templates')->where('key', $key)->first();
         $template = $row === null ? $this->defaultRow($key, $definition) : $this->hydrate($row, $definition);
-        $this->rememberEnabled($key, (bool) $template['enabled']);
+        $this->rememberEnabled($key, (bool) $template['enabled'], (int) $template['version']);
 
         return $template;
     }
@@ -83,7 +83,11 @@ final class NotificationTemplateService
             return null;
         }
 
-        return is_bool($enabled) ? $enabled : null;
+        if (! is_array($enabled) || ! is_bool($enabled['enabled'] ?? null)) {
+            return null;
+        }
+
+        return $enabled['enabled'];
     }
 
     /** @return array<string, mixed>|null */
@@ -267,10 +271,19 @@ final class NotificationTemplateService
         ]);
     }
 
-    private function rememberEnabled(string $key, bool $enabled): void
+    private function rememberEnabled(string $key, bool $enabled, int $version): void
     {
+        $cacheKey = self::ENABLED_CACHE_PREFIX . hash('sha256', $key);
         try {
-            Cache::forever(self::ENABLED_CACHE_PREFIX . hash('sha256', $key), $enabled);
+            Cache::lock($cacheKey . ':lock', 10)->block(5, function () use ($cacheKey, $enabled, $version): void {
+                $cached = Cache::get($cacheKey);
+                $cachedVersion = is_array($cached) ? (int) ($cached['version'] ?? -1) : -1;
+                if ($cachedVersion > $version) {
+                    return;
+                }
+
+                Cache::forever($cacheKey, ['version' => $version, 'enabled' => $enabled]);
+            });
         } catch (Throwable) {
             // The policy database remains authoritative when the cache is unavailable.
         }

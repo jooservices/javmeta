@@ -277,7 +277,9 @@ final class ReportDataBuilder
             'status' => $row->resolved_at !== null || ! in_array($row->notification_key, ['backup.stale', 'backup.manifest_missing'], true)
                 ? 'Successful'
                 : 'Failed or stale',
-            'at' => (string) $row->first_seen_at,
+            'at' => (string) ($row->resolved_at !== null && in_array($row->notification_key, ['backup.stale', 'backup.manifest_missing'], true)
+                ? $row->resolved_at
+                : $row->first_seen_at),
         ];
     }
 

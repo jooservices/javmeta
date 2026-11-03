@@ -1011,6 +1011,8 @@ final class SettingsService
             throw new InvalidArgumentException('browser.gateway_client_timeout_ms must exceed browser.gateway_wait_timeout_ms.');
         }
 
-        (new AlertThresholdOrderValidator())->validate($candidate);
+        $validateSuccessRatePair = array_key_exists('alerts.success_rate_min_percent', $overrides)
+            || array_key_exists('alerts.success_rate_critical_percent', $overrides);
+        (new AlertThresholdOrderValidator())->validate($candidate, $validateSuccessRatePair);
     }
 }

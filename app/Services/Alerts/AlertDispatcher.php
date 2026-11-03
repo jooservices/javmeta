@@ -104,6 +104,8 @@ final class AlertDispatcher
             $policy = app(NotificationPolicyDispatcher::class);
             $decision = $policy->prepare($templateKey, $notificationContext);
             if ($decision !== null && ! $decision['allowed']) {
+                $this->refreshActiveCause($debounceKey);
+
                 return false;
             }
             if ($decision !== null) {
@@ -129,8 +131,8 @@ final class AlertDispatcher
             Cache::put($this->activeKey($debounceKey), 1, now()->addDays(7));
         } elseif ($templateKey === null && $ttl > 0) {
             Cache::forget($cacheKey);
-        } elseif ($templateKey !== null && Cache::has($this->activeKey($debounceKey))) {
-            Cache::put($this->activeKey($debounceKey), 1, now()->addDays(7));
+        } elseif ($templateKey !== null) {
+            $this->refreshActiveCause($debounceKey);
         }
 
         return $delivered;
@@ -206,5 +208,13 @@ final class AlertDispatcher
     private function activeKey(string $debounceKey): string
     {
         return 'javmeta:alert-active:' . hash('sha256', $debounceKey);
+    }
+
+    private function refreshActiveCause(string $debounceKey): void
+    {
+        $key = $this->activeKey($debounceKey);
+        if (Cache::has($key)) {
+            Cache::put($key, 1, now()->addDays(7));
+        }
     }
 }

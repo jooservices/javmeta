@@ -309,6 +309,56 @@ final class AlertEvaluationServiceTest extends TestCase
         self::assertSame(3, $recoveryAttempts);
     }
 
+    public function test_superseded_recovery_does_not_resolve_a_new_episode_policy_cause(): void
+    {
+        $this->setSuccessRateTier('critical');
+        $policyService = app(NotificationPolicyService::class);
+        $policy = $policyService->get('crawl.success_rate_low');
+        self::assertNotNull($policy);
+        $policyService->save('crawl.success_rate_low', [...$policy, 'cooldown_minutes' => 0], null);
+        config(['javmeta_alerts.recovery_retry_max_attempts' => 2]);
+        $openAttempts = 0;
+        $recoveryAttempts = 0;
+        $channel = new class ($openAttempts, $recoveryAttempts) implements AlertChannel {
+            public function __construct(private int &$openAttempts, private int &$recoveryAttempts) {}
+
+            public function send(string $subject, string $body, array $context = []): bool
+            {
+                if (($context['alert_state'] ?? '') === 'resolved') {
+                    $this->recoveryAttempts++;
+
+                    return false;
+                }
+
+                $this->openAttempts++;
+
+                return true;
+            }
+        };
+        $this->bindChannels(['telegram' => $channel]);
+        $this->useSnapshot($this->snapshot(100, 80));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+
+        $this->travel(31)->minutes();
+        $this->useSnapshot($this->snapshot(100, 90));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        $superseded = AlertEvent::query()->where('rule', 'success_rate')->firstOrFail();
+        self::assertNotNull($superseded->getAttribute('resolved_at'));
+        self::assertNull($superseded->getAttribute('recovery_completed_at'));
+        self::assertSame(1, $recoveryAttempts);
+
+        $this->travel(31)->minutes();
+        $this->useSnapshot($this->snapshot(100, 80));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+
+        $active = AlertEvent::query()->where('rule', 'success_rate')->whereNull('resolved_at')->firstOrFail();
+        self::assertNotNull($superseded->fresh()->getAttribute('recovery_completed_at'));
+        self::assertSame(1, $recoveryAttempts);
+        self::assertSame(2, $openAttempts);
+        self::assertNull(DB::table('notification_policy_events')->where('notification_key', 'crawl.success_rate_low')->value('resolved_at'));
+        self::assertNull($active->getAttribute('resolved_at'));
+    }
+
     public function test_alert_evaluation_lock_prevents_parallel_episode_creation(): void
     {
         $this->useSnapshot($this->snapshot(100, 80));

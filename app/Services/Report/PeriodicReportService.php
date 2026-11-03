@@ -81,6 +81,7 @@ final class PeriodicReportService
         $slotReservationKey = $slot === null ? null : 'javmeta:report:reserved-slot:' . $type . ':' . $slot;
         $slotReserved = false;
         $snapshotStored = false;
+        $sent = false;
         $policyDispatcher = null;
         $policyDecision = null;
 
@@ -103,6 +104,10 @@ final class PeriodicReportService
                 'notification_scheduled' => $scheduledFor !== null,
             ]);
             if ($policyDecision !== null && ! $policyDecision['allowed']) {
+                if ($slotReserved) {
+                    Cache::forget($slotReservationKey);
+                }
+
                 return ['sent' => false, 'duplicate' => true, 'text' => '', 'result' => 'suppressed'];
             }
 
@@ -141,7 +146,7 @@ final class PeriodicReportService
 
             return ['sent' => $sent, 'duplicate' => false, 'text' => $text, 'result' => $result];
         } catch (Throwable) {
-            if ($slotReserved && ! $snapshotStored && $slotReservationKey !== null) {
+            if ($slotReserved && ! $sent && ! $snapshotStored && $slotReservationKey !== null) {
                 try {
                     Cache::forget($slotReservationKey);
                 } catch (Throwable) {
@@ -149,7 +154,11 @@ final class PeriodicReportService
                 }
             }
             if ($policyDispatcher !== null && $policyDecision !== null) {
-                $policyDispatcher->release($policyDecision);
+                if ($sent) {
+                    $policyDispatcher->recordSent($policyDecision);
+                } else {
+                    $policyDispatcher->release($policyDecision);
+                }
             }
             try {
                 $this->metrics->record('failed');

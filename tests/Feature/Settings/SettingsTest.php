@@ -114,6 +114,17 @@ final class SettingsTest extends TestCase
         }
     }
 
+    public function test_saving_an_unrelated_setting_ignores_an_existing_invalid_success_rate_pair(): void
+    {
+        $this->store->set('settings.alerts.success_rate_min_percent', 60);
+        $settings = app(SettingsService::class);
+
+        $settings->set('alerts.enabled', false);
+
+        self::assertSame(60, $settings->get('alerts.success_rate_min_percent'));
+        self::assertFalse($settings->get('alerts.enabled'));
+    }
+
     public function test_feed_interval_accepts_only_supported_values_and_can_be_rolled_back(): void
     {
         $settings = app(SettingsService::class);

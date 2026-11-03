@@ -12,7 +12,7 @@ use Tests\TestCase;
 
 final class NotificationPolicyMigrationTest extends TestCase
 {
-    public function test_rollback_clears_daily_slots_before_restoring_the_original_unique_index(): void
+    public function test_rollback_preserves_daily_type_while_restoring_the_original_unique_index(): void
     {
         $connection = 'notification_policy_rollback_test';
         $originalConnection = (string) config('database.default');
@@ -54,9 +54,10 @@ final class NotificationPolicyMigrationTest extends TestCase
             $migration = require database_path('migrations/2026_11_03_000005_add_notification_policy.php');
             $migration->down();
 
-            self::assertFalse(Schema::hasColumn('report_snapshots', 'report_type'));
+            self::assertTrue(Schema::hasColumn('report_snapshots', 'report_type'));
             self::assertSame(1, DB::table('report_snapshots')->whereNull('scheduled_for')->count());
             self::assertSame(1, DB::table('report_snapshots')->where('scheduled_for', $scheduledFor)->count());
+            self::assertSame(1, DB::table('report_snapshots')->where('report_type', 'daily')->whereNull('scheduled_for')->count());
             try {
                 DB::table('report_snapshots')->insert(['scheduled_for' => $scheduledFor]);
                 self::fail('Rollback did not restore the scheduled_for uniqueness constraint.');

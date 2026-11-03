@@ -118,6 +118,11 @@ final class ReportDataBuilderTest extends TestCase
         $data = app(ReportDataBuilder::class)->build($at, 1440);
 
         self::assertSame('Successful', $data['backup']['status']);
+        self::assertSame($at->subMinutes(30)->toDateTimeString(), $data['backup']['at']);
+
+        DB::table('notification_policy_events')->where('notification_key', 'backup.stale')->update(['notification_key' => 'backup.success']);
+        $nonFailure = app(ReportDataBuilder::class)->build($at, 1440);
+        self::assertSame($at->subHour()->toDateTimeString(), $nonFailure['backup']['at']);
     }
 
     public function test_daily_report_labels_the_actual_retained_node_sample_span(): void

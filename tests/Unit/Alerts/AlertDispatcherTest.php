@@ -7,6 +7,7 @@ namespace Tests\Unit\Alerts;
 use App\Contracts\AlertNotifier;
 use App\Notifications\TelegramAlertNotifier;
 use App\Services\Alerts\AlertDispatcher;
+use App\Services\Notifications\NotificationTemplateService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -168,6 +169,57 @@ final class AlertDispatcherTest extends TestCase
 
         self::assertTrue($dispatcher->resolveTemplate('crawl-stalled-ttl', 'crawl.stalled_recovered'));
         self::assertCount(3, ClientBuilder::recorded());
+        CarbonImmutable::setTestNow();
+    }
+
+    public function test_policy_denial_refreshes_an_existing_active_cause(): void
+    {
+        config([
+            'cache.default' => 'array',
+            'javmeta_alerts.telegram.bot_token' => 'tok',
+            'javmeta_alerts.telegram.chat_id' => '42',
+            'laravel-notifications.channels.telegram.bot_token' => 'tok',
+            'laravel-notifications.channels.telegram.chat_id' => '42',
+        ]);
+        Cache::store('array')->flush();
+        CarbonImmutable::setTestNow('2026-11-03 12:00:00 UTC');
+        ClientBuilder::fake()->respond(
+            'POST',
+            '*',
+            (new TestResponseSequence())
+                ->push(TestResponse::json(['ok' => true]))
+                ->push(TestResponse::json(['ok' => true])),
+        );
+        $templates = app(NotificationTemplateService::class);
+        $template = $templates->get('crawl.stalled');
+        self::assertNotNull($template);
+        $client = ClientBuilder::create()->withBaseUri('https://api.telegram.org/')->build();
+        $dispatcher = new AlertDispatcher(new TelegramAlertNotifier($client));
+
+        self::assertTrue($dispatcher->sendTemplate('crawl-stalled-denied-ttl', 'crawl.stalled'));
+        CarbonImmutable::setTestNow(CarbonImmutable::now()->addDays(6));
+        $templates->save(
+            'crawl.stalled',
+            (string) $template['title_template'],
+            (string) $template['body_template'],
+            false,
+            (string) $template['default_severity'],
+            null,
+        );
+        self::assertFalse($dispatcher->sendTemplate('crawl-stalled-denied-ttl', 'crawl.stalled'));
+
+        CarbonImmutable::setTestNow(CarbonImmutable::now()->addDays(2));
+        $templates->save(
+            'crawl.stalled',
+            (string) $template['title_template'],
+            (string) $template['body_template'],
+            true,
+            (string) $template['default_severity'],
+            null,
+        );
+
+        self::assertTrue($dispatcher->resolveTemplate('crawl-stalled-denied-ttl', 'crawl.stalled_recovered'));
+        self::assertCount(2, ClientBuilder::recorded());
         CarbonImmutable::setTestNow();
     }
 }

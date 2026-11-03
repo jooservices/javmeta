@@ -10,6 +10,7 @@ use App\Services\Report\PeriodicReportService;
 use App\Services\Report\ReportDataBuilder;
 use App\Services\Report\ReportMetrics;
 use App\Services\Report\ReportRenderer;
+use App\Services\Notifications\NotificationTemplateService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -78,7 +79,7 @@ final class PeriodicReportServiceTest extends TestCase
         self::assertSame(2, ReportSnapshot::query()->where('report_type', 'daily')->count());
     }
 
-    public function test_snapshot_failure_releases_policy_and_slot_reservations_for_retry(): void
+    public function test_successful_delivery_keeps_slot_and_policy_send_when_snapshot_storage_fails(): void
     {
         $channel = $this->recordingChannel();
         $service = $this->service($channel);
@@ -94,12 +95,47 @@ final class PeriodicReportServiceTest extends TestCase
 
         CarbonImmutable::setTestNow($slot);
         self::assertSame('failed', $service->sendDailyScheduled($slot)['result']);
-        self::assertFalse(Cache::has($slotKey));
+        self::assertTrue(Cache::has($slotKey));
         self::assertNull(DB::table('notification_policy_events')->where('notification_key', 'report.daily')->value('reserved_at'));
+        self::assertNotNull(DB::table('notification_policy_events')->where('notification_key', 'report.daily')->value('last_sent_at'));
 
+        self::assertSame('duplicate', $service->sendDailyScheduled($slot)['result']);
+        self::assertCount(1, $channel->deliveries);
+        self::assertSame(0, ReportSnapshot::query()->where('report_type', 'daily')->count());
+    }
+
+    public function test_policy_suppression_releases_the_scheduled_slot_for_a_retry(): void
+    {
+        $channel = $this->recordingChannel();
+        $service = $this->service($channel);
+        $slot = CarbonImmutable::parse('2026-11-03 08:00:00 UTC');
+        $slotKey = 'javmeta:report:reserved-slot:daily:' . $slot->utc()->format('Y-m-d-H-i');
+        $templates = app(NotificationTemplateService::class);
+        $template = $templates->get('report.daily');
+        self::assertNotNull($template);
+        $templates->save(
+            'report.daily',
+            (string) $template['title_template'],
+            (string) $template['body_template'],
+            false,
+            (string) $template['default_severity'],
+            null,
+        );
+
+        CarbonImmutable::setTestNow($slot);
+        self::assertSame('suppressed', $service->sendDailyScheduled($slot)['result']);
+        self::assertFalse(Cache::has($slotKey));
+
+        $templates->save(
+            'report.daily',
+            (string) $template['title_template'],
+            (string) $template['body_template'],
+            true,
+            (string) $template['default_severity'],
+            null,
+        );
         self::assertTrue($service->sendDailyScheduled($slot)['sent']);
-        self::assertCount(2, $channel->deliveries);
-        self::assertSame(1, ReportSnapshot::query()->where('report_type', 'daily')->count());
+        self::assertCount(1, $channel->deliveries);
     }
 
     private function service(ReportChannel $channel): PeriodicReportService

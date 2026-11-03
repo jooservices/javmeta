@@ -158,10 +158,10 @@ return new class extends Migration {
         Schema::dropIfExists('notification_policy_events');
 
         if (Schema::hasTable('report_snapshots') && Schema::hasColumn('report_snapshots', 'report_type')) {
+            // Keep report_type so retained daily snapshots remain identifiable after rollback and reapplication.
             DB::table('report_snapshots')->where('report_type', 'daily')->update(['scheduled_for' => null]);
             if (DB::getDriverName() === 'pgsql') {
                 $this->withLockTimeout(static fn(): bool => DB::statement('DROP INDEX CONCURRENTLY IF EXISTS report_snapshots_type_slot_unique'));
-                $this->withLockTimeout(static fn(): bool => DB::statement('ALTER TABLE report_snapshots DROP COLUMN IF EXISTS report_type'));
                 $this->createConcurrentIndex(
                     'report_snapshots_scheduled_for_unique',
                     'CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS report_snapshots_scheduled_for_unique ON report_snapshots (scheduled_for)',
@@ -169,7 +169,6 @@ return new class extends Migration {
             } else {
                 Schema::table('report_snapshots', static function (Blueprint $table): void {
                     $table->dropUnique('report_snapshots_type_slot_unique');
-                    $table->dropColumn('report_type');
                     $table->unique('scheduled_for', 'report_snapshots_scheduled_for_unique');
                 });
             }

@@ -226,13 +226,22 @@ final class AlertEvaluationService
 
     private function retryPendingRecoveries(): void
     {
+        $openRules = array_fill_keys(AlertEvent::query()->whereNull('resolved_at')->pluck('rule')->all(), true);
+
         AlertEvent::query()
             ->whereNotNull('resolved_at')
             ->whereNull('recovery_completed_at')
             ->orderBy('resolved_at')
             ->get()
-            ->each(function (AlertEvent $event): void {
+            ->each(function (AlertEvent $event) use ($openRules): void {
                 $rule = (string) $event->getAttribute('rule');
+                if (isset($openRules[$rule])) {
+                    $event->setAttribute('recovery_completed_at', now());
+                    $event->save();
+
+                    return;
+                }
+
                 $condition = [
                     'severity' => 'info',
                     'value' => (float) $event->getAttribute('value'),

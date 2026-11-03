@@ -223,15 +223,17 @@ final class MigrationsTest extends BaseTestCase
         $migration = require database_path('migrations/2026_11_03_000005_add_notification_policy.php');
         $migration->down();
 
-        self::assertFalse(Schema::hasColumn('report_snapshots', 'report_type'));
+        self::assertTrue(Schema::hasColumn('report_snapshots', 'report_type'));
         self::assertSame(1, DB::table('report_snapshots')->whereNull('scheduled_for')->count());
         self::assertSame(1, DB::table('report_snapshots')->where('scheduled_for', $scheduledFor)->count());
+        self::assertSame('daily', DB::table('report_snapshots')->where('rendered_text', 'Daily report')->value('report_type'));
         $this->assertIndexState('report_snapshots_scheduled_for_unique', true);
         self::assertNull(DB::selectOne('SELECT to_regclass(?) AS index_name', ['report_snapshots_type_slot_unique'])?->index_name);
 
         $migration->up();
 
         self::assertTrue(Schema::hasColumn('report_snapshots', 'report_type'));
+        self::assertSame('daily', DB::table('report_snapshots')->where('rendered_text', 'Daily report')->value('report_type'));
         $this->assertIndexState('report_snapshots_type_slot_unique', true);
         self::assertNull(DB::selectOne('SELECT to_regclass(?) AS index_name', ['report_snapshots_scheduled_for_unique'])?->index_name);
     }

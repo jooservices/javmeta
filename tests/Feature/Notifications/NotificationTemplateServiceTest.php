@@ -8,6 +8,8 @@ use App\Services\Notifications\NotificationRegistry;
 use App\Services\Notifications\NotificationTemplateService;
 use App\Observability\NotificationMetrics;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -113,5 +115,44 @@ final class NotificationTemplateServiceTest extends TestCase
         self::assertSame(2, $point['value']);
         self::assertSame('telegram', $point['labels']['channel']);
         self::assertSame(2, $service->get('follow.match')['sent_count']);
+    }
+
+    public function test_stale_template_read_cannot_replace_the_enabled_cache_after_a_save(): void
+    {
+        config(['cache.default' => 'array']);
+        Cache::store('array')->flush();
+        $service = app(NotificationTemplateService::class);
+        $template = $service->get('crawl.dispatch_delayed');
+        self::assertNotNull($template);
+        $service->save(
+            'crawl.dispatch_delayed',
+            (string) $template['title_template'],
+            (string) $template['body_template'],
+            true,
+            (string) $template['default_severity'],
+            null,
+        );
+
+        $saveStarted = false;
+        DB::listen(function (QueryExecuted $query) use ($service, $template, &$saveStarted): void {
+            if ($saveStarted || ! str_starts_with(strtolower($query->sql), 'select') || ! str_contains($query->sql, 'notification_templates')) {
+                return;
+            }
+            $saveStarted = true;
+            $service->save(
+                'crawl.dispatch_delayed',
+                (string) $template['title_template'],
+                (string) $template['body_template'],
+                false,
+                (string) $template['default_severity'],
+                null,
+            );
+        });
+
+        $staleRead = $service->get('crawl.dispatch_delayed');
+
+        self::assertTrue($saveStarted);
+        self::assertTrue($staleRead['enabled']);
+        self::assertFalse($service->lastKnownEnabled('crawl.dispatch_delayed'));
     }
 }
