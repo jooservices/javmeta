@@ -1011,10 +1011,8 @@ final class SettingsService
             throw new InvalidArgumentException('browser.gateway_client_timeout_ms must exceed browser.gateway_wait_timeout_ms.');
         }
 
-        $dispatchWarning = (int) $candidate('alerts.crawl_dispatch_warning_seconds');
-        $dispatchCritical = (int) $candidate('alerts.crawl_dispatch_critical_seconds');
-        if ($dispatchCritical < $dispatchWarning) {
-            throw new InvalidArgumentException('alerts.crawl_dispatch_critical_seconds must be at least alerts.crawl_dispatch_warning_seconds.');
-        }
+        $validateSuccessRatePair = array_key_exists('alerts.success_rate_min_percent', $overrides)
+            || array_key_exists('alerts.success_rate_critical_percent', $overrides);
+        (new AlertThresholdOrderValidator())->validate($candidate, $validateSuccessRatePair);
     }
 }

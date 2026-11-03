@@ -58,6 +58,7 @@ Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static funct
     Route::get('/ui-admin/keys/{id}/usage', [UiAdminController::class, 'usage'])->whereNumber('id');
     Route::delete('/ui-admin/keys/{id}', [UiAdminController::class, 'revoke'])->whereNumber('id');
     Route::get('/ui-admin/report/periodic', [UiReportController::class, 'show']);
+    Route::get('/ui-admin/report/daily', [UiReportController::class, 'showDaily']);
     Route::post('/ui-admin/report/periodic/send-now', [UiReportController::class, 'sendNow']);
     Route::get('/ui-admin/report/{type}', [UiAdminController::class, 'report']);
     Route::get('/ui-me/marks', [UiMarksController::class, 'index']);

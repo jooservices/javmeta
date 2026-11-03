@@ -11,6 +11,7 @@ use App\Services\Alerts\AlertChannelDispatcher;
 use App\Services\Alerts\AlertDispatcher;
 use App\Services\Alerts\AlertSnapshotReader;
 use App\Services\Notifications\NotificationTemplateService;
+use App\Services\Notifications\NotificationPolicyService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -53,6 +54,7 @@ final class AlertEvaluationServiceTest extends TestCase
             'javmeta_alerts.evaluate_interval_seconds' => 60,
             'javmeta_alerts.window_minutes' => 15,
             'javmeta_alerts.success_rate_min_percent' => 85,
+            'javmeta_alerts.success_rate_critical_percent' => 70,
             'javmeta_alerts.blocked_ratio_max_percent' => 10,
             'javmeta_alerts.min_attempts_in_window' => 100,
             'javmeta_alerts.pg_connections_max' => 45,
@@ -71,25 +73,25 @@ final class AlertEvaluationServiceTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_low_success_rate_notifies_once_per_cooldown_and_sends_one_recovery(): void
+    public function test_low_success_rate_is_collected_without_a_standalone_or_recovery_message(): void
     {
         $snapshot = $this->snapshot(100, 80);
         $this->useSnapshot($snapshot);
 
         $this->artisan('alerts:evaluate')->assertSuccessful();
         $this->artisan('alerts:evaluate')->assertSuccessful();
-        self::assertCount(1, $this->sent);
-        self::assertNotNull(AlertEvent::query()->where('rule', 'success_rate')->firstOrFail()->getAttribute('notified_at'));
+        self::assertCount(0, $this->sent);
+        self::assertNull(AlertEvent::query()->where('rule', 'success_rate')->firstOrFail()->getAttribute('notified_at'));
         self::assertNull(AlertEvent::query()->where('rule', 'source_success_rate:javdb')->firstOrFail()->getAttribute('notified_at'));
         self::assertNull(AlertEvent::query()->firstOrFail()->getAttribute('resolved_at'));
 
         $this->travel(29)->minutes();
         $this->artisan('alerts:evaluate')->assertSuccessful();
-        self::assertCount(1, $this->sent);
+        self::assertCount(0, $this->sent);
 
         $this->travel(1)->minutes();
         $this->artisan('alerts:evaluate')->assertSuccessful();
-        self::assertCount(2, $this->sent);
+        self::assertCount(0, $this->sent);
 
         $this->useSnapshot($this->snapshot(100, 90));
         $this->travel(1)->minute();
@@ -98,16 +100,13 @@ final class AlertEvaluationServiceTest extends TestCase
 
         self::assertNotNull(AlertEvent::query()->where('rule', 'success_rate')->firstOrFail()->getAttribute('resolved_at'));
         self::assertNotNull(AlertEvent::query()->where('rule', 'source_success_rate:javdb')->firstOrFail()->getAttribute('resolved_at'));
-        self::assertCount(3, $this->sent);
+        self::assertCount(0, $this->sent);
         self::assertNotNull(AlertEvent::query()->firstOrFail()->getAttribute('resolved_at'));
-        self::assertSame('resolved', $this->sent[2][2]['alert_state']);
-        self::assertSame('info', $this->sent[2][2]['severity']);
-        self::assertStringContainsString('[RESOLVED]', $this->sent[2][0]);
-        self::assertStringContainsString('Back to normal.', $this->sent[2][1]);
     }
 
     public function test_safety_alerts_render_database_template_and_use_its_default_severity(): void
     {
+        $this->setSuccessRateTier('critical');
         app(NotificationTemplateService::class)->save(
             'crawl.success_rate_low',
             '{level_marker} {level} {success_rate}',
@@ -126,6 +125,22 @@ final class AlertEvaluationServiceTest extends TestCase
         self::assertTrue($this->sent[0][2]['template_rendered']);
     }
 
+    public function test_escalated_alert_renders_critical_title_without_an_injected_renderer(): void
+    {
+        $this->setSuccessRateTier('warning');
+        $this->useSnapshot($this->snapshot(100, 80));
+
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        self::assertSame([], $this->sent);
+
+        $this->travel(60)->minutes();
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+
+        self::assertCount(1, $this->sent);
+        self::assertStringContainsString('CRITICAL', $this->sent[0][0]);
+        self::assertStringNotContainsString('WARNING', $this->sent[0][0]);
+    }
+
     public function test_small_attempt_sample_does_not_open_an_event(): void
     {
         $this->useSnapshot($this->snapshot(99, 10));
@@ -136,8 +151,9 @@ final class AlertEvaluationServiceTest extends TestCase
         self::assertDatabaseCount('alert_events', 0);
     }
 
-    public function test_open_notice_retries_a_failed_channel_after_cooldown(): void
+    public function test_critical_cooldown_stops_retries_and_recovery_targets_delivered_channels(): void
     {
+        $this->setSuccessRateTier('critical');
         $telegramOpenAttempts = 0;
         $telegramRecoveryAttempts = 0;
         $telegram = new class ($telegramOpenAttempts, $telegramRecoveryAttempts) implements AlertChannel {
@@ -186,13 +202,13 @@ final class AlertEvaluationServiceTest extends TestCase
 
         $this->travel(29)->minutes();
         $this->artisan('alerts:evaluate')->assertSuccessful();
-        self::assertSame(2, $telegramOpenAttempts);
-        self::assertSame(2, $webhookOpenAttempts);
+        self::assertSame(1, $telegramOpenAttempts);
+        self::assertSame(1, $webhookOpenAttempts);
 
         $this->useSnapshot($this->snapshot(100, 90));
         $this->travel(1)->minute();
         $this->artisan('alerts:evaluate')->assertSuccessful();
-        self::assertSame(1, $telegramRecoveryAttempts);
+        self::assertSame(0, $telegramRecoveryAttempts);
         self::assertSame(1, $webhookRecoveryAttempts);
     }
 
@@ -205,12 +221,13 @@ final class AlertEvaluationServiceTest extends TestCase
         $this->useSnapshot($this->snapshot(99, 99));
         $this->artisan('alerts:evaluate')->assertSuccessful();
 
-        self::assertCount(1, $this->sent);
+        self::assertCount(0, $this->sent);
         self::assertNull(AlertEvent::query()->where('rule', 'success_rate')->firstOrFail()->getAttribute('resolved_at'));
     }
 
     public function test_recovery_only_goes_to_channels_that_received_the_open_notice(): void
     {
+        $this->setSuccessRateTier('critical');
         $telegramContexts = [];
         $telegram = new class ($telegramContexts) implements AlertChannel {
             /** @param list<array<string, mixed>> $contexts */
@@ -252,6 +269,7 @@ final class AlertEvaluationServiceTest extends TestCase
 
     public function test_failed_recovery_retries_at_cooldown_and_stops_at_the_configured_attempt_limit(): void
     {
+        $this->setSuccessRateTier('critical');
         $recoveryAttempts = 0;
         $channel = new class ($recoveryAttempts) implements AlertChannel {
             public function __construct(private int &$recoveryAttempts) {}
@@ -283,10 +301,62 @@ final class AlertEvaluationServiceTest extends TestCase
         $this->artisan('alerts:evaluate')->assertSuccessful();
         self::assertSame(3, $recoveryAttempts);
         self::assertNotNull($event->fresh()->getAttribute('recovery_completed_at'));
+        $policyEvent = DB::table('notification_policy_events')->where('notification_key', 'crawl.success_rate_low')->first();
+        self::assertNotNull($policyEvent?->resolved_at);
 
         $this->travel(30)->minutes();
         $this->artisan('alerts:evaluate')->assertSuccessful();
         self::assertSame(3, $recoveryAttempts);
+    }
+
+    public function test_superseded_recovery_does_not_resolve_a_new_episode_policy_cause(): void
+    {
+        $this->setSuccessRateTier('critical');
+        $policyService = app(NotificationPolicyService::class);
+        $policy = $policyService->get('crawl.success_rate_low');
+        self::assertNotNull($policy);
+        $policyService->save('crawl.success_rate_low', [...$policy, 'cooldown_minutes' => 0], null);
+        config(['javmeta_alerts.recovery_retry_max_attempts' => 2]);
+        $openAttempts = 0;
+        $recoveryAttempts = 0;
+        $channel = new class ($openAttempts, $recoveryAttempts) implements AlertChannel {
+            public function __construct(private int &$openAttempts, private int &$recoveryAttempts) {}
+
+            public function send(string $subject, string $body, array $context = []): bool
+            {
+                if (($context['alert_state'] ?? '') === 'resolved') {
+                    $this->recoveryAttempts++;
+
+                    return false;
+                }
+
+                $this->openAttempts++;
+
+                return true;
+            }
+        };
+        $this->bindChannels(['telegram' => $channel]);
+        $this->useSnapshot($this->snapshot(100, 80));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+
+        $this->travel(31)->minutes();
+        $this->useSnapshot($this->snapshot(100, 90));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        $superseded = AlertEvent::query()->where('rule', 'success_rate')->firstOrFail();
+        self::assertNotNull($superseded->getAttribute('resolved_at'));
+        self::assertNull($superseded->getAttribute('recovery_completed_at'));
+        self::assertSame(1, $recoveryAttempts);
+
+        $this->travel(31)->minutes();
+        $this->useSnapshot($this->snapshot(100, 80));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+
+        $active = AlertEvent::query()->where('rule', 'success_rate')->whereNull('resolved_at')->firstOrFail();
+        self::assertNotNull($superseded->fresh()->getAttribute('recovery_completed_at'));
+        self::assertSame(1, $recoveryAttempts);
+        self::assertSame(2, $openAttempts);
+        self::assertNull(DB::table('notification_policy_events')->where('notification_key', 'crawl.success_rate_low')->value('resolved_at'));
+        self::assertNull($active->getAttribute('resolved_at'));
     }
 
     public function test_alert_evaluation_lock_prevents_parallel_episode_creation(): void
@@ -344,6 +414,14 @@ final class AlertEvaluationServiceTest extends TestCase
             $this->app->make(AlertNotifier::class),
             $dispatcher,
         ));
+    }
+
+    private function setSuccessRateTier(string $tier): void
+    {
+        $service = app(NotificationPolicyService::class);
+        $policy = $service->get('crawl.success_rate_low');
+        self::assertNotNull($policy);
+        $service->save('crawl.success_rate_low', [...$policy, 'tier' => $tier, 'send_resolved' => true], null);
     }
 
     /** @return array<string, mixed> */

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Notifications;
 
-use App\Contracts\AlertNotifier;
+use App\Contracts\AlertAuditNotifier;
 use App\Observability\TelemetrySanitizer;
 use JOOservices\LaravelLogging\Facades\ActivityLog;
 use Throwable;
@@ -13,14 +13,14 @@ use Throwable;
  * Durable alert audit via jooservices/laravel-logging (system adapter).
  * Fail-open so a Mongo outage never blocks Telegram delivery.
  */
-final class ActivityLogAlertNotifier implements AlertNotifier
+final class ActivityLogAlertNotifier implements AlertAuditNotifier
 {
     /**
      * Record an alert or recovery with severity; audit storage failures do not block delivery.
      *
      * @param  array<string, mixed>  $context
      */
-    public function notify(string $subject, string $body, array $context = []): void
+    public function notify(string $subject, string $body, array $context = []): bool
     {
         $sanitizer = app(TelemetrySanitizer::class);
         $subject = $sanitizer->sanitizeText($subject) ?? '';
@@ -46,8 +46,10 @@ final class ActivityLogAlertNotifier implements AlertNotifier
                 ])
                 ->bySystem()
                 ->save();
+            return true;
         } catch (Throwable) {
             // Fail-open: alert delivery must not depend on the activity-log store.
+            return false;
         }
     }
 }

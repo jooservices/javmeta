@@ -63,6 +63,7 @@ final class ScheduleTest extends TestCase
             'perf:warm' => '* * * * *',
             'perf:warm --status-only' => '* * * * *',
             'report:send' => '* * * * *',
+            'report:send-daily' => '0 8 * * *',
             'search:backfill-embeddings' => '0 * * * *',
             'staging:readiness' => '0 * * * *',
             'telegram:poll' => '* * * * *',
@@ -81,6 +82,9 @@ final class ScheduleTest extends TestCase
         $this->assertTrue($scheduled['crawler:recrawl-incomplete']->withoutOverlapping);
         $this->assertTrue($scheduled['report:send']->withoutOverlapping);
         $this->assertTrue($scheduled['report:send']->onOneServer);
+        $this->assertTrue($scheduled['report:send-daily']->withoutOverlapping);
+        $this->assertTrue($scheduled['report:send-daily']->onOneServer);
+        $this->assertSame('America/Mexico_City', $scheduled['report:send-daily']->timezone);
         $this->assertTrue($scheduled['search:backfill-embeddings']->withoutOverlapping);
         $this->assertTrue($scheduled['staging:readiness']->withoutOverlapping);
         $this->assertTrue($scheduled['perf:warm']->withoutOverlapping);
@@ -116,6 +120,39 @@ final class ScheduleTest extends TestCase
         } finally {
             app()->instance('env', $previousEnvironment);
         }
+    }
+
+    public function test_legacy_hourly_report_is_disabled_by_default_and_while_periodic_is_enabled(): void
+    {
+        $settings = new SettingsService(new FakeConfigStore());
+        $settings->set('report.legacy_hourly_enabled', true);
+        $settings->set('report.enabled', true);
+        $this->app->instance(SettingsService::class, $settings);
+
+        $events = $this->registeredEvents();
+        self::assertNull(collect($events)->first(static fn($event): bool => str_contains((string) $event->command, 'javmeta:hourly-report')));
+
+        $settings->set('report.enabled', false);
+        $events = $this->registeredEvents();
+        $legacy = collect($events)->first(static fn($event): bool => str_contains((string) $event->command, 'javmeta:hourly-report'));
+        self::assertNotNull($legacy);
+        self::assertSame('0 * * * *', $legacy->expression);
+        self::assertTrue($legacy->withoutOverlapping);
+    }
+
+    public function test_daily_report_schedule_uses_saved_time_and_timezone(): void
+    {
+        $settings = new SettingsService(new FakeConfigStore());
+        $settings->set('report.daily_time', '09:15');
+        $settings->set('report.daily_timezone', 'UTC');
+        $this->app->instance(SettingsService::class, $settings);
+
+        $daily = collect($this->registeredEvents())
+            ->first(static fn($event): bool => str_contains((string) $event->command, 'report:send-daily'));
+
+        self::assertNotNull($daily);
+        self::assertSame('15 9 * * *', $daily->expression);
+        self::assertSame('UTC', $daily->timezone);
     }
 
     public function test_every_scheduled_command_string_is_accepted_by_the_artisan_kernel(): void

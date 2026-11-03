@@ -562,6 +562,12 @@ Cảnh báo khi tỷ lệ phản hồi HTTP 2xx thấp hơn ngưỡng này.
 
 Số nguyên; từ 1 đến 100. Mã mục: `alerts.success_rate_min_percent`.
 
+### Ngưỡng tỷ lệ thành công nghiêm trọng (%)
+
+Báo CRITICAL khi tỷ lệ thành công thấp hơn ngưỡng này trong cửa sổ đánh giá.
+
+Số nguyên; từ 1 đến 100. Mã mục: `alerts.success_rate_critical_percent`.
+
 ### Tỷ lệ bị chặn tối đa (%)
 
 Cảnh báo khi tỷ lệ phản hồi 403, 429 hoặc dấu hiệu Cloudflare vượt ngưỡng này.
@@ -669,6 +675,14 @@ Số nguyên; từ 1 đến 100. Mã mục: `alerts.title_failure_threshold`.
 Ngưỡng critical của metric javmeta_crawl_dispatch_stale; cảnh báo trực tiếp dùng ngưỡng riêng.
 
 Số nguyên; từ 30 đến 3600. Mã mục: `alerts.crawl_dispatch_critical_seconds`.
+
+## Chính sách thông báo
+
+### Chế độ yên lặng
+
+Chỉ gửi cảnh báo CRITICAL và sự kiện bảo mật; các mức khác được giữ cho báo cáo.
+
+Bật/tắt. Mã mục: `notifications.quiet_mode`.
 
 ## Telegram
 
@@ -796,9 +810,27 @@ Văn bản. Mã mục: `report.browser_stats_url`.
 
 ### Mẫu văn bản báo cáo
 
-Văn bản mẫu tiếng Anh. Giữ các biến {header}, {movies}, {performers}, {crawl}, {sources}, {fleet}, {workers}, {servers}, {services}.
+Văn bản mẫu tiếng Anh. Có thể dùng các biến {header}, {movies}, {performers}, {crawl}, {sources}, {fleet}, {workers}, {servers}, {services}, {notification_events}, {deploys}, {backup}, {warnings}.
 
 Văn bản. Mã mục: `report.template`.
+
+### Giờ gửi báo cáo hằng ngày
+
+Mỗi ngày gửi một báo cáo dữ liệu 24 giờ theo múi giờ báo cáo hằng ngày.
+
+Văn bản. Mã mục: `report.daily_time`.
+
+### Múi giờ báo cáo hằng ngày
+
+Tên múi giờ IANA dùng để lên lịch báo cáo hằng ngày.
+
+Văn bản. Mã mục: `report.daily_timezone`.
+
+### Bật báo cáo giờ cũ
+
+Chỉ chạy javmeta:hourly-report khi bật và báo cáo định kỳ mới đang tắt.
+
+Bật/tắt. Mã mục: `report.legacy_hourly_enabled`.
 
 ## Kiểm tra sẵn sàng
 

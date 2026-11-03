@@ -6,7 +6,10 @@ namespace Tests\Feature\Notifications;
 
 use App\Contracts\ReportChannel;
 use App\Models\User;
+use App\Services\Settings\SettingsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use JOOservices\LaravelConfig\Contracts\ConfigStore;
+use JOOservices\LaravelConfig\Testing\FakeConfigStore;
 use Tests\TestCase;
 
 final class UiNotificationTemplatesTest extends TestCase
@@ -40,10 +43,16 @@ final class UiNotificationTemplatesTest extends TestCase
 
     public function test_owner_can_list_and_read_notification_templates(): void
     {
-        $this->getJson('/ui-admin/notifications')->assertOk()->assertJsonPath('data.0.key', 'crawl.success_rate_low');
+        $this->getJson('/ui-admin/notifications')->assertOk()
+            ->assertJsonPath('data.0.key', 'crawl.success_rate_low')
+            ->assertJsonPath('data.0.name', 'Tỷ lệ crawl thành công thấp')
+            ->assertJsonPath('data.0.usage', 'Gửi khi tỷ lệ thành công xuống dưới ngưỡng.');
         $this->getJson('/ui-admin/notifications/crawl.dispatch_delayed')
             ->assertOk()
             ->assertJsonPath('data.default_severity', 'warning')
+            ->assertJsonPath('data.tier', 'warning')
+            ->assertJsonPath('data.cooldown_minutes', 120)
+            ->assertJsonPath('data.escalation_minutes', 60)
             ->assertJsonPath('data.enabled', true);
     }
 
@@ -56,6 +65,12 @@ final class UiNotificationTemplatesTest extends TestCase
             'body_template' => 'Due work: {due_items}',
             'enabled' => true,
             'default_severity' => 'critical',
+            'tier' => 'critical',
+            'cooldown_minutes' => 240,
+            'escalation_minutes' => 0,
+            'include_in_periodic_report' => false,
+            'include_in_daily_report' => true,
+            'send_resolved' => true,
         ])->assertOk()->assertJsonPath('data.version', 2);
         $this->putJson('/ui-admin/notifications/' . $key, [
             'title_template' => 'Second edit {dispatch_age}',
@@ -63,6 +78,10 @@ final class UiNotificationTemplatesTest extends TestCase
             'enabled' => false,
             'default_severity' => 'warning',
         ])->assertOk()->assertJsonPath('data.version', 3);
+        $this->getJson('/ui-admin/notifications/' . $key)->assertJsonPath('data.tier', 'critical')
+            ->assertJsonPath('data.cooldown_minutes', 240)
+            ->assertJsonPath('data.escalation_minutes', null)
+            ->assertJsonPath('data.include_in_daily_report', true);
 
         $this->postJson('/ui-admin/notifications/' . $key . '/preview', [
             'title_template' => 'Alert {level_marker} {level} {dispatch_age}',
@@ -85,7 +104,9 @@ final class UiNotificationTemplatesTest extends TestCase
         $revision = $this->getJson('/ui-admin/notifications/' . $key . '/revisions')->assertOk()->json('data.0.id');
         self::assertNotNull($revision);
         $this->postJson('/ui-admin/notifications/' . $key . '/reset')->assertOk()
-            ->assertJsonPath('data.title_template', $initial['title_template']);
+            ->assertJsonPath('data.title_template', $initial['title_template'])
+            ->assertJsonPath('data.tier', $initial['tier'])
+            ->assertJsonPath('data.cooldown_minutes', $initial['cooldown_minutes']);
         $this->postJson('/ui-admin/notifications/' . $key . '/revisions/' . $revision . '/restore')->assertOk()
             ->assertJsonPath('data.title_template', '🔴 [XCrawler][CRITICAL] Dispatch delayed {dispatch_age}');
     }
@@ -107,5 +128,42 @@ final class UiNotificationTemplatesTest extends TestCase
         auth()->logout();
         $this->getJson('/ui-admin/notifications')->assertUnauthorized();
         $this->postJson('/ui-admin/notifications/crawl.dispatch_delayed/preview')->assertUnauthorized();
+    }
+
+    public function test_owner_can_set_quiet_mode_and_preview_daily_report(): void
+    {
+        $this->app->instance(ConfigStore::class, new FakeConfigStore());
+        $this->app->forgetInstance(SettingsService::class);
+        $settings = $this->getJson('/ui-admin/settings')->assertOk();
+        self::assertSame(false, collect($settings->json('data.settings'))->firstWhere('key', 'notifications.quiet_mode')['value']);
+
+        $this->putJson('/ui-admin/settings', ['settings' => ['notifications.quiet_mode' => true]])->assertOk();
+        $savedSettings = $this->getJson('/ui-admin/settings')->assertOk();
+        self::assertSame(true, collect($savedSettings->json('data.settings'))->firstWhere('key', 'notifications.quiet_mode')['value']);
+        $this->getJson('/ui-admin/report/daily')->assertOk()
+            ->assertJsonPath('data.data.window_minutes', 1440)
+            ->assertJsonPath('data.data.report_type', 'daily');
+    }
+
+    public function test_daily_report_time_and_timezone_are_editable_and_validated_in_settings(): void
+    {
+        $this->app->instance(ConfigStore::class, new FakeConfigStore());
+        $this->app->forgetInstance(SettingsService::class);
+
+        $this->putJson('/ui-admin/settings', ['settings' => [
+            'report.daily_time' => '07:30',
+            'report.daily_timezone' => 'UTC',
+        ]])->assertOk()->assertJsonPath('data.applied', ['report.daily_time', 'report.daily_timezone']);
+
+        $settings = $this->getJson('/ui-admin/settings')->assertOk()->json('data.settings');
+        self::assertSame('07:30', collect($settings)->firstWhere('key', 'report.daily_time')['value']);
+        self::assertSame('UTC', collect($settings)->firstWhere('key', 'report.daily_timezone')['value']);
+
+        $this->putJson('/ui-admin/settings', ['settings' => ['report.daily_time' => '25:90']])
+            ->assertUnprocessable()
+            ->assertJsonPath('data.errors', ['report.daily_time' => 'report.daily_time: must use HH:MM']);
+        $this->putJson('/ui-admin/settings', ['settings' => ['report.daily_timezone' => 'Invalid/Timezone']])
+            ->assertUnprocessable()
+            ->assertJsonPath('data.errors', ['report.daily_timezone' => 'report.daily_timezone: must be a valid IANA timezone']);
     }
 }

@@ -27,6 +27,9 @@ final class NodeSampleAggregator
                 static fn(array $sample): bool => (int) ($sample['sampled_at'] ?? 0) >= $since->timestamp
                     && (int) ($sample['sampled_at'] ?? 0) <= $now->timestamp,
             ));
+            $sampleWindowMinutes = count($window) < 2
+                ? 0
+                : max(0, intdiv((int) $window[array_key_last($window)]['sampled_at'] - (int) $window[0]['sampled_at'], 60));
             $cpu = array_values(array_filter(array_map(
                 static fn(array $sample): ?float => is_numeric($sample['cpu_percent'] ?? null) ? (float) $sample['cpu_percent'] : null,
                 $window,
@@ -42,6 +45,7 @@ final class NodeSampleAggregator
 
             $nodes[$node] = [
                 'sample_count' => count($window),
+                'sample_window_minutes' => $sampleWindowMinutes,
                 'cpu_avg' => $cpu === [] ? null : array_sum($cpu) / count($cpu),
                 'cpu_peak' => $cpu === [] ? null : max($cpu),
                 'cpu_latest' => is_numeric($latest['cpu_percent'] ?? null) ? (float) $latest['cpu_percent'] : null,

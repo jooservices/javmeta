@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Services\Health\SchedulerHeartbeat;
+use App\Services\Settings\SettingsService;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -20,6 +21,29 @@ Schedule::command('report:send')
     ->onFailure(static function (): void {
         Log::error('Scheduled command failed.', ['command' => 'report:send']);
     });
+
+// E2E switches its SQLite bootstrap connection to the namespaced PostgreSQL database in setUp.
+$settings = null;
+if (! empty(config('app.key')) && (! app()->runningUnitTests() || app()->resolved(SettingsService::class))) {
+    $settings = app(SettingsService::class);
+}
+
+Schedule::command('report:send-daily')
+    ->dailyAt((string) ($settings?->get('report.daily_time') ?? config('javmeta_report.daily_time', '08:00')))
+    ->timezone((string) ($settings?->get('report.daily_timezone') ?? config('javmeta_report.daily_timezone', 'America/Mexico_City')))
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->onFailure(static function (): void {
+        Log::error('Scheduled command failed.', ['command' => 'report:send-daily']);
+    });
+
+if ((bool) ($settings?->get('report.legacy_hourly_enabled') ?? config('javmeta_report.legacy_hourly_enabled', false))
+    && ! (bool) ($settings?->get('report.enabled') ?? config('javmeta_report.enabled', true))) {
+    Schedule::command('javmeta:hourly-report')->hourly()->withoutOverlapping()
+        ->onFailure(static function (): void {
+            Log::error('Scheduled command failed.', ['command' => 'javmeta:hourly-report']);
+        });
+}
 
 if (! app()->runningUnitTests()) {
     $scheduleCommand = static function (string $command, array $parameters = []): Event {

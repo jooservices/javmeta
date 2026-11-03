@@ -7,6 +7,7 @@ namespace App\Notifications;
 use App\Contracts\AlertNotifier;
 use App\Contracts\ReportChannel;
 use App\Observability\TelemetrySanitizer;
+use App\Services\Notifications\NotificationPolicyDispatcher;
 use App\Services\Notifications\NotificationRenderer;
 use Illuminate\Support\Facades\Log;
 use JOOservices\Client\Client\ClientBuilder;
@@ -31,9 +32,9 @@ final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
      *
      * @param  array<string, mixed>  $context
      */
-    public function notify(string $subject, string $body, array $context = []): void
+    public function notify(string $subject, string $body, array $context = []): bool
     {
-        $this->deliver($subject, $body, $context + ['alert_state' => 'open', 'severity' => 'warning']);
+        return $this->deliver($subject, $body, $context + ['alert_state' => 'open', 'severity' => 'warning']);
     }
 
     /**
@@ -47,6 +48,68 @@ final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
         unset($context['plain_report']);
 
         $templateKey = is_string($context['template_key'] ?? null) ? $context['template_key'] : null;
+        $policy = null;
+        $policyDecision = is_array($context['notification_policy_decision'] ?? null)
+            ? $context['notification_policy_decision']
+            : null;
+        $ownsPolicyDecision = false;
+        if ($templateKey !== null && $policyDecision === null) {
+            $policy = app(NotificationPolicyDispatcher::class);
+            $policyDecision = $policy->prepare($templateKey, $context);
+            if ($policyDecision !== null && ! $policyDecision['allowed']) {
+                if ($policyDecision['resolved'] && $policyDecision['reason'] !== 'reserved') {
+                    $policy->resolveCause($templateKey, $this->cause($context, $policyDecision['policy_key']), $context);
+                }
+
+                return false;
+            }
+            if ($policyDecision !== null) {
+                $ownsPolicyDecision = true;
+                $context['notification_policy_decision'] = $policyDecision;
+                if (! $policyDecision['resolved']) {
+                    $context['severity'] = $policyDecision['tier'];
+                }
+            }
+        }
+
+        $delivered = false;
+        try {
+            [$subject, $body, $templateRendered] = $this->prepareMessage($subject, $body, $context, $templateKey);
+            $delivered = $this->sendTelegram($subject, $body, $context, $templateKey, $templateRendered, $plainReport);
+            if ($delivered && $templateKey !== null && ! ($context['test_send'] ?? false)) {
+                try {
+                    ($this->renderer ?? app(NotificationRenderer::class))->markSent($templateKey);
+                } catch (Throwable) {
+                    Log::warning('javmeta.notification_template_mark_failed', ['key' => $templateKey]);
+                }
+            }
+
+            return $delivered;
+        } catch (Throwable) {
+            Log::warning('javmeta.telegram_failed', [
+                'reason' => 'Telegram transport failed.',
+            ]);
+
+            return false;
+        } finally {
+            if ($ownsPolicyDecision) {
+                if ($delivered) {
+                    $policy->recordSent($policyDecision);
+                    if ($policyDecision['resolved']) {
+                        $policy->resolveCause($policyDecision['policy_key'], $this->cause($context, $policyDecision['policy_key']), $context);
+                    }
+                } else {
+                    $policy->release($policyDecision);
+                }
+            }
+        }
+    }
+
+    /** @param array<string, mixed> $context
+     *  @return array{string, string, bool}
+     */
+    private function prepareMessage(string $subject, string $body, array &$context, ?string $templateKey): array
+    {
         if ($templateKey !== null && ! ($context['template_rendered'] ?? false)) {
             $rendered = ($this->renderer ?? app(NotificationRenderer::class))->render($templateKey, $context);
             $subject = $rendered['title'];
@@ -76,6 +139,12 @@ final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
             }
         }
 
+        return [$subject, $body, $templateRendered];
+    }
+
+    /** @param array<string, mixed> $context */
+    private function sendTelegram(string $subject, string $body, array $context, ?string $templateKey, bool $templateRendered, bool $plainReport): bool
+    {
         $token = $this->stringConfig('laravel-notifications.channels.telegram.bot_token')
             ?: $this->stringConfig('javmeta_alerts.telegram.bot_token');
         $chatId = $this->stringConfig('laravel-notifications.channels.telegram.chat_id')
@@ -95,42 +164,42 @@ final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
             return false;
         }
 
-        try {
-            $client = $this->httpClient ?? ClientBuilder::create()
-                ->withBaseUri(rtrim($apiBase !== '' ? $apiBase : 'https://api.telegram.org', '/') . '/')
-                ->withTimeout($timeout > 0 ? $timeout : 5.0)
-                ->build();
-            $message = (($templateRendered || $plainReport) ? $subject : $this->prefixed($subject)) . "\n" . $body;
-            $prepared = $client->requestBuilder()
-                ->post('/bot' . $token . '/sendMessage')
-                ->withJson([
-                    'chat_id' => $chatId,
-                    'text' => $message,
-                    'parse_mode' => 'HTML',
-                    'disable_web_page_preview' => true,
-                ])
-                ->build();
-            $response = Response::from($client->sendRequest($prepared->toPsr()));
-            if (! $response->successful()) {
-                Log::warning('javmeta.telegram_failed', [
-                    'reason' => 'Telegram API returned HTTP ' . $response->status(),
-                ]);
-
-                return false;
-            }
-        } catch (Throwable) {
+        $client = $this->httpClient ?? ClientBuilder::create()
+            ->withBaseUri(rtrim($apiBase !== '' ? $apiBase : 'https://api.telegram.org', '/') . '/')
+            ->withTimeout($timeout > 0 ? $timeout : 5.0)
+            ->build();
+        $message = (($templateRendered || $plainReport) ? $subject : $this->prefixed($subject)) . "\n" . $body;
+        $prepared = $client->requestBuilder()
+            ->post('/bot' . $token . '/sendMessage')
+            ->withJson([
+                'chat_id' => $chatId,
+                'text' => $message,
+                'parse_mode' => 'HTML',
+                'disable_web_page_preview' => true,
+            ])
+            ->build();
+        $response = Response::from($client->sendRequest($prepared->toPsr()));
+        $telegramResponse = $response->json();
+        if (! $response->successful() || ($telegramResponse['ok'] ?? null) !== true) {
             Log::warning('javmeta.telegram_failed', [
-                'reason' => 'Telegram transport failed.',
+                'reason' => 'Telegram API returned HTTP ' . $response->status(),
             ]);
 
             return false;
         }
+        return true;
+    }
 
-        if ($templateKey !== null && ! ($context['test_send'] ?? false)) {
-            ($this->renderer ?? app(NotificationRenderer::class))->markSent($templateKey);
+    /** @param array<string, mixed> $context */
+    private function cause(array $context, string $fallback): string
+    {
+        foreach (['notification_cause', 'cause_key', 'rule', 'debounce_key'] as $field) {
+            if (is_string($context[$field] ?? null) && $context[$field] !== '') {
+                return $context[$field];
+            }
         }
 
-        return true;
+        return $fallback;
     }
 
     /** Message envelope: "[XCrawler][LEVEL] title" for alerts and "[XCrawler] title" for plain messages. */

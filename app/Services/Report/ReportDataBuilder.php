@@ -8,9 +8,11 @@ use App\Models\CrawlQueue;
 use App\Models\Movie;
 use App\Models\Performer;
 use App\Models\ReportSnapshot;
+use App\Services\Notifications\NotificationPolicyService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Throwable;
 
 final class ReportDataBuilder
 {
@@ -18,30 +20,38 @@ final class ReportDataBuilder
         private readonly NodeSampleStore $samples,
         private readonly NodeSampleAggregator $sampleAggregator,
         private readonly ReportServiceStats $serviceStats,
+        private readonly NotificationPolicyService $notificationPolicies,
     ) {}
 
     /** @return array<string, mixed> */
-    public function build(?CarbonImmutable $at = null): array
+    public function build(?CarbonImmutable $at = null, ?int $windowMinutes = null): array
     {
         $at ??= CarbonImmutable::now();
-        $minutes = (int) config('javmeta_report.interval_minutes', 120);
+        $minutes = $windowMinutes ?? (int) config('javmeta_report.interval_minutes', 120);
         $start = $at->subMinutes($minutes);
-        $previous = ReportSnapshot::query()->where('result', 'sent')->orderByDesc('id')->first();
+        $previous = ReportSnapshot::query()->where('report_type', 'periodic')->where('result', 'sent')->orderByDesc('id')->first();
         $previousValue = $previous?->getAttribute('raw_numbers');
         $previousRaw = is_array($previousValue) ? $previousValue : null;
+        $periodicDigestSince = $previous?->created_at;
+        if (! $periodicDigestSince instanceof \DateTimeInterface) {
+            $periodicDigestSince = $start;
+        }
+        $daily = $windowMinutes !== null;
+        $digestSince = $daily ? $start : $periodicDigestSince;
         $raw = [
             'generated_at' => $at->toIso8601String(),
             'window_minutes' => $minutes,
+            'report_type' => $windowMinutes === null ? 'periodic' : 'daily',
             'window_start' => $start->toIso8601String(),
             'window_end' => $at->toIso8601String(),
             'sections' => $this->sections(),
         ];
 
         if (in_array('movies', $this->sections(), true)) {
-            $raw['movies'] = $this->entity('movies', 'crawled_at', (int) Movie::query()->count(), $previousRaw, $start, $at, $minutes);
+            $raw['movies'] = $this->entity('movies', 'crawled_at', (int) Movie::query()->count(), $previousRaw, $start, $at, $minutes, $windowMinutes !== null);
         }
         if (in_array('performers', $this->sections(), true)) {
-            $raw['performers'] = $this->entity('performers', 'first_seen_at', (int) Performer::query()->count(), $previousRaw, $start, $at, $minutes);
+            $raw['performers'] = $this->entity('performers', 'first_seen_at', (int) Performer::query()->count(), $previousRaw, $start, $at, $minutes, $windowMinutes !== null);
         }
         if (in_array('crawl', $this->sections(), true)) {
             $raw['crawl'] = $this->crawl($start, $at);
@@ -49,6 +59,18 @@ final class ReportDataBuilder
         if (in_array('sources', $this->sections(), true)) {
             $raw['sources'] = $this->sources($start, $at);
         }
+        $raw['warnings'] = $this->notificationPolicies->digestItems($daily, null, true);
+        $digestItems = $this->notificationPolicies->digestItems($daily, $digestSince, false, $at);
+        $raw['notification_events'] = array_values(array_filter(
+            $digestItems,
+            static fn(array $item): bool => in_array($item['tier'], ['info', 'notice'], true)
+                && ! in_array($item['key'], ['deploy.ok', 'deploy.success'], true),
+        ));
+        $raw['deploys'] = $this->deploys(array_values(array_filter(
+            $digestItems,
+            static fn(array $item): bool => in_array($item['key'], ['deploy.ok', 'deploy.success'], true),
+        )));
+        $raw['backup'] = $this->backupStatus($at);
 
         $nodeSamples = $this->samples->all();
         $raw['node_names'] = array_keys($nodeSamples);
@@ -59,7 +81,7 @@ final class ReportDataBuilder
             max(60, (int) config('javmeta_report.sample_max_age_seconds', 180)),
         );
         if (in_array('fleet', $this->sections(), true)) {
-            $raw['fleet'] = $this->fleet($raw['nodes'], $start);
+            $raw['fleet'] = $this->fleet($raw['nodes'], $start, $at);
         }
         if (in_array('workers', $this->sections(), true)) {
             $raw['workers'] = $raw['nodes'];
@@ -90,18 +112,22 @@ final class ReportDataBuilder
     /** @param array<string, mixed>|null $previousRaw
      *  @return array<string, int|float>
      */
-    private function entity(string $table, string $dateColumn, int $total, ?array $previousRaw, CarbonImmutable $start, CarbonImmutable $at, int $minutes): array
+    private function entity(string $table, string $dateColumn, int $total, ?array $previousRaw, CarbonImmutable $start, CarbonImmutable $at, int $minutes, bool $windowCount): array
     {
         $lastReportTotal = (int) ($previousRaw[$table]['total'] ?? $total);
-        $since = (int) DB::table($table)->whereBetween($dateColumn, [$start, $at])->count();
-        $last24 = (int) DB::table($table)->where($dateColumn, '>=', $at->subDay())->where($dateColumn, '<=', $at)->count();
+        $since = $windowCount
+            ? (int) DB::table($table)->whereBetween($dateColumn, [$start, $at])->count()
+            : max(0, $total - $lastReportTotal);
+        $last24 = $windowCount && $minutes === 1440
+            ? $since
+            : (int) DB::table($table)->where($dateColumn, '>=', $at->subDay())->where($dateColumn, '<=', $at)->count();
         $buckets = $this->hourBuckets($table, $dateColumn, $start, $at);
         $hours = max(1 / 60, $minutes / 60);
         $scale = $minutes < 60 ? 60 / $minutes : 1;
 
         return [
             'total' => $total,
-            'since_last' => $total - $lastReportTotal,
+            'since_last' => $windowCount ? $since : $total - $lastReportTotal,
             'last_24h' => $last24,
             'avg_per_hour' => round($since / $hours, 2),
             'peak_per_hour' => round(($buckets === [] ? 0 : max($buckets)) * $scale, 2),
@@ -186,7 +212,7 @@ final class ReportDataBuilder
 
         $exhausted = CrawlQueue::query()
             ->where('status', CrawlQueue::STATUS_FAILED)
-            ->where('last_failed_at', '>=', $start)
+            ->whereBetween('last_failed_at', [$start, $at])
             ->whereColumn('attempts', '>=', 'max_attempts')
             ->select('source_slug')
             ->selectRaw('COUNT(*) AS exhausted_count')
@@ -200,13 +226,70 @@ final class ReportDataBuilder
         return ['blocked' => array_map('strval', $blocked), 'exhausted' => array_map('strval', $exhausted)];
     }
 
+    /** @param list<array<string, mixed>> $events
+     *  @return list<array{at: string, release: string, nodes: string}>
+     */
+    private function deploys(array $events): array
+    {
+        return array_map(static function (array $event): array {
+            $context = is_array($event['context'] ?? null) ? $event['context'] : [];
+
+            return [
+                'at' => (string) ($event['opened_at'] ?? ''),
+                'release' => is_scalar($context['release'] ?? null) ? (string) $context['release'] : 'release',
+                'nodes' => is_scalar($context['nodes'] ?? null) ? (string) $context['nodes'] : 'fleet',
+            ];
+        }, array_slice($events, 0, 20));
+    }
+
+    /** @return array{status: string, at: string|null} */
+    private function backupStatus(CarbonImmutable $at): array
+    {
+        $manifestPath = trim((string) config('backup.manifest_path', ''));
+        if ($manifestPath !== '' && is_file($manifestPath) && is_readable($manifestPath)) {
+            try {
+                $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+                $createdAt = $manifest['created_at'] ?? null;
+                if (is_string($createdAt) && $createdAt !== '') {
+                    $backupAt = CarbonImmutable::parse($createdAt);
+                    $ageSeconds = max(0, $at->getTimestamp() - $backupAt->getTimestamp());
+                    $threshold = max(1, (int) config('backup.stale_after_seconds', 26 * 60 * 60));
+
+                    return [
+                        'status' => $ageSeconds > $threshold ? 'Failed or stale' : 'Successful',
+                        'at' => $backupAt->toIso8601String(),
+                    ];
+                }
+            } catch (Throwable) {
+                // Fall back to the most recent recorded backup alert when the manifest cannot be read.
+            }
+        }
+        if (! Schema::hasTable('notification_policy_events')) {
+            return ['status' => 'No recent backup status recorded', 'at' => null];
+        }
+        $row = DB::table('notification_policy_events')->whereIn('notification_key', ['backup.stale', 'backup.manifest_missing', 'backup.success', 'backup.ok'])
+            ->where('first_seen_at', '<=', $at)->orderByDesc('first_seen_at')->first(['notification_key', 'first_seen_at', 'resolved_at']);
+        if ($row === null) {
+            return ['status' => 'No recent backup status recorded', 'at' => null];
+        }
+
+        return [
+            'status' => $row->resolved_at !== null || ! in_array($row->notification_key, ['backup.stale', 'backup.manifest_missing'], true)
+                ? 'Successful'
+                : 'Failed or stale',
+            'at' => (string) ($row->resolved_at !== null && in_array($row->notification_key, ['backup.stale', 'backup.manifest_missing'], true)
+                ? $row->resolved_at
+                : $row->first_seen_at),
+        ];
+    }
+
     /** @param array<string, array<string, mixed>> $nodes
      *  @return array{nodes_running: int, failed_jobs: int}
      */
-    private function fleet(array $nodes, CarbonImmutable $start): array
+    private function fleet(array $nodes, CarbonImmutable $start, CarbonImmutable $at): array
     {
         $failedJobs = Schema::hasTable('failed_jobs')
-            ? (int) DB::table('failed_jobs')->where('failed_at', '>=', $start)->count()
+            ? (int) DB::table('failed_jobs')->whereBetween('failed_at', [$start, $at])->count()
             : 0;
 
         return ['nodes_running' => count($nodes), 'failed_jobs' => $failedJobs];

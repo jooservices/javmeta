@@ -10,14 +10,16 @@ use Illuminate\Support\Facades\Schema;
 /** Read cumulative, bounded notification delivery counts for the periodic metrics publisher. */
 final class NotificationMetrics
 {
-    /** @return list<array{name: string, value: int, labels: array{notification_key: string, channel: string}}> */
+    public function __construct(private readonly NotificationPolicyMetrics $policies) {}
+
+    /** @return list<array{name: string, value: int, labels: array<string, string>}> */
     public function points(): array
     {
         if (! Schema::hasTable('notification_templates')) {
-            return [];
+            return $this->policies->points();
         }
 
-        return DB::table('notification_templates')
+        $templates = DB::table('notification_templates')
             ->where('sent_count', '>', 0)
             ->orderBy('key')
             ->get(['key', 'channel', 'sent_count'])
@@ -27,5 +29,7 @@ final class NotificationMetrics
                 'labels' => ['notification_key' => (string) $row->key, 'channel' => (string) $row->channel],
             ])
             ->all();
+
+        return [...$templates, ...$this->policies->points()];
     }
 }

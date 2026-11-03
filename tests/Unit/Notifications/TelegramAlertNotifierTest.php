@@ -73,6 +73,22 @@ final class TelegramAlertNotifierTest extends TestCase
         self::assertStringContainsString('"chat_id":"42"', $body);
     }
 
+    public function test_rejects_a_successful_http_response_when_telegram_reports_failure(): void
+    {
+        config([
+            'javmeta_alerts.telegram.bot_token' => 'tok',
+            'javmeta_alerts.telegram.chat_id' => '42',
+            'javmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
+            'laravel-notifications.channels.telegram.bot_token' => 'tok',
+            'laravel-notifications.channels.telegram.chat_id' => '42',
+            'laravel-notifications.channels.telegram.api_base' => 'https://api.telegram.org',
+        ]);
+        ClientBuilder::fake()->respond('POST', '*', (new TestResponseSequence())->push(TestResponse::json(['ok' => false], 200)));
+        $client = ClientBuilder::create()->withBaseUri('https://api.telegram.org/')->build();
+
+        self::assertFalse((new TelegramAlertNotifier($client))->notify('Subject', 'Body'));
+    }
+
     public function test_periodic_report_keeps_its_existing_prefix(): void
     {
         config([

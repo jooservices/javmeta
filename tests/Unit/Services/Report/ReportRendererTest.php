@@ -55,6 +55,56 @@ final class ReportRendererTest extends TestCase
         self::assertStringNotContainsString('Services', $text);
     }
 
+    public function test_daily_report_renders_info_and_notice_events_in_english(): void
+    {
+        config(['javmeta_report.daily_timezone' => 'America/Mexico_City']);
+        $text = (new ReportRenderer())->render([
+            'report_type' => 'daily',
+            'generated_at' => '2026-11-03T12:00:00Z',
+            'window_minutes' => 1440,
+            'sections' => [],
+            'notification_events' => [
+                ['key' => 'egress.changed', 'tier' => 'notice', 'opened_at' => '2026-11-02T11:00:00Z', 'last_seen_at' => '2026-11-03T11:00:00Z'],
+                ['key' => 'source.exhausted', 'tier' => 'info', 'opened_at' => '2026-11-03T10:00:00Z'],
+            ],
+        ]);
+
+        self::assertStringContainsString("Events\n🟡 NOTICE egress.changed · Nov 3, 05:00\n🔵 INFO source.exhausted · Nov 3, 04:00", $text);
+    }
+
+    public function test_daily_report_labels_its_twenty_four_hour_counts_without_calling_them_since_last_report(): void
+    {
+        $text = (new ReportRenderer())->render([
+            'report_type' => 'daily',
+            'generated_at' => '2026-11-03T12:00:00Z',
+            'window_minutes' => 1440,
+            'sections' => ['movies'],
+            'movies' => ['total' => 100, 'since_last' => 12, 'last_24h' => 12],
+        ]);
+
+        self::assertStringContainsString('(+12 in the last 24 h)', $text);
+        self::assertStringNotContainsString('since last report', $text);
+        self::assertStringNotContainsString('in 24 h)', $text);
+    }
+
+    public function test_report_renders_open_warnings_with_age_value_and_threshold(): void
+    {
+        $text = (new ReportRenderer())->render([
+            'generated_at' => '2026-11-03T12:00:00Z',
+            'window_minutes' => 120,
+            'sections' => [],
+            'warnings' => [[
+                'key' => 'crawl.success_rate_low',
+                'tier' => 'warning',
+                'opened_at' => '2026-11-03T10:30:00Z',
+                'value' => 82,
+                'threshold' => 85,
+            ]],
+        ]);
+
+        self::assertStringContainsString("Warnings\n⚠️ crawl.success_rate_low · open since Nov 3, 04:30 · value 82 · threshold 85", $text);
+    }
+
     public function test_independent_section_selection_keeps_crawl_without_catalog_totals(): void
     {
         $text = (new ReportRenderer())->render([

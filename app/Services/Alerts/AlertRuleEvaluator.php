@@ -19,6 +19,7 @@ final class AlertRuleEvaluator
 
         return match ($rule) {
             'success_rate' => $this->globalRateMeasurement($snapshot, 'successes', 'success_rate_min_percent'),
+            'success_rate_critical' => $this->globalRateMeasurement($snapshot, 'successes', 'success_rate_critical_percent'),
             'blocked_ratio' => $this->globalRateMeasurement($snapshot, 'blocked', 'blocked_ratio_max_percent'),
             'source_success_rate' => $this->sourceRateMeasurement($source, $snapshot),
             'postgres_connections' => $snapshot['postgres_connections'] === null ? null : [
@@ -56,11 +57,14 @@ final class AlertRuleEvaluator
         $totalSuccesses = array_sum(array_column($snapshot['attempts_by_source'], 'successes'));
         $totalBlocked = array_sum(array_column($snapshot['attempts_by_source'], 'blocked'));
         $successThreshold = (float) config('javmeta_alerts.success_rate_min_percent', 85);
+        $criticalSuccessThreshold = (float) config('javmeta_alerts.success_rate_critical_percent', 70);
         $blockedThreshold = (float) config('javmeta_alerts.blocked_ratio_max_percent', 10);
 
         if ($totalAttempts >= $minimumAttempts) {
             $successRate = $this->percentage($totalSuccesses, $totalAttempts);
-            if ($successRate < $successThreshold) {
+            if ($successRate < $criticalSuccessThreshold) {
+                $rules['success_rate_critical'] = $this->condition($successRate, $criticalSuccessThreshold, $this->rateContext($snapshot, $minimumAttempts), 'critical');
+            } elseif ($successRate < $successThreshold) {
                 $rules['success_rate'] = $this->condition($successRate, $successThreshold, $this->rateContext($snapshot, $minimumAttempts));
             }
 

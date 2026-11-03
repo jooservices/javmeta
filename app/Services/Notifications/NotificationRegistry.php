@@ -16,6 +16,12 @@ final class NotificationRegistry
      *     body_template: string,
      *     enabled: bool,
      *     default_severity: string,
+     *     tier: string,
+     *     cooldown_minutes: int,
+     *     escalation_minutes: int|null,
+     *     include_in_periodic_report: bool,
+     *     include_in_daily_report: bool,
+     *     send_resolved: bool,
      *     variables: list<array{name: string, sample: string|int|float|bool}>
      * }>
      */
@@ -24,11 +30,11 @@ final class NotificationRegistry
         $footer = "\n\n🕒 {time} · node: {node}";
         $meta = ['time' => 'Nov 2, 17:40 (Mexico)', 'node' => 'xcrawler'];
 
-        return [
+        $items = [
             'crawl.success_rate_low' => self::item('Tỷ lệ crawl thành công thấp', 'Gửi khi tỷ lệ thành công xuống dưới ngưỡng.', 'telegram', '{level_marker} [XCrawler][{level}] Crawl success rate is low', "{state_prefix}Success rate is {success_rate} over the last {window_minutes} minutes (minimum {minimum_rate}).\n\n<pre>Success        {success_rate}   (min {minimum_rate})\nBlocked         {blocked_ratio}   (max {maximum_blocked_ratio})\nAttempts       {attempts}\nWorst sources  {worst_sources}</pre>" . $footer, true, 'warning', $meta + ['level' => 'WARNING', 'level_marker' => '🟠', 'state_prefix' => '', 'success_rate' => '82.4%', 'minimum_rate' => '85%', 'window_minutes' => 15, 'blocked_ratio' => '9.1%', 'maximum_blocked_ratio' => '10%', 'attempts' => 1842, 'worst_sources' => 'javbus 61%, xcity 48%']),
             'crawl.blocked_ratio_high' => self::item('Tỷ lệ yêu cầu bị chặn cao', 'Gửi khi tỷ lệ yêu cầu bị chặn vượt ngưỡng.', 'telegram', '{level_marker} [XCrawler][{level}] Blocked request ratio is high', "{state_prefix}Blocked request ratio is {blocked_ratio}% over the last {window_minutes} minutes (maximum {maximum_ratio}%).\n\n<pre>Blocked        {blocked_ratio}%   (max {maximum_ratio}%)\nAttempts       {attempts}\nWorst sources  {worst_sources}</pre>" . $footer, true, 'warning', $meta + ['level' => 'WARNING', 'level_marker' => '🟠', 'state_prefix' => '', 'blocked_ratio' => '9.1', 'maximum_ratio' => '10', 'window_minutes' => 15, 'attempts' => 1842, 'worst_sources' => 'javbus 61%, xcity 48%']),
             'crawl.source_success_low' => self::item('Tỷ lệ thành công của nguồn thấp', 'Gửi khi một nguồn có tỷ lệ thành công thấp.', 'telegram', '{level_marker} [XCrawler][{level}] Source {source_slug} is performing poorly', "{state_prefix}Source {source_slug} success rate is {success_rate}% over the last {window_minutes} minutes (minimum {minimum_rate}%).\n\n<pre>Source         {source_slug}\nSuccess        {success_rate}%   (min {minimum_rate}%)\nAttempts       {attempts}</pre>" . $footer, true, 'warning', $meta + ['level' => 'WARNING', 'level_marker' => '🟠', 'state_prefix' => '', 'source_slug' => 'javbus', 'success_rate' => '61', 'minimum_rate' => '75', 'window_minutes' => 15, 'attempts' => 1842]),
-            'database.connections_high' => self::item('Số kết nối PostgreSQL cao', 'Gửi khi PostgreSQL gần hết số kết nối cho phép.', 'telegram', '{level_marker} [XCrawler][{level}] Database connections are high', "{state_prefix}PostgreSQL is nearing its connection limit.\n\n<pre>Connections    {connection_count}\nThreshold      {threshold}</pre>" . $footer, true, 'critical', $meta + ['level' => 'CRITICAL', 'level_marker' => '🔴', 'state_prefix' => '', 'connection_count' => 84, 'threshold' => 80]),
+            'database.connections_high' => self::item('Số kết nối PostgreSQL cao', 'Gửi khi PostgreSQL gần hết số kết nối cho phép.', 'telegram', '{level_marker} [XCrawler][{level}] Database connections are high', "{state_prefix}PostgreSQL is nearing its connection limit.\n\n<pre>Connections    {connection_count}\nThreshold      {threshold}</pre>" . $footer, true, 'warning', $meta + ['level' => 'WARNING', 'level_marker' => '🟠', 'state_prefix' => '', 'connection_count' => 84, 'threshold' => 80]),
             'crawl.dispatch_delayed' => self::item('Điều phối crawl bị trễ', 'Gửi khi còn việc đến hạn nhưng chưa được điều phối.', 'telegram', '{level_marker} [XCrawler][{level}] Crawl dispatch is delayed', "{state_prefix}Dispatch state: {dispatch_state}.\n\n<pre>Due items       {due_items}\nLast dispatch   {dispatch_age}\nThreshold       {threshold_seconds} seconds</pre>" . $footer, true, 'warning', $meta + ['level' => 'WARNING', 'level_marker' => '🟠', 'state_prefix' => '', 'dispatch_state' => 'due work is waiting for dispatch', 'dispatch_age' => '190 seconds ago', 'threshold_seconds' => 180, 'due_items' => 96740]),
             'crawl.backlog_by_source_high' => self::item('Hàng đợi của nguồn gần cạn', 'Gửi khi một nguồn còn rất ít việc đến hạn.', 'telegram', '{level_marker} [XCrawler][{level}] Source {source_slug} is running out of due work', '{state_prefix}Source {source_slug} has {due_items} due items (minimum {minimum_items}).' . $footer, true, 'warning', $meta + ['level' => 'WARNING', 'level_marker' => '🟠', 'state_prefix' => '', 'source_slug' => 'ffjav', 'due_items' => 2, 'minimum_items' => 10]),
             'crawl.heartbeat_stale' => self::item('Worker mất heartbeat', 'Gửi khi heartbeat của worker quá hạn.', 'telegram', '{level_marker} [XCrawler][{level}] Worker heartbeat is stale', 'No worker heartbeat has arrived within {stale_seconds} seconds. Last heartbeat: {last_heartbeat_at}.' . $footer, true, 'critical', $meta + ['level' => 'CRITICAL', 'level_marker' => '🔴', 'stale_seconds' => 600, 'last_heartbeat_at' => 'Nov 2, 17:30']),
@@ -79,7 +85,37 @@ final class NotificationRegistry
             'security.guest_mode_toggled' => self::item('Chế độ khách đã thay đổi', 'Được dùng khi chế độ truy cập khách được bật hoặc tắt.', 'telegram', '🟡 [XCrawler][NOTICE] Guest mode changed', 'Guest mode was {guest_mode} by {actor}.' . $footer, false, 'notice', $meta + ['guest_mode' => 'enabled', 'actor' => 'owner']),
             'security.settings_changed' => self::item('Cài đặt hệ thống đã thay đổi', 'Được dùng khi chủ sở hữu thay đổi cài đặt hệ thống.', 'telegram', '🔵 [XCrawler][INFO] System setting changed', 'Setting {setting_key} was changed by {actor}.' . $footer, false, 'info', $meta + ['setting_key' => 'queue.feed_pool_limit', 'actor' => 'owner']),
             'startup_gate.blocked' => self::item('Startup gate đã chặn ứng dụng', 'Được dùng khi startup gate ngăn dịch vụ khởi động.', 'telegram', '{level_marker} [XCrawler][{level}] Startup gate blocked service startup', 'Service {service} did not start because {reason}.' . $footer, false, 'critical', $meta + ['level' => 'CRITICAL', 'level_marker' => '🔴', 'service' => 'crawler', 'reason' => 'required dependency is unavailable']),
+            'crawl.success_rate_critical' => self::item('Tỷ lệ crawl rất thấp', 'Gửi khi tỷ lệ thành công xuống dưới 70% trong 15 phút.', 'telegram', '{level_marker} [XCrawler][{level}] Crawl success rate is critical', 'Success rate is {success_rate}% over the last {window_minutes} minutes (critical threshold {threshold}%).' . $footer, true, 'critical', $meta + ['level' => 'CRITICAL', 'level_marker' => '🔴', 'success_rate' => '68.2', 'window_minutes' => 15, 'threshold' => 70]),
+            'crawl.success_rate_low.movies' => self::item('Tỷ lệ crawl phim thấp', 'Cảnh báo tỷ lệ crawl phim thấp theo loại dữ liệu.', 'telegram', '{level_marker} [XCrawler][{level}] Movie crawl success rate is low', 'Movie crawl success rate is {success_rate}% over the last {window_minutes} minutes (minimum {minimum_rate}%).' . $footer, true, 'warning', $meta + ['level' => 'WARNING', 'level_marker' => '🟠', 'success_rate' => '82.4', 'window_minutes' => 15, 'minimum_rate' => 85]),
+            'crawl.success_rate_low.performers' => self::item('Tỷ lệ crawl diễn viên thấp', 'Cảnh báo tỷ lệ crawl diễn viên thấp theo loại dữ liệu.', 'telegram', '{level_marker} [XCrawler][{level}] Performer crawl success rate is low', 'Performer crawl success rate is {success_rate}% over the last {window_minutes} minutes (minimum {minimum_rate}%).' . $footer, true, 'warning', $meta + ['level' => 'WARNING', 'level_marker' => '🟠', 'success_rate' => '82.4', 'window_minutes' => 15, 'minimum_rate' => 85]),
+            'dependency.unreachable' => self::item('Dịch vụ dữ liệu không kết nối được', 'Gửi khi PostgreSQL, Redis, MongoDB hoặc Elasticsearch không thể truy cập.', 'telegram', '{level_marker} [XCrawler][{level}] A required datastore is unreachable', '{dependency} did not pass its connection check. {reason}' . $footer, true, 'critical', $meta + ['level' => 'CRITICAL', 'level_marker' => '🔴', 'dependency' => 'PostgreSQL', 'reason' => 'Connection check failed.']),
+            'resource.cpu_high' => self::item('CPU sử dụng cao', 'Gửi khi CPU của máy chủ vượt ngưỡng cảnh báo.', 'telegram', '{level_marker} [XCrawler][{level}] CPU usage is high', '{node} CPU usage is {value}% (warning threshold {threshold}%).' . $footer, false, 'warning', $meta + ['level' => 'WARNING', 'level_marker' => '🟠', 'value' => 86, 'threshold' => 85]),
+            'resource.memory_high' => self::item('RAM sử dụng cao', 'Gửi khi RAM của máy chủ vượt ngưỡng cảnh báo.', 'telegram', '{level_marker} [XCrawler][{level}] Memory usage is high', '{node} memory usage is {value}% (warning threshold {threshold}%).' . $footer, false, 'warning', $meta + ['level' => 'WARNING', 'level_marker' => '🟠', 'value' => 86, 'threshold' => 85]),
+            'resource.disk_high' => self::item('Đĩa máy chủ gần đầy', 'Gửi khi đĩa vượt ngưỡng cảnh báo; mức trên 90% được nâng thành critical.', 'telegram', '{level_marker} [XCrawler][{level}] Disk usage is high', '{node} disk usage is {value}% (warning threshold {threshold}%).' . $footer, false, 'warning', $meta + ['level' => 'WARNING', 'level_marker' => '🟠', 'value' => 88, 'threshold' => 85]),
+            'resource.disk_critical' => self::item('Đĩa máy chủ gần đầy nghiêm trọng', 'Gửi khi đĩa vượt 90%.', 'telegram', '{level_marker} [XCrawler][{level}] Disk usage is critical', '{node} disk usage is {value}% (critical threshold {threshold}%).' . $footer, false, 'critical', $meta + ['level' => 'CRITICAL', 'level_marker' => '🔴', 'value' => 92, 'threshold' => 90]),
+            'node.left' => self::item('Node đã rời hệ thống', 'Gửi một lần khi node rời khỏi fleet.', 'telegram', '🟡 [XCrawler][NOTICE] Node {node} left the fleet', 'Node {node} stopped reporting at {left_at}. Fleet size is now {node_count}.' . $footer, false, 'notice', $meta + ['node' => 'worker-2', 'left_at' => 'Nov 2, 17:40', 'node_count' => 2]),
+            'report.periodic' => self::item('Báo cáo trạng thái định kỳ', 'Mẫu thông báo cho báo cáo trạng thái định kỳ.', 'telegram', '📊 [XCrawler] Report · {report_time}', '{report_body}', true, 'info', $meta + ['report_time' => 'Nov 2, 18:00', 'report_body' => 'No report data is available for this window.']),
+            'report.daily' => self::item('Báo cáo trạng thái hằng ngày', 'Mẫu thông báo cho báo cáo trạng thái 24 giờ.', 'telegram', '📊 [XCrawler] Daily report · {report_time}', '{report_body}', true, 'info', $meta + ['report_time' => 'Nov 3, 08:00', 'report_body' => 'No report data is available for this window.']),
+            'deploy.ok' => self::item('Triển khai hoàn tất', 'Thông báo một lần khi tất cả node hoàn tất triển khai.', 'telegram', '🚀 [XCrawler][NOTICE] Deployment {release} finished', 'Release {release} finished on {node_count} nodes: {nodes}.' . $footer, false, 'notice', $meta + ['release' => 'release-2026-11-03', 'node_count' => 3, 'nodes' => 'xcrawler · worker-1 · worker-2']),
+            'egress.changed' => self::item('Địa chỉ egress đã thay đổi', 'Thông báo khi địa chỉ egress của node thay đổi.', 'telegram', '🟡 [XCrawler][NOTICE] Egress IP changed', 'Node {node} now exits through {current_ip}; previous address was {previous_ip}.' . $footer, false, 'notice', $meta + ['node' => 'worker-1', 'current_ip' => '203.0.113.12', 'previous_ip' => '203.0.113.11']),
+            'egress.shared' => self::item('Địa chỉ egress bị dùng chung', 'Thông báo khi nhiều node dùng cùng địa chỉ egress.', 'telegram', '🟡 [XCrawler][NOTICE] Egress IP is shared', 'Nodes {nodes} are using the same egress address {current_ip}.' . $footer, false, 'notice', $meta + ['nodes' => 'worker-1 · worker-2', 'current_ip' => '203.0.113.12']),
+            'retry.permanent_failures' => self::item('Một số lượt thử lại đã cạn', 'Tổng hợp hằng ngày các mục hết số vòng thử lại.', 'telegram', '{level_marker} [XCrawler][{level}] Retry rounds were exhausted', '{failure_count} retry items exhausted all rounds. Top sources: {sources}.' . $footer, false, 'warning', $meta + ['level' => 'WARNING', 'level_marker' => '🟠', 'failure_count' => 8, 'sources' => 'javbus: 5, ffjav: 3']),
+            'jobs.failed_spike' => self::item('Số job lỗi tăng cao', 'Gửi khi số job thất bại vượt ngưỡng trong cửa sổ.', 'telegram', '{level_marker} [XCrawler][{level}] Failed jobs have spiked', '{failed_jobs} jobs failed in the last {window_minutes} minutes (threshold {threshold}).' . $footer, false, 'warning', $meta + ['level' => 'WARNING', 'level_marker' => '🟠', 'failed_jobs' => 28, 'window_minutes' => 15, 'threshold' => 25]),
+            'jobs.deadlock_burst' => self::item('Deadlock tăng cao', 'Gửi khi số deadlock vượt ngưỡng trong cửa sổ.', 'telegram', '{level_marker} [XCrawler][{level}] Database deadlocks have spiked', '{deadlocks} deadlocks were recorded in the last {window_minutes} minutes (threshold {threshold}).' . $footer, false, 'warning', $meta + ['level' => 'WARNING', 'level_marker' => '🟠', 'deadlocks' => 6, 'window_minutes' => 15, 'threshold' => 5]),
+            'browser.saturated' => self::item('Browser host quá tải', 'Gửi khi các slot trình duyệt đầy và có việc đang chờ.', 'telegram', '{level_marker} [XCrawler][{level}] Browser host is saturated', '{host} has {in_flight} active requests and {queued} waiting (threshold {threshold_minutes} minutes).' . $footer, false, 'warning', $meta + ['level' => 'WARNING', 'level_marker' => '🟠', 'host' => 'browser-1', 'in_flight' => 8, 'queued' => 4, 'threshold_minutes' => 10]),
+            'browser.down' => self::item('Dịch vụ trình duyệt không hoạt động', 'Gửi khi endpoint Playwright hoặc FlareSolverr lỗi liên tục.', 'telegram', '{level_marker} [XCrawler][{level}] Browser service is unavailable', '{service} has failed health checks for {duration_minutes} minutes.' . $footer, false, 'critical', $meta + ['level' => 'CRITICAL', 'level_marker' => '🔴', 'service' => 'Playwright', 'duration_minutes' => 3]),
+            'sentry.new_critical' => self::item('Sentry có lỗi mới', 'Thông báo khi Sentry phát hiện một nhóm lỗi mới.', 'telegram', '🟠 [XCrawler][WARNING] New Sentry error', '{group_title} · {event_count} events · {project}.' . $footer, false, 'warning', $meta + ['group_title' => 'Database connection failures', 'event_count' => 12, 'project' => 'javmeta']),
+            'backup.ok' => self::item('Sao lưu thành công', 'Thông báo sau khi tác vụ sao lưu hoàn tất.', 'telegram', '🔵 [XCrawler][INFO] Database backup completed', 'Backup of {target} finished at {completed_at}.' . $footer, false, 'info', $meta + ['target' => 'database', 'completed_at' => 'Nov 2, 17:40']),
+            'startup.blocked' => self::item('Startup gate đã chặn ứng dụng', 'Gửi khi dependency chính ngăn dịch vụ khởi động.', 'telegram', '{level_marker} [XCrawler][{level}] Startup gate blocked service startup', 'Service {service} did not start because {reason}.' . $footer, false, 'critical', $meta + ['level' => 'CRITICAL', 'level_marker' => '🔴', 'service' => 'crawler', 'reason' => 'required dependency is unavailable']),
+            'security.setting_changed' => self::item('Cài đặt hệ thống đã thay đổi', 'Gửi khi chủ sở hữu thay đổi một cài đặt không bí mật.', 'telegram', '🔵 [XCrawler][INFO] System setting changed', 'Setting {setting_key} was changed by {actor}.' . $footer, false, 'info', $meta + ['setting_key' => 'queue.feed_pool_limit', 'actor' => 'owner']),
         ];
+
+        foreach ($items as $key => &$item) {
+            $item += self::policyDefaults($key, $item['default_severity']);
+        }
+        unset($item);
+
+        return $items;
     }
 
     /** @return array<string, mixed>|null */
@@ -135,6 +171,44 @@ final class NotificationRegistry
             'enabled' => $enabled,
             'default_severity' => $severity,
             'variables' => $variables,
+        ];
+    }
+
+    /** @return array{tier: string, cooldown_minutes: int, escalation_minutes: int|null, include_in_periodic_report: bool, include_in_daily_report: bool, send_resolved: bool} */
+    private static function policyDefaults(string $key, string $severity): array
+    {
+        $critical = str_starts_with($key, 'security.') || in_array($key, [
+            'crawl.stalled', 'crawl.heartbeat_stale', 'node.lost',
+            'dependency.unreachable', 'crawl.success_rate_critical', 'resource.disk_critical',
+            'backup.manifest_missing', 'backup.stale', 'startup_gate.blocked', 'startup.blocked',
+            'browser.down', 'flaresolverr.down', 'security.api_key_created', 'security.api_key_revoked',
+            'security.login_failures', 'security.guest_mode_toggled', 'security.settings_changed',
+            'security.setting_changed',
+        ], true);
+        $notice = in_array($key, [
+            'deploy.success', 'deploy.ok', 'node.joined', 'node.left',
+            'network.egress_ip_changed', 'egress.changed',
+        ], true);
+        $dailyOnly = in_array($key, [
+            'source.exhausted', 'retry.permanent_failures', 'queue.retry_permanent_failures',
+            'jobs.failed_spike', 'queue.failed_jobs_spike',
+        ], true);
+        $reportTemplate = str_starts_with($key, 'report.');
+        $warning = $severity === 'warning' || in_array($key, [
+            'crawl.success_rate_low.movies', 'crawl.success_rate_low.performers',
+            'database.connections_high', 'sentry.new_critical_group', 'queue.retry_permanent_failures',
+        ], true);
+        $tier = $critical ? 'critical' : ($notice ? 'notice' : ($key === 'source.exhausted' ? 'info' : ($warning ? 'warning' : $severity)));
+
+        return [
+            'tier' => $tier,
+            'cooldown_minutes' => $key === 'network.egress_ip_changed' || $key === 'egress.changed' ? 360
+                : (in_array($key, ['backup.manifest_missing', 'backup.stale'], true) ? 720
+                    : ($key === 'report.periodic' ? 120 : ($key === 'report.daily' ? 1440 : (in_array($tier, ['critical', 'warning'], true) ? 120 : ($tier === 'notice' ? 5 : 0))))),
+            'escalation_minutes' => $tier === 'warning' ? 60 : null,
+            'include_in_periodic_report' => ! $dailyOnly && ! $reportTemplate && in_array($tier, ['warning', 'notice', 'info'], true),
+            'include_in_daily_report' => ! $reportTemplate && in_array($tier, ['warning', 'notice', 'info'], true),
+            'send_resolved' => in_array($tier, ['critical', 'warning'], true),
         ];
     }
 }

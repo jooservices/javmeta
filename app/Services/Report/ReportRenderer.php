@@ -12,7 +12,8 @@ final class ReportRenderer
     public function render(array $data, ?CarbonImmutable $at = null): string
     {
         $at ??= isset($data['generated_at']) ? CarbonImmutable::parse((string) $data['generated_at']) : CarbonImmutable::now();
-        $timezone = (string) config('javmeta_report.timezone', 'America/Mexico_City');
+        $daily = ($data['report_type'] ?? 'periodic') === 'daily';
+        $timezone = (string) config($daily ? 'javmeta_report.daily_timezone' : 'javmeta_report.timezone', 'America/Mexico_City');
         $date = $at->setTimezone($timezone);
         $zoneLabel = $timezone === 'America/Mexico_City' ? 'Mexico' : $timezone;
         $minutes = (int) ($data['window_minutes'] ?? 120);
@@ -20,15 +21,19 @@ final class ReportRenderer
         $sections = array_values((array) ($data['sections'] ?? ['movies', 'performers', 'crawl', 'sources', 'fleet', 'workers', 'servers', 'services']));
         $crawl = in_array('crawl', $sections, true) ? (array) ($data['crawl'] ?? []) : [];
         $values = [
-            '{header}' => '📊 [XCrawler] Report · ' . $date->format('M j, H:i') . ' (' . $zoneLabel . ') · last ' . $window,
-            '{movies}' => $this->entityBlock('Movies', $data['movies'] ?? null, in_array('movies', $sections, true) ? ($crawl['movies'] ?? null) : null),
-            '{performers}' => $this->entityBlock('Performers', $data['performers'] ?? null, in_array('performers', $sections, true) ? ($crawl['performers'] ?? null) : null),
+            '{header}' => '📊 [XCrawler] ' . ($daily ? 'Daily report' : 'Report') . ' · ' . $date->format('M j, H:i') . ' (' . $zoneLabel . ') · last ' . $window,
+            '{movies}' => $this->entityBlock('Movies', $data['movies'] ?? null, in_array('movies', $sections, true) ? ($crawl['movies'] ?? null) : null, $daily),
+            '{performers}' => $this->entityBlock('Performers', $data['performers'] ?? null, in_array('performers', $sections, true) ? ($crawl['performers'] ?? null) : null, $daily),
             '{crawl}' => $this->crawlBlock($crawl, $sections),
             '{sources}' => in_array('sources', $sections, true) ? $this->sourcesBlock($data['sources'] ?? []) : '',
             '{fleet}' => in_array('fleet', $sections, true) ? $this->fleetLine($data['fleet'] ?? null) : '',
-            '{workers}' => in_array('workers', $sections, true) ? $this->workersBlock($data['node_names'] ?? [], $data['workers'] ?? [], $window) : '',
-            '{servers}' => in_array('servers', $sections, true) ? $this->serversBlock($data['node_names'] ?? [], $data['servers'] ?? [], $data['server_extra'] ?? [], $window) : '',
+            '{workers}' => in_array('workers', $sections, true) ? $this->workersBlock($data['node_names'] ?? [], $data['workers'] ?? []) : '',
+            '{servers}' => in_array('servers', $sections, true) ? $this->serversBlock($data['node_names'] ?? [], $data['servers'] ?? [], $data['server_extra'] ?? []) : '',
             '{services}' => in_array('services', $sections, true) ? $this->servicesLine($data['services'] ?? []) : '',
+            '{warnings}' => $this->warningsBlock($data['warnings'] ?? [], $timezone),
+            '{notification_events}' => $this->notificationEventsBlock($data['notification_events'] ?? [], $timezone),
+            '{deploys}' => $this->deploysBlock($data['deploys'] ?? [], $timezone),
+            '{backup}' => $this->backupLine($data['backup'] ?? [], $timezone),
         ];
         $rendered = strtr((string) config('javmeta_report.template', ''), $values);
         $rendered = preg_replace('/\n{3,}/', "\n\n", $rendered) ?? $rendered;
@@ -57,14 +62,17 @@ final class ReportRenderer
     /** @param array<string, mixed>|null $entity
      *  @param array<string, mixed>|null $crawl
      */
-    private function entityBlock(string $label, ?array $entity, ?array $crawl): string
+    private function entityBlock(string $label, ?array $entity, ?array $crawl, bool $daily): string
     {
         if ($entity === null) {
             return '';
         }
+        $change = $daily
+            ? $this->change((int) ($entity['since_last'] ?? 0)) . ' in the last 24 h'
+            : $this->change((int) ($entity['since_last'] ?? 0)) . ' since last report · '
+                . $this->change((int) ($entity['last_24h'] ?? 0)) . ' in 24 h';
         $line = $label . str_repeat(' ', max(1, 14 - strlen($label))) . number_format((int) ($entity['total'] ?? 0))
-            . '   (' . $this->change((int) ($entity['since_last'] ?? 0)) . ' since last report · '
-            . $this->change((int) ($entity['last_24h'] ?? 0)) . ' in 24 h)';
+            . '   (' . $change . ')';
         $lines = [$line];
         if (isset($entity['avg_per_hour'], $entity['peak_per_hour'])) {
             $lines[] = 'Speed         avg ' . number_format((int) round((float) $entity['avg_per_hour'])) . '/h · peak '
@@ -108,12 +116,12 @@ final class ReportRenderer
     /** @param list<string> $nodeNames
      *  @param array<string, array<string, mixed>> $nodes
      */
-    private function workersBlock(array $nodeNames, array $nodes, string $window): string
+    private function workersBlock(array $nodeNames, array $nodes): string
     {
         if ($nodeNames === []) {
             return '';
         }
-        $lines = ['Workers (now: busy / idle / total · avg busy over ' . $window . ')'];
+        $lines = ['Workers (now: busy / idle / total · avg busy across retained samples)'];
         foreach (array_slice($nodeNames, 0, 5) as $name) {
             $row = $nodes[$name] ?? null;
             $workers = is_array($row) && is_array($row['workers'] ?? null) ? $row['workers'] : null;
@@ -121,7 +129,9 @@ final class ReportRenderer
                 $lines[] = $name . '   no data';
                 continue;
             }
-            $average = is_numeric($row['busy_share_avg'] ?? null) ? 'avg ' . (int) round((float) $row['busy_share_avg'] * 100) . '% busy' : 'avg no data';
+            $average = is_numeric($row['busy_share_avg'] ?? null)
+                ? 'avg ' . (int) round((float) $row['busy_share_avg'] * 100) . '% busy over ' . $this->sampleSpan((int) ($row['sample_window_minutes'] ?? 0))
+                : 'avg no data';
             $lines[] = $name . '   busy ' . (int) ($workers['busy'] ?? 0) . ' · idle ' . (int) ($workers['idle'] ?? 0)
                 . ' · total ' . (int) ($workers['total'] ?? 0) . '   (' . $average . ')';
         }
@@ -140,9 +150,9 @@ final class ReportRenderer
      *  @param array<string, array<string, mixed>> $nodes
      *  @param array<string, mixed> $services
      */
-    private function serversBlock(array $nodeNames, array $nodes, array $services, string $window): string
+    private function serversBlock(array $nodeNames, array $nodes, array $services): string
     {
-        $lines = $nodeNames === [] ? [] : ['Servers (avg / peak, last ' . $window . ')'];
+        $lines = $nodeNames === [] ? [] : ['Servers (avg / peak across retained samples)'];
         foreach (array_slice($nodeNames, 0, 5) as $name) {
             $row = $nodes[$name] ?? null;
             if (! is_array($row)) {
@@ -158,7 +168,8 @@ final class ReportRenderer
             $disk = is_numeric($row['disk_used_percent'] ?? null)
                 ? 'Disk ' . $this->percent((float) $row['disk_used_percent'])
                 : 'Disk no data';
-            $lines[] = $name . '   ' . $cpu . '   ' . $memory . '   ' . $disk;
+            $lines[] = $name . '   ' . $cpu . '   ' . $memory . '   ' . $disk
+                . '   (sample span ' . $this->sampleSpan((int) ($row['sample_window_minutes'] ?? 0)) . ')';
         }
         $browser = is_array($services['browser_stats'] ?? null) ? $services['browser_stats'] : null;
         if ($browser !== null) {
@@ -195,6 +206,65 @@ final class ReportRenderer
         }
 
         return $parts === [] ? '' : 'Services   ' . implode(' · ', $parts);
+    }
+
+    /** @param list<array<string, mixed>> $warnings */
+    private function warningsBlock(array $warnings, string $timezone): string
+    {
+        if ($warnings === []) {
+            return 'Warnings   none open';
+        }
+        $lines = ['Warnings'];
+        foreach (array_slice($warnings, 0, 5) as $warning) {
+            $openedAt = CarbonImmutable::parse((string) ($warning['opened_at'] ?? 'now'))->setTimezone($timezone)->format('M j, H:i');
+            $value = is_numeric($warning['value'] ?? null) ? (string) $warning['value'] : 'n/a';
+            $threshold = is_numeric($warning['threshold'] ?? null) ? (string) $warning['threshold'] : 'n/a';
+            $lines[] = '⚠️ ' . (string) ($warning['name'] ?? $warning['key'] ?? 'Warning') . ' · open since ' . $openedAt
+                . ' · value ' . $value . ' · threshold ' . $threshold;
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /** @param list<array<string, mixed>> $events */
+    private function notificationEventsBlock(array $events, string $timezone): string
+    {
+        if ($events === []) {
+            return '';
+        }
+        $lines = ['Events'];
+        foreach (array_slice($events, 0, 10) as $event) {
+            $at = CarbonImmutable::parse((string) ($event['last_seen_at'] ?? $event['opened_at'] ?? 'now'))->setTimezone($timezone)->format('M j, H:i');
+            $tier = strtoupper((string) ($event['tier'] ?? 'info'));
+            $lines[] = ($tier === 'NOTICE' ? '🟡 ' : '🔵 ') . $tier . ' ' . (string) ($event['key'] ?? 'notification') . ' · ' . $at;
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /** @param list<array{at: string, release: string, nodes: string}> $deploys */
+    private function deploysBlock(array $deploys, string $timezone): string
+    {
+        if ($deploys === []) {
+            return 'Deploys    none';
+        }
+        $lines = ['Deploys'];
+        foreach (array_slice($deploys, 0, 5) as $deploy) {
+            $at = CarbonImmutable::parse($deploy['at'])->setTimezone($timezone)->format('M j, H:i');
+            $lines[] = '🚀 ' . $deploy['release'] . ' · ' . $deploy['nodes'] . ' · ' . $at;
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /** @param array{status?: string, at?: string|null} $backup */
+    private function backupLine(array $backup, string $timezone): string
+    {
+        $at = is_string($backup['at'] ?? null)
+            ? CarbonImmutable::parse($backup['at'])->setTimezone($timezone)->format('M j, H:i')
+            : 'unknown time';
+
+        return 'Backup     ' . (string) ($backup['status'] ?? 'No recent backup status recorded') . ' · ' . $at;
     }
 
     /** @param array<string, array<string, mixed>> $nodes
@@ -236,5 +306,23 @@ final class ReportRenderer
     private function gigabytes(int $bytes): string
     {
         return number_format($bytes / 1_000_000_000, 1, '.', '');
+    }
+
+    private function sampleSpan(int $minutes): string
+    {
+        if ($minutes <= 0) {
+            return 'under 1 min';
+        }
+        $hours = intdiv($minutes, 60);
+        $remainingMinutes = $minutes % 60;
+        $parts = [];
+        if ($hours > 0) {
+            $parts[] = $hours . ' h';
+        }
+        if ($remainingMinutes > 0) {
+            $parts[] = $remainingMinutes . ' min';
+        }
+
+        return implode(' ', $parts);
     }
 }
