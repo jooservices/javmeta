@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Api;
 
+use App\Models\Performer;
 use App\Services\Auth\ApiKeyService;
 use App\Services\Dataset\SampleDataset;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -72,5 +73,43 @@ final class PerformerFiltersTest extends TestCase
         $this->assertSame(['D'], array_column($narrow['cups'], 'name'));
         $this->getJson('/api/v1/performers/facets')->assertUnauthorized();
         $this->getJson('/api/v1/performers/1', $this->headers)->assertOk();
+    }
+
+    public function test_blood_type_facets_merge_aliases_and_hide_unknown_by_default(): void
+    {
+        $canonicalCount = DB::table('performers')->whereNull('canonical_performer_id')->where('blood_type', 'A')->count();
+        $emptyBloodTypes = DB::table('performers')->whereNull('canonical_performer_id')->whereNull('blood_type')->count();
+        Performer::factory()->create(['source_slug' => 'facet-test', 'blood_type' => 'A型']);
+        Performer::factory()->create(['source_slug' => 'facet-test', 'blood_type' => 'Trans']);
+
+        $facets = $this->getJson('/api/v1/performers/facets', $this->headers)->assertOk()->json('data');
+        $bloodTypes = collect($facets['blood_types'])->pluck('count', 'name')->all();
+        $this->assertSame($canonicalCount + 1, $bloodTypes['A']);
+        $this->assertArrayNotHasKey('Unknown', $bloodTypes);
+        $this->assertArrayNotHasKey('Trans', $bloodTypes);
+
+        $withUnknown = $this->getJson('/api/v1/performers/facets?include_unknown=1', $this->headers)->assertOk()->json('data');
+        $this->assertSame($emptyBloodTypes + 1, collect($withUnknown['blood_types'])->firstWhere('name', 'Unknown')['count']);
+    }
+
+    public function test_canonical_profile_filters_match_merged_facets_without_overmatching(): void
+    {
+        Performer::factory()->create(['source_slug' => 'facet-test', 'cup' => 'Ｄ', 'blood_type' => 'Ａ型']);
+        Performer::factory()->create(['source_slug' => 'facet-test', 'cup' => 'D', 'blood_type' => 'AB型']);
+        Performer::factory()->create(['source_slug' => 'facet-test', 'cup' => 'Q', 'blood_type' => 'Trans']);
+        Performer::factory()->create(['source_slug' => 'facet-test', 'cup' => null, 'blood_type' => null]);
+
+        $facets = $this->getJson('/api/v1/performers/facets?include_unknown=1', $this->headers)->assertOk()->json('data');
+        $bloodCounts = collect($facets['blood_types'])->pluck('count', 'name');
+        $cupCounts = collect($facets['cups'])->pluck('count', 'name');
+
+        $this->assertSame($bloodCounts['A'], $this->total('blood_type=A'));
+        $this->assertSame($bloodCounts['AB'], $this->total('blood_type=AB'));
+        $this->assertSame($bloodCounts['Unknown'], $this->total('blood_type=Unknown'));
+        $this->assertSame($cupCounts['D'], $this->total('cup=D'));
+
+        $tokyoBefore = $this->total('location=' . urlencode('東京都'));
+        Performer::factory()->create(['source_slug' => 'facet-test', 'location' => 'Tokyo']);
+        $this->assertSame($tokyoBefore + 1, $this->total('location=' . urlencode('東京都')));
     }
 }

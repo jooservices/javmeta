@@ -6,13 +6,19 @@ namespace App\Services\Normalize;
 
 use App\Data\Crawl\PerformerDraft;
 use JOOservices\CrawlerX\Dto\Entity\PerformerDto;
-use Throwable;
 
 /**
  * Maps crawlerx PerformerDto (+ raw metadata) onto PerformerDraft for profile crawl.
  */
 final class PerformerNormalizer
 {
+    private readonly PerformerAttributeNormalizer $attributes;
+
+    public function __construct(?PerformerAttributeNormalizer $attributes = null)
+    {
+        $this->attributes = $attributes ?? new PerformerAttributeNormalizer();
+    }
+
     public function normalize(PerformerDto $performer, string $sourceSlug, string $url): ?PerformerDraft
     {
         $externalId = $this->cleanText($performer->externalId ?? $performer->name);
@@ -24,6 +30,7 @@ final class PerformerNormalizer
         $meta = $performer->metadata;
         $sizeRaw = $this->cleanText($performer->sizeRaw ?? (is_string($meta['size_raw'] ?? null) ? $meta['size_raw'] : null));
         $measurements = $this->measurements($this->parseSize($sizeRaw), $meta);
+        $blood = $this->attributes->bloodType($meta['blood_type'] ?? null, $sourceSlug);
         $tags = $this->cleanStringList($performer->tags);
         $bio = $this->bioText($performer, $meta);
         $attrs = array_filter([
@@ -56,19 +63,20 @@ final class PerformerNormalizer
             aliases: $aliases,
             profileUrl: $this->cleanText($performer->url ?? $url),
             imageUrl: $this->cleanText($performer->profileImageUrl),
-            birthDate: $this->dateYmd($this->cleanText($performer->birthDateRaw ?? (is_string($meta['birth_date_raw'] ?? null) ? $meta['birth_date_raw'] : null))),
-            heightCm: $this->heightCm($this->cleanText($performer->heightRaw ?? (is_string($meta['height_raw'] ?? null) ? $meta['height_raw'] : null))),
-            bust: $measurements['bust'],
-            waist: $measurements['waist'],
-            hip: $measurements['hip'],
-            cup: $measurements['cup'],
-            bloodType: $this->cleanText(is_string($meta['blood_type'] ?? null) ? $meta['blood_type'] : null),
+            birthDate: $this->attributes->date('birth_date', $this->cleanText($performer->birthDateRaw ?? (is_string($meta['birth_date_raw'] ?? null) ? $meta['birth_date_raw'] : null)), $sourceSlug),
+            heightCm: $this->attributes->measurement('height_cm', $this->cleanText($performer->heightRaw ?? (is_string($meta['height_raw'] ?? null) ? $meta['height_raw'] : null)), $sourceSlug),
+            bust: $this->attributes->measurement('bust', $measurements['bust'], $sourceSlug),
+            waist: $this->attributes->measurement('waist', $measurements['waist'], $sourceSlug),
+            hip: $this->attributes->measurement('hip', $measurements['hip'], $sourceSlug),
+            cup: $this->attributes->cup($measurements['cup'], $sourceSlug),
+            bloodType: $blood['value'],
             bioText: $bio,
-            debutDate: $this->dateYmd($this->cleanText(is_string($meta['debut_date_raw'] ?? null) ? $meta['debut_date_raw'] : null)),
-            location: $this->cleanText(is_string($meta['birthplace'] ?? null) ? $meta['birthplace'] : null),
+            debutDate: $this->attributes->date('debut_date', $this->cleanText(is_string($meta['debut_date_raw'] ?? null) ? $meta['debut_date_raw'] : null), $sourceSlug),
+            location: $this->attributes->location($meta['birthplace'] ?? $meta['location'] ?? $meta['location_raw'] ?? null, $sourceSlug),
             attrs: $attrs,
             crossLinkSource: $crossLinkSource,
             crossLinkId: $crossLinkId,
+            bloodRh: $this->attributes->bloodRh($meta['blood_rh'] ?? $meta['rh'] ?? null, $sourceSlug) ?? $blood['rh'],
         );
     }
 
@@ -132,7 +140,7 @@ final class PerformerNormalizer
     /** Metadata keys already stored in columns or only noise; everything else is kept in attrs.extra. */
     private const COLUMN_OR_NOISE_KEYS = [
         'external_url', 'raw_profile', 'fields', 'name_kana', 'name_romaji', 'birth_date_raw', 'height_raw', 'size_raw',
-        'bust_raw', 'waist_raw', 'hip_raw', 'cup_size', 'cup', 'bust', 'waist', 'hips', 'blood_type', 'birthplace',
+        'bust_raw', 'waist_raw', 'hip_raw', 'cup_size', 'cup', 'bust', 'waist', 'hips', 'blood_type', 'blood_rh', 'rh', 'birthplace', 'location', 'location_raw',
         'debut_date_raw', 'zodiac_sign', 'age', 'shoe_size_raw', 'hair_length', 'hair_color', 'favorite_count_raw',
     ];
 
@@ -183,10 +191,10 @@ final class PerformerNormalizer
     }
 
     /**
-     * @param array{bust: ?int, waist: ?int, hip: ?int, cup: ?string} $size
+     * @param array{bust: mixed, waist: mixed, hip: mixed, cup: mixed} $size
      * @param array<string, mixed> $meta
      *
-     * @return array{bust: ?int, waist: ?int, hip: ?int, cup: ?string}
+     * @return array{bust: mixed, waist: mixed, hip: mixed, cup: mixed}
      */
     private function measurements(array $size, array $meta): array
     {
@@ -198,30 +206,14 @@ final class PerformerNormalizer
         ];
     }
 
-    private function measurementRaw(mixed $raw): ?int
+    private function measurementRaw(mixed $raw): mixed
     {
-        if (! is_string($raw) || trim($raw) === '') {
-            return null;
-        }
-
-        if (preg_match('/(\d{1,3})/', $raw, $m) !== 1) {
-            return null;
-        }
-
-        $value = (int) $m[1];
-
-        return $value >= 30 && $value <= 300 ? $value : null;
+        return is_string($raw) ? $this->cleanText($raw) : $raw;
     }
 
-    private function cupRaw(mixed $raw): ?string
+    private function cupRaw(mixed $raw): mixed
     {
-        if (! is_string($raw) || trim($raw) === '') {
-            return null;
-        }
-
-        $cup = strtoupper(trim($raw));
-
-        return preg_match('/^[A-Z0-9]{1,20}$/', $cup) === 1 ? $cup : null;
+        return is_string($raw) ? $this->cleanText($raw) : $raw;
     }
 
     /** @param array<string, mixed> $meta */
@@ -248,23 +240,8 @@ final class PerformerNormalizer
         return null;
     }
 
-    private function heightCm(?string $raw): ?int
-    {
-        if ($raw === null || trim($raw) === '') {
-            return null;
-        }
-
-        if (preg_match('/(\d{2,3})/', $raw, $m) === 1) {
-            $cm = (int) $m[1];
-
-            return $cm >= 100 && $cm <= 250 ? $cm : null;
-        }
-
-        return null;
-    }
-
     /**
-     * @return array{bust: ?int, waist: ?int, hip: ?int, cup: ?string}
+     * @return array{bust: mixed, waist: mixed, hip: mixed, cup: mixed}
      */
     private function parseSize(?string $raw): array
     {
@@ -274,8 +251,8 @@ final class PerformerNormalizer
         }
 
         $cup = null;
-        if (preg_match('/\(([A-Za-z0-9]+)\)/', $raw, $cupMatch) === 1) {
-            $cup = strtoupper($cupMatch[1]);
+        if (preg_match('/\(([^)]+)\)/u', $raw, $cupMatch) === 1) {
+            $cup = trim($cupMatch[1]);
         }
 
         // "T161 B83(D) W58 H94": the labeled B/W/H numbers, never the height that comes first.
@@ -298,35 +275,5 @@ final class PerformerNormalizer
         }
 
         return ['bust' => null, 'waist' => null, 'hip' => null, 'cup' => $cup];
-    }
-
-    private function dateYmd(?string $raw): ?string
-    {
-        if ($raw === null || trim($raw) === '') {
-            return null;
-        }
-
-        $raw = trim($raw);
-
-        // 2000年2月10日, 2003/03/06, 1993-08-16, 1990.10.27
-        if (preg_match('/(\d{4})\s*[-\/.年]\s*(\d{1,2})\s*[-\/.月]\s*(\d{1,2})/u', $raw, $m) === 1) {
-            return $this->validYmd((int) $m[1], (int) $m[2], (int) $m[3]);
-        }
-
-        // 20230322
-        if (preg_match('/^(\d{4})(\d{2})(\d{2})$/', $raw, $m) === 1) {
-            return $this->validYmd((int) $m[1], (int) $m[2], (int) $m[3]);
-        }
-
-        try {
-            return \Carbon\CarbonImmutable::parse($raw)->format('Y-m-d');
-        } catch (Throwable) {
-            return null;
-        }
-    }
-
-    private function validYmd(int $year, int $month, int $day): ?string
-    {
-        return checkdate($month, $day, $year) ? sprintf('%04d-%02d-%02d', $year, $month, $day) : null;
     }
 }

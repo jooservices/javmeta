@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Persist;
 
 use App\Data\Crawl\MovieDraft;
+use App\Data\Crawl\PerformerDraft;
 use App\Jobs\IndexMovieJob;
 use App\Models\CrawlRun;
 use App\Models\Genre;
@@ -26,6 +27,7 @@ use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawl\MovieDraftSink;
 use App\Services\Merge\ConflictPolicy;
 use App\Services\Merge\MovieMerger;
+use App\Services\Normalize\PerformerAttributeNormalizer;
 use App\Support\Code\NormalizedCode;
 use App\Observability\ObservabilityEmitter;
 use Carbon\CarbonImmutable;
@@ -51,6 +53,8 @@ final class MoviePersister implements MovieDraftSink
 {
     public const SHARP_DROP_THRESHOLD = 3;
 
+    private readonly PerformerAttributeNormalizer $attributeNormalizer;
+
     /** @var list<string> movies columns projected from observations */
     private const PROJECTED_FIELDS = ['title_jp', 'title_en', 'release_date', 'runtime_minutes', 'censored', 'maker', 'label', 'series', 'community_score'];
 
@@ -75,7 +79,10 @@ final class MoviePersister implements MovieDraftSink
         private readonly SourceActivityRecorder $activity,
         private readonly \App\Services\Archive\MongoSiteArchive $archive,
         private readonly PerformerIdentityService $identity,
-    ) {}
+        ?PerformerAttributeNormalizer $attributeNormalizer = null,
+    ) {
+        $this->attributeNormalizer = $attributeNormalizer ?? new PerformerAttributeNormalizer();
+    }
 
     public function accept(MovieDraft $draft, bool $isRecrawl = false): void
     {
@@ -417,24 +424,17 @@ final class MoviePersister implements MovieDraftSink
     private function upsertPerformers(int $movieId, MovieDraft $draft, CarbonImmutable $crawledAt): void
     {
         foreach ($draft->performers as $performerDraft) {
+            $performerDraft = $this->attributeNormalizer->normalizeDraft($performerDraft);
             $previous = PerformerSource::query()->firstOrNew([
                 'site_slug' => $performerDraft->sourceSlug,
                 'external_id' => $performerDraft->externalId,
             ]);
             $existing = Performer::query()->where('source_slug', $performerDraft->sourceSlug)
                 ->where('external_id', $performerDraft->externalId)->first();
+            $existingProfile = $this->normalizedExistingPerformerProfile($existing, $performerDraft->sourceSlug);
             $performer = Performer::query()->updateOrCreate(
                 ['source_slug' => $performerDraft->sourceSlug, 'external_id' => $performerDraft->externalId],
-                [
-                    'name_romaji' => $this->nullableTrim($performerDraft->nameRomaji),
-                    'name_kanji' => $this->nullableTrim($performerDraft->nameKanji),
-                    'name_kana' => $this->nullableTrim($performerDraft->nameKana),
-                    'profile_url' => $this->nullableTrim($performerDraft->profileUrl),
-                    'image_url' => $this->nullableTrim($performerDraft->imageUrl),
-                    'height_cm' => $performerDraft->heightCm ?? $existing?->height_cm,
-                    'blood_type' => $this->nullableTrim($performerDraft->bloodType) ?? $existing?->blood_type,
-                    'crawled_at' => $crawledAt,
-                ],
+                $this->performerAttributes($performerDraft, $existingProfile, $crawledAt),
             );
 
             $this->identity->preserveRenamedSourceNames(
@@ -452,7 +452,12 @@ final class MoviePersister implements MovieDraftSink
                 'name_romaji' => $performerDraft->nameRomaji ?? $source->name_romaji,
                 'name_kanji' => $performerDraft->nameKanji ?? $source->name_kanji,
                 'name_kana' => $performerDraft->nameKana ?? $source->name_kana,
-                'birth_date' => $performerDraft->birthDate ?? $source->birth_date,
+                'birth_date' => $performerDraft->birthDate ?? $this->attributeNormalizer->date(
+                    'birth_date',
+                    $source->getAttribute('birth_date'),
+                    $performerDraft->sourceSlug,
+                    false,
+                ),
                 'cross_link_source' => $performerDraft->crossLinkId === null
                     ? $source->cross_link_source
                     : ($performerDraft->crossLinkSource ?? $performerDraft->sourceSlug),
@@ -496,6 +501,52 @@ final class MoviePersister implements MovieDraftSink
             );
         }
         $this->reconcileMovieCast($movieId, $draft, $crawledAt);
+    }
+
+    /** @return array<string, mixed> */
+    private function normalizedExistingPerformerProfile(?Performer $performer, string $sourceSlug): array
+    {
+        if ($performer === null) {
+            return [];
+        }
+
+        return $this->attributeNormalizer->normalizeStoredAttributes([
+            'birth_date' => $performer->getAttribute('birth_date'),
+            'height_cm' => $performer->getAttribute('height_cm'),
+            'bust' => $performer->getAttribute('bust'),
+            'waist' => $performer->getAttribute('waist'),
+            'hip' => $performer->getAttribute('hip'),
+            'cup' => $performer->getAttribute('cup'),
+            'blood_type' => $performer->getAttribute('blood_type'),
+            'blood_rh' => $performer->getAttribute('blood_rh'),
+            'debut_date' => $performer->getAttribute('debut_date'),
+            'location' => $performer->getAttribute('location'),
+        ], $sourceSlug, false);
+    }
+
+    /** @param array<string, mixed> $existingProfile
+     *  @return array<string, mixed>
+     */
+    private function performerAttributes(PerformerDraft $draft, array $existingProfile, CarbonImmutable $crawledAt): array
+    {
+        return [
+            'name_romaji' => $this->nullableTrim($draft->nameRomaji),
+            'name_kanji' => $this->nullableTrim($draft->nameKanji),
+            'name_kana' => $this->nullableTrim($draft->nameKana),
+            'profile_url' => $this->nullableTrim($draft->profileUrl),
+            'image_url' => $this->nullableTrim($draft->imageUrl),
+            'birth_date' => $draft->birthDate ?? ($existingProfile['birth_date'] ?? null),
+            'height_cm' => $draft->heightCm ?? ($existingProfile['height_cm'] ?? null),
+            'bust' => $draft->bust ?? ($existingProfile['bust'] ?? null),
+            'waist' => $draft->waist ?? ($existingProfile['waist'] ?? null),
+            'hip' => $draft->hip ?? ($existingProfile['hip'] ?? null),
+            'cup' => $draft->cup ?? ($existingProfile['cup'] ?? null),
+            'blood_type' => $draft->bloodType ?? ($existingProfile['blood_type'] ?? null),
+            'blood_rh' => $draft->bloodRh ?? ($existingProfile['blood_rh'] ?? null),
+            'debut_date' => $draft->debutDate ?? ($existingProfile['debut_date'] ?? null),
+            'location' => $draft->location ?? ($existingProfile['location'] ?? null),
+            'crawled_at' => $crawledAt,
+        ];
     }
 
     private function reconcileMovieCast(int $movieId, MovieDraft $draft, CarbonImmutable $crawledAt): void

@@ -5,6 +5,7 @@ declare(strict_types=1);
 // Read only the schema: never boot Laravel or load saved values or secrets.
 $schema = require dirname(__DIR__, 2) . '/config/javmeta_settings.php';
 $types = ['bool' => 'Bật/tắt', 'int' => 'Số nguyên', 'float' => 'Số thập phân', 'string' => 'Văn bản', 'secret' => 'Thông tin bí mật', 'int_list' => 'Danh sách số nguyên', 'string_list' => 'Danh sách văn bản', 'json' => 'Đối tượng JSON'];
+$englishTypes = ['bool' => 'Boolean', 'int' => 'Integer', 'float' => 'Decimal', 'string' => 'Text', 'secret' => 'Secret', 'int_list' => 'Integer list', 'string_list' => 'Text list', 'json' => 'JSON object'];
 $lines = [
     '# Cài đặt — tra cứu từng mục',
     '',
@@ -16,6 +17,7 @@ $lines = [
     '',
 ];
 foreach ($schema['groups'] as $group => $label) {
+    $english = $group === 'normalization';
     $lines[] = '## ' . $label;
     $lines[] = '';
     foreach ($schema['definitions'] as $key => $definition) {
@@ -24,17 +26,17 @@ foreach ($schema['groups'] as $group => $label) {
         }
         $lines[] = '### ' . $definition['label'];
         $lines[] = '';
-        $lines[] = $definition['description'] !== '' ? $definition['description'] : 'Nhập giá trị theo tên mục ở trên.';
+        $lines[] = $definition['description'] !== '' ? $definition['description'] : ($english ? 'Enter a value using the setting name above.' : 'Nhập giá trị theo tên mục ở trên.');
         $lines[] = '';
-        $details = [$types[$definition['type']]];
+        $details = [$english ? $englishTypes[$definition['type']] : $types[$definition['type']]];
         if (isset($definition['min'], $definition['max'])) {
-            $details[] = 'từ ' . $definition['min'] . ' đến ' . $definition['max'];
+            $details[] = $english ? 'from ' . $definition['min'] . ' to ' . $definition['max'] : 'từ ' . $definition['min'] . ' đến ' . $definition['max'];
         }
         if (isset($definition['options'])) {
-            $details[] = 'chọn: ' . implode(', ', $definition['options']);
+            $details[] = ($english ? 'choose: ' : 'chọn: ') . implode(', ', $definition['options']);
         }
         if ($definition['type'] === 'json') {
-            $details[] = match ($definition['shape'] ?? '') {
+            $details[] = $english ? 'application-defined structure' : match ($definition['shape'] ?? '') {
                 'queue_worker_map' => 'mỗi hàng đợi đã biết nhận 1–32 worker',
                 'node_worker_map' => 'ghi đè theo vai trò hoặc role@hostname; worker từ 1 đến 32',
                 'retry_fetch_profile' => 'các khóa hợp lệ: flaresolverr_url, playwright_url, http_proxy_url, egress_label, preferred_methods',
@@ -42,9 +44,9 @@ foreach ($schema['groups'] as $group => $label) {
             };
         }
         if (isset($definition['restart'])) {
-            $details[] = 'cần khởi động lại ' . $definition['restart'];
+            $details[] = ($english ? 'requires restarting ' : 'cần khởi động lại ') . $definition['restart'];
         }
-        $lines[] = implode('; ', $details) . '. Mã mục: `' . $key . '`.';
+        $lines[] = implode('; ', $details) . ($english ? '. Setting key: `' . $key . '`.' : '. Mã mục: `' . $key . '`.');
         $lines[] = '';
     }
 }

@@ -19,7 +19,11 @@ final class SettingsRegistryTest extends TestCase
             $this->assertArrayHasKey($definition['group'], $schema['groups'], $key);
             $this->assertNotSame('', trim((string) ($definition['label'] ?? '')), $key . ' label');
             $this->assertNotSame('', trim((string) ($definition['description'] ?? '')), $key . ' description');
-            $this->assertMatchesRegularExpression('/[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]/iu', $definition['description'], $key . ' Vietnamese description');
+            if (str_starts_with($key, 'normalization.')) {
+                $this->assertMatchesRegularExpression('/[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]/iu', $definition['label'] . ' ' . $definition['description'], $key . ' Vietnamese UI text');
+            } else {
+                $this->assertMatchesRegularExpression('/[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]/iu', $definition['description'], $key . ' Vietnamese description');
+            }
             $this->assertContains($definition['type'], ['bool', 'int', 'float', 'string', 'secret', 'int_list', 'string_list', 'json'], $key . ' type');
             $this->assertNotEmpty($definition['config'] ?? [], $key . ' config mapping');
 
@@ -106,5 +110,16 @@ final class SettingsRegistryTest extends TestCase
             'https://checkip.amazonaws.com',
             'https://api.ipify.org',
         ], config('javmeta_observability.egress_probe_urls'));
+    }
+
+    public function test_performer_normalization_settings_expose_canonical_allowlists_and_japan_locations(): void
+    {
+        $definitions = config('javmeta_settings.definitions');
+        self::assertSame('Performer normalization', config('javmeta_settings.groups.normalization'));
+        self::assertSame(['A', 'B', 'O', 'AB'], $definitions['normalization.blood_types']['item_options']);
+        self::assertSame(range('A', 'K'), $definitions['normalization.cups']['item_options']);
+        self::assertSame('performer_field_ranges', $definitions['normalization.field_ranges']['shape']);
+        self::assertSame('performer_location_aliases', $definitions['normalization.location_aliases']['shape']);
+        self::assertGreaterThan(6000, count(config('javmeta_japan_locations')));
     }
 }

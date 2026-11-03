@@ -26,7 +26,7 @@ class Performer extends Model
     /** @var list<string> */
     protected $fillable = [
         'uuid', 'source_slug', 'external_id', 'name_romaji', 'name_kanji', 'name_kana',
-        'birth_date', 'height_cm', 'bust', 'waist', 'hip', 'cup', 'blood_type', 'bio_text',
+        'birth_date', 'height_cm', 'bust', 'waist', 'hip', 'cup', 'blood_type', 'blood_rh', 'bio_text',
         'debut_date', 'retired_date', 'location', 'profile_url', 'image_url', 'attrs', 'needs_review',
         'first_seen_at', 'updated_at', 'crawled_at',
         'canonical_performer_id',

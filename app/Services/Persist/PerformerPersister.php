@@ -13,6 +13,7 @@ use App\Models\PerformerSource;
 use App\Services\Archive\MongoSiteArchive;
 use App\Services\Crawl\PerformerDraftSink;
 use App\Services\Identity\PerformerIdentityService;
+use App\Services\Normalize\PerformerAttributeNormalizer;
 use App\Observability\ObservabilityEmitter;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -22,10 +23,22 @@ use Illuminate\Support\Facades\DB;
  */
 final class PerformerPersister implements PerformerDraftSink
 {
+    /** @var list<string> */
+    private const RAW_PROFILE_KEYS = [
+        'blood_type', 'blood_rh', 'rh', 'cup', 'cup_size', 'bust', 'bust_raw', 'waist', 'waist_raw',
+        'hip', 'hips', 'hip_raw', 'height', 'height_cm', 'height_raw', 'size_raw', 'birth_date', 'birth_date_raw',
+        'debut_date', 'debut_date_raw', 'birthplace', 'location', 'location_raw', 'raw_profile',
+    ];
+
+    private readonly PerformerAttributeNormalizer $attributeNormalizer;
+
     public function __construct(
         private readonly MongoSiteArchive $archive,
         private readonly PerformerIdentityService $identity,
-    ) {}
+        ?PerformerAttributeNormalizer $attributeNormalizer = null,
+    ) {
+        $this->attributeNormalizer = $attributeNormalizer ?? new PerformerAttributeNormalizer();
+    }
 
     public function accept(PerformerDraft $draft): void
     {
@@ -40,6 +53,7 @@ final class PerformerPersister implements PerformerDraftSink
 
     public function persistPerformer(PerformerDraft $draft, ?array $rawPayload = null): Performer
     {
+        $draft = $this->attributeNormalizer->normalizeDraft($draft);
         $crawledAt = CarbonImmutable::now();
         [$performer, $isNew] = $this->persistLocalPerformer($draft, $crawledAt);
         $mongoId = $this->archivePerformer($draft, $rawPayload);
@@ -71,17 +85,61 @@ final class PerformerPersister implements PerformerDraftSink
 
     private function archivePerformer(PerformerDraft $draft, ?array $rawPayload): ?string
     {
+        $payload = $this->archivePayload($draft, $rawPayload ?? [
+            'external_id' => $draft->externalId,
+            'name_romaji' => $draft->nameRomaji,
+            'name_kanji' => $draft->nameKanji,
+            'aliases' => $draft->aliases,
+        ]);
+
         return $this->archive->upsertPerformer(
             $draft->sourceSlug,
             (string) ($draft->profileUrl ?? ''),
-            $rawPayload ?? [
-                'external_id' => $draft->externalId,
-                'name_romaji' => $draft->nameRomaji,
-                'name_kanji' => $draft->nameKanji,
-                'aliases' => $draft->aliases,
-            ],
+            $payload,
             $draft->externalId,
         );
+    }
+
+    /** @param array<string, mixed> $payload
+     *  @return array<string, mixed>
+     */
+    private function archivePayload(PerformerDraft $draft, array $payload): array
+    {
+        $payload = $this->stripRawProfileFields($payload);
+
+        $payload['normalized_profile'] = [
+            'birth_date' => $draft->birthDate,
+            'height_cm' => $draft->heightCm,
+            'bust' => $draft->bust,
+            'waist' => $draft->waist,
+            'hip' => $draft->hip,
+            'cup' => $draft->cup,
+            'blood_type' => $draft->bloodType,
+            'blood_rh' => $draft->bloodRh,
+            'debut_date' => $draft->debutDate,
+            'location' => $draft->location,
+        ];
+
+        return $payload;
+    }
+
+    /** @param array<string|int, mixed> $payload
+     *  @return array<string|int, mixed>
+     */
+    private function stripRawProfileFields(array $payload): array
+    {
+        $clean = [];
+        foreach ($payload as $key => $value) {
+            $normalizedKey = is_string($key)
+                ? strtolower(str_replace([' ', '-'], '_', preg_replace('/(?<!^)[A-Z]/', '_$0', trim($key)) ?? $key))
+                : null;
+            if ($normalizedKey !== null && in_array($normalizedKey, self::RAW_PROFILE_KEYS, true)) {
+                continue;
+            }
+            $clean[$key] = is_array($value) ? $this->stripRawProfileFields($value) : $value;
+        }
+
+        return $clean;
     }
 
     private function emitPersistEvent(PerformerDraft $draft, bool $isNew): void
@@ -95,22 +153,35 @@ final class PerformerPersister implements PerformerDraftSink
     /** @return array<string, mixed> */
     private function performerAttributes(?Performer $existing, PerformerDraft $draft, CarbonImmutable $crawledAt): array
     {
+        $normalizedExisting = $existing === null ? [] : $this->attributeNormalizer->normalizeStoredAttributes([
+            'birth_date' => $existing->getAttribute('birth_date'),
+            'height_cm' => $existing->getAttribute('height_cm'),
+            'bust' => $existing->getAttribute('bust'),
+            'waist' => $existing->getAttribute('waist'),
+            'hip' => $existing->getAttribute('hip'),
+            'cup' => $existing->getAttribute('cup'),
+            'blood_type' => $existing->getAttribute('blood_type'),
+            'blood_rh' => $existing->getAttribute('blood_rh'),
+            'debut_date' => $existing->getAttribute('debut_date'),
+            'location' => $existing->getAttribute('location'),
+        ], $draft->sourceSlug, false);
         $attributes = [
             'name_romaji' => $this->prefer($existing?->name_romaji, $draft->nameRomaji),
             'name_kanji' => $this->prefer($existing?->name_kanji, $draft->nameKanji),
             'name_kana' => $this->prefer($existing?->name_kana, $draft->nameKana),
             'profile_url' => $this->prefer($existing?->profile_url, $draft->profileUrl),
             'image_url' => $this->prefer($existing?->image_url, $draft->imageUrl),
-            'birth_date' => $this->prefer($this->dateString($existing?->getAttribute('birth_date')), $draft->birthDate),
-            'height_cm' => $this->preferInt($existing?->height_cm, $draft->heightCm),
-            'bust' => $this->preferInt($existing?->bust, $draft->bust),
-            'waist' => $this->preferInt($existing?->waist, $draft->waist),
-            'hip' => $this->preferInt($existing?->hip, $draft->hip),
-            'cup' => $this->prefer($existing?->cup, $draft->cup),
-            'blood_type' => $this->prefer($existing?->blood_type, $draft->bloodType),
+            'birth_date' => $this->prefer($normalizedExisting['birth_date'] ?? null, $draft->birthDate),
+            'height_cm' => $this->preferInt($normalizedExisting['height_cm'] ?? null, $draft->heightCm),
+            'bust' => $this->preferInt($normalizedExisting['bust'] ?? null, $draft->bust),
+            'waist' => $this->preferInt($normalizedExisting['waist'] ?? null, $draft->waist),
+            'hip' => $this->preferInt($normalizedExisting['hip'] ?? null, $draft->hip),
+            'cup' => $this->prefer($normalizedExisting['cup'] ?? null, $draft->cup),
+            'blood_type' => $this->prefer($normalizedExisting['blood_type'] ?? null, $draft->bloodType),
+            'blood_rh' => $this->prefer($normalizedExisting['blood_rh'] ?? null, $draft->bloodRh),
             'bio_text' => $this->prefer($existing?->bio_text, $draft->bioText),
-            'debut_date' => $this->prefer($this->dateString($existing?->getAttribute('debut_date')), $draft->debutDate),
-            'location' => $this->prefer($existing?->location, $draft->location),
+            'debut_date' => $this->prefer($normalizedExisting['debut_date'] ?? null, $draft->debutDate),
+            'location' => $this->prefer($normalizedExisting['location'] ?? null, $draft->location),
             'attrs' => $this->mergeAttrs(
                 is_array($existing?->getAttribute('attrs')) ? $existing->getAttribute('attrs') : [],
                 $draft->attrs,
@@ -153,7 +224,12 @@ final class PerformerPersister implements PerformerDraftSink
             'name_romaji' => $draft->nameRomaji ?? $source->name_romaji,
             'name_kanji' => $draft->nameKanji ?? $source->name_kanji,
             'name_kana' => $draft->nameKana ?? $source->name_kana,
-            'birth_date' => $draft->birthDate ?? $source->birth_date,
+            'birth_date' => $draft->birthDate ?? $this->attributeNormalizer->date(
+                'birth_date',
+                $source->getAttribute('birth_date'),
+                $draft->sourceSlug,
+                false,
+            ),
             'cross_link_source' => $draft->crossLinkId === null
                 ? $source->cross_link_source
                 : ($draft->crossLinkSource ?? $draft->sourceSlug),
@@ -197,15 +273,6 @@ final class PerformerPersister implements PerformerDraftSink
         $trimmed = trim($value);
 
         return $trimmed === '' ? null : $trimmed;
-    }
-
-    private function dateString(mixed $value): ?string
-    {
-        if ($value instanceof \DateTimeInterface) {
-            return $value->format('Y-m-d');
-        }
-
-        return is_string($value) && $value !== '' ? $value : null;
     }
 
     private function upsertProfileImage(

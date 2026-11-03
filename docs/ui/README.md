@@ -64,8 +64,8 @@ to close. Selecting returns focus to the input; ID names are resolved from `perf
 | Control | URL parameter | Meaning |
 | --- | --- | --- |
 | Tên | `q` | Partial name or alias; at least two characters |
-| Cup / Nhóm máu | `cup`, `blood_type` | Comma-separated values, any selected value; current-result counts |
-| Nơi sống | `location` | Location text with catalog suggestions and facet values |
+| Cup / Blood type | `cup`, `blood_type` | Comma-separated canonical values; aliases merge counts and unknown blood type is hidden by default |
+| Location | `location` | Canonical Japanese prefecture/city suggestions with merged alias counts |
 | Age | `age_min`, `age_max` | Inclusive age bounds |
 | Height | `height_min`, `height_max` | Inclusive centimetres |
 | Số đo (collapsed initially) | `bust_min`, `bust_max`, `waist_min`, `waist_max`, `hip_min`, `hip_max` | Independent inclusive body measurement ranges |
@@ -75,6 +75,12 @@ to close. Selecting returns focus to the input; ID names are resolved from `perf
 | Số phim tối thiểu | `movies_min` | Minimum linked movie count |
 | Nguồn | `source` | Source slugs |
 | Xếp theo | `sort` | `name`, `updated_at`, `linked_title_count` |
+
+Performer Cup, Blood type, and Location suggestions use canonical values and merge
+counts for equivalent legacy spellings. Blood types are A, B, O, and AB; cups
+are A–K. Invalid and missing blood types appear in an `Unknown` catalog bucket
+only when explicitly requested by the API; the UI hides that bucket by default.
+Japanese prefecture and city aliases resolve to the official canonical names.
 
 ### Facets, empty results and saved searches
 
