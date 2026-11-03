@@ -6,12 +6,15 @@ namespace App\Services\Notifications;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
 
 final class NotificationTemplateService
 {
+    private const ENABLED_CACHE_PREFIX = 'javmeta:notification-policy-enabled:';
+
     public function __construct(
         private readonly NotificationRegistry $registry,
         private readonly NotificationTemplateValidator $validator,
@@ -66,8 +69,21 @@ final class NotificationTemplateService
         }
 
         $row = DB::table('notification_templates')->where('key', $key)->first();
+        $template = $row === null ? $this->defaultRow($key, $definition) : $this->hydrate($row, $definition);
+        $this->rememberEnabled($key, (bool) $template['enabled']);
 
-        return $row === null ? $this->defaultRow($key, $definition) : $this->hydrate($row, $definition);
+        return $template;
+    }
+
+    public function lastKnownEnabled(string $key): ?bool
+    {
+        try {
+            $enabled = Cache::get(self::ENABLED_CACHE_PREFIX . hash('sha256', $key));
+        } catch (Throwable) {
+            return null;
+        }
+
+        return is_bool($enabled) ? $enabled : null;
     }
 
     /** @return array<string, mixed>|null */
@@ -111,7 +127,9 @@ final class NotificationTemplateService
                 || $current->default_severity !== $severity;
             foreach ($policyFields as $field => $value) {
                 $stored = $current->{$field};
-                if (in_array($field, ['include_in_periodic_report', 'include_in_daily_report', 'send_resolved'], true)) {
+                if ($field === 'tier') {
+                    $stored = (string) $stored;
+                } elseif (in_array($field, ['include_in_periodic_report', 'include_in_daily_report', 'send_resolved'], true)) {
                     $stored = (bool) $stored;
                 } elseif ($field === 'escalation_minutes') {
                     $stored = $stored === null ? null : (int) $stored;
@@ -177,6 +195,7 @@ final class NotificationTemplateService
 
             $this->validator->assertValid($key, (string) $revision->title_template, (string) $revision->body_template);
             $this->recordRevision($template);
+            $hasPolicyFields = $revision->tier !== null;
             DB::table('notification_templates')->where('id', $template->id)->update([
                 'title_template' => $revision->title_template,
                 'body_template' => $revision->body_template,
@@ -184,7 +203,7 @@ final class NotificationTemplateService
                 'default_severity' => $revision->default_severity,
                 'tier' => $revision->tier ?? $definition['tier'],
                 'cooldown_minutes' => $revision->cooldown_minutes ?? $definition['cooldown_minutes'],
-                'escalation_minutes' => $revision->escalation_minutes ?? $definition['escalation_minutes'],
+                'escalation_minutes' => $hasPolicyFields ? $revision->escalation_minutes : $definition['escalation_minutes'],
                 'include_in_periodic_report' => $revision->include_in_periodic_report ?? $definition['include_in_periodic_report'],
                 'include_in_daily_report' => $revision->include_in_daily_report ?? $definition['include_in_daily_report'],
                 'send_resolved' => $revision->send_resolved ?? $definition['send_resolved'],
@@ -246,6 +265,15 @@ final class NotificationTemplateService
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    private function rememberEnabled(string $key, bool $enabled): void
+    {
+        try {
+            Cache::forever(self::ENABLED_CACHE_PREFIX . hash('sha256', $key), $enabled);
+        } catch (Throwable) {
+            // The policy database remains authoritative when the cache is unavailable.
+        }
     }
 
     private function recordRevision(object $current): void

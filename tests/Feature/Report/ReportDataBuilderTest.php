@@ -10,6 +10,7 @@ use App\Models\ReportSnapshot;
 use App\Services\Report\NodeSampleAggregator;
 use App\Services\Report\NodeSampleStore;
 use App\Services\Report\ReportDataBuilder;
+use App\Services\Report\ReportRenderer;
 use App\Services\Report\ReportServiceStats;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -93,6 +94,60 @@ final class ReportDataBuilderTest extends TestCase
         } finally {
             unlink($manifestPath);
         }
+    }
+
+    public function test_report_fallback_treats_a_resolved_backup_failure_as_successful(): void
+    {
+        config([
+            'cache.default' => 'array',
+            'javmeta_report.sections' => [],
+            'backup.manifest_path' => storage_path('app/missing-backup-manifest-' . uniqid('', true) . '.json'),
+        ]);
+        Cache::store('array')->flush();
+        $at = CarbonImmutable::parse('2026-11-03 12:00:00 UTC');
+        DB::table('notification_policy_events')->insert([
+            'notification_key' => 'backup.stale',
+            'cause_hash' => str_repeat('a', 64),
+            'first_seen_at' => $at->subHour(),
+            'last_seen_at' => $at->subMinutes(40),
+            'resolved_at' => $at->subMinutes(30),
+            'created_at' => $at->subHour(),
+            'updated_at' => $at->subMinutes(30),
+        ]);
+
+        $data = app(ReportDataBuilder::class)->build($at, 1440);
+
+        self::assertSame('Successful', $data['backup']['status']);
+    }
+
+    public function test_daily_report_labels_the_actual_retained_node_sample_span(): void
+    {
+        config([
+            'cache.default' => 'array',
+            'javmeta_report.sections' => ['workers'],
+            'javmeta_report.template' => '{workers}',
+            'backup.manifest_path' => storage_path('app/missing-backup-manifest-' . uniqid('', true) . '.json'),
+        ]);
+        Cache::store('array')->flush();
+        $at = CarbonImmutable::parse('2026-11-03 12:00:00 UTC');
+        $samples = app(NodeSampleStore::class);
+        $samples->put('worker-1', [
+            'sampled_at' => $at->subMinutes(179)->timestamp,
+            'cpu_percent' => 20,
+            'workers' => ['busy' => 1, 'idle' => 1, 'total' => 2],
+        ]);
+        $samples->put('worker-1', [
+            'sampled_at' => $at->timestamp,
+            'cpu_percent' => 40,
+            'workers' => ['busy' => 2, 'idle' => 0, 'total' => 2],
+        ]);
+
+        $data = app(ReportDataBuilder::class)->build($at, 1440);
+        $text = app(ReportRenderer::class)->render($data, $at);
+
+        self::assertSame(179, $data['nodes']['worker-1']['sample_window_minutes']);
+        self::assertStringContainsString('avg 75% busy over 2 h 59 min', $text);
+        self::assertStringNotContainsString('avg busy over 24 h', $text);
     }
 
     public function test_daily_and_periodic_snapshots_can_share_the_same_scheduled_time(): void

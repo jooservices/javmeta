@@ -268,13 +268,15 @@ final class ReportDataBuilder
             return ['status' => 'No recent backup status recorded', 'at' => null];
         }
         $row = DB::table('notification_policy_events')->whereIn('notification_key', ['backup.stale', 'backup.manifest_missing', 'backup.success', 'backup.ok'])
-            ->where('first_seen_at', '<=', $at)->orderByDesc('first_seen_at')->first(['notification_key', 'first_seen_at']);
+            ->where('first_seen_at', '<=', $at)->orderByDesc('first_seen_at')->first(['notification_key', 'first_seen_at', 'resolved_at']);
         if ($row === null) {
             return ['status' => 'No recent backup status recorded', 'at' => null];
         }
 
         return [
-            'status' => in_array($row->notification_key, ['backup.stale', 'backup.manifest_missing'], true) ? 'Failed or stale' : 'Successful',
+            'status' => $row->resolved_at !== null || ! in_array($row->notification_key, ['backup.stale', 'backup.manifest_missing'], true)
+                ? 'Successful'
+                : 'Failed or stale',
             'at' => (string) $row->first_seen_at,
         ];
     }

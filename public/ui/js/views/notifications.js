@@ -229,7 +229,7 @@ async function reportPreview(url, title) {
     const result = await admin(url);
     return `<details class="notification-report-preview"><summary>${esc(title)}</summary><button class="btn sm" data-preview-report="${esc(url)}">Làm mới</button><pre data-report-preview="${esc(url)}">${esc(result.data.text)}</pre></details>`;
   } catch (error) {
-    return `<details class="notification-report-preview"><summary>${esc(title)}</summary><div class="err" role="alert">${esc(error.message)}</div><button class="btn sm" data-preview-report="${esc(url)}">Thử lại</button></details>`;
+    return `<details class="notification-report-preview"><summary>${esc(title)}</summary><pre class="err" role="alert" data-report-preview="${esc(url)}">${esc(error.message)}</pre><button class="btn sm" data-preview-report="${esc(url)}">Thử lại</button></details>`;
   }
 }
 

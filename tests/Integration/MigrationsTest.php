@@ -25,6 +25,7 @@ final class MigrationsTest extends BaseTestCase
         self::assertSame(0, Artisan::call('migrate:fresh', ['--force' => true]), Artisan::output());
         self::assertTrue(Schema::hasTable('notification_templates'));
         self::assertTrue(Schema::hasTable('notification_template_revisions'));
+        $this->verifyNotificationPolicyMigration();
         self::assertSame(count(app(NotificationRegistry::class)->all()), app(NotificationTemplateService::class)->count());
         app(NotificationTemplateService::class)->markSent('follow.match');
         self::assertSame(1, (int) DB::table('notification_templates')->where('key', 'follow.match')->value('sent_count'));
@@ -194,6 +195,57 @@ final class MigrationsTest extends BaseTestCase
             self::assertNotNull($index, "Missing PostgreSQL report index {$name}.");
             self::assertTrue($index->is_valid, "PostgreSQL report index {$name} must be valid.");
         }
+    }
+
+    private function verifyNotificationPolicyMigration(): void
+    {
+        $this->assertIndexState('report_snapshots_type_slot_unique', true);
+        self::assertNull(DB::selectOne('SELECT to_regclass(?) AS index_name', ['report_snapshots_scheduled_for_unique'])?->index_name);
+
+        $scheduledFor = '2026-11-03 08:00:00+00';
+        DB::table('report_snapshots')->insert([
+            [
+                'scheduled_for' => $scheduledFor,
+                'report_type' => 'periodic',
+                'result' => 'sent',
+                'rendered_text' => 'Periodic report',
+                'raw_numbers' => '{}',
+            ],
+            [
+                'scheduled_for' => $scheduledFor,
+                'report_type' => 'daily',
+                'result' => 'sent',
+                'rendered_text' => 'Daily report',
+                'raw_numbers' => '{}',
+            ],
+        ]);
+
+        $migration = require database_path('migrations/2026_11_03_000005_add_notification_policy.php');
+        $migration->down();
+
+        self::assertFalse(Schema::hasColumn('report_snapshots', 'report_type'));
+        self::assertSame(1, DB::table('report_snapshots')->whereNull('scheduled_for')->count());
+        self::assertSame(1, DB::table('report_snapshots')->where('scheduled_for', $scheduledFor)->count());
+        $this->assertIndexState('report_snapshots_scheduled_for_unique', true);
+        self::assertNull(DB::selectOne('SELECT to_regclass(?) AS index_name', ['report_snapshots_type_slot_unique'])?->index_name);
+
+        $migration->up();
+
+        self::assertTrue(Schema::hasColumn('report_snapshots', 'report_type'));
+        $this->assertIndexState('report_snapshots_type_slot_unique', true);
+        self::assertNull(DB::selectOne('SELECT to_regclass(?) AS index_name', ['report_snapshots_scheduled_for_unique'])?->index_name);
+    }
+
+    private function assertIndexState(string $name, bool $unique): void
+    {
+        $index = DB::selectOne(
+            'SELECT i.indisvalid AS is_valid, i.indisunique AS is_unique FROM pg_index AS i WHERE i.indexrelid = to_regclass(?)',
+            [$name],
+        );
+
+        self::assertNotNull($index, "Missing PostgreSQL index {$name}.");
+        self::assertTrue($index->is_valid, "PostgreSQL index {$name} must be valid.");
+        self::assertSame($unique, $index->is_unique, "PostgreSQL index {$name} has unexpected uniqueness.");
     }
 
     private function leaveInvalidPendingKindIndex(): void

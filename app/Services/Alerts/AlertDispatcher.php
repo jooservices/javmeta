@@ -48,12 +48,10 @@ final class AlertDispatcher
                     $context['severity'] = $decision['tier'];
                 }
                 $context['notification_policy_decision'] = $decision;
-                if ($this->renderer !== null) {
-                    $rendered = $this->renderer->render($templateKey, $context);
-                    $subject = $rendered['title'];
-                    $body = $rendered['body'];
-                    $context['template_rendered'] = true;
-                }
+                $rendered = ($this->renderer ?? app(NotificationRenderer::class))->render($templateKey, $context);
+                $subject = $rendered['title'];
+                $body = $rendered['body'];
+                $context['template_rendered'] = true;
             }
         }
         $sent = $this->channels?->dispatch($subject, $body, $context, $force, $onlyChannels) ?? [];
@@ -131,6 +129,8 @@ final class AlertDispatcher
             Cache::put($this->activeKey($debounceKey), 1, now()->addDays(7));
         } elseif ($templateKey === null && $ttl > 0) {
             Cache::forget($cacheKey);
+        } elseif ($templateKey !== null && Cache::has($this->activeKey($debounceKey))) {
+            Cache::put($this->activeKey($debounceKey), 1, now()->addDays(7));
         }
 
         return $delivered;

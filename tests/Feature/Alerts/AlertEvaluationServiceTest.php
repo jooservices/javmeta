@@ -125,6 +125,22 @@ final class AlertEvaluationServiceTest extends TestCase
         self::assertTrue($this->sent[0][2]['template_rendered']);
     }
 
+    public function test_escalated_alert_renders_critical_title_without_an_injected_renderer(): void
+    {
+        $this->setSuccessRateTier('warning');
+        $this->useSnapshot($this->snapshot(100, 80));
+
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        self::assertSame([], $this->sent);
+
+        $this->travel(60)->minutes();
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+
+        self::assertCount(1, $this->sent);
+        self::assertStringContainsString('CRITICAL', $this->sent[0][0]);
+        self::assertStringNotContainsString('WARNING', $this->sent[0][0]);
+    }
+
     public function test_small_attempt_sample_does_not_open_an_event(): void
     {
         $this->useSnapshot($this->snapshot(99, 10));
@@ -285,6 +301,8 @@ final class AlertEvaluationServiceTest extends TestCase
         $this->artisan('alerts:evaluate')->assertSuccessful();
         self::assertSame(3, $recoveryAttempts);
         self::assertNotNull($event->fresh()->getAttribute('recovery_completed_at'));
+        $policyEvent = DB::table('notification_policy_events')->where('notification_key', 'crawl.success_rate_low')->first();
+        self::assertNotNull($policyEvent?->resolved_at);
 
         $this->travel(30)->minutes();
         $this->artisan('alerts:evaluate')->assertSuccessful();

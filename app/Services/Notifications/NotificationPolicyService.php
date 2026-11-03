@@ -30,6 +30,11 @@ final class NotificationPolicyService
         return $template === null ? null : $this->policy($template);
     }
 
+    public function lastKnownEnabled(string $key): ?bool
+    {
+        return $this->templates->lastKnownEnabled($key);
+    }
+
     /** @return list<array<string, mixed>> */
     public function all(): array
     {

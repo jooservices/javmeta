@@ -71,11 +71,13 @@ final class NotificationPolicyDispatcher
             } elseif ($tier === 'info' && ! $digest) {
                 return $this->suppress($key, $policyKey, $causeKey, $quiet && ! $security ? 'quiet_mode' : 'digest_only', false);
             }
-            if ($quiet && ! $security && $tier !== 'critical') {
+            if ($quiet && ! $security && ! $digest && $tier !== 'critical') {
                 return $this->suppress($key, $policyKey, $causeKey, 'quiet_mode', false);
             }
             if ($digest) {
-                if ($this->isCoolingDown($event, (int) $policy['cooldown_minutes'])) {
+                $scheduledReport = ($context['notification_scheduled'] ?? false) === true
+                    && in_array($policyKey, ['report.periodic', 'report.daily'], true);
+                if (! $scheduledReport && $this->isCoolingDown($event, (int) $policy['cooldown_minutes'])) {
                     return $this->suppress($key, $policyKey, $causeKey, 'cooldown', false);
                 }
 
@@ -95,6 +97,9 @@ final class NotificationPolicyDispatcher
             return $this->reserveDecision($key, $policyKey, $causeKey, $tier, false);
         } catch (Throwable $exception) {
             Log::warning('javmeta.notification_policy_unavailable', ['reason' => $exception::class]);
+            if ($this->policies->lastKnownEnabled($policyKey) === false) {
+                return $this->suppress($key, $policyKey, $causeKey, 'disabled', $isResolved);
+            }
             $fallback = $this->registry->get($policyKey);
             if ($fallback !== null && ($fallback['tier'] === 'critical' || str_starts_with($policyKey, 'security.')) && ! $isResolved) {
                 return $this->decision(true, $key, $policyKey, $causeKey, 'critical', false, null);

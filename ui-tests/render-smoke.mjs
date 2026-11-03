@@ -216,6 +216,12 @@ assert.match(notificationPage, /Chế độ yên lặng/); assert.match(notifica
 assert.match(notificationPage, /Lịch báo cáo hằng ngày/); assert.match(notificationPage, /Giờ gửi cục bộ/); assert.match(notificationPage, /Múi giờ IANA/);
 assert.match(notificationPage, /data-daily-time/); assert.match(notificationPage, /data-daily-timezone/); assert.match(notificationPage, /save-daily-schedule/);
 assert.ok(!notificationPage.includes('<script>'), 'notification labels are escaped');
+const notificationFetch = globalThis.fetch;
+globalThis.fetch = async url => url === '/ui-admin/report/daily' ? Promise.reject(new Error('Offline')) : notificationFetch(url);
+const failedReportPreview = await run('notifications-preview-error', await load('views/notifications.js'), { params: {}, query: {} });
+assert.match(failedReportPreview, /<pre class="err" role="alert" data-report-preview="\/ui-admin\/report\/daily">Offline<\/pre>/);
+assert.match(failedReportPreview, /data-preview-report="\/ui-admin\/report\/daily">Thử lại/);
+globalThis.fetch = notificationFetch;
 const notificationCss = await readFile(new URL('../public/ui/app.css', import.meta.url), 'utf8');
 assert.match(notificationCss, /@media\(max-width:480px\)/, 'notification editor has a narrow-screen layout');
 assert.match(notificationCss, /\.notification-daily-schedule \.bd\{display:grid/, 'daily report settings fit narrow screens');

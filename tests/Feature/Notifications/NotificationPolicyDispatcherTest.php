@@ -9,8 +9,11 @@ use App\Services\Notifications\NotificationPolicyService;
 use App\Services\Settings\SettingsService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Testing\FakeConfigStore;
+use RuntimeException;
 use Tests\TestCase;
 
 final class NotificationPolicyDispatcherTest extends TestCase
@@ -20,6 +23,8 @@ final class NotificationPolicyDispatcherTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config(['cache.default' => 'array']);
+        Cache::flush();
         $this->app->instance(ConfigStore::class, new FakeConfigStore());
         $this->app->forgetInstance(SettingsService::class);
         CarbonImmutable::setTestNow('2026-11-03 12:00:00 UTC');
@@ -93,6 +98,75 @@ final class NotificationPolicyDispatcherTest extends TestCase
             self::assertTrue($due['allowed']);
             $dispatcher->release($due);
         }
+    }
+
+    public function test_scheduled_report_slots_bypass_policy_cooldown_while_manual_sends_keep_it(): void
+    {
+        $dispatcher = app(NotificationPolicyDispatcher::class);
+        foreach ([['report.periodic', 'periodic_report', 30], ['report.daily', 'daily_report', 23 * 60]] as [$key, $cause, $elapsedMinutes]) {
+            $scheduledContext = [
+                'notification_cause' => $cause,
+                'notification_digest' => true,
+                'notification_scheduled' => true,
+            ];
+            $first = $dispatcher->prepare($key, $scheduledContext);
+            self::assertTrue($first['allowed']);
+            $dispatcher->recordSent($first);
+
+            CarbonImmutable::setTestNow(CarbonImmutable::now()->addMinutes($elapsedMinutes));
+            $nextSlot = $dispatcher->prepare($key, $scheduledContext);
+            self::assertTrue($nextSlot['allowed']);
+            $dispatcher->release($nextSlot);
+
+            $manual = $dispatcher->prepare($key, [
+                'notification_cause' => $cause,
+                'notification_digest' => true,
+            ]);
+            self::assertFalse($manual['allowed']);
+            self::assertSame('cooldown', $manual['reason']);
+        }
+    }
+
+    public function test_quiet_mode_allows_digest_events(): void
+    {
+        app(SettingsService::class)->set('notifications.quiet_mode', true);
+        $service = app(NotificationPolicyService::class);
+        $policy = $service->get('report.daily');
+        self::assertNotNull($policy);
+        $service->save('report.daily', [...$policy, 'enabled' => true, 'tier' => 'warning'], null);
+
+        $decision = app(NotificationPolicyDispatcher::class)->prepare('report.daily', [
+            'notification_cause' => 'daily_report',
+            'notification_digest' => true,
+        ]);
+
+        self::assertTrue($decision['allowed']);
+        app(NotificationPolicyDispatcher::class)->release($decision);
+    }
+
+    public function test_critical_fallback_does_not_send_a_policy_known_to_be_disabled(): void
+    {
+        $policies = app(NotificationPolicyService::class);
+        $policy = $policies->get('crawl.stalled');
+        self::assertNotNull($policy);
+        $policies->save('crawl.stalled', [...$policy, 'enabled' => false], null);
+        DB::shouldReceive('table')->andThrow(new RuntimeException('Policy store unavailable.'));
+
+        $decision = app(NotificationPolicyDispatcher::class)->prepare('crawl.stalled', ['rule' => 'crawl_stalled']);
+
+        self::assertFalse($decision['allowed']);
+        self::assertSame('disabled', $decision['reason']);
+    }
+
+    public function test_critical_fallback_remains_when_enabled_state_is_unknown(): void
+    {
+        Cache::flush();
+        DB::shouldReceive('table')->andThrow(new RuntimeException('Policy store unavailable.'));
+
+        $decision = app(NotificationPolicyDispatcher::class)->prepare('crawl.stalled', ['rule' => 'crawl_stalled']);
+
+        self::assertTrue($decision['allowed']);
+        self::assertSame('critical', $decision['tier']);
     }
 
     public function test_quiet_mode_allows_only_critical_and_security_events(): void

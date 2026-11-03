@@ -78,12 +78,21 @@ final class PeriodicReportService
             return ['sent' => false, 'duplicate' => true, 'text' => '', 'result' => 'locked'];
         }
 
+        $slotReservationKey = $slot === null ? null : 'javmeta:report:reserved-slot:' . $type . ':' . $slot;
+        $slotReserved = false;
+        $snapshotStored = false;
+        $policyDispatcher = null;
+        $policyDecision = null;
+
         try {
             if ($scheduledFor !== null && ReportSnapshot::query()->where('report_type', $type)->where('scheduled_for', $scheduledFor->utc())->exists()) {
                 return ['sent' => false, 'duplicate' => true, 'text' => '', 'result' => 'duplicate'];
             }
-            if ($scheduledFor !== null && ! Cache::add('javmeta:report:reserved-slot:' . $type . ':' . $slot, 1, now()->addDays(2))) {
-                return ['sent' => false, 'duplicate' => true, 'text' => '', 'result' => 'duplicate'];
+            if ($slotReservationKey !== null) {
+                $slotReserved = Cache::add($slotReservationKey, 1, now()->addDays(2));
+                if (! $slotReserved) {
+                    return ['sent' => false, 'duplicate' => true, 'text' => '', 'result' => 'duplicate'];
+                }
             }
 
             $policyDispatcher = app(\App\Services\Notifications\NotificationPolicyDispatcher::class);
@@ -91,6 +100,7 @@ final class PeriodicReportService
             $policyDecision = $policyDispatcher->prepare($policyKey, [
                 'notification_cause' => $type . '_report',
                 'notification_digest' => true,
+                'notification_scheduled' => $scheduledFor !== null,
             ]);
             if ($policyDecision !== null && ! $policyDecision['allowed']) {
                 return ['sent' => false, 'duplicate' => true, 'text' => '', 'result' => 'suppressed'];
@@ -114,6 +124,7 @@ final class PeriodicReportService
                 'rendered_text' => $text,
                 'raw_numbers' => $data,
             ]);
+            $snapshotStored = true;
             try {
                 $this->pruneHistory();
             } catch (Throwable) {
@@ -130,6 +141,16 @@ final class PeriodicReportService
 
             return ['sent' => $sent, 'duplicate' => false, 'text' => $text, 'result' => $result];
         } catch (Throwable) {
+            if ($slotReserved && ! $snapshotStored && $slotReservationKey !== null) {
+                try {
+                    Cache::forget($slotReservationKey);
+                } catch (Throwable) {
+                    // A failed cache cleanup must not mask the original report failure.
+                }
+            }
+            if ($policyDispatcher !== null && $policyDecision !== null) {
+                $policyDispatcher->release($policyDecision);
+            }
             try {
                 $this->metrics->record('failed');
             } catch (Throwable) {

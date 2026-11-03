@@ -93,6 +93,27 @@ final class SettingsTest extends TestCase
         $this->assertFalse(config('javmeta_alerts.enabled'));
     }
 
+    public function test_success_rate_critical_threshold_cannot_exceed_the_warning_threshold(): void
+    {
+        $settings = app(SettingsService::class);
+        $settings->set('alerts.success_rate_min_percent', 85);
+        $settings->set('alerts.success_rate_critical_percent', 70);
+
+        try {
+            $settings->set('alerts.success_rate_critical_percent', 90);
+            self::fail('The critical threshold must not be higher than the warning threshold.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame(70, $settings->get('alerts.success_rate_critical_percent'));
+        }
+
+        try {
+            $settings->set('alerts.success_rate_min_percent', 60);
+            self::fail('The warning threshold must not be lower than the critical threshold.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame(85, $settings->get('alerts.success_rate_min_percent'));
+        }
+    }
+
     public function test_feed_interval_accepts_only_supported_values_and_can_be_rolled_back(): void
     {
         $settings = app(SettingsService::class);
@@ -860,7 +881,8 @@ final class SettingsTest extends TestCase
         $this->assertSame($default, $row['value']);
         $this->assertSame('default', $row['source']);
         $this->assertNotEmpty($row['warning']);
-        $this->assertStringNotContainsString('legacy:password@', $page->getContent());
+        $response = json_encode($page->json(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        $this->assertDoesNotMatchRegularExpression('~https?://legacy(?::[^@/]+)?@~i', $response);
         $this->assertStringNotContainsString('hidden', $page->getContent());
         $audit = $settings->set('downloads.qbittorrent_url', 'https://new.test');
         $this->assertStringNotContainsString('password', json_encode($audit));

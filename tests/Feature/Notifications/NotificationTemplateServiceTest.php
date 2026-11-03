@@ -51,6 +51,56 @@ final class NotificationTemplateServiceTest extends TestCase
         self::assertSame('critical', $restored['default_severity']);
     }
 
+    public function test_saving_an_unchanged_warning_policy_does_not_create_a_revision(): void
+    {
+        $service = app(NotificationTemplateService::class);
+        $template = $service->get('crawl.success_rate_low');
+        self::assertNotNull($template);
+        $version = $template['version'];
+
+        $service->save(
+            'crawl.success_rate_low',
+            $template['title_template'],
+            $template['body_template'],
+            $template['enabled'],
+            $template['default_severity'],
+            $template['updated_by'],
+            [
+                'tier' => $template['tier'],
+                'cooldown_minutes' => $template['cooldown_minutes'],
+                'escalation_minutes' => $template['escalation_minutes'],
+                'include_in_periodic_report' => $template['include_in_periodic_report'],
+                'include_in_daily_report' => $template['include_in_daily_report'],
+                'send_resolved' => $template['send_resolved'],
+            ],
+        );
+
+        self::assertSame($version, $service->get('crawl.success_rate_low')['version']);
+        self::assertSame([], $service->revisions('crawl.success_rate_low'));
+    }
+
+    public function test_restore_preserves_disabled_escalation_from_a_policy_revision(): void
+    {
+        $service = app(NotificationTemplateService::class);
+        $template = $service->get('crawl.success_rate_low');
+        self::assertNotNull($template);
+        $policy = [
+            'tier' => $template['tier'],
+            'cooldown_minutes' => $template['cooldown_minutes'],
+            'escalation_minutes' => null,
+            'include_in_periodic_report' => $template['include_in_periodic_report'],
+            'include_in_daily_report' => $template['include_in_daily_report'],
+            'send_resolved' => $template['send_resolved'],
+        ];
+        $service->save('crawl.success_rate_low', 'Disabled escalation', $template['body_template'], true, $template['default_severity'], null, $policy);
+        $service->save('crawl.success_rate_low', 'Current title', $template['body_template'], true, $template['default_severity'], null, $policy);
+        $revisionId = (int) $service->revisions('crawl.success_rate_low')[0]['id'];
+
+        $service->restore('crawl.success_rate_low', $revisionId, null);
+
+        self::assertNull($service->get('crawl.success_rate_low')['escalation_minutes']);
+    }
+
     public function test_successful_delivery_counts_are_exported_as_bounded_metric_points(): void
     {
         $service = app(NotificationTemplateService::class);

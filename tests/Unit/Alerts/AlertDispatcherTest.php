@@ -7,7 +7,9 @@ namespace Tests\Unit\Alerts;
 use App\Contracts\AlertNotifier;
 use App\Notifications\TelegramAlertNotifier;
 use App\Services\Alerts\AlertDispatcher;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use JOOservices\Client\Client\ClientBuilder;
 use JOOservices\Client\Testing\TestResponse;
@@ -20,6 +22,7 @@ final class AlertDispatcherTest extends TestCase
 
     protected function tearDown(): void
     {
+        CarbonImmutable::setTestNow();
         ClientBuilder::clearFake();
         parent::tearDown();
     }
@@ -134,5 +137,37 @@ final class AlertDispatcherTest extends TestCase
         self::assertTrue($dispatcher->resolveTemplate('crawl-stalled', 'crawl.stalled_recovered'));
         self::assertNotNull(DB::table('notification_policy_events')->value('resolved_at'));
         self::assertCount(3, ClientBuilder::recorded());
+    }
+
+    public function test_failed_template_delivery_refreshes_an_existing_active_cause(): void
+    {
+        config([
+            'cache.default' => 'array',
+            'javmeta_alerts.telegram.bot_token' => 'tok',
+            'javmeta_alerts.telegram.chat_id' => '42',
+            'laravel-notifications.channels.telegram.bot_token' => 'tok',
+            'laravel-notifications.channels.telegram.chat_id' => '42',
+        ]);
+        Cache::store('array')->flush();
+        CarbonImmutable::setTestNow('2026-11-03 12:00:00 UTC');
+        ClientBuilder::fake()->respond(
+            'POST',
+            '*',
+            (new TestResponseSequence())
+                ->push(TestResponse::json(['ok' => true]))
+                ->push(TestResponse::json(['ok' => false], 503))
+                ->push(TestResponse::json(['ok' => true])),
+        );
+        $client = ClientBuilder::create()->withBaseUri('https://api.telegram.org/')->build();
+        $dispatcher = new AlertDispatcher(new TelegramAlertNotifier($client));
+
+        self::assertTrue($dispatcher->sendTemplate('crawl-stalled-ttl', 'crawl.stalled'));
+        CarbonImmutable::setTestNow(CarbonImmutable::now()->addDays(6));
+        self::assertFalse($dispatcher->sendTemplate('crawl-stalled-ttl', 'crawl.stalled'));
+        CarbonImmutable::setTestNow(CarbonImmutable::now()->addDays(2));
+
+        self::assertTrue($dispatcher->resolveTemplate('crawl-stalled-ttl', 'crawl.stalled_recovered'));
+        self::assertCount(3, ClientBuilder::recorded());
+        CarbonImmutable::setTestNow();
     }
 }

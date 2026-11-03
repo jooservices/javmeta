@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Notifications;
 
+use App\Contracts\AlertAuditNotifier;
 use App\Contracts\AlertNotifier;
 
 final class CompositeAlertNotifier implements AlertNotifier
@@ -15,7 +16,8 @@ final class CompositeAlertNotifier implements AlertNotifier
     {
         $delivered = false;
         foreach ($this->notifiers as $notifier) {
-            if ($notifier->notify($subject, $body, $context)) {
+            $notifierDelivered = $notifier->notify($subject, $body, $context);
+            if (! $notifier instanceof AlertAuditNotifier && $notifierDelivered) {
                 $delivered = true;
             }
         }

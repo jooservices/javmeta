@@ -179,7 +179,8 @@ final class TelegramAlertNotifier implements AlertNotifier, ReportChannel
             ])
             ->build();
         $response = Response::from($client->sendRequest($prepared->toPsr()));
-        if (! $response->successful()) {
+        $telegramResponse = $response->json();
+        if (! $response->successful() || ($telegramResponse['ok'] ?? null) !== true) {
             Log::warning('javmeta.telegram_failed', [
                 'reason' => 'Telegram API returned HTTP ' . $response->status(),
             ]);
