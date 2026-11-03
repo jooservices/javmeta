@@ -377,9 +377,10 @@ byte cost is unavailable until fetch attempts expose response byte counts.
 Each Horizon node checks its public IPv4 using the ordered
 `observability.egress_probe_urls` list (default: ifconfig.me, icanhazip.com,
 checkip.amazonaws.com, api.ipify.org). The configured `JAVMETA_NODE_NAME`
-(`config('sentry.node')`) identifies its cache row; a row written under the old
-OS hostname is removed when that node probes again. The request timeout is
-capped at five seconds across the ordered URL list and proxy environment
+(`config('sentry.node')`) identifies its cache row; rows under the old OS
+hostname are omitted from status when the configured name differs. Legacy cache
+values are left untouched. The request timeout is capped at five seconds across
+the ordered URL list and proxy environment
 variables are ignored. The result lives in the shared cache at
 `javmeta:egress:{node}` for twice the configured probe interval; workers read
 this cache while recording an attempt and never wait for a probe.

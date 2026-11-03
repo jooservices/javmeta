@@ -70,7 +70,15 @@ final class NodeEgressProbe
     public function nodeStatuses(): array
     {
         $nodes = $this->cachedNodeIds();
-        $nodes[] = $this->nodeId();
+        $node = $this->nodeId();
+        $legacyHostname = NodeIdentity::hostname();
+        if ($legacyHostname !== $node) {
+            $nodes = array_values(array_filter(
+                $nodes,
+                static fn(string $cachedNode): bool => $cachedNode !== $legacyHostname,
+            ));
+        }
+        $nodes[] = $node;
         $nodes = array_values(array_unique($nodes));
         sort($nodes);
         $statuses = [];
@@ -378,19 +386,54 @@ final class NodeEgressProbe
         if (! is_array($body)) {
             return ['ip' => null, 'error' => 'Browser service returned invalid JSON.'];
         }
-        $exitCode = (int) ($body['exitCode'] ?? 1);
+        $exitCode = $body['exitCode'] ?? null;
+        if (! is_int($exitCode)) {
+            return ['ip' => null, 'error' => 'Playwright fetch returned an invalid response.'];
+        }
         if ($exitCode !== 0) {
-            return ['ip' => null, 'error' => 'Playwright fetch exited with code ' . $exitCode . '.'];
+            return ['ip' => null, 'error' => $this->playwrightFailureReason($exitCode, $body['stderr'] ?? null)];
         }
 
         $stdout = is_string($body['stdout'] ?? null) ? $body['stdout'] : '';
         $result = json_decode($stdout, true);
-        $ip = is_array($result) ? $this->parseIpv4(is_string($result['html'] ?? null) ? $result['html'] : '') : null;
+        if (! is_array($result)) {
+            return ['ip' => null, 'error' => 'Playwright fetch returned invalid output.'];
+        }
+        $html = $result['html'] ?? null;
+        if (! is_string($html)) {
+            return ['ip' => null, 'error' => 'Playwright fetch returned no page content.'];
+        }
+
+        $ip = $this->parseIpv4($html);
 
         return [
             'ip' => $ip,
             'error' => $ip === null ? 'Echo page did not return a public IPv4 address.' : null,
         ];
+    }
+
+    private function playwrightFailureReason(int $exitCode, mixed $stderr): string
+    {
+        $details = is_string($stderr) ? trim($stderr) : '';
+        if ($details === '') {
+            return 'Playwright fetch exited with code ' . $exitCode . '.';
+        }
+
+        $details = preg_replace('~https?://\S+~i', '[URL]', $details) ?? $details;
+        $details = preg_replace('/[\x00-\x1F\x7F]+/', ' ', $details) ?? $details;
+        $details = trim(preg_replace('/\s+/', ' ', $details) ?? $details);
+
+        $details = strtolower($details);
+        $reason = match (true) {
+            str_contains($details, 'timeout'), str_contains($details, 'timed out') => 'Playwright fetch timed out',
+            str_contains($details, 'browser launch failed'), str_contains($details, 'could not launch') => 'Playwright browser could not start',
+            str_contains($details, 'ssrf_blocked') => 'Playwright fetch target was blocked',
+            str_contains($details, 'err_name_not_resolved'), str_contains($details, 'could not resolve') => 'Playwright could not resolve the echo host',
+            str_contains($details, 'err_connection_refused'), str_contains($details, 'connection refused') => 'Playwright could not connect to the echo host',
+            default => 'Playwright fetch failed',
+        };
+
+        return $reason . ' (exit code ' . $exitCode . ').';
     }
 
     /** @return array{ip: ?string, error: ?string} */
@@ -469,7 +512,12 @@ final class NodeEgressProbe
 
     private function parseIpv4(string $body): ?string
     {
-        $candidate = trim($body);
+        $visibleContent = preg_replace('~<(script|style)\b[^>]*>.*?</\1\s*>~is', ' ', $body) ?? $body;
+        $candidate = trim(html_entity_decode(
+            strip_tags($visibleContent),
+            ENT_QUOTES | ENT_HTML5 | ENT_SUBSTITUTE,
+            'UTF-8',
+        ));
         if (filter_var($candidate, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
             return $candidate;
         }
@@ -578,8 +626,6 @@ final class NodeEgressProbe
             $legacyNode = NodeIdentity::hostname();
             if ($legacyNode !== $node) {
                 $nodes = array_values(array_filter($nodes, static fn(string $cachedNode): bool => $cachedNode !== $legacyNode));
-                Cache::forget($this->nodeCacheKey($legacyNode));
-                Cache::forget($this->nodeMetaKey($legacyNode));
             }
             $nodes[] = $node;
             $nodes = array_values(array_unique($nodes));

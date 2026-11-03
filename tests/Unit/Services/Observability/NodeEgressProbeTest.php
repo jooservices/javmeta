@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Services\Observability;
 
 use App\Services\Observability\NodeEgressProbe;
+use App\Support\NodeIdentity;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -72,10 +73,13 @@ final class NodeEgressProbeTest extends TestCase
             'sentry.node' => 'xcrawler',
         ]);
         Cache::setDefaultDriver('array');
-        $legacyNode = mb_substr(preg_replace('/[^A-Za-z0-9_.-]/', '-', (string) gethostname()) ?? 'local', 0, 64);
+        $legacyNode = NodeIdentity::hostname();
         Cache::forever('javmeta:egress:nodes', [$legacyNode]);
         Cache::put('javmeta:egress:' . $legacyNode, ['ip' => '192.0.2.10', 'probe_ok' => true]);
         Cache::forever('javmeta:egress-meta:' . $legacyNode, ['last_known_ip' => '192.0.2.10', 'change_count' => 1]);
+        if ($legacyNode !== 'xcrawler') {
+            self::assertNotContains($legacyNode, array_column(app(NodeEgressProbe::class)->nodeStatuses(), 'node'));
+        }
         $this->fakeTransport(
             new Response(200, [], '198.51.100.10'),
             new Response(200, [], '198.51.100.11'),
@@ -97,8 +101,8 @@ final class NodeEgressProbeTest extends TestCase
             ['xcrawler', 'xcrawler-worker-1', 'xcrawler-worker-2'],
             array_column($probe->nodeStatuses(), 'node'),
         );
-        self::assertFalse(Cache::has('javmeta:egress:' . $legacyNode));
-        self::assertFalse(Cache::has('javmeta:egress-meta:' . $legacyNode));
+        self::assertSame('192.0.2.10', Cache::get('javmeta:egress:' . $legacyNode)['ip']);
+        self::assertSame(1, Cache::get('javmeta:egress-meta:' . $legacyNode)['change_count']);
     }
 
     public function test_probe_change_updates_counter_and_emits_a_structured_log(): void
@@ -194,6 +198,94 @@ final class NodeEgressProbeTest extends TestCase
 
         self::assertSame('203.0.113.41', $probe->currentBrowserIp('browser-a.test'));
         self::assertNull($probe->browserStatuses()[0]['last_probe_error']);
+    }
+
+    public function test_browser_host_probe_ignores_ip_addresses_inside_scripts(): void
+    {
+        $this->prepareTelemetry();
+        config()->set([
+            'javmeta_browser.playwright_url' => 'http://browser-a.test',
+            'javmeta_browser.flaresolverr_url' => '',
+            'javmeta_observability.egress_probe_urls' => ['https://ifconfig.me'],
+        ]);
+        Cache::setDefaultDriver('array');
+        $this->fakeTransport(new Response(200, [], json_encode([
+            'exitCode' => 0,
+            'stdout' => json_encode(['html' => '<html><script>window.ip = "203.0.113.41";</script></html>'], JSON_THROW_ON_ERROR),
+        ], JSON_THROW_ON_ERROR)));
+
+        $probe = app(NodeEgressProbe::class);
+        $probe->probeBrowserHostsIfDue();
+
+        self::assertNull($probe->currentBrowserIp('browser-a.test'));
+        self::assertSame('Echo page did not return a public IPv4 address.', $probe->browserStatuses()[0]['last_probe_error']);
+    }
+
+    public function test_browser_host_probe_reports_invalid_playwright_output(): void
+    {
+        $this->prepareTelemetry();
+        config()->set([
+            'javmeta_browser.playwright_url' => 'http://browser-a.test',
+            'javmeta_browser.flaresolverr_url' => '',
+            'javmeta_observability.egress_probe_urls' => ['https://ifconfig.me'],
+        ]);
+        Cache::setDefaultDriver('array');
+        $this->fakeTransport(new Response(200, [], json_encode([
+            'exitCode' => 0,
+            'stdout' => 'not-json',
+        ], JSON_THROW_ON_ERROR)));
+
+        $probe = app(NodeEgressProbe::class);
+        $probe->probeBrowserHostsIfDue();
+
+        self::assertNull($probe->currentBrowserIp('browser-a.test'));
+        self::assertSame('Playwright fetch returned invalid output.', $probe->browserStatuses()[0]['last_probe_error']);
+    }
+
+    public function test_browser_host_probe_reports_a_safe_playwright_failure_reason(): void
+    {
+        $this->prepareTelemetry();
+        config()->set([
+            'javmeta_browser.playwright_url' => 'http://browser-a.test',
+            'javmeta_browser.flaresolverr_url' => '',
+            'javmeta_observability.egress_probe_urls' => ['https://ifconfig.me'],
+        ]);
+        Cache::setDefaultDriver('array');
+        $this->fakeTransport(new Response(200, [], json_encode([
+            'exitCode' => 124,
+            'stderr' => "Browser request timed out\nhttps://ifconfig.me/status?token=secret-value",
+            'stdout' => '',
+        ], JSON_THROW_ON_ERROR)));
+
+        $probe = app(NodeEgressProbe::class);
+        $probe->probeBrowserHostsIfDue();
+
+        self::assertSame(
+            'Playwright fetch timed out (exit code 124).',
+            $probe->browserStatuses()[0]['last_probe_error'],
+        );
+        self::assertStringNotContainsString('secret-value', $probe->browserStatuses()[0]['last_probe_error']);
+    }
+
+    public function test_browser_host_probe_rejects_a_non_integer_playwright_exit_code(): void
+    {
+        $this->prepareTelemetry();
+        config()->set([
+            'javmeta_browser.playwright_url' => 'http://browser-a.test',
+            'javmeta_browser.flaresolverr_url' => '',
+            'javmeta_observability.egress_probe_urls' => ['https://ifconfig.me'],
+        ]);
+        Cache::setDefaultDriver('array');
+        $this->fakeTransport(new Response(200, [], json_encode([
+            'exitCode' => '0',
+            'stdout' => json_encode(['html' => '203.0.113.41'], JSON_THROW_ON_ERROR),
+        ], JSON_THROW_ON_ERROR)));
+
+        $probe = app(NodeEgressProbe::class);
+        $probe->probeBrowserHostsIfDue();
+
+        self::assertNull($probe->currentBrowserIp('browser-a.test'));
+        self::assertSame('Playwright fetch returned an invalid response.', $probe->browserStatuses()[0]['last_probe_error']);
     }
 
     public function test_browser_host_probe_tries_later_echo_urls_and_clears_a_previous_error(): void

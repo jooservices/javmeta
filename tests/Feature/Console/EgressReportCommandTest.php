@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Console;
 
+use App\Support\NodeIdentity;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -63,7 +64,12 @@ final class EgressReportCommandTest extends TestCase
         Cache::setDefaultDriver('array');
         Cache::store('array')->flush();
         $node = 'xcrawler';
+        $legacyNode = NodeIdentity::hostname();
         $nodes = ['xcrawler', 'xcrawler-worker-1', 'xcrawler-worker-2'];
+        if ($legacyNode !== $node) {
+            $nodes[] = $legacyNode;
+            Cache::put('javmeta:egress:' . $legacyNode, ['ip' => '192.0.2.15', 'probe_ok' => true]);
+        }
         Cache::forever('javmeta:egress:nodes', $nodes);
         foreach (['xcrawler-worker-1' => '198.51.100.13', 'xcrawler-worker-2' => '198.51.100.14'] as $worker => $ip) {
             Cache::put('javmeta:egress:' . $worker, ['ip' => $ip, 'probe_ok' => true]);
@@ -102,6 +108,9 @@ final class EgressReportCommandTest extends TestCase
         self::assertStringContainsString('xcrawler', $output);
         self::assertStringContainsString('browser-b.test', $output);
         self::assertStringContainsString('Browser service returned HTTP 503.', $output);
+        if ($legacyNode !== $node) {
+            self::assertStringNotContainsString($legacyNode, $output);
+        }
     }
 
     private function insertAttempt(string $source, string $ip, int $status, ?string $cfMitigated, string $outcome, int $duration): void

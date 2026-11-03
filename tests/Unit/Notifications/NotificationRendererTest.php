@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Notifications;
 
 use App\Services\Notifications\NotificationRenderer;
+use App\Support\NodeIdentity;
 use App\Services\Notifications\NotificationTemplateService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -111,15 +112,19 @@ final class NotificationRendererTest extends TestCase
 
     public function test_egress_notification_uses_the_configured_node_name(): void
     {
-        config(['sentry.node' => 'xcrawler-worker-2']);
+        $hostName = NodeIdentity::hostname();
+        $node = $hostName === 'configured-egress-test-node'
+            ? 'configured-egress-test-node-2'
+            : 'configured-egress-test-node';
+        config(['sentry.node' => $node]);
 
         $rendered = app(NotificationRenderer::class)->render('network.egress_ip_changed', [
             'current_ip' => '203.0.113.12',
             'previous_ip' => '203.0.113.11',
         ]);
 
-        self::assertStringContainsString('Node xcrawler-worker-2 now exits', $rendered['body']);
-        self::assertStringNotContainsString((string) gethostname(), $rendered['body']);
+        self::assertStringContainsString('Node ' . $node . ' now exits', $rendered['body']);
+        self::assertStringNotContainsString('Node ' . $hostName . ' now exits', $rendered['body']);
     }
 
     public function test_preview_uses_registry_samples_while_live_render_uses_configured_timezone_and_node(): void
