@@ -388,6 +388,17 @@ final class SettingsTest extends TestCase
         $this->assertContains('health.startup.primary.web', array_column($settings->all(), 'key'));
     }
 
+    public function test_env_import_dry_run_keeps_every_table_cell_short(): void
+    {
+        Artisan::call('settings:import-env', ['--dry-run' => true]);
+        $longest = 0;
+        foreach (explode("\n", Artisan::output()) as $line) {
+            $longest = max($longest, mb_strlen($line));
+        }
+
+        $this->assertLessThan(400, $longest, 'a long default must not widen the whole preview table');
+    }
+
     public function test_env_import_dry_run_omits_telegram_credentials_without_writing(): void
     {
         $previous = $_ENV['NOTIFICATION_TELEGRAM_BOT_TOKEN'] ?? null;
