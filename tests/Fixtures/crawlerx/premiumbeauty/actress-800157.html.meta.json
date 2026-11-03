@@ -1,0 +1,10 @@
+{
+  "source_url": "https://premium-beauty.com/actress/detail/800157",
+  "final_url": "https://premium-beauty.com/actress/detail/800157",
+  "captured_at": "2026-11-03T00:00:00+00:00",
+  "http_status": 200,
+  "content_hash": "2d3d09841941d855f4e2d97605e9c115dd4900468fd80daf369a53182935c7e2",
+  "target_type": "performer_detail",
+  "fetch_method": "http",
+  "sanitized": false
+}

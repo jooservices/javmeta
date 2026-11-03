@@ -29,6 +29,10 @@ final class SiteCodeCanonicalizerTest extends TestCase
         return [
             ['onepondo', ['060426_001'], '1PONDO-060426_001'],
             ['caribbeancom', ['080826-001'], 'CARIBBEANCOM-080826-001'],
+            ['10musume', ['110326_01'], '10MUSUME-110326-01'],
+            ['muramura', ['103126_1273'], 'MURAMURA-103126-1273'],
+            ['pacopacomama', ['110326_100'], 'PACOPACOMAMA-110326-100'],
+            ['caribbeancompr', ['060126_001'], 'CARIBBEANCOM-060126-001'],
             ['heyzo', ['3927'], 'HEYZO-3927'],
             ['heyzo', ['HEYZO-3927'], 'HEYZO-3927'],
             ['tokyohot', ['n1508'], 'TOKYOHOT-1508'],

@@ -1,0 +1,11 @@
+{
+  "source_url": "https://av-fan.tokyo/actress/%E6%B0%B8%E7%80%AC%E3%82%86%E3%81%84.html",
+  "final_url": "https://av-fan.tokyo/actress/%E6%B0%B8%E7%80%AC%E3%82%86%E3%81%84.html",
+  "captured_at": "2026-10-24T19:01:00Z",
+  "http_status": 200,
+  "content_hash": "837de38c70e3d93ed42c5f4aaf4de3e85353d2a59b45869cfe2bd7a072914508",
+  "target_type": "performer_detail",
+  "fetch_method": "http",
+  "sanitized": true,
+  "notes": "Minimal observed name, kana and profile-image structure; values replaced with synthetic data; scripts, personal data and images omitted."
+}

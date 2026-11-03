@@ -1,0 +1,10 @@
+{
+  "source_url": "https://moodyz.com/actress/detail/713490",
+  "final_url": "https://moodyz.com/actress/detail/713490",
+  "captured_at": "2026-11-03T00:00:00+00:00",
+  "http_status": 200,
+  "content_hash": "0e73e99e56909585a0596ad858df4bc1639d00b392b1ab83d168639e985eddd0",
+  "target_type": "performer_detail",
+  "fetch_method": "http",
+  "sanitized": false
+}

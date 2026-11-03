@@ -41,6 +41,7 @@ Read the current neighboring implementation and write tests for the intended beh
 
 ## Add a source
 
+- `crawler:seed` queues each configured `movie_listing_urls` entry verbatim. For CrawlerX 1.5.0, Maker CMS adapters use `/works/date` because the adapter resolves the newest date group; the 1Pondo family uses `dyn/phpauto/movie_lists/list_newest_0.json`; Caribbeancom Premium uses `/eng/listpages/1.html`; AV-Wiki uses `/wp-json/wp/v2/posts` with `_embed=1`. These are adapter entry points, not guesses based on the base URL.
 - [ ] Confirm CrawlerX supports the site and crawl types. `CrawlerxClient` delegates site parsing/fetch choices to the package; do not copy a parser into JavMeta.
 - [ ] Follow `config/javmeta_sources.php`, `Source` and `Crawler/SyncSourcesCommand`: define the slug/default behavior and synchronize into database source rows using the reviewed operational procedure. Inspect existing rows before changing source configuration.
 - [ ] Use `SourceNormalizerRegistry` and the default normalizer where sufficient; add/register a special normalizer only for actual source differences.

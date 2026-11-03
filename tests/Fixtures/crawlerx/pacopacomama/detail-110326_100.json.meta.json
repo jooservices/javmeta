@@ -1,0 +1,11 @@
+{
+  "source_url": "https://www.pacopacomama.com/dyn/phpauto/movie_details/movie_id/110326_100.json",
+  "final_url": "https://www.pacopacomama.com/dyn/phpauto/movie_details/movie_id/110326_100.json",
+  "captured_at": "2026-11-02T18:03:26.474939+00:00",
+  "http_status": 200,
+  "content_hash": "7a071b158284f158c2168c9a75eea66f9c333a3bb7be3847dbbe9002ef30a371",
+  "target_type": "detail",
+  "fetch_method": "http",
+  "sanitized": false,
+  "capture_notes": "Captured with curl; JSON formatted for readability. Listing retains the first two complete real rows and original pagination totals."
+}

@@ -63,6 +63,7 @@ final class CrawlerxFixtureContractTest extends CrawlerxContractTestCase
         self::assertSame(1, Movie::query()->count());
         $movie = Movie::query()->firstOrFail();
         self::assertNotSame('', (string) $movie->code_normalized);
+        self::assertNotSame('', trim((string) ($movie->title_jp ?: $movie->title_en)), "movie title missing for {$slug}");
         if ($slug === 'javbtc') {
             self::assertSame('SSNI916', $movie->code_normalized, 'JavBTC page code must be read from the captured detail');
         }

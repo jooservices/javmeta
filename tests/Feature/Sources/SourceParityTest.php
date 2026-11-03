@@ -19,6 +19,15 @@ final class SourceParityTest extends TestCase
      * @var array<string, array<string, string>>
      */
     private const KNOWN_GAPS = [
+        'attackers' => [SourceParityChecker::PERFORMER => 'Maker CMS adapters read an actress profile by its detail URL only (no performer listing exists); javmeta reaches profiles from movie casts (README site matrix).'],
+        'dasdas' => [SourceParityChecker::PERFORMER => 'Maker CMS adapters read an actress profile by its detail URL only (no performer listing exists); javmeta reaches profiles from movie casts (README site matrix).'],
+        'fitch' => [SourceParityChecker::PERFORMER => 'Maker CMS adapters read an actress profile by its detail URL only (no performer listing exists); javmeta reaches profiles from movie casts (README site matrix).'],
+        'ideapocket' => [SourceParityChecker::PERFORMER => 'Maker CMS adapters read an actress profile by its detail URL only (no performer listing exists); javmeta reaches profiles from movie casts (README site matrix).'],
+        'kawaiikawaii' => [SourceParityChecker::PERFORMER => 'Maker CMS adapters read an actress profile by its detail URL only (no performer listing exists); javmeta reaches profiles from movie casts (README site matrix).'],
+        'madonna' => [SourceParityChecker::PERFORMER => 'Maker CMS adapters read an actress profile by its detail URL only (no performer listing exists); javmeta reaches profiles from movie casts (README site matrix).'],
+        'moodyz' => [SourceParityChecker::PERFORMER => 'Maker CMS adapters read an actress profile by its detail URL only (no performer listing exists); javmeta reaches profiles from movie casts (README site matrix).'],
+        'premiumbeauty' => [SourceParityChecker::PERFORMER => 'Maker CMS adapters read an actress profile by its detail URL only (no performer listing exists); javmeta reaches profiles from movie casts (README site matrix).'],
+        's1' => [SourceParityChecker::PERFORMER => 'Maker CMS adapters read an actress profile by its detail URL only (no performer listing exists); javmeta reaches profiles from movie casts (README site matrix).'],
         'minnanoav' => [SourceParityChecker::MOVIE => 'Movie capability exists in crawlerx; javmeta seeds the performer index only (README site matrix).'],
     ];
 

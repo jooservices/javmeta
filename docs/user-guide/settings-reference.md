@@ -466,7 +466,7 @@ Số nguyên; từ 1 đến 1000. Mã mục: `crawl.fetch_method_probe_interval`
 
 ### Khoảng request ghi đè theo nguồn (JSON)
 
-Ánh xạ mã nguồn đã cấu hình hoặc đã lưu sang min, default và max từ 0,25 đến 600 giây; để trống thì giữ nhịp mặc định.
+Ánh xạ mã nguồn đã cấu hình hoặc đã lưu sang min, default và max từ 0,25 đến 600 giây; để trống thì giữ nhịp mặc định. 14 nguồn CrawlerX 1.5.0 bắt đầu ở 8 giây (min 4, max 60); chỉnh nhịp qua ánh xạ này.
 
 Đối tượng JSON; cấu trúc do ứng dụng quy định. Mã mục: `crawl.source_gap_overrides`.
 

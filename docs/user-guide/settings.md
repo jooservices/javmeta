@@ -16,6 +16,8 @@ Cấu hình hệ thống lưu trong cơ sở dữ liệu. Mỗi nhóm có nút L
 
 The **Performer normalization** group manages the A/B/O/AB blood-type allow-list, A–K cup allow-list, placeholder tokens, measurement and date ranges, Japanese prefecture/city aliases, and backfill chunk size. Preview changes with `performers:backfill-normalization`; it uses the configured chunk size unless `--chunk` overrides it. Use `--apply` when ready to update rows and queue search reindexing.
 
+Nhịp request mặc định của mỗi nguồn được lưu trong bản ghi nguồn ở cơ sở dữ liệu. 14 nguồn mới từ CrawlerX 1.5.0 bắt đầu với khoảng nghỉ 8 giây, tối thiểu 4 giây và tối đa 60 giây. Có thể điều chỉnh theo từng mã nguồn bằng `crawl.source_gap_overrides` trong Cài đặt → Vòng lặp crawl; thiết lập này cũng được lưu trong cơ sở dữ liệu.
+
 Các ô bí mật hiện trạng thái đã đặt mà không trả lại giá trị; Telegram bot token và chat ID được quản lý trong runtime secrets, không phải trên trang này. Danh sách thư mục hoặc mạng có thể nhập mỗi dòng một mục. Không bật Tải về, Máy chủ tệp hay AI đám mây khi chưa có quyết định cho phép tương ứng. Thay đổi model hoặc số chiều tìm kiếm cần quy trình dựng lại chỉ mục của người quản lý.
 
 ## Nếu có vẻ sai
