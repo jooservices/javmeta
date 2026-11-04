@@ -150,7 +150,7 @@ assert.match(libHtml, /Thư viện/); assert.match(libHtml, /AAA-001/); assert.o
 const dlHtml = await run('downloads', await load('views/downloads.js'), { params: {}, query: {} });
 assert.match(dlHtml, /Tải về/); assert.match(dlHtml, /42\.5%/); assert.match(dlHtml, /data-links/); assert.ok(!dlHtml.includes('<b>x</b>'), 'names are escaped');
 const st = await run('settings', await load('views/settings.js'), { params: {}, query: {} });
-assert.match(st, /Cấu hình hệ thống/); assert.match(st, /queue\.feed_pool_limit/); assert.ok(!st.includes('<b>x</b>'), 'labels are escaped'); assert.match(st, /đã đặt, nhập để thay/);
+assert.match(st, /data-tab="crawl"/); assert.match(st, /data-pane="crawl"/); assert.match(st, /lưu trong cơ sở dữ liệu/); assert.match(st, /class="switch"/); assert.match(st, /queue\.feed_pool_limit/); assert.ok(!st.includes('<b>x</b>'), 'labels are escaped'); assert.match(st, /đã đặt, nhập để thay/);
 assert.match(st, /worker\.node_overrides/); assert.match(st, /textarea[^>]+data-type="json"/); assert.match(st, /áp dụng sau tối đa 900 giây/); assert.match(st, /env chuyển đổi/);
 assert.match(st, /textarea id="st-crawl\.source_gap_overrides"[^>]+maxlength="10000"/);
 assert.match(st, /<select id="st-queue\.feed_interval_seconds" data-key="queue\.feed_interval_seconds" data-type="int"/);

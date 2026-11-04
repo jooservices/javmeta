@@ -26,9 +26,9 @@ export default {
 
 function control(row) {
   const id = `report-${row.key}`;
-  if (row.type === 'bool') return `<label class="sw"><input id="${id}" data-key="${esc(row.key)}" type="checkbox" ${row.value ? 'checked' : ''}><span>${row.value ? 'Bật' : 'Tắt'}</span></label>`;
+  if (row.type === 'bool') return `<label class="switch"><input id="${id}" data-key="${esc(row.key)}" type="checkbox" ${row.value ? 'checked' : ''}><span class="track"></span><span class="txt">${row.value ? 'Bật' : 'Tắt'}</span></label>`;
   if (row.type === 'int' && Array.isArray(row.options)) return `<select id="${id}" data-key="${esc(row.key)}">${row.options.map(value => `<option value="${value}" ${Number(value) === Number(row.value) ? 'selected' : ''}>${value === 1440 ? '24 giờ' : `${value} phút`}</option>`).join('')}</select>`;
-  if (row.type === 'string_list' && Array.isArray(row.item_options)) return `<div role="group" aria-label="${esc(row.label)}">${row.item_options.map(value => `<label class="sw"><input type="checkbox" data-list="${esc(row.key)}" value="${esc(value)}" ${(row.value || []).includes(value) ? 'checked' : ''}><span>${esc(optionLabel(value))}</span></label>`).join('')}</div>`;
+  if (row.type === 'string_list' && Array.isArray(row.item_options)) return `<div role="group" aria-label="${esc(row.label)}">${row.item_options.map(value => `<label class="switch"><input type="checkbox" data-list="${esc(row.key)}" value="${esc(value)}" ${(row.value || []).includes(value) ? 'checked' : ''}><span class="track"></span><span class="txt">${esc(optionLabel(value))}</span></label>`).join('')}</div>`;
   if (row.type === 'string_list') return `<textarea id="${id}" data-list-text="${esc(row.key)}" rows="3">${esc((row.value || []).join('\n'))}</textarea>`;
   if (row.multiline) return `<textarea id="${id}" data-key="${esc(row.key)}" rows="6" maxlength="${row.max_length || 1000}" style="width:min(100%,520px);max-width:100%;box-sizing:border-box">${esc(row.value || '')}</textarea>`;
   if (row.format === 'time') return `<input id="${id}" data-key="${esc(row.key)}" type="time" value="${esc(row.value || '')}">`;

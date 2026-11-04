@@ -14,3 +14,11 @@ console errors, failed or 4xx/5xx requests, horizontal overflow, an empty main a
 targets. It saves a screenshot per view and width plus `report.json`.
 
 Chromium comes from the local Playwright cache (`~/.cache/ms-playwright/chromium-*`); set `CHROME_PATH` to use another binary.
+
+## Interaction checks
+
+`settings.mjs` opens every Settings tab, toggles a switch, saves its group and reloads to prove the value persisted:
+
+```bash
+node settings.mjs http://localhost:8099
+```
