@@ -13,6 +13,7 @@ import { toggleFilterDrawer, closeFilterDrawer, expectFilterField, clearFilters,
 import { filterPerformersByName, choosePerformerOption, filterPerformersByLocation, chooseLocationFacet, filterPerformersByAge, expectPerformerNamed, expectPerformerAbsent, openPerformer, openFirstPerformer, expectPerformerField, openPerformerTab, openPerformerTabWithKeyboard, expectPerformerTab, setFollow, expectFeedState, expectFeedMovies, expectPerformerMissing } from '../steps/performers.mjs';
 import { filterCatalog, sortCatalogWithKeyboard, expectFirstCatalogEntry, expectCatalogRow, openCatalogEntry, expectFacetCountMatchesCatalog, openFirstMovie, expectDetailContains, expectCatalogEmpty, expectUnknownCatalog, shiftCalendar, shiftCalendarWithKeyboard, expectCalendarHeading, openCalendarDay, expectDayRequestKeptTheDate, openCalendarMovie, expectCalendarIgnoresBadMonth } from '../steps/catalog.mjs';
 import { armSavedSearchCleanup, searchFor, expectSearchPrompt, expectSearchEmpty, openMeaningSearch, expectMeaningMode, submitSearchWithKeyboard, expectKeywordMode, rememberResultCount, expectRememberedCount, chooseMovieChoice, filterMovieField, expectMovieListEmpty, saveCurrentSearch, cancelSaveSearch, applySavedSearch, deleteSavedSearch } from '../steps/searchpage.mjs';
+import { expectFeedHasNoActions, expectLibraryUnconfigured, expectDownloadsOff, openSettingsFromEmptyState, openSettingsWithKeyboard, expectMediaCaptureOff, refreshMedia, submitDisabledCapture, openMediaLibrary, expectCrawlReadOnly } from '../steps/ownerpages.mjs';
 
 export const VIEWS = [
   '#/', '#/search', '#/stats', '#/movies', '#/performers', '#/bio', '#/movies?sort=update_date',
@@ -167,6 +168,22 @@ export const movieFiltersAndSavedSearches = defineScenario('movie filters, an em
 
 export const calendarDayHoverChangesTheCell = defineScenario('hovering a calendar day highlights the cell', [
   login(), openView('#/calendar'), expectHoverChanges('#view .calcell:not(.off):not(.has)', 'backgroundColor'),
+]);
+
+export const featurePagesShowTheirRealState = defineScenario('feed, library, downloads, media and crawl show their real state', [
+  login(),
+  openView('#/feed'), expectFeedState(0), expectFeedHasNoActions(), expectViewHealthy(),
+  resizeTo(390), expectViewHealthy(), resizeTo(1440),
+  openView('#/library'), expectLibraryUnconfigured(), expectHoverChanges('#view a.btn', 'borderColor'),
+  resizeTo(390), expectViewHealthy(), resizeTo(1440),
+  openSettingsFromEmptyState(),
+  openView('#/downloads'), expectDownloadsOff(), expectHoverChanges('#view a.btn', 'borderColor'),
+  openSettingsWithKeyboard(),
+  openView('#/media'), expectMediaCaptureOff(), expectHoverChanges('#view [data-refresh]', 'borderColor'),
+  resizeTo(390), expectViewHealthy(), resizeTo(1440),
+  refreshMedia(), expectMediaCaptureOff(), submitDisabledCapture(), openMediaLibrary(),
+  openView('#/crawl'), expectCrawlReadOnly(), expectViewHealthy(),
+  resizeTo(390), expectViewHealthy(), resizeTo(1440),
 ]);
 
 export const ownerEditsAndResetsANotificationTemplate = defineScenario('the owner edits, saves and resets a notification template', [

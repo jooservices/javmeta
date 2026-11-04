@@ -21,4 +21,5 @@ export default defineSuite('javmeta browser E2E', [
   s.calendarDayHoverChangesTheCell,
   s.searchPageFindsAMovieAndShowsNothing,
   s.movieFiltersAndSavedSearches,
+  s.featurePagesShowTheirRealState,
 ]);
