@@ -204,7 +204,7 @@ final class SampleDataset
             $sources = $i >= 2 && $i <= 11 ? [self::SOURCE, 'sample-b'] : [self::SOURCE];
             foreach ($sources as $source) {
                 $codes[] = ['movie_id' => $id, 'code' => $code, 'code_normalized' => $normalized, 'kind' => 'dvd', 'source_slug' => $source, 'source_url' => null, 'crawled_at' => $now];
-                $observations[] = ['movie_id' => $id, 'field' => 'title_en', 'value' => 'Sample Movie Number ' . $i, 'value_hash' => md5('title_en' . $i . $source), 'source_slug' => $source, 'source_url' => null, 'crawled_at' => $now, 'is_primary' => $source === self::SOURCE];
+                $observations[] = ['movie_id' => $id, 'field' => 'title_en', 'value' => 'Sample Movie Number ' . $i, 'value_hash' => hash('sha256', 'title_en' . $i . $source), 'source_slug' => $source, 'source_url' => null, 'crawled_at' => $now, 'is_primary' => $source === self::SOURCE];
             }
             foreach ([$i % self::PERFORMERS, ($i * 7) % self::PERFORMERS] as $n) {
                 $links[$id . '-' . ($n + 1)] = ['movie_id' => $id, 'performer_id' => $performers[sprintf('p%04d', $n + 1)], 'source_slug' => self::SOURCE, 'crawled_at' => $now];
@@ -277,7 +277,7 @@ final class SampleDataset
 
     private function uuid(string $kind, int $n): string
     {
-        $h = md5('javmeta-sample-' . $kind . '-' . $n);
+        $h = hash('sha256', 'javmeta-sample-' . $kind . '-' . $n);
 
         return sprintf('%s-%s-4%s-a%s-%s', substr($h, 0, 8), substr($h, 8, 4), substr($h, 13, 3), substr($h, 17, 3), substr($h, 20, 12));
     }
