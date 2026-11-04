@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs\Concerns;
 
+use App\Repositories\CrawlQueueServiceRepository;
 use App\Enums\CrawlErrorCode;
 use App\Events\CrawlIncidentOccurred;
 use App\Models\CrawlEvent;
@@ -35,7 +36,7 @@ trait HandlesCrawlQueueRow
     {
         $row = app(CrawlQueueService::class)->startClaimedRow($id, $expectedKind, $this->claimToken ?? null);
         if (! $row instanceof CrawlQueue) {
-            $current = CrawlQueue::query()->find($id);
+            $current = app(CrawlQueueServiceRepository::class)->modelQuery(CrawlQueue::class)->find($id);
             $kind = $expectedKind;
             $status = 'missing';
             if ($current instanceof CrawlQueue) {
@@ -107,7 +108,7 @@ trait HandlesCrawlQueueRow
 
     public function failed(Throwable $exception): void
     {
-        $row = CrawlQueue::query()->find($this->crawlQueueId);
+        $row = app(CrawlQueueServiceRepository::class)->modelQuery(CrawlQueue::class)->find($this->crawlQueueId);
         if (! $row instanceof CrawlQueue
             || $row->status !== CrawlQueue::STATUS_CLAIMED
             || $row->started_at === null

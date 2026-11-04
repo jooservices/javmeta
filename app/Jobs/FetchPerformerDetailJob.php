@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Repositories\CrawlQueueServiceRepository;
 use App\Enums\CrawlErrorCode;
 use App\Jobs\Concerns\HandlesCrawlQueueRow;
 use App\Jobs\Middleware\TraceCrawlJob;
@@ -58,7 +59,7 @@ final class FetchPerformerDetailJob implements ShouldQueue
             return;
         }
 
-        $source = Source::query()->find($row->source_slug);
+        $source = app(CrawlQueueServiceRepository::class)->modelQuery(Source::class)->find($row->source_slug);
         if (! $source instanceof Source) {
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => 'unknown_source']);
             $this->markFailed($row, CrawlErrorCode::UnknownSource, 'Unknown source slug.');

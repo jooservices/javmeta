@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueServiceRepository;
 use App\Models\Source;
 use App\Services\Crawl\SourceGapPolicy;
 use Illuminate\Console\Command;
@@ -16,7 +17,7 @@ final class SourceGapCommand extends Command
 
     public function handle(SourceGapPolicy $gapPolicy): int
     {
-        $sources = Source::query()->get()->keyBy('slug');
+        $sources = app(CrawlQueueServiceRepository::class)->modelQuery(Source::class)->get()->keyBy('slug');
         $definitions = (array) config('javmeta_sources.sources', []);
         $overrides = (array) config('javmeta_queues.source_gap_overrides', []);
         $slugs = array_values(array_unique([

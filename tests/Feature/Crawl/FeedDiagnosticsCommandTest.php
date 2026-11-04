@@ -111,6 +111,28 @@ final class FeedDiagnosticsCommandTest extends TestCase
             ->assertFailed();
     }
 
+    public function test_diagnostics_command_validates_window_and_reports_disabled_or_empty_state(): void
+    {
+        $this->artisan('crawler:feed-diagnostics', ['--minutes' => 0])
+            ->expectsOutputToContain('--minutes must be an integer between 1 and 1440.')
+            ->assertFailed();
+
+        config(['javmeta_queues.feed_diagnostics.enabled' => false]);
+        $this->artisan('crawler:feed-diagnostics')
+            ->expectsOutputToContain('Feed pool diagnostics are disabled.')
+            ->assertSuccessful();
+
+        config(['javmeta_queues.feed_diagnostics.enabled' => true]);
+        $redis = Mockery::mock();
+        $redis->shouldReceive('hgetall')->once()->andReturn([]);
+        Redis::shouldReceive('connection')->once()->with('default')->andReturn($redis);
+        $this->artisan('crawler:feed-diagnostics', ['--minutes' => 1])
+            ->expectsOutputToContain('No per-source feed data was recorded in this window.')
+            ->expectsOutputToContain('No queue stop reasons were recorded in this window.')
+            ->expectsOutputToContain('Feed runs: 0; total run time: 0 ms; claimNext candidate rows examined: 0.')
+            ->assertSuccessful();
+    }
+
     /** @param array<string, int> $hash */
     private function diagnosticRedis(array &$hash): object
     {

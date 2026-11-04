@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Operations;
 
+use App\Repositories\MovieRepository;
 use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
@@ -23,7 +24,7 @@ final class CreateSuperAdministrator extends Command
             return self::FAILURE;
         }
 
-        $user = User::query()->where('email', $email)->first();
+        $user = app(MovieRepository::class)->modelQuery(User::class)->where('email', $email)->first();
         if ($user !== null && ! $this->option('rotate')) {
             $this->error('Account already exists. Pass --rotate to replace its password.');
 

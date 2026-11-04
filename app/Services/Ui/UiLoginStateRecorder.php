@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Ui;
 
+use App\Repositories\CrawlQueueServiceRepository;
 use App\Models\CrawlEvent;
-use Illuminate\Support\Facades\DB;
 
 final class UiLoginStateRecorder
 {
@@ -14,14 +14,14 @@ final class UiLoginStateRecorder
     public function record(): void
     {
         $loginRequired = (bool) config('javmeta.ui_login_required', true);
-        DB::transaction(static function () use ($loginRequired): void {
-            DB::table('ui_login_states')->insertOrIgnore([
+        app(CrawlQueueServiceRepository::class)->transaction(static function () use ($loginRequired): void {
+            app(CrawlQueueServiceRepository::class)->tableQuery('ui_login_states')->insertOrIgnore([
                 'state_key' => self::STATE_KEY,
                 'login_required' => null,
                 'updated_at' => now(),
             ]);
 
-            $state = DB::table('ui_login_states')
+            $state = app(CrawlQueueServiceRepository::class)->tableQuery('ui_login_states')
                 ->where('state_key', self::STATE_KEY)
                 ->lockForUpdate()
                 ->first();
@@ -30,11 +30,11 @@ final class UiLoginStateRecorder
                 return;
             }
 
-            DB::table('ui_login_states')
+            app(CrawlQueueServiceRepository::class)->tableQuery('ui_login_states')
                 ->where('state_key', self::STATE_KEY)
                 ->update(['login_required' => $loginRequired, 'updated_at' => now()]);
 
-            CrawlEvent::query()->create([
+            app(CrawlQueueServiceRepository::class)->modelQuery(CrawlEvent::class)->create([
                 'source_slug' => 'system',
                 'kind' => CrawlEvent::KIND_UI_LOGIN_STATE_CHANGED,
                 'detail' => [

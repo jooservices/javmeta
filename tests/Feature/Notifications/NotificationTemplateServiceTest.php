@@ -36,6 +36,62 @@ final class NotificationTemplateServiceTest extends TestCase
         self::assertSame(count($registryKeys), $service->count());
     }
 
+    public function test_default_template_lookup_and_missing_policy_reads_are_safe(): void
+    {
+        $service = app(NotificationTemplateService::class);
+        DB::table('notification_templates')->where('key', 'crawl.dispatch_delayed')->delete();
+        $template = $service->get('crawl.dispatch_delayed');
+
+        self::assertNotNull($template);
+        self::assertNull($template['id']);
+        self::assertSame(1, $template['version']);
+        self::assertSame(0, $template['sent_count']);
+        self::assertNull($service->findStored('unsupported.notification'));
+        self::assertNull($service->lastKnownEnabled('missing.notification'));
+        self::assertSame((bool) $template['enabled'], $service->lastKnownEnabled('crawl.dispatch_delayed'));
+    }
+
+    public function test_invalid_template_and_policy_updates_are_rejected(): void
+    {
+        $service = app(NotificationTemplateService::class);
+
+        try {
+            $service->save('unknown.notification', 'Title', 'Body', true, 'notice', null);
+            self::fail('An unsupported notification key must be rejected.');
+        } catch (\InvalidArgumentException $exception) {
+            self::assertSame('The notification type is not supported.', $exception->getMessage());
+        }
+
+        try {
+            $service->save('crawl.dispatch_delayed', 'Title', 'Body', true, 'unsupported', null);
+            self::fail('An unsupported severity must be rejected.');
+        } catch (\InvalidArgumentException $exception) {
+            self::assertSame('Choose a supported default severity.', $exception->getMessage());
+        }
+
+        try {
+            $service->save('crawl.dispatch_delayed', 'Title', 'Body', true, 'notice', null, ['tier' => 'bad']);
+            self::fail('An incomplete policy must be rejected.');
+        } catch (\InvalidArgumentException $exception) {
+            self::assertSame('The notification policy values are invalid.', $exception->getMessage());
+        }
+
+        try {
+            $service->restore('unknown.notification', 1, null);
+            self::fail('An unsupported notification key must not be restored.');
+        } catch (\InvalidArgumentException $exception) {
+            self::assertSame('The notification type is not supported.', $exception->getMessage());
+        }
+
+        $service->seed();
+        try {
+            $service->restore('crawl.dispatch_delayed', PHP_INT_MAX, null);
+            self::fail('An unknown revision must be rejected.');
+        } catch (\InvalidArgumentException $exception) {
+            self::assertSame('The selected revision does not exist for this notification.', $exception->getMessage());
+        }
+    }
+
     public function test_restore_reinstates_a_previous_template_revision(): void
     {
         $service = app(NotificationTemplateService::class);

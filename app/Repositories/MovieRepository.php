@@ -9,13 +9,6 @@ use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
-use JOOservices\LaravelRepository\Contracts\RepositoryInterface;
-use JOOservices\LaravelRepository\Repositories\EloquentRepository;
-use JOOservices\LaravelRepository\Traits\HasCrud;
-use JOOservices\LaravelRepository\Traits\HasFilter;
-use JOOservices\LaravelRepository\Traits\HasOrder;
-use JOOservices\LaravelRepository\Traits\HasRead;
-use JOOservices\LaravelRepository\Traits\HasRequestQuery;
 
 /**
  * Movie search (REQ-4, AD-11): filtered, sorted, keyset-paginated reads.
@@ -35,14 +28,8 @@ use JOOservices\LaravelRepository\Traits\HasRequestQuery;
  *   (release_date DESC, id DESC), (updated_at DESC, id DESC) and
  *   (community_score DESC NULLS LAST, id DESC).
  */
-final class MovieRepository extends EloquentRepository implements RepositoryInterface
+final class MovieRepository extends BusinessQueryRepository
 {
-    use HasCrud;
-    use HasFilter;
-    use HasOrder;
-    use HasRead;
-    use HasRequestQuery;
-
     /** @var array<string, string> cursor sort => movies column */
     private const SORT_COLUMNS = [
         'release_date' => 'release_date',

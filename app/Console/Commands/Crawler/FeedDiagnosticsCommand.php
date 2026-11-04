@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueServiceRepository;
 use App\Models\Source;
 use App\Services\Crawl\FeedPoolDiagnostics;
 use App\Services\Crawl\SourceGapPolicy;
@@ -43,7 +44,7 @@ final class FeedDiagnosticsCommand extends Command
         if ($report['sources'] === []) {
             $this->info('No per-source feed data was recorded in this window.');
         } else {
-            $sources = Source::query()->whereIn('slug', array_keys($report['sources']))->get()->keyBy('slug');
+            $sources = app(CrawlQueueServiceRepository::class)->modelQuery(Source::class)->whereIn('slug', array_keys($report['sources']))->get()->keyBy('slug');
             $rows = [];
             foreach ($report['sources'] as $source => $metrics) {
                 $model = $sources->get($source);

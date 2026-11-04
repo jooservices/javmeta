@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Mcp;
 
+use App\Repositories\MovieRepository;
 use App\Exceptions\InvalidFilterException;
 use App\Exceptions\MovieNotFoundException;
 use App\Http\Controllers\CatalogController;
@@ -455,8 +456,8 @@ final class McpToolService
         unset($arguments);
 
         return [
-            'movies' => (int) Movie::query()->count(),
-            'performers' => (int) Performer::query()->whereNull('canonical_performer_id')->count(),
+            'movies' => (int) app(MovieRepository::class)->modelQuery(Movie::class)->count(),
+            'performers' => (int) app(MovieRepository::class)->modelQuery(Performer::class)->whereNull('canonical_performer_id')->count(),
         ];
     }
 

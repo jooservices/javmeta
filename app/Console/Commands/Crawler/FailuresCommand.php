@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueServiceRepository;
 use App\Models\CrawlQueue;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
@@ -29,7 +30,7 @@ final class FailuresCommand extends Command
         $source = trim((string) $this->option('source'));
         $source = $source === '' ? null : $source;
 
-        $failures = CrawlQueue::query()
+        $failures = app(CrawlQueueServiceRepository::class)->modelQuery(CrawlQueue::class)
             ->where('status', CrawlQueue::STATUS_FAILED)
             ->where('last_failed_at', '>=', $since->utc())
             ->when($source !== null, static fn($query) => $query->where('source_slug', $source))

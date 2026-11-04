@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueServiceRepository;
 use App\Models\Source;
 use App\Services\Crawl\SourceGapPolicy;
 use Illuminate\Console\Command;
@@ -27,7 +28,7 @@ final class SyncSourcesCommand extends Command
 
             $gaps = $gapPolicy->describe($slug)['effective'];
             $defaultGap = $gaps['default'];
-            $existing = Source::query()->find($slug);
+            $existing = app(CrawlQueueServiceRepository::class)->modelQuery(Source::class)->find($slug);
             $attributes = [
                 'name' => (string) Arr::get($source, 'name'),
                 'base_url' => (string) Arr::get($source, 'base_url'),
@@ -52,7 +53,7 @@ final class SyncSourcesCommand extends Command
                 continue;
             }
 
-            Source::query()->create($attributes + [
+            app(CrawlQueueServiceRepository::class)->modelQuery(Source::class)->create($attributes + [
                 'slug' => $slug,
                 // A new source starts on unless it needs a login first.
                 'enabled' => ! (bool) Arr::get($source, 'requires_login', false)
@@ -70,7 +71,7 @@ final class SyncSourcesCommand extends Command
                 continue;
             }
 
-            $existing = Source::query()->find($slug);
+            $existing = app(CrawlQueueServiceRepository::class)->modelQuery(Source::class)->find($slug);
             if (! $existing instanceof Source) {
                 continue;
             }

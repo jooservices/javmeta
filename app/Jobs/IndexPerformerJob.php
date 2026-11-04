@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Repositories\PerformerRepository;
 use App\Models\Performer;
 use App\Services\Search\ElasticsearchIndexer;
 use Illuminate\Bus\Queueable;
@@ -42,7 +43,7 @@ final class IndexPerformerJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $performer = Performer::query()->find($this->performerId);
+        $performer = app(PerformerRepository::class)->modelQuery(Performer::class)->find($this->performerId);
         if (! $performer instanceof Performer) {
             return;
         }

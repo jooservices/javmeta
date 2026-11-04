@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Workers;
 
+use App\Repositories\CrawlQueueServiceRepository;
 use App\Models\CrawlEvent;
 use App\Services\Settings\SettingsService;
 use Illuminate\Support\Facades\Redis;
@@ -129,7 +130,7 @@ final class HorizonWorkerReconciler
         }
 
         try {
-            CrawlEvent::query()->create([
+            app(CrawlQueueServiceRepository::class)->modelQuery(CrawlEvent::class)->create([
                 'source_slug' => 'worker-reconcile',
                 'kind' => CrawlEvent::KIND_WORKERS_RECONFIGURED,
                 'url' => null,

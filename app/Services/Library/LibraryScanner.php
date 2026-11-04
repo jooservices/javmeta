@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Services\Library;
 
+use App\Repositories\MovieRepository;
 use App\Services\Settings\SettingsService;
 use App\Support\Code\NormalizedCode;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use RecursiveDirectoryIterator;
 use RecursiveCallbackFilterIterator;
@@ -70,9 +70,9 @@ final class LibraryScanner
                 continue;
             }
             // Under a folder that was read, whatever this run did not see is gone from the disk for now.
-            $gone = array_values(array_filter(DB::table('library_files')->where('folder', $folder)->whereNull('missing_at')->pluck('id')->all(), static fn($id): bool => ! isset($seen[$id])));
+            $gone = array_values(array_filter(app(MovieRepository::class)->tableQuery('library_files')->where('folder', $folder)->whereNull('missing_at')->pluck('id')->all(), static fn($id): bool => ! isset($seen[$id])));
             foreach (array_chunk($gone, 500) as $chunk) {
-                $result['missing'] += DB::table('library_files')->whereIn('id', $chunk)->update(['missing_at' => $startedAt]);
+                $result['missing'] += app(MovieRepository::class)->tableQuery('library_files')->whereIn('id', $chunk)->update(['missing_at' => $startedAt]);
             }
         }
 
@@ -103,7 +103,7 @@ final class LibraryScanner
         $path = $file->getPathname();
         $size = (int) $file->getSize();
         $mtime = (int) $file->getMTime();
-        $existing = DB::table('library_files')->where('path', $path)->first(['id', 'size', 'mtime', 'quick_hash', 'movie_id', 'code']);
+        $existing = app(MovieRepository::class)->tableQuery('library_files')->where('path', $path)->first(['id', 'size', 'mtime', 'quick_hash', 'movie_id', 'code']);
         $result['seen']++;
 
         [$code, $movieId] = $existing !== null && $existing->size === $size && $existing->mtime === $mtime && $existing->movie_id !== null
@@ -113,11 +113,11 @@ final class LibraryScanner
 
         $row = ['folder' => $folder, 'size' => $size, 'mtime' => $mtime, 'quick_hash' => $hash, 'code' => $code, 'movie_id' => $movieId, 'last_seen_at' => $startedAt, 'missing_at' => null];
         if ($existing === null) {
-            $id = (int) DB::table('library_files')->insertGetId([...$row, 'path' => $path, 'first_seen_at' => $startedAt]);
+            $id = (int) app(MovieRepository::class)->tableQuery('library_files')->insertGetId([...$row, 'path' => $path, 'first_seen_at' => $startedAt]);
             $result['new']++;
         } else {
             $id = (int) $existing->id;
-            DB::table('library_files')->where('id', $id)->update($row);
+            app(MovieRepository::class)->tableQuery('library_files')->where('id', $id)->update($row);
         }
         $result[$movieId !== null ? 'matched' : 'unmatched']++;
 
@@ -128,7 +128,7 @@ final class LibraryScanner
     private function match(string $fileName): array
     {
         foreach ($this->codesIn($fileName) as $normalized) {
-            $movie = DB::table('movie_codes')->join('movies', 'movies.id', '=', 'movie_codes.movie_id')->where('movie_codes.code_normalized', $normalized)->first(['movies.id', 'movies.display_code']);
+            $movie = app(MovieRepository::class)->tableQuery('movie_codes')->join('movies', 'movies.id', '=', 'movie_codes.movie_id')->where('movie_codes.code_normalized', $normalized)->first(['movies.id', 'movies.display_code']);
             if ($movie !== null) {
                 return [(string) $movie->display_code, (int) $movie->id];
             }

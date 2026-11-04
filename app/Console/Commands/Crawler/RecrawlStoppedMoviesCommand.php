@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueServiceRepository;
 use App\Models\Movie;
 use Illuminate\Console\Command;
 
@@ -15,7 +16,7 @@ final class RecrawlStoppedMoviesCommand extends Command
 
     public function handle(): int
     {
-        $stopped = Movie::query()->where('recrawl_status', Movie::RECRAWL_STATUS_COMPLETE_AS_POSSIBLE);
+        $stopped = app(CrawlQueueServiceRepository::class)->modelQuery(Movie::class)->where('recrawl_status', Movie::RECRAWL_STATUS_COMPLETE_AS_POSSIBLE);
 
         if ($this->option('reset')) {
             $reset = $stopped->update([

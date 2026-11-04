@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueServiceRepository;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 final class EgressReportCommand extends Command
@@ -35,7 +35,7 @@ final class EgressReportCommand extends Command
         }
 
         $groups = $this->groupColumns($by);
-        $rows = DB::table('crawl_fetch_attempts')
+        $rows = app(CrawlQueueServiceRepository::class)->tableQuery('crawl_fetch_attempts')
             ->where('created_at', '>=', now()->subHours($hours))
             ->select($groups)
             ->selectRaw('COUNT(*) AS attempts')

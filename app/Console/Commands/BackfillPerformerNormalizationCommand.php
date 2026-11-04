@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Repositories\PerformerRepository;
 use App\Jobs\IndexPerformerJob;
 use App\Services\Normalize\NormalizationRejectionCounter;
 use App\Services\Normalize\PerformerAttributeNormalizer;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use stdClass;
 
@@ -44,7 +44,7 @@ final class BackfillPerformerNormalizationCommand extends Command
 
         $this->line($apply ? 'Mode: apply' : 'Mode: dry-run (no rows will be changed)');
         while (true) {
-            $rows = DB::table('performers')->where('id', '>', $cursor)->orderBy('id')->limit($chunkSize)
+            $rows = app(PerformerRepository::class)->tableQuery('performers')->where('id', '>', $cursor)->orderBy('id')->limit($chunkSize)
                 ->get(['id', 'canonical_performer_id', 'source_slug', ...self::FIELDS]);
             if ($rows->isEmpty()) {
                 break;
@@ -146,7 +146,7 @@ final class BackfillPerformerNormalizationCommand extends Command
             }
         }
 
-        $sourceRows = DB::table('performer_sources')->whereIn('performer_id', $rows->pluck('id'))
+        $sourceRows = app(PerformerRepository::class)->tableQuery('performer_sources')->whereIn('performer_id', $rows->pluck('id'))
             ->orderBy('id')->get(['id', 'performer_id', 'site_slug', 'birth_date']);
         foreach ($sourceRows as $sourceRow) {
             $updatedSourceBirthDateTotals['before'] += $this->isNonEmpty($sourceRow->birth_date) ? 1 : 0;
@@ -182,13 +182,13 @@ final class BackfillPerformerNormalizationCommand extends Command
      */
     private function persistChunk(array $plan, NormalizationRejectionCounter $rejections): void
     {
-        DB::transaction(function () use ($plan, $rejections): void {
+        app(PerformerRepository::class)->transaction(function () use ($plan, $rejections): void {
             $updatedAt = now();
             foreach ($plan['performers'] as $id => $attributes) {
-                DB::table('performers')->where('id', $id)->update([...$attributes, 'updated_at' => $updatedAt]);
+                app(PerformerRepository::class)->tableQuery('performers')->where('id', $id)->update([...$attributes, 'updated_at' => $updatedAt]);
             }
             foreach ($plan['sources'] as $id => $birthDate) {
-                DB::table('performer_sources')->where('id', $id)->update(['birth_date' => $birthDate]);
+                app(PerformerRepository::class)->tableQuery('performer_sources')->where('id', $id)->update(['birth_date' => $birthDate]);
             }
             foreach ($plan['rejected'] as $item) {
                 $rejections->increment('performer', $item['field'], $item['source']);

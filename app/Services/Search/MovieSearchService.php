@@ -42,7 +42,7 @@ final class MovieSearchService
             $uuids = $this->elasticsearch->searchMovieUuids(trim($q), min(100, max($perPage * 5, $perPage)));
             if ($uuids !== []) {
                 $pageUuids = array_slice($uuids, 0, $perPage);
-                $byUuid = Movie::query()
+                $byUuid = app(MovieRepository::class)->modelQuery(Movie::class)
                     ->whereIn('uuid', $pageUuids)
                     ->with(['genres', 'performers.aliases', 'performers.sources', 'media', 'codes'])
                     ->get()
@@ -104,7 +104,7 @@ final class MovieSearchService
         $uuids = $prefetchedUuids ?? $this->elasticsearch->semanticMovieUuids($query, min(100, max($perPage * 5, $perPage)));
         if ($uuids !== []) {
             $pageUuids = array_slice($uuids, 0, $perPage);
-            $byUuid = Movie::query()
+            $byUuid = app(MovieRepository::class)->modelQuery(Movie::class)
                 ->whereIn('uuid', $pageUuids)
                     ->with(['genres', 'performers.aliases', 'performers.sources', 'media', 'codes'])
                 ->get()

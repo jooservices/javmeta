@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueServiceRepository;
 use App\Observability\MetricStreams;
 use App\Observability\OpenObserveClient;
 use App\Services\Crawl\CrawlStatsRollup;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
@@ -69,7 +69,7 @@ final class StatsRollupCommand extends Command
         }
 
         $retentionDays = max(1, (int) config('javmeta_stats.retention_days', 365));
-        DB::table('crawl_stats_hourly')
+        app(CrawlQueueServiceRepository::class)->tableQuery('crawl_stats_hourly')
             ->where('hour_at', '<', now('UTC')->subDays($retentionDays))
             ->delete();
     }
@@ -81,7 +81,7 @@ final class StatsRollupCommand extends Command
         }
 
         $from = $until->startOfHour()->subHours(2);
-        $rows = DB::table('crawl_stats_hourly')
+        $rows = app(CrawlQueueServiceRepository::class)->tableQuery('crawl_stats_hourly')
             ->where('hour_at', '>=', $from)
             ->where('hour_at', '<=', $until)
             ->orderBy('hour_at')

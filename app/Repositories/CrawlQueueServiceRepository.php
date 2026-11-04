@@ -16,26 +16,25 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
-use JOOservices\LaravelRepository\Contracts\RepositoryInterface;
-use JOOservices\LaravelRepository\Repositories\EloquentRepository;
-use JOOservices\LaravelRepository\Traits\HasCrud;
-use JOOservices\LaravelRepository\Traits\HasFilter;
-use JOOservices\LaravelRepository\Traits\HasOrder;
-use JOOservices\LaravelRepository\Traits\HasRead;
-use JOOservices\LaravelRepository\Traits\HasRequestQuery;
 
 /** Persistence operations for crawl queue services. */
-final class CrawlQueueServiceRepository extends EloquentRepository implements RepositoryInterface
+final class CrawlQueueServiceRepository extends BusinessQueryRepository
 {
-    use HasCrud;
-    use HasFilter;
-    use HasOrder;
-    use HasRead;
-    use HasRequestQuery;
-
     public function __construct(CrawlQueue $model)
     {
         parent::__construct($model);
+    }
+
+    public function tryFeedPoolAdvisoryLock(): bool
+    {
+        $row = DB::selectOne('SELECT pg_try_advisory_lock(?) AS acquired', [282]);
+
+        return (bool) ($row->acquired ?? false);
+    }
+
+    public function releaseFeedPoolAdvisoryLock(): void
+    {
+        DB::select('SELECT pg_advisory_unlock(?)', [282]);
     }
 
     /**

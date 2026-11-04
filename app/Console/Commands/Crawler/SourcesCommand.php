@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueServiceRepository;
 use App\Models\Source;
 use App\Services\Crawl\CrawlLaneService;
 use Illuminate\Console\Command;
@@ -19,7 +20,7 @@ final class SourcesCommand extends Command
         $rows = [];
         $lanes = app(CrawlLaneService::class);
         $browser = $lanes->browserSources();
-        foreach (Source::query()->orderBy('priority')->orderBy('slug')->get() as $source) {
+        foreach (app(CrawlQueueServiceRepository::class)->modelQuery(Source::class)->orderBy('priority')->orderBy('slug')->get() as $source) {
             $rows[] = [
                 'slug' => (string) $source->slug,
                 'enabled' => (bool) $source->enabled,

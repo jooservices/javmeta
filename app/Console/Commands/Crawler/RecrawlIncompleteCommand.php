@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueServiceRepository;
 use App\Models\CrawlQueue;
 use App\Models\MovieCode;
 use App\Observability\ObservabilityEmitter;
@@ -26,7 +27,7 @@ final class RecrawlIncompleteCommand extends Command
         $minTier = (int) config('javmeta_sources.defaults.recrawl.min_tier', 3);
 
         $queued = 0;
-        MovieCode::query()
+        app(CrawlQueueServiceRepository::class)->modelQuery(MovieCode::class)
             ->select('movie_codes.*')
             ->join('movies', 'movies.id', '=', 'movie_codes.movie_id')
             ->where('movies.completeness_tier', '<', $minTier)
@@ -41,7 +42,7 @@ final class RecrawlIncompleteCommand extends Command
                     return;
                 }
 
-                $updated = CrawlQueue::query()
+                $updated = app(CrawlQueueServiceRepository::class)->modelQuery(CrawlQueue::class)
                     ->where('source_slug', $code->source_slug)
                     ->where('url', $code->source_url)
                     ->where('kind', CrawlQueue::KIND_DETAIL)

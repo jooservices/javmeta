@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Persist;
 
+use App\Repositories\MovieRepository;
 use App\Data\Crawl\PerformerDraft;
 use App\Jobs\IndexPerformerJob;
 use App\Models\Performer;
@@ -16,7 +17,6 @@ use App\Services\Identity\PerformerIdentityService;
 use App\Services\Normalize\PerformerAttributeNormalizer;
 use App\Observability\ObservabilityEmitter;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Persists a rich PerformerDraft from performer-detail crawl (AC-5.2 per-source identity).
@@ -66,12 +66,12 @@ final class PerformerPersister implements PerformerDraftSink
     /** @return array{Performer, bool} */
     private function persistLocalPerformer(PerformerDraft $draft, CarbonImmutable $crawledAt): array
     {
-        return DB::transaction(function () use ($draft, $crawledAt): array {
-            $existing = Performer::query()
+        return app(MovieRepository::class)->transaction(function () use ($draft, $crawledAt): array {
+            $existing = app(MovieRepository::class)->modelQuery(Performer::class)
                 ->where('source_slug', $draft->sourceSlug)
                 ->where('external_id', $draft->externalId)
                 ->first();
-            $performer = Performer::query()->updateOrCreate(
+            $performer = app(MovieRepository::class)->modelQuery(Performer::class)->updateOrCreate(
                 ['source_slug' => $draft->sourceSlug, 'external_id' => $draft->externalId],
                 $this->performerAttributes($existing, $draft, $crawledAt),
             );
@@ -206,7 +206,7 @@ final class PerformerPersister implements PerformerDraftSink
         ?string $mongoId,
         CarbonImmutable $crawledAt,
     ): void {
-        $source = PerformerSource::query()->firstOrNew([
+        $source = app(MovieRepository::class)->modelQuery(PerformerSource::class)->firstOrNew([
             'site_slug' => $draft->sourceSlug,
             'external_id' => $draft->externalId,
         ]);
@@ -241,7 +241,7 @@ final class PerformerPersister implements PerformerDraftSink
 
         $canonicalId = $this->identity->reconcileSource($source);
         $this->identity->syncSourceContributions($source->refresh());
-        $canonicalPerformer = Performer::query()->with(['aliases', 'sources'])->find($canonicalId);
+        $canonicalPerformer = app(MovieRepository::class)->modelQuery(Performer::class)->with(['aliases', 'sources'])->find($canonicalId);
         if ($canonicalPerformer instanceof Performer && (bool) config('elasticsearch.enabled', true)) {
             IndexPerformerJob::dispatch((int) $canonicalPerformer->getKey())
                 ->onQueue((string) config('javmeta_queues.search_queue', 'search'))
@@ -285,7 +285,7 @@ final class PerformerPersister implements PerformerDraftSink
             return;
         }
 
-        PerformerMedia::query()->updateOrCreate(
+        app(MovieRepository::class)->modelQuery(PerformerMedia::class)->updateOrCreate(
             [
                 'performer_id' => (int) ($performer->canonical_performer_id ?? $performer->id),
                 'source_performer_id' => (int) $performer->id,
@@ -308,7 +308,7 @@ final class PerformerPersister implements PerformerDraftSink
                 continue;
             }
 
-            PerformerAlias::query()->firstOrCreate(
+            app(MovieRepository::class)->modelQuery(PerformerAlias::class)->firstOrCreate(
                 [
                     'performer_id' => (int) ($performer->canonical_performer_id ?? $performer->id),
                     'alias' => $trimmed,

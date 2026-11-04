@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueServiceRepository;
 use App\Models\CrawlEvent;
 use App\Models\Source;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 
 final class SourceToggleCommand extends Command
 {
@@ -29,8 +29,8 @@ final class SourceToggleCommand extends Command
         $by = (string) $this->option('by');
 
         // Read, switch and audit in one transaction on a locked row, so two overlapping toggles cannot record a stale transition.
-        $was = DB::transaction(static function () use ($slug, $enabled, $by): ?bool {
-            $source = Source::query()->whereKey($slug)->lockForUpdate()->first();
+        $was = app(CrawlQueueServiceRepository::class)->transaction(static function () use ($slug, $enabled, $by): ?bool {
+            $source = app(CrawlQueueServiceRepository::class)->modelQuery(Source::class)->whereKey($slug)->lockForUpdate()->first();
             if (! $source instanceof Source) {
                 return null;
             }
@@ -38,7 +38,7 @@ final class SourceToggleCommand extends Command
             $was = (bool) $source->enabled;
             if ($was !== $enabled) {
                 $source->forceFill(['enabled' => $enabled])->save();
-                CrawlEvent::query()->create([
+                app(CrawlQueueServiceRepository::class)->modelQuery(CrawlEvent::class)->create([
                     'source_slug' => $slug,
                     'kind' => CrawlEvent::KIND_SOURCE_TOGGLED,
                     'url' => null,

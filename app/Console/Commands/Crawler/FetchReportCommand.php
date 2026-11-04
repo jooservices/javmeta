@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueServiceRepository;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 
 final class FetchReportCommand extends Command
 {
@@ -21,7 +21,7 @@ final class FetchReportCommand extends Command
 
             return self::FAILURE;
         }
-        $query = DB::table('crawl_fetch_attempts')->where('source_slug', (string) $this->argument('source'))
+        $query = app(CrawlQueueServiceRepository::class)->tableQuery('crawl_fetch_attempts')->where('source_slug', (string) $this->argument('source'))
             ->where('created_at', '>=', now()->subHours($hours));
         $counts = (clone $query)->select('method', 'outcome')->selectRaw('COUNT(*) AS total')
             ->groupBy('method', 'outcome')->orderBy('method')->orderBy('outcome')->get();
