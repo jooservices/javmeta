@@ -1,0 +1,48 @@
+# Browser QA stack: the real backing services of the integration stack plus the web app on http://localhost:8099
+# with the repeatable sample dataset and one owner account. Data lives in tmpfs, so every start is clean.
+# Start and stop it with docker/qa/qa-up and docker/qa/qa-down; never point it at a real database.
+name: javmeta-qa
+
+include:
+  - path: ../ci/compose.integration.yml
+    project_directory: ../ci
+
+services:
+  web:
+    extends:
+      file: ../ci/compose.integration.yml
+      service: gate
+    ports:
+      - "127.0.0.1:${JAVMETA_QA_PORT:-8099}:8099"
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "false"
+      APP_URL: "http://localhost:${JAVMETA_QA_PORT:-8099}"
+      SESSION_DRIVER: file
+      JAVMETA_QA_EMAIL: "${JAVMETA_QA_EMAIL:-qa@javmeta.test}"
+      JAVMETA_QA_PASSWORD: "${JAVMETA_QA_PASSWORD:?Set JAVMETA_QA_PASSWORD}"
+    command:
+      - sh
+      - -ec
+      - |
+        php artisan migrate --force
+        php artisan settings:import-env
+        php artisan es:setup || true
+        php artisan tinker --execute='app(\App\Services\Settings\SettingsService::class)->set("dataset.allowed_databases", ["jvmeta_it"]);'
+        php artisan dataset:load sample --force --index || php artisan dataset:load sample --force
+        php artisan tinker --execute='\App\Models\User::query()->updateOrCreate(["email" => getenv("JAVMETA_QA_EMAIL")], ["name" => "QA Owner", "password" => getenv("JAVMETA_QA_PASSWORD"), "role" => "super_administrator"]);'
+        # `artisan serve` drops most environment variables (including APP_KEY) for its child, so use the built-in server directly.
+        export PHP_CLI_SERVER_WORKERS=4
+        cd public
+        exec php -S 0.0.0.0:8099 -t . ../vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      openobserve:
+        condition: service_started
