@@ -89,6 +89,20 @@ final class NodeEnrollmentServiceTest extends TestCase
         self::assertNull($this->service()->redeem($grant->token, 'worker-1', '203.0.113.9'), 'A token works once.');
     }
 
+    public function test_the_bundle_names_the_ui_and_command_center_hosts_from_the_settings_or_the_app_url(): void
+    {
+        config(['javmeta_domains.ui_host' => 'ui.example.test', 'javmeta_domains.command_center_host' => 'cc.example.test']);
+        $configured = $this->service()->redeem($this->service()->create('worker-a', 'worker', null)->token, 'worker-a', '203.0.113.9');
+
+        config(['javmeta_domains.ui_host' => '', 'javmeta_domains.command_center_host' => '']);
+        $fallback = $this->service()->redeem($this->service()->create('worker-b', 'worker', null)->token, 'worker-b', '203.0.113.9');
+
+        self::assertSame('ui.example.test', $configured->answers['UI_HOST']);
+        self::assertSame('cc.example.test', $configured->answers['CC_HOST']);
+        self::assertSame('cc.example.test', $fallback->answers['UI_HOST'], 'Without settings both fall back to the host of APP_URL.');
+        self::assertSame('cc.example.test', $fallback->answers['CC_HOST']);
+    }
+
     public function test_a_wrong_token_a_wrong_node_and_an_expired_token_all_get_the_same_nothing(): void
     {
         $grant = $this->service()->create('worker-1', 'worker', null);

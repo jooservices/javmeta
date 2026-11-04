@@ -16,6 +16,8 @@ final class JoinBundleFactory
             'JAVMETA_NODE_NAME' => $nodeName,
             'APP_KEY' => config('app.key'),
             'APP_URL' => config('app.url'),
+            'UI_HOST' => config('javmeta_domains.ui_host') ?: parse_url((string) config('app.url'), PHP_URL_HOST),
+            'CC_HOST' => config('javmeta_domains.command_center_host') ?: parse_url((string) config('app.url'), PHP_URL_HOST),
             'REPO_URL' => config('javmeta_nodes.release_repo_url'),
             'REF' => config('javmeta_nodes.release_ref'),
             ...$this->postgres(),
