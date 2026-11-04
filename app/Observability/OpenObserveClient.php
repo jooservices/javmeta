@@ -207,9 +207,8 @@ final class OpenObserveClient
             }
             $attributes[] = [
                 'key' => (string) $key,
-                'value' => is_bool($value) || is_int($value) || is_float($value)
-                    ? ['stringValue' => (string) $value]
-                    : ['stringValue' => (string) $value],
+                // Every attribute is sent as a string, whatever its type.
+                'value' => ['stringValue' => (string) $value],
             ];
         }
 
@@ -312,7 +311,7 @@ final class OpenObserveClient
             return false;
         }
 
-        return (mt_rand() / mt_getrandmax()) <= $rate;
+        return random_int(0, 1_000_000) / 1_000_000 <= $rate;
     }
 
     private function jsonIngestUrl(string $stream): string

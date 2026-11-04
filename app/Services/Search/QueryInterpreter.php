@@ -277,7 +277,7 @@ final class QueryInterpreter
                 continue;
             }
 
-            $candidate = trim((string) preg_replace('/^[\\p{P}\\p{Z}]+|[\\p{P}\\p{Z}]+$/u', '', trim($value)));
+            $candidate = $this->stripEdgePunctuation(trim($value));
             if (! $this->mentioned($key, $candidate, $question)) {
                 $invalid = true;
                 continue;
@@ -471,7 +471,7 @@ final class QueryInterpreter
     {
         $words = preg_split('/\s+/u', trim($text)) ?: [];
         $words = array_values(array_filter(array_map(
-            static fn(string $word): string => trim((string) preg_replace('/^[\\p{P}\\p{Z}]+|[\\p{P}\\p{Z}]+$/u', '', $word)),
+            fn(string $word): string => $this->stripEdgePunctuation($word),
             $words,
         ), static fn(string $word): bool => $word !== ''));
         $candidates = [];
@@ -491,5 +491,11 @@ final class QueryInterpreter
             ->value('name_romaji');
 
         return is_string($name) ? $name : null;
+    }
+
+    /** Removes punctuation and separators from both ends of a word. */
+    private function stripEdgePunctuation(string $word): string
+    {
+        return trim((string) preg_replace('/(?:^[\\p{P}\\p{Z}]+)|(?:[\\p{P}\\p{Z}]+$)/u', '', $word));
     }
 }

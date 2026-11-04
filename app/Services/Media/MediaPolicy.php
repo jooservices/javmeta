@@ -12,7 +12,7 @@ final class MediaPolicy
 {
     public function assertText(string $text): void
     {
-        if (preg_match('/\b(underage|under[ -]?18|under[ -]?age|minors?|child(?:ren)?|schoolgirls?|loli(?:ta)?|shota)\b|未成年|児童|小学生|中学生|幼女/iu', rawurldecode($text)) === 1) {
+        if (preg_match('/\b(under[ -]?18|under[ -]?age|minors?|child(?:ren)?|schoolgirls?|loli(?:ta)?|shota)\b|未成年|児童|小学生|中学生|幼女/iu', rawurldecode($text)) === 1) {
             throw ValidationException::withMessages(['media' => 'Từ chối: thông tin có dấu hiệu liên quan người chưa thành niên.']);
         }
     }
