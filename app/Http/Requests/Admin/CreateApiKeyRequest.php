@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Admin;
 
+use App\Data\Auth\ApiKeyCreateData;
 use Illuminate\Foundation\Http\FormRequest;
 
 final class CreateApiKeyRequest extends FormRequest
@@ -22,5 +23,18 @@ final class CreateApiKeyRequest extends FormRequest
             'scopes' => ['sometimes', 'nullable', 'array'],
             'scopes.*' => ['string', 'in:' . implode(',', \App\Models\ApiKey::SCOPES)],
         ];
+    }
+
+    public function createData(): ApiKeyCreateData
+    {
+        $validated = $this->validated();
+        /** @var list<string>|null $scopes */
+        $scopes = $validated['scopes'] ?? null;
+
+        return new ApiKeyCreateData(
+            (string) $validated['label'],
+            (int) ($validated['abuse_rpm'] ?? 60),
+            $scopes,
+        );
     }
 }
