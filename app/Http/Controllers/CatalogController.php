@@ -39,7 +39,7 @@ final class CatalogController extends BaseApiController
             throw new InvalidFilterException('Invalid sort or per_page.', ['sort' => ['movie_count or name'], 'per_page' => ['1 to 200']]);
         }
 
-        $key = 'javmeta:catalog:' . md5(json_encode([$kind, $q, $sort, $perPage, $page, $includeUnknown], JSON_THROW_ON_ERROR));
+        $key = 'javmeta:catalog:' . hash('sha256', json_encode([$kind, $q, $sort, $perPage, $page, $includeUnknown], JSON_THROW_ON_ERROR));
         $result = Cache::remember($key, 120, fn(): array => $this->load($kind, $q, $sort, $perPage, $page, $includeUnknown));
 
         return $this->respondWithData(
