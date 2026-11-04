@@ -16,6 +16,7 @@ final class GuestModeRoutePolicy
         'GET|HEAD api/v1/status',
         'GET|HEAD app',
         'GET|HEAD login',
+        'GET|HEAD node/join.sh',
         'GET|HEAD ui-api/{path}',
         'GET|HEAD up',
     ];

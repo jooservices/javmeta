@@ -80,8 +80,12 @@ session or API credential.
 | `GET, HEAD` | `login` | Guest allowed | Public authentication form; it exposes no owner or API credentials. |
 | `POST` | `login` | Login required | Not a guest-browsing route. Anonymous clients may submit credentials; invalid input redirects to the login form. |
 | `POST` | `logout` | Login required | Requires an owner session. |
+| `GET, HEAD` | `node/join.sh` | Guest allowed | The node join script; it contains only this installation's address and no secret. |
+| `POST` | `node/enroll` | Login required | Not an owner session: it needs a one-time node token (401 without one, a uniform 404 for an unknown, used, expired or foreign token) and is limited to 6 attempts per minute per address. |
 | `GET, HEAD` | `ops` | Login required | Requires an authenticated super-administrator. |
 | `GET, HEAD` | `ops/data` | Login required | Requires an authenticated super-administrator; returns operational data. |
+| `GET, HEAD` | `ops/nodes` | Login required | Requires an authenticated super-administrator; lists node enrollments without tokens. |
+| `POST` | `ops/nodes` | Login required | Requires an authenticated super-administrator; creates a one-time node join command. |
 | `GET, HEAD` | `storage/{path}` | Login required | Private local files require a signed URL. |
 | `PUT` | `storage/{path}` | Login required | Private local file uploads require a signed upload URL. |
 | `GET, HEAD` | `ui-admin/keys` | Login required | Requires an authenticated super-administrator. |

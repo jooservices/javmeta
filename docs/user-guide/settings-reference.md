@@ -1396,6 +1396,26 @@ Thông tin bí mật. Mã mục: `ui_security.owner_admin_token`.
 
 Thông tin bí mật. Mã mục: `ui_security.mcp_api_key`.
 
+## Thêm node
+
+### Thời hạn mã thêm node (phút)
+
+Mã dùng một lần để thêm node hết hạn sau số phút này.
+
+Số nguyên; từ 5 đến 240. Mã mục: `nodes.enrollment_ttl_minutes`.
+
+### Kho mã nguồn cho node mới
+
+Địa chỉ Git mà node mới dùng để cài đặt; node phải đọc được kho này.
+
+Văn bản. Mã mục: `nodes.release_repo_url`.
+
+### Nhánh, tag hoặc commit cho node mới
+
+Bản phát hành mà node mới cài đặt; nên trùng bản đang chạy.
+
+Văn bản. Mã mục: `nodes.release_ref`.
+
 ## Sức khỏe khi khởi động
 
 ### Bật cổng kiểm tra khi khởi động

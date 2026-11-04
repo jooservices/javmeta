@@ -91,10 +91,13 @@ final class NodeEnrollmentEndpointsTest extends TestCase
         self::assertSame($wrongToken->getContent(), $wrongName->getContent());
     }
 
-    public function test_a_malformed_redemption_is_a_validation_error(): void
+    public function test_a_missing_or_malformed_token_is_unauthorised_and_a_bad_node_name_is_a_validation_error(): void
     {
-        $this->postJson('/node/enroll', ['token' => 'not-a-token', 'node_name' => 'worker-1'])->assertUnprocessable();
+        $this->postJson('/node/enroll', ['token' => 'not-a-token', 'node_name' => 'worker-1'])->assertUnauthorized();
+        $this->postJson('/node/enroll', ['node_name' => 'worker-1'])->assertUnauthorized();
+        $this->postJson('/node/enroll', [])->assertUnauthorized();
         $this->postJson('/node/enroll', ['token' => 'jne_' . str_repeat('a', 64)])->assertUnprocessable();
+        $this->postJson('/node/enroll', ['token' => 'jne_' . str_repeat('a', 64), 'node_name' => 'Bad Name'])->assertUnprocessable();
     }
 
     public function test_redeeming_is_rate_limited_per_address(): void
