@@ -92,4 +92,30 @@ final class ReportUiTest extends TestCase
         self::assertMatchesRegularExpression('/[\p{L}]/u', $definitions['report.interval_minutes']['label']);
         self::assertStringContainsString('Báo cáo', config('javmeta_settings.groups.report'));
     }
+
+    public function test_a_report_that_could_not_be_delivered_is_reported_as_a_bad_gateway(): void
+    {
+        config(['cache.default' => 'array', 'javmeta_report.sections' => ['movies'], 'javmeta_report.channels' => ['telegram']]);
+        Cache::store('array')->flush();
+        $this->app->instance(ReportChannel::class, new class implements ReportChannel {
+            public function deliver(string $subject, string $body, array $context = []): bool
+            {
+                return false;
+            }
+        });
+        $this->actingAs(User::factory()->create(['role' => 'super_administrator']));
+
+        $this->postJson('/ui-admin/report/periodic/send-now')
+            ->assertStatus(502)
+            ->assertJsonPath('message', 'The report was not delivered.')
+            ->assertJsonPath('data.sent', false);
+    }
+
+    public function test_the_daily_report_can_be_previewed_by_the_owner(): void
+    {
+        config(['cache.default' => 'array']);
+        $this->actingAs(User::factory()->create(['role' => 'super_administrator']));
+
+        $this->getJson('/ui-admin/report/daily')->assertOk()->assertJsonStructure(['data']);
+    }
 }
