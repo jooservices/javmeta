@@ -2,6 +2,7 @@ import { defineScenario } from '../lib/step.mjs';
 import { login, loginWith, expectOnLoginPage } from '../steps/auth.mjs';
 import { openView, openPath, expectViewHealthy, resizeTo, expectNoConsoleErrors } from '../steps/navigation.mjs';
 import { openTab, expectTabShowsControls, tabNames, toggleFirstSwitch, saveSwitchGroup, expectSwitchPersisted, restoreSwitch } from '../steps/settings.mjs';
+import { filterMoviesByKeyword, expectMovieResults, openMovie, expectMovieDetail, toggleFavourite, expectInFavourites } from '../steps/movies.mjs';
 import { expectDiscoverForBrowsers, searchFromDiscover, expectSearchFound } from '../steps/discover.mjs';
 import { fillNodeName, submitNodeForm, expectBrowserRejectsNodeName, expectJoinCommand, copyJoinCommand, expectNodeListed } from '../steps/nodes.mjs';
 
@@ -37,4 +38,12 @@ export const addNodeFromTheCommandCenter = defineScenario('the owner adds a node
 
 export const discoverIsForBrowsingAndSearchWorks = defineScenario('Discover is for browsing and its search finds a movie', [
   login(), openView('#/'), expectViewHealthy(), expectDiscoverForBrowsers(), searchFromDiscover('Sample Movie Number 520'), expectViewHealthy(), expectSearchFound('Sample Movie Number 520'),
+]);
+
+export const browseFilterOpenAndFavouriteAMovie = defineScenario('a user filters movies, opens one and favourites it', [
+  login(), openView('#/movies'), expectMovieResults({ atLeast: 10 }),
+  filterMoviesByKeyword('Number 520'), expectMovieResults({ atLeast: 1, atMost: 3, contains: 'SMP-0520' }),
+  openMovie('SMP-0520'), expectMovieDetail('SMP-0520', 'Sample Movie Number 520'),
+  toggleFavourite(), expectInFavourites('SMP-0520', true),
+  openView('#/movie/SMP-0520'), toggleFavourite(), expectInFavourites('SMP-0520', false),
 ]);
