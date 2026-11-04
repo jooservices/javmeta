@@ -99,7 +99,8 @@ assert.deepEqual(toApi({ q: 'ab', year: '2025', rmin: '90', genre: 'Drama' }), {
 assert.deepEqual(toApi({ from: '2020', to: '2022' }), { released_from: '2020-01-01', released_to: '2022-12-31' });
 
 const home = await run('home', await load('views/home.js'), { params: {}, query: {} });
-assert.match(home, /phim trong DB/); assert.match(home, /data-to="4469"/); assert.match(home, /Hỏng|Tắt|Ổn/);
+assert.match(home, /phim trong kho/); assert.match(home, /data-to="4469"/); assert.match(home, /Mới cập nhật/); assert.match(home, /Thể loại phổ biến/);
+assert.doesNotMatch(home, /Chưa có tín hiệu|WORKER|Sức khoẻ crawl|việc đang chờ/i, 'Discover is for people who browse: queue, worker and source health live in the Command Center');
 await run('movies', await load('views/movies.js'), { params: {}, query: { genre: 'Drama' } });
 assert.match(out.movies, /Bộ lọc/); assert.match(out.movies, /data-drop="genre" data-value="Drama"/); assert.match(out.movies, /Thể loại: Drama/);
 const detail = await run('movie', await load('views/movie.js'), { params: { code: 'AAA-001' }, query: {} });
