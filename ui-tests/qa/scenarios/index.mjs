@@ -8,6 +8,9 @@ import { openNotificationEditor, typeInTitle, expectLivePreviewShows, insertVari
 import { createApiKey, expectApiKeyStatus, revokeApiKey } from '../steps/admin.mjs';
 import { expectDiscoverForBrowsers, searchFromDiscover, expectSearchFound } from '../steps/discover.mjs';
 import { fillNodeName, submitNodeForm, expectBrowserRejectsNodeName, expectJoinCommand, copyJoinCommand, expectNodeListed } from '../steps/nodes.mjs';
+import { expectHoverChanges, goBack } from '../steps/interact.mjs';
+import { toggleFilterDrawer, closeFilterDrawer, expectFilterField, clearFilters, expectResultCount, expectResultCountBetween, expectHashIncludes } from '../steps/browser.mjs';
+import { filterPerformersByName, choosePerformerOption, filterPerformersByLocation, chooseLocationFacet, filterPerformersByAge, expectPerformerNamed, expectPerformerAbsent, openPerformer, openFirstPerformer, expectPerformerField, openPerformerTab, openPerformerTabWithKeyboard, expectPerformerTab, setFollow, expectFeedState, expectFeedMovies, expectPerformerMissing } from '../steps/performers.mjs';
 
 export const VIEWS = [
   '#/', '#/search', '#/stats', '#/movies', '#/performers', '#/bio', '#/movies?sort=update_date',
@@ -60,6 +63,32 @@ export const topBarAndKeyboardWork = defineScenario('the theme button, help dial
 export const ownerManagesAnApiKey = defineScenario('the owner creates and revokes an API key', [
   login(), openView('#/admin'), createApiKey('e2e-key-' + Date.now().toString(36)),
   expectApiKeyStatus('đang dùng'), revokeApiKey(), expectApiKeyStatus('đã thu hồi'),
+]);
+
+export const performersCanBeFilteredOpenedAndFollowed = defineScenario('performers can be filtered, opened and followed', [
+  login(), openView('#/performers'), expectResultCount(210), expectViewHealthy(),
+  expectHoverChanges('#view .ac', 'borderColor'),
+  toggleFilterDrawer(), expectFilterField('q', false), toggleFilterDrawer(), expectFilterField('q', true),
+  resizeTo(390), expectViewHealthy(), closeFilterDrawer(), expectFilterField('q', false), toggleFilterDrawer(), expectFilterField('q', true),
+  filterPerformersByName('Aiko Hayashi 105'), expectResultCount(1), expectPerformerNamed('Aiko Hayashi 105'),
+  closeFilterDrawer(), clearFilters(), expectResultCount(210),
+  resizeTo(1440), toggleFilterDrawer(), expectFilterField('q', true),
+  choosePerformerOption('cup', 'C'), expectResultCount(30), openFirstPerformer(), expectPerformerField('Cup', 'C'), goBack(), clearFilters(), expectResultCount(210),
+  choosePerformerOption('blood_type', 'B'), expectResultCount(45), openFirstPerformer(), expectPerformerField('Nhóm máu', 'B'), goBack(), clearFilters(), expectResultCount(210),
+  filterPerformersByLocation('Osaka'), expectResultCount(30), openFirstPerformer(), expectPerformerField('Nơi sống', 'Osaka'), goBack(), clearFilters(), expectResultCount(210),
+  chooseLocationFacet('大阪府'), expectHashIncludes('location=大阪府'), expectResultCount(30), openFirstPerformer(), expectPerformerField('Nơi sống', 'Osaka'), goBack(), clearFilters(), expectResultCount(210),
+  filterPerformersByAge(40, 40), expectResultCountBetween(1, 209), openFirstPerformer(), expectPerformerField('Tuổi', '40'), goBack(),
+  filterPerformersByName('Aiko Ito 120'), expectResultCount(0), expectPerformerAbsent('Aiko Ito 120'), clearFilters(), expectResultCount(210),
+  filterPerformersByName('Mio Sato 1'), openPerformer('Mio Sato 1'),
+  expectPerformerField('Cup', 'C'), expectPerformerField('Nhóm máu', 'B'), expectPerformerField('Nơi sống', 'Osaka'), expectPerformerField('Tuổi', '40'), expectPerformerField('Số phim', '17'),
+  expectPerformerTab('movies'), expectHoverChanges('#view a.tab:not(.on)', 'color'),
+  openPerformerTab('Nguồn'), expectPerformerTab('sources'),
+  openPerformerTabWithKeyboard('Hồ sơ chi tiết'), expectPerformerTab('bio'),
+  openPerformerTab('Phim'), expectPerformerTab('movies'),
+  expectHoverChanges('#view [data-mark][data-kind=follow]', 'borderColor'),
+  setFollow(true), openView('#/feed'), expectFeedState(1), expectFeedMovies(1, 'SMP-0030'),
+  openView('#/performer/1'), setFollow(false), openView('#/feed'), expectFeedState(0), expectFeedMovies(0),
+  expectPerformerMissing('999999999'),
 ]);
 
 export const ownerEditsAndResetsANotificationTemplate = defineScenario('the owner edits, saves and resets a notification template', [

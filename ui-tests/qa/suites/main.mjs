@@ -13,4 +13,5 @@ export default defineSuite('javmeta browser E2E', [
   s.settingsTabsShowTheirControls,
   s.settingsSwitchPersists,
   s.addNodeFromTheCommandCenter,
+  s.performersCanBeFilteredOpenedAndFollowed,
 ]);
