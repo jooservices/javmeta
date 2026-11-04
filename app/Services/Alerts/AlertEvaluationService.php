@@ -20,6 +20,7 @@ final class AlertEvaluationService
         private readonly AlertMessageFormatter $messages,
         private readonly AlertDispatcher $dispatcher,
         private readonly NotificationRenderer $notifications,
+        private readonly AlertTemplateValues $templateValues,
     ) {}
 
     public function evaluate(): bool
@@ -321,7 +322,7 @@ final class AlertEvaluationService
 
         $values = $context;
         unset($values['severity']);
-        $templateValues = $this->templateValues($rule, $condition, $resolved);
+        $templateValues = $this->templateValues->for($rule, $condition, $resolved);
         $values += $templateValues;
         $rendered = $this->notifications->render($key, $values);
         $context['severity'] = $resolved ? 'info' : $rendered['severity'];
@@ -330,85 +331,6 @@ final class AlertEvaluationService
         $context['template_rendered'] = true;
 
         return ['subject' => $rendered['title'], 'body' => $rendered['body'], 'context' => $context];
-    }
-
-    /** @param array{severity: string, value: float|int, threshold: float|int, context: array<string, mixed>} $condition
-     *  @return array<string, int|float|string>
-     */
-    private function templateValues(string $rule, array $condition, bool $resolved): array
-    {
-        $context = $condition['context'];
-        $window = max(1, (int) ($context['window_minutes'] ?? config('javmeta_alerts.window_minutes', 15)));
-
-        if (in_array($rule, ['success_rate', 'success_rate_critical'], true)) {
-            if ($rule === 'success_rate_critical') {
-                return [
-                    'success_rate' => $condition['value'],
-                    'threshold' => $condition['threshold'],
-                    'window_minutes' => $window,
-                ];
-            }
-
-            return [
-                'success_rate' => $condition['value'],
-                'minimum_rate' => $condition['threshold'],
-                'window_minutes' => $window,
-                'blocked_ratio' => $context['blocked_ratio'] ?? '',
-                'maximum_blocked_ratio' => $context['maximum_blocked_ratio'] ?? config('javmeta_alerts.blocked_ratio_max_percent', 10),
-                'attempts' => $context['attempts'] ?? '',
-                'worst_sources' => $context['worst_sources'] ?? '',
-            ];
-        }
-
-        if ($rule === 'blocked_ratio') {
-            return [
-                'blocked_ratio' => $condition['value'],
-                'maximum_ratio' => $condition['threshold'],
-                'window_minutes' => $window,
-                'attempts' => $context['attempts'] ?? '',
-                'worst_sources' => $context['worst_sources'] ?? '',
-            ];
-        }
-
-        if (str_starts_with($rule, 'source_success_rate:')) {
-            return [
-                'source_slug' => $context['source_slug'] ?? substr($rule, strlen('source_success_rate:')),
-                'success_rate' => $condition['value'],
-                'minimum_rate' => $condition['threshold'],
-                'window_minutes' => $window,
-                'attempts' => $context['attempts'] ?? '',
-            ];
-        }
-
-        if ($rule === 'postgres_connections') {
-            return ['connection_count' => $condition['value'], 'threshold' => $condition['threshold']];
-        }
-
-        if ($rule === 'dispatch_age') {
-            $idle = (bool) ($context['idle'] ?? false);
-            $missing = (bool) ($context['missing'] ?? false);
-            $state = $idle
-                ? 'no crawl work is due'
-                : ($missing ? 'no dispatch has been recorded' : ($resolved ? 'dispatch has resumed' : 'due work is waiting for dispatch'));
-            $age = $idle ? 'not applicable' : ($missing ? 'not recorded' : number_format((float) $condition['value'], 0, '.', ',') . ' seconds ago');
-
-            return [
-                'dispatch_state' => $state,
-                'dispatch_age' => $age,
-                'threshold_seconds' => $condition['threshold'],
-                'due_items' => $context['due_items'] ?? '',
-            ];
-        }
-
-        if (str_starts_with($rule, 'backlog_depth:')) {
-            return [
-                'source_slug' => $context['source_slug'] ?? substr($rule, strlen('backlog_depth:')),
-                'due_items' => $condition['value'],
-                'minimum_items' => $condition['threshold'],
-            ];
-        }
-
-        return [];
     }
 
     private function intervalElapsed(): bool
