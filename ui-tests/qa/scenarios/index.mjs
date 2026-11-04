@@ -12,6 +12,7 @@ import { expectHoverChanges, goBack } from '../steps/interact.mjs';
 import { toggleFilterDrawer, closeFilterDrawer, expectFilterField, clearFilters, expectResultCount, expectResultCountBetween, expectHashIncludes } from '../steps/browser.mjs';
 import { filterPerformersByName, choosePerformerOption, filterPerformersByLocation, chooseLocationFacet, filterPerformersByAge, expectPerformerNamed, expectPerformerAbsent, openPerformer, openFirstPerformer, expectPerformerField, openPerformerTab, openPerformerTabWithKeyboard, expectPerformerTab, setFollow, expectFeedState, expectFeedMovies, expectPerformerMissing } from '../steps/performers.mjs';
 import { filterCatalog, sortCatalogWithKeyboard, expectFirstCatalogEntry, expectCatalogRow, openCatalogEntry, expectFacetCountMatchesCatalog, openFirstMovie, expectDetailContains, expectCatalogEmpty, expectUnknownCatalog, shiftCalendar, shiftCalendarWithKeyboard, expectCalendarHeading, openCalendarDay, expectDayRequestKeptTheDate, openCalendarMovie, expectCalendarIgnoresBadMonth } from '../steps/catalog.mjs';
+import { armSavedSearchCleanup, searchFor, expectSearchPrompt, expectSearchEmpty, openMeaningSearch, expectMeaningMode, submitSearchWithKeyboard, expectKeywordMode, rememberResultCount, expectRememberedCount, chooseMovieChoice, filterMovieField, expectMovieListEmpty, saveCurrentSearch, cancelSaveSearch, applySavedSearch, deleteSavedSearch } from '../steps/searchpage.mjs';
 
 export const VIEWS = [
   '#/', '#/search', '#/stats', '#/movies', '#/performers', '#/bio', '#/movies?sort=update_date',
@@ -133,6 +134,35 @@ export const calendarMonthAndDayOpenMovies = defineScenario('the calendar change
 export const calendarDayOpensOnlyThatDay = defineScenario('a calendar day opens only the movies released that day', [
   login(), openView('#/calendar?month=2024-06'), openCalendarDay('2024-06-02'), expectDayRequestKeptTheDate('2024-06-02'),
   expectResultCount(1), expectMovieResults({ contains: 'SMP-0259', atMost: 1 }),
+]);
+
+const savedSearchName = 'e2e-385-' + Date.now().toString(36);
+
+export const searchPageFindsAMovieAndShowsNothing = defineScenario('the search page finds a movie and shows an empty result', [
+  login(), openView('#/search'), expectSearchPrompt(),
+  expectHoverChanges('#view #sform button', 'filter'),
+  resizeTo(390), expectViewHealthy(), resizeTo(1440),
+  searchFor('a'), expectSearchPrompt(),
+  searchFor('zzzz-no-such-movie-xyz'), expectSearchEmpty(),
+  searchFor('SMP-0520'), expectSearchFound('SMP-0520'), expectViewHealthy(),
+  expectHoverChanges('#view a.lnk', 'color'),
+  openMeaningSearch(), expectMeaningMode(), expectSearchFound('SMP-0520'),
+  submitSearchWithKeyboard(), expectKeywordMode(), expectSearchFound('SMP-0520'),
+]);
+
+export const movieFiltersAndSavedSearches = defineScenario('movie filters, an empty result and a saved search can be cleared', [
+  login(), armSavedSearchCleanup(), openView('#/movies'), rememberResultCount(), expectViewHealthy(),
+  expectHoverChanges('#view .mc', 'backgroundColor'),
+  resizeTo(390), expectViewHealthy(), closeFilterDrawer(), resizeTo(1440), toggleFilterDrawer(), expectFilterField('q', true),
+  chooseMovieChoice('genre', 'Sample Genre 01'), openFirstMovie(), expectDetailContains('Sample Genre 01'),
+  goBack(), clearFilters(), expectRememberedCount(),
+  filterMovieField('maker', 'Sample Maker 01'), openFirstMovie(), expectDetailContains('Sample Maker 01'),
+  goBack(), clearFilters(), expectRememberedCount(),
+  filterMovieField('q', 'zzzz-no-such-movie-xyz'), expectMovieListEmpty(), clearFilters(), expectRememberedCount(),
+  filterMovieField('q', 'SMP-0520'), expectMovieResults({ contains: 'SMP-0520', atMost: 3 }),
+  cancelSaveSearch(), saveCurrentSearch(savedSearchName), clearFilters(), expectRememberedCount(),
+  applySavedSearch(savedSearchName, 'q=SMP-0520'), expectMovieResults({ contains: 'SMP-0520', atMost: 3 }),
+  deleteSavedSearch(savedSearchName),
 ]);
 
 export const calendarDayHoverChangesTheCell = defineScenario('hovering a calendar day highlights the cell', [

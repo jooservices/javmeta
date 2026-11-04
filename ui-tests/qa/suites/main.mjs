@@ -19,4 +19,6 @@ export default defineSuite('javmeta browser E2E', [
   s.calendarMonthAndDayOpenMovies,
   s.calendarDayOpensOnlyThatDay,
   s.calendarDayHoverChangesTheCell,
+  s.searchPageFindsAMovieAndShowsNothing,
+  s.movieFiltersAndSavedSearches,
 ]);
