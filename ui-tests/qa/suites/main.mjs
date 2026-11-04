@@ -22,4 +22,9 @@ export default defineSuite('javmeta browser E2E', [
   s.searchPageFindsAMovieAndShowsNothing,
   s.movieFiltersAndSavedSearches,
   s.featurePagesShowTheirRealState,
+  s.reportPreviewRefreshes,
+  s.reportSwitchLabelFollowsTheClick,
+  s.reportSwitchSavesAndRestores,
+  s.notificationListTogglesAndRestores,
+  s.notificationSwitchLabelFollowsTheClick,
 ]);

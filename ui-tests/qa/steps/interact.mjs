@@ -4,6 +4,7 @@ import { defineStep } from '../lib/step.mjs';
 export const expectHoverChanges = defineStep('expectHoverChanges', async (ctx, selector, property) => {
   const el = ctx.page.locator(selector).first();
   await el.waitFor({ state: 'visible', timeout: 8000 });
+  await el.evaluate(node => node.scrollIntoView({ block: 'center', inline: 'nearest' }));
   await ctx.page.mouse.move(1, 1);
   const before = await el.evaluate((node, prop) => getComputedStyle(node)[prop], property);
   const box = await el.boundingBox();

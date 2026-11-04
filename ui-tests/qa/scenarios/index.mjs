@@ -14,6 +14,7 @@ import { filterPerformersByName, choosePerformerOption, filterPerformersByLocati
 import { filterCatalog, sortCatalogWithKeyboard, expectFirstCatalogEntry, expectCatalogRow, openCatalogEntry, expectFacetCountMatchesCatalog, openFirstMovie, expectDetailContains, expectCatalogEmpty, expectUnknownCatalog, shiftCalendar, shiftCalendarWithKeyboard, expectCalendarHeading, openCalendarDay, expectDayRequestKeptTheDate, openCalendarMovie, expectCalendarIgnoresBadMonth } from '../steps/catalog.mjs';
 import { armSavedSearchCleanup, searchFor, expectSearchPrompt, expectSearchEmpty, openMeaningSearch, expectMeaningMode, submitSearchWithKeyboard, expectKeywordMode, rememberResultCount, expectRememberedCount, chooseMovieChoice, filterMovieField, expectMovieListEmpty, saveCurrentSearch, cancelSaveSearch, applySavedSearch, deleteSavedSearch } from '../steps/searchpage.mjs';
 import { expectFeedHasNoActions, expectLibraryUnconfigured, expectDownloadsOff, openSettingsFromEmptyState, openSettingsWithKeyboard, expectMediaCaptureOff, refreshMedia, submitDisabledCapture, openMediaLibrary, expectCrawlReadOnly } from '../steps/ownerpages.mjs';
+import { expectReportPreview, refreshReportPreview, expectReportSwitchInView, expectReportStartsEnabled, toggleReportEnabled, toggleReportEnabledWithKeyboard, expectReportSwitchLabel, saveReportSettings, expectReportEnabledSaved, expectNotificationList, rememberNotificationForm, toggleNotificationEnabled, expectNotificationSwitchLabel, saveNotificationEdits, expectFirstNotificationEnabled, markNotificationRestored, toggleQuietMode } from '../steps/reports.mjs';
 
 export const VIEWS = [
   '#/', '#/search', '#/stats', '#/movies', '#/performers', '#/bio', '#/movies?sort=update_date',
@@ -184,6 +185,36 @@ export const featurePagesShowTheirRealState = defineScenario('feed, library, dow
   refreshMedia(), expectMediaCaptureOff(), submitDisabledCapture(), openMediaLibrary(),
   openView('#/crawl'), expectCrawlReadOnly(), expectViewHealthy(),
   resizeTo(390), expectViewHealthy(), resizeTo(1440),
+]);
+
+export const reportPreviewRefreshes = defineScenario('the report preview shows the real report and refreshes', [
+  login(), openView('#/settings/report'), expectReportPreview(), expectViewHealthy(),
+  expectHoverChanges('#view [data-report-refresh]', 'borderColor'),
+  resizeTo(390), expectViewHealthy(), resizeTo(1440),
+  refreshReportPreview(), expectReportSwitchInView(),
+]);
+
+export const reportSwitchLabelFollowsTheClick = defineScenario('the report switch label follows the click', [
+  login(), openView('#/settings/report'), toggleReportEnabledWithKeyboard(), expectReportSwitchLabel(),
+]);
+
+export const reportSwitchSavesAndRestores = defineScenario('the report switch saves and is restored', [
+  login(), openView('#/settings/report'), expectReportStartsEnabled(), toggleReportEnabled(), saveReportSettings(), expectReportEnabledSaved(),
+  toggleReportEnabled(), saveReportSettings(), expectReportEnabledSaved(),
+]);
+
+export const notificationListTogglesAndRestores = defineScenario('a notification can be disabled and enabled again', [
+  login(), openView('#/settings/notifications'), expectNotificationList(), expectViewHealthy(),
+  resizeTo(390), expectViewHealthy(), resizeTo(1440),
+  expectHoverChanges('#view [data-action=edit]', 'borderColor'),
+  openNotificationEditor(0), rememberNotificationForm(),
+  toggleQuietMode(), toggleQuietMode(),
+  toggleNotificationEnabled(), saveNotificationEdits(), expectFirstNotificationEnabled(false),
+  toggleNotificationEnabled(), saveNotificationEdits(), expectFirstNotificationEnabled(true), markNotificationRestored(),
+]);
+
+export const notificationSwitchLabelFollowsTheClick = defineScenario('the notification switch label follows the click', [
+  login(), openView('#/settings/notifications'), openNotificationEditor(0), toggleNotificationEnabled(), expectNotificationSwitchLabel(),
 ]);
 
 export const ownerEditsAndResetsANotificationTemplate = defineScenario('the owner edits, saves and resets a notification template', [
