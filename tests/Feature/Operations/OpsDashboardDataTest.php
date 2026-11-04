@@ -6,6 +6,7 @@ namespace Tests\Feature\Operations;
 
 use App\Models\CrawlQueue;
 use App\Models\Movie;
+use App\Models\Performer;
 use App\Models\Source;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -49,6 +50,7 @@ final class OpsDashboardDataTest extends TestCase
         ]);
         Movie::factory()->create(['first_seen_at' => $now->copy()->subMinutes(20)]);
         Movie::factory()->create(['first_seen_at' => $now->copy()->subHours(5)]);
+        Performer::factory()->create();
         DB::table('failed_jobs')->insert(['uuid' => 'f-1', 'connection' => 'redis', 'queue' => 'detail', 'payload' => '{}', 'exception' => 'x', 'failed_at' => $now]);
 
         $admin = User::factory()->create(['role' => 'super_administrator']);
@@ -60,6 +62,7 @@ final class OpsDashboardDataTest extends TestCase
         self::assertSame(['pending' => 2, 'claimed' => 1, 'done' => 1, 'failed' => 2, 'retrying' => 1], $json['queue']);
         self::assertSame(['runs' => 2, 'pages' => 10, 'movies_new' => 8, 'movies_updated' => 3, 'failures' => 1], $json['hour']);
         self::assertSame(2, $json['totals']['movies']);
+        self::assertSame(1, $json['totals']['performers']);
         self::assertSame(1, $json['totals']['movies_first_seen_1h']);
         self::assertSame(1, $json['totals']['failed_jobs']);
 
@@ -99,5 +102,48 @@ final class OpsDashboardDataTest extends TestCase
         self::assertSame([], $json['sources']);
         self::assertSame([], $json['issues']);
         self::assertSame([], $json['events']);
+    }
+
+    public function test_the_data_endpoint_keeps_sources_healthy_at_the_thirty_minute_boundary(): void
+    {
+        $this->travelTo('2026-11-05T03:00:00Z');
+        Source::factory()->create([
+            'slug' => 'boundary',
+            'name' => 'Boundary',
+            'last_success_at' => now()->subMinutes(30),
+        ]);
+        $admin = User::factory()->create(['role' => 'super_administrator']);
+
+        $json = $this->actingAs($admin)->getJson('/ops/data')->assertOk()->json();
+
+        self::assertSame('healthy', $json['sources'][0]['status']);
+        self::assertSame(1800, $json['sources'][0]['last_success_age_seconds']);
+    }
+
+    public function test_the_data_endpoint_returns_only_the_twelve_newest_issues_and_events(): void
+    {
+        $this->travelTo('2026-11-05T03:00:00Z');
+        for ($index = 0; $index < 13; $index++) {
+            CrawlQueue::factory()->create([
+                'source_slug' => 'source',
+                'status' => 'failed',
+                'kind' => 'issue-' . $index,
+            ]);
+            DB::table('crawl_events')->insert([
+                'source_slug' => 'source',
+                'kind' => 'event-' . $index,
+                'created_at' => now()->addSeconds($index),
+            ]);
+        }
+        $admin = User::factory()->create(['role' => 'super_administrator']);
+
+        $json = $this->actingAs($admin)->getJson('/ops/data')->assertOk()->json();
+
+        self::assertCount(12, $json['issues']);
+        self::assertSame('issue-12', $json['issues'][0]['kind']);
+        self::assertSame('issue-1', $json['issues'][11]['kind']);
+        self::assertCount(12, $json['events']);
+        self::assertSame('event-12', $json['events'][0]['kind']);
+        self::assertSame('event-1', $json['events'][11]['kind']);
     }
 }
