@@ -9,7 +9,7 @@ use App\Exceptions\MovieNotFoundException;
 use App\Data\Catalog\CatalogQuery;
 use App\Http\Controllers\MovieCalendarController;
 use App\Http\Controllers\MovieRelatedController;
-use App\Http\Controllers\SuggestController;
+use App\Data\Suggest\SuggestQuery;
 use Illuminate\Http\JsonResponse;
 use App\Http\Resources\MovieResource;
 use App\Http\Resources\MovieSummaryResource;
@@ -20,6 +20,7 @@ use App\Models\Performer;
 use App\Repositories\PerformerRepository;
 use App\Services\Crawl\CrawlStatusService;
 use App\Services\Catalog\CatalogService;
+use App\Services\Suggest\SuggestService;
 use App\Services\Health\SystemStatusService;
 use App\Services\Miss\ConsumerMissReporter;
 use App\Services\Movies\MovieLookupService;
@@ -242,7 +243,7 @@ final class McpToolService
                 'get_performer' => $this->getPerformer($arguments),
                 'get_counts' => $this->getCounts($arguments),
                 'get_catalog' => $this->getCatalog($arguments),
-                'suggest' => $this->viaController(fn() => app(SuggestController::class)->index($this->request($arguments))),
+                'suggest' => $this->suggest($arguments),
                 'get_related_movies' => $this->viaController(fn() => app(MovieRelatedController::class)->show((string) ($arguments['code'] ?? ''), $this->movieLookup, $this->movieSearch)),
                 'get_release_calendar' => $this->viaController(fn() => app(MovieCalendarController::class)->index($this->request($arguments))),
                 'crawl_status' => $this->crawlStatus(),
@@ -265,6 +266,14 @@ final class McpToolService
             throw new InvalidFilterException('Scene q must be 3–200 characters and per_page 1–50.');
         }
         return ['items' => app(\App\Services\Media\SceneSearchService::class)->search($q, $limit)];
+    }
+
+    /** @param array<string, mixed> $arguments @return array{items: array<string, mixed>, meta: array{}} */
+    private function suggest(array $arguments): array
+    {
+        $query = SuggestQuery::from((string) ($arguments['q'] ?? ''), (int) ($arguments['limit'] ?? 5));
+
+        return ['items' => app(SuggestService::class)->suggest($query)->toArray(), 'meta' => []];
     }
 
     /** @param array<string, mixed> $arguments @return array<string, mixed> */

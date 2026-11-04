@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Services\Notifications;
 
 use App\Exceptions\InvalidFilterException;
-use App\Http\Controllers\SuggestController;
+use App\Data\Suggest\SuggestQuery;
 use App\Services\Crawl\CrawlStatusService;
 use App\Services\Downloads\DownloadService;
 use App\Services\Settings\SettingsService;
-use Illuminate\Http\Request;
+use App\Services\Suggest\SuggestService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -210,21 +210,21 @@ final class TelegramBot
             return ['Gõ ít nhất 2 ký tự để tìm.', []];
         }
         $limit = max(1, min(10, (int) $this->settings->get('telegram.bot_max_results')));
-        $data = app(SuggestController::class)->index(Request::create('/', 'GET', ['q' => $q, 'limit' => $limit]))->getData(true)['data'] ?? [];
+        $data = app(SuggestService::class)->suggest(SuggestQuery::from($q, $limit))->toArray();
 
         $lines = [];
         $buttons = [];
-        foreach ((array) ($data['movies'] ?? []) as $m) {
+        foreach ($data['movies'] as $m) {
             $lines[] = '🎬 ' . $m['code'] . ' · ' . ($m['title'] ?? '') . (($m['maker'] ?? null) ? ' (' . $m['maker'] . ')' : '');
             if (count($buttons) < 3) {
                 $buttons[] = ['text' => $m['code'], 'url' => $this->appUrl('/movie/' . rawurlencode($m['code']))];
             }
         }
-        foreach ((array) ($data['performers'] ?? []) as $p) {
+        foreach ($data['performers'] as $p) {
             $lines[] = '👤 ' . ($p['name'] ?? '#' . $p['id']);
         }
         foreach (['genres' => '🏷', 'makers' => '🏢', 'series' => '📁'] as $key => $icon) {
-            foreach ((array) ($data[$key] ?? []) as $x) {
+            foreach ($data[$key] as $x) {
                 $lines[] = $icon . ' ' . $x['name'] . ' (' . $x['movie_count'] . ' phim)';
             }
         }
