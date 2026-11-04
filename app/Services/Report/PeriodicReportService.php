@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Report;
 
 use App\Contracts\ReportChannel;
-use App\Models\ReportSnapshot;
+use App\Repositories\ReportDataServiceRepository;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
@@ -17,6 +17,7 @@ final class PeriodicReportService
         private readonly ReportRenderer $renderer,
         private readonly ReportChannel $channel,
         private readonly ReportMetrics $metrics,
+        private readonly ReportDataServiceRepository $repository,
     ) {}
 
     /** @return array{data: array<string, mixed>, text: string, last: array<string, mixed>|null, history: list<array<string, mixed>>} */
@@ -46,14 +47,13 @@ final class PeriodicReportService
     /** @return array{data: array<string, mixed>, text: string, last: array<string, mixed>|null, history: list<array<string, mixed>>} */
     private function previewType(string $type): array
     {
-        $query = ReportSnapshot::query()->where('report_type', $type);
         $data = $type === 'daily' ? $this->data->build(null, 1440) : $this->data->build();
 
         return [
             'data' => $data,
             'text' => $this->renderer->render($data),
-            'last' => $this->snapshotRow((clone $query)->orderByDesc('id')->first()),
-            'history' => (clone $query)->orderByDesc('id')->limit(20)->get()->map(fn(ReportSnapshot $row): array => $this->snapshotRow($row) ?? [])->all(),
+            'last' => $this->repository->latestSnapshot($type),
+            'history' => $this->repository->recentSnapshots($type, 20),
         ];
     }
 
@@ -86,7 +86,7 @@ final class PeriodicReportService
         $policyDecision = null;
 
         try {
-            if ($scheduledFor !== null && ReportSnapshot::query()->where('report_type', $type)->where('scheduled_for', $scheduledFor->utc())->exists()) {
+            if ($scheduledFor !== null && $this->repository->snapshotExists($type, $scheduledFor->utc())) {
                 return ['sent' => false, 'duplicate' => true, 'text' => '', 'result' => 'duplicate'];
             }
             if ($slotReservationKey !== null) {
@@ -121,7 +121,7 @@ final class PeriodicReportService
                 $sent = false;
             }
             $result = $sent ? 'sent' : 'failed';
-            ReportSnapshot::query()->create([
+            $this->repository->createSnapshot([
                 'scheduled_for' => $scheduledFor?->utc(),
                 'report_type' => $type,
                 'result' => $result,
@@ -185,26 +185,6 @@ final class PeriodicReportService
 
     private function pruneHistory(): void
     {
-        ReportSnapshot::query()
-            ->where('created_at', '<', now()->subDays(max(1, (int) config('javmeta_report.history_days', 30))))
-            ->delete();
-    }
-
-    /** @return array<string, mixed>|null */
-    private function snapshotRow(?ReportSnapshot $snapshot): ?array
-    {
-        if ($snapshot === null) {
-            return null;
-        }
-
-        return [
-            'id' => (int) $snapshot->getKey(),
-            'result' => (string) $snapshot->getAttribute('result'),
-            'channel' => (string) $snapshot->getAttribute('channel'),
-            'scheduled_for' => $snapshot->getAttribute('scheduled_for'),
-            'created_at' => $snapshot->getAttribute('created_at'),
-            'rendered_text' => (string) $snapshot->getAttribute('rendered_text'),
-            'raw_numbers' => $snapshot->getAttribute('raw_numbers'),
-        ];
+        $this->repository->pruneSnapshotsBefore(now()->subDays(max(1, (int) config('javmeta_report.history_days', 30))));
     }
 }

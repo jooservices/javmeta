@@ -71,7 +71,7 @@ final class StartupCommandGateTest extends TestCase
             'health.startup.command_allowlist' => 'crawler:reclaim',
         ]);
         $listener = new StartupCommandListener(
-            new SettingsService($store),
+            new SettingsService($store, app(\App\Repositories\SettingsServiceRepository::class)),
             new StartupCommandGate($fixture['health'], app(ObservabilityEmitter::class)),
         );
 
@@ -104,7 +104,7 @@ final class StartupCommandGateTest extends TestCase
         $store = Mockery::mock(ConfigStore::class);
         $store->shouldReceive('refresh')->once()->andThrow(new RuntimeException('store down'));
         $listener = new StartupCommandListener(
-            new SettingsService($store),
+            new SettingsService($store, app(\App\Repositories\SettingsServiceRepository::class)),
             new StartupCommandGate($fixture['health'], app(ObservabilityEmitter::class)),
         );
 

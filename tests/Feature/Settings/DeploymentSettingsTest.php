@@ -15,7 +15,7 @@ final class DeploymentSettingsTest extends TestCase
         require_once dirname(__DIR__, 3) . '/deploy/lib/settings.php';
         SettingsService::forgetDefaults();
         $store = new FakeConfigStore();
-        $settings = new SettingsService($store);
+        $settings = new SettingsService($store, app(\App\Repositories\SettingsServiceRepository::class));
         $manifest = ['services' => [
             ['id' => 'application', 'optional' => false, 'fields' => [['key' => 'UI_HOST', 'setting' => 'domains.ui_host']]],
             ['id' => 'ollama', 'optional' => true, 'fields' => [['key' => 'OLLAMA_URL', 'setting' => 'ai.ollama_url']]],

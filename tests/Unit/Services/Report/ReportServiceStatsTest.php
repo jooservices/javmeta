@@ -161,7 +161,7 @@ final class ReportServiceStatsTest extends TestCase
 
     private function stats(): ReportServiceStats
     {
-        return new ReportServiceStats(app(\App\Services\Search\ElasticsearchHttpClient::class));
+        return new ReportServiceStats(app(\App\Services\Search\ElasticsearchHttpClient::class), app(\App\Repositories\ReportDataServiceRepository::class));
     }
 
     /** @param \Closure|null $selectOne what DB::selectOne does; default returns nothing */

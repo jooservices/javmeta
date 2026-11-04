@@ -303,7 +303,7 @@ final class ReportDataBuilderTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->app->bind(ReportServiceStats::class, static fn() => new ReportServiceStats(app(\App\Services\Search\ElasticsearchHttpClient::class)));
+        $this->app->bind(ReportServiceStats::class, static fn() => new ReportServiceStats(app(\App\Services\Search\ElasticsearchHttpClient::class), app(\App\Repositories\ReportDataServiceRepository::class)));
         $this->app->instance(NodeSampleStore::class, new NodeSampleStore());
         $this->app->instance(NodeSampleAggregator::class, new NodeSampleAggregator());
     }

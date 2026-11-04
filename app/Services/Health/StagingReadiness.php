@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Health;
 
 use App\Contracts\ReportChannel;
+use App\Repositories\HealthStatusServiceRepository;
 use App\Services\Auth\ApiKeyService;
 use App\Services\Crawl\CrawlStatusService;
 use App\Services\Dependencies\DependencyMonitor;
@@ -25,6 +26,7 @@ final class StagingReadiness
         private readonly CrawlStatusService $crawlStatus,
         private readonly ReportChannel $channel,
         private readonly SourceScheduleFreshness $sourceFreshness,
+        private readonly HealthStatusServiceRepository $repository,
     ) {}
 
     /**
@@ -70,7 +72,7 @@ final class StagingReadiness
     {
         $rows = [];
         $maxAge = (int) config('javmeta_readiness.max_newest_movie_age_minutes', 30);
-        $newest = \App\Models\Movie::query()->max('first_seen_at');
+        $newest = $this->repository->newestMovieAt();
         $now = now()->getTimestamp();
         $ageMinutes = $newest === null ? null : (int) floor(($now - strtotime((string) $newest)) / 60);
         $rows[] = $ageMinutes !== null && $ageMinutes <= $maxAge
