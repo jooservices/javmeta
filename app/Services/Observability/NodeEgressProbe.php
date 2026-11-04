@@ -17,19 +17,11 @@ use Throwable;
 final class NodeEgressProbe
 {
     private const NODE_INDEX_KEY = 'javmeta:egress:nodes';
-    // PHP's reserved-range filter omits some non-global ranges such as TEST-NET and multicast.
-    private const NON_GLOBAL_IPV4_RANGES = [
-        '100.64.0.0/10',
-        '192.0.0.0/24',
-        '192.0.2.0/24',
-        '192.88.99.0/24',
-        '198.18.0.0/15',
-        '198.51.100.0/24',
-        '203.0.113.0/24',
-        '224.0.0.0/4',
-    ];
 
-    public function __construct(private readonly ClientBuilder $clientBuilder) {}
+    public function __construct(
+        private readonly ClientBuilder $clientBuilder,
+        private readonly Ipv4Parser $ipv4 = new Ipv4Parser(),
+    ) {}
 
     /** @return array{node: string, egress_ip: ?string, egress_kind: string} */
     public function contextForLane(?string $lane = null, ?string $method = null): array
@@ -357,7 +349,7 @@ final class NodeEgressProbe
             $response = $client->sendRequest(new Request('GET', $url, ['Accept' => 'text/plain']));
 
             return $response->getStatusCode() >= 200 && $response->getStatusCode() < 300
-                ? $this->parseIpv4($response->getBody()->read(128))
+                ? $this->ipv4->parse($response->getBody()->read(128))
                 : null;
         } catch (Throwable) {
             return null;
@@ -424,7 +416,7 @@ final class NodeEgressProbe
             return ['ip' => null, 'error' => 'Playwright fetch returned no page content.'];
         }
 
-        $ip = $this->parsePublicIpv4($html);
+        $ip = $this->ipv4->parsePublic($html);
 
         return [
             'ip' => $ip,
@@ -483,7 +475,7 @@ final class NodeEgressProbe
         }
 
         $solution = is_array($body['solution'] ?? null) ? $body['solution'] : [];
-        $ip = $this->parsePublicIpv4(is_string($solution['response'] ?? null) ? $solution['response'] : '');
+        $ip = $this->ipv4->parsePublic(is_string($solution['response'] ?? null) ? $solution['response'] : '');
 
         return [
             'ip' => $ip,
@@ -534,79 +526,6 @@ final class NodeEgressProbe
         }
 
         return 'Browser service request failed (' . class_basename($exception) . ').';
-    }
-
-    private function parseIpv4(string $body): ?string
-    {
-        $visibleContent = preg_replace('~<(script|style)\b[^>]*>.*?</\1\s*>~is', ' ', $body) ?? $body;
-        $candidate = trim(html_entity_decode(
-            strip_tags($visibleContent),
-            ENT_QUOTES | ENT_HTML5 | ENT_SUBSTITUTE,
-            'UTF-8',
-        ));
-        if (filter_var($candidate, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
-            return $candidate;
-        }
-
-        return null;
-    }
-
-    private function parsePublicIpv4(string $body): ?string
-    {
-        $ip = $this->parseIpv4($body);
-        if ($ip === null || ! $this->isPublicIpv4($ip)) {
-            return null;
-        }
-
-        return $ip;
-    }
-
-    private function isPublicIpv4(string $ip): bool
-    {
-        if (filter_var(
-            $ip,
-            FILTER_VALIDATE_IP,
-            FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE,
-        ) === false) {
-            return false;
-        }
-
-        if (in_array($ip, ['192.0.0.9', '192.0.0.10'], true)) {
-            return true;
-        }
-
-        foreach (self::NON_GLOBAL_IPV4_RANGES as $range) {
-            if ($this->isInIpv4Range($ip, $range)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private function isInIpv4Range(string $ip, string $range): bool
-    {
-        [$network, $prefixLength] = explode('/', $range, 2);
-        $addressBytes = inet_pton($ip);
-        $networkBytes = inet_pton($network);
-        if ($addressBytes === false || $networkBytes === false) {
-            return false;
-        }
-
-        $prefixLength = (int) $prefixLength;
-        $fullBytes = intdiv($prefixLength, 8);
-        if (substr($addressBytes, 0, $fullBytes) !== substr($networkBytes, 0, $fullBytes)) {
-            return false;
-        }
-
-        $remainingBits = $prefixLength % 8;
-        if ($remainingBits === 0) {
-            return true;
-        }
-
-        $mask = (0xFF << (8 - $remainingBits)) & 0xFF;
-
-        return (ord($addressBytes[$fullBytes]) & $mask) === (ord($networkBytes[$fullBytes]) & $mask);
     }
 
     private function isHttpUrl(string $url): bool
