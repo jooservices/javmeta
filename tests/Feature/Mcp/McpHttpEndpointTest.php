@@ -8,6 +8,7 @@ use App\Models\Movie;
 use App\Models\MovieCode;
 use App\Models\Performer;
 use App\Services\Auth\ApiKeyService;
+use App\Services\Mcp\McpEventStream;
 use App\Services\Mcp\McpToolService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -309,5 +310,17 @@ final class McpHttpEndpointTest extends TestCase
         self::assertIsArray($payload);
 
         return $payload;
+    }
+
+    public function test_a_get_request_opens_the_event_stream_with_the_advertised_endpoint(): void
+    {
+        $this->app->bind(McpEventStream::class, static fn(): McpEventStream => new McpEventStream('/api/v1/mcp', 1, 0, static function (): void {}));
+
+        $response = $this->withHeaders(['X-API-Key' => $this->apiKey])->get('/api/v1/mcp');
+
+        $response->assertOk();
+        $response->assertHeader('Content-Type', 'text/event-stream; charset=UTF-8');
+        $response->assertHeader('X-Accel-Buffering', 'no');
+        self::assertStringContainsString('event: endpoint', $response->streamedContent());
     }
 }
