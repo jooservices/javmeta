@@ -273,6 +273,55 @@ final class SmokeCommandTest extends TestCase
         self::assertStringContainsString('[FAIL] sentry:', Artisan::output());
     }
 
+    public function test_sentry_without_a_client_or_with_a_failed_flush_or_a_crash_is_reported_as_failed(): void
+    {
+        config()->set('sentry.dsn', 'https://public@example.test/1');
+
+        $withoutClient = Mockery::mock(HubInterface::class);
+        $withoutClient->shouldReceive('getClient')->once()->andReturn(null);
+        $this->app->instance(HubInterface::class, $withoutClient);
+        self::assertSame(1, Artisan::call('javmeta:smoke'));
+        self::assertStringContainsString('[FAIL] sentry: Sentry is enabled but its client is unavailable.', Artisan::output());
+
+        $failedFlush = Mockery::mock(HubInterface::class);
+        $failedClient = Mockery::mock(ClientInterface::class);
+        $failedClient->shouldReceive('flush')->once()->andReturn(new \Sentry\Transport\Result(\Sentry\Transport\ResultStatus::failed()));
+        $failedFlush->shouldReceive('getClient')->andReturn($failedClient);
+        $failedFlush->shouldReceive('captureMessage')->andReturn(new \Sentry\EventId('0123456789abcdef0123456789abcdef'));
+        $this->app->instance(HubInterface::class, $failedFlush);
+        self::assertSame(1, Artisan::call('javmeta:smoke'));
+        self::assertStringContainsString('[FAIL] sentry: Sentry did not deliver the smoke-check event.', Artisan::output());
+
+        $crashing = Mockery::mock(HubInterface::class);
+        $crashing->shouldReceive('getClient')->andThrow(new \RuntimeException('transport exploded'));
+        $this->app->instance(HubInterface::class, $crashing);
+        self::assertSame(1, Artisan::call('javmeta:smoke'));
+        self::assertStringContainsString('[FAIL] sentry: Sentry did not deliver the smoke-check event.', Artisan::output());
+    }
+
+    public function test_an_unhealthy_or_unreadable_horizon_and_scheduler_are_failures_with_clear_messages(): void
+    {
+        $paused = Mockery::mock(MasterSupervisorRepository::class);
+        $paused->shouldReceive('all')->andReturn([(object) ['status' => 'paused']]);
+        $this->app->instance(MasterSupervisorRepository::class, $paused);
+        self::assertSame(1, Artisan::call('javmeta:smoke'));
+        self::assertStringContainsString('[FAIL] horizon: A Horizon master supervisor is paused or unhealthy.', Artisan::output());
+
+        $unreadable = Mockery::mock(MasterSupervisorRepository::class);
+        $unreadable->shouldReceive('all')->andThrow(new \RuntimeException('redis down'));
+        $this->app->instance(MasterSupervisorRepository::class, $unreadable);
+        self::assertSame(1, Artisan::call('javmeta:smoke'));
+        self::assertStringContainsString('[FAIL] horizon: Horizon status could not be read.', Artisan::output());
+    }
+
+    public function test_an_unsupported_queue_driver_is_a_failure(): void
+    {
+        config()->set(['queue.default' => 'sqs', 'queue.connections.sqs.driver' => 'sqs']);
+
+        self::assertSame(1, Artisan::call('javmeta:smoke'));
+        self::assertStringContainsString('[FAIL] queue_depth: Queue depth is unsupported for the configured queue driver.', Artisan::output());
+    }
+
     private function setRunningHorizon(): void
     {
         $repository = Mockery::mock(MasterSupervisorRepository::class);

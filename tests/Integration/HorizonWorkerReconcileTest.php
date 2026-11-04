@@ -234,6 +234,72 @@ final class HorizonWorkerReconcileTest extends IntegrationTestCase
         self::assertSame([], $this->commands->pending($masterB . ':crawler-listing'));
     }
 
+    public function test_a_node_without_a_running_master_is_left_alone(): void
+    {
+        config(['sentry.node' => 'joo-xcr-374-no-master']);
+        $node = (string) app(HorizonWorkerLayout::class)->snapshot()['node'];
+        $this->clearNode($node, 'worker-joo-xcr-374-no-master-master');
+        $this->nodes[] = ['node' => $node, 'master' => 'worker-joo-xcr-374-no-master-master'];
+
+        self::assertSame('no-running-master', app(HorizonWorkerReconciler::class)->reconcile()['status']);
+    }
+
+    public function test_a_change_other_than_worker_counts_asks_for_a_manual_restart_and_queues_nothing(): void
+    {
+        $node = 'joo-xcr-374-restart';
+        $master = 'worker-joo-xcr-374-restart-master';
+        $running = $this->seedSnapshot($node, $master);
+        $running['role'] = 'main';
+        $running['hash'] = 'stale-layout-hash';
+        Redis::connection($this->redisConnection)->setex(
+            HorizonLayoutSnapshot::key((string) $running['node']),
+            180,
+            json_encode(['snapshot' => $running, 'pid' => 42], JSON_THROW_ON_ERROR),
+        );
+        Log::shouldReceive('warning')->once()->withArgs(static fn(string $message): bool => $message === 'Horizon worker layout change requires a manual Horizon restart.');
+
+        $result = app(HorizonWorkerReconciler::class)->reconcile();
+
+        self::assertSame('restart-required', $result['status']);
+        self::assertSame([], $this->commands->pending($master . ':crawler-listing'));
+    }
+
+    public function test_a_running_layout_that_matches_the_settings_is_current_and_clears_the_mismatch_marker(): void
+    {
+        $node = 'joo-xcr-374-current';
+        $master = 'worker-joo-xcr-374-current-master';
+        $running = $this->seedSnapshot($node, $master);
+        Redis::connection($this->redisConnection)->setex('javmeta:horizon:reconcile:mismatch:' . $running['node'], 60, '1');
+
+        self::assertSame('current', app(HorizonWorkerReconciler::class)->reconcile()['status']);
+        self::assertSame(0, (int) Redis::connection($this->redisConnection)->exists('javmeta:horizon:reconcile:mismatch:' . $running['node']));
+    }
+
+    public function test_a_scale_is_postponed_while_supervisors_are_not_running_or_the_node_is_cooling_down_or_locked(): void
+    {
+        $node = 'joo-xcr-374-guards';
+        $master = 'worker-joo-xcr-374-guards-master';
+        $running = $this->seedSnapshot($node, $master);
+        $nodeName = (string) $running['node'];
+        SettingsService::forgetDefaults();
+        app(SettingsService::class)->set('queue.workers_per_queue', 4);
+        $redis = Redis::connection($this->redisConnection);
+
+        $stopped = Mockery::mock(SupervisorRepository::class);
+        $stopped->shouldReceive('find')->andReturn((object) ['name' => 'x', 'master' => 'someone-else', 'status' => 'paused']);
+        $this->app->instance(SupervisorRepository::class, $stopped);
+        self::assertSame('supervisors-unavailable', app(HorizonWorkerReconciler::class)->reconcile()['status']);
+
+        $this->app->instance(SupervisorRepository::class, $this->supervisorRepository());
+        $redis->setex('javmeta:horizon:reconcile:lock:' . $nodeName, 60, 'another-run');
+        self::assertSame('locked', app(HorizonWorkerReconciler::class)->reconcile()['status']);
+
+        $redis->del('javmeta:horizon:reconcile:lock:' . $nodeName);
+        $redis->setex('javmeta:horizon:reconcile:cooldown:' . $nodeName, 60, '1');
+        self::assertSame('cooldown', app(HorizonWorkerReconciler::class)->reconcile()['status']);
+        self::assertSame([], $this->commands->pending($master . ':crawler-listing'));
+    }
+
     /** @return array<string, mixed> */
     private function seedSnapshot(string $host, string $master): array
     {
