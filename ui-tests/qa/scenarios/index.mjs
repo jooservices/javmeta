@@ -11,6 +11,7 @@ import { fillNodeName, submitNodeForm, expectBrowserRejectsNodeName, expectJoinC
 import { expectHoverChanges, goBack } from '../steps/interact.mjs';
 import { toggleFilterDrawer, closeFilterDrawer, expectFilterField, clearFilters, expectResultCount, expectResultCountBetween, expectHashIncludes } from '../steps/browser.mjs';
 import { filterPerformersByName, choosePerformerOption, filterPerformersByLocation, chooseLocationFacet, filterPerformersByAge, expectPerformerNamed, expectPerformerAbsent, openPerformer, openFirstPerformer, expectPerformerField, openPerformerTab, openPerformerTabWithKeyboard, expectPerformerTab, setFollow, expectFeedState, expectFeedMovies, expectPerformerMissing } from '../steps/performers.mjs';
+import { filterCatalog, sortCatalogWithKeyboard, expectFirstCatalogEntry, expectCatalogRow, openCatalogEntry, expectFacetCountMatchesCatalog, openFirstMovie, expectDetailContains, expectCatalogEmpty, expectUnknownCatalog, shiftCalendar, shiftCalendarWithKeyboard, expectCalendarHeading, openCalendarDay, expectDayRequestKeptTheDate, openCalendarMovie, expectCalendarIgnoresBadMonth } from '../steps/catalog.mjs';
 
 export const VIEWS = [
   '#/', '#/search', '#/stats', '#/movies', '#/performers', '#/bio', '#/movies?sort=update_date',
@@ -89,6 +90,53 @@ export const performersCanBeFilteredOpenedAndFollowed = defineScenario('performe
   setFollow(true), openView('#/feed'), expectFeedState(1), expectFeedMovies(1, 'SMP-0030'),
   openView('#/performer/1'), setFollow(false), openView('#/feed'), expectFeedState(0), expectFeedMovies(0),
   expectPerformerMissing('999999999'),
+]);
+
+const catalogList = (route, name) => [
+  openView(route), filterCatalog(name), expectResultCount(1), expectCatalogRow(name), openCatalogEntry(name), expectFacetCountMatchesCatalog(),
+];
+
+export const catalogEntriesOpenMatchingMovies = defineScenario('catalog entries open a movie list with the same count', [
+  login(), openView('#/catalog/genres'), expectViewHealthy(),
+  expectHoverChanges('#view .row-i a.lnk', 'color'),
+  resizeTo(390), expectViewHealthy(), resizeTo(1440),
+  sortCatalogWithKeyboard('name'), expectFirstCatalogEntry('Sample Genre 01'),
+  ...catalogList('#/catalog/genres', 'Sample Genre 01'), openFirstMovie(), expectDetailContains('Sample Genre 01'),
+  ...catalogList('#/catalog/makers', 'Sample Maker 01'),
+  expectHoverChanges('#view [data-mark][data-kind=follow]', 'borderColor'),
+  setFollow(true), setFollow(false),
+  openFirstMovie(), expectDetailContains('Sample Maker 01'),
+  ...catalogList('#/catalog/series', 'Sample Series 01'), openFirstMovie(), expectDetailContains('Sample Series 01'),
+  ...catalogList('#/catalog/labels', 'Sample Label 5'), openFirstMovie(), expectDetailContains('Sample Label 5'),
+  openView('#/catalog/years'), expectFirstCatalogEntry('2025'), expectCatalogRow('2025'), openCatalogEntry('2025'), expectFacetCountMatchesCatalog(),
+  openFirstMovie(), expectDetailContains('2025'),
+  openView('#/catalog/genres'), filterCatalog('zzzz-no-catalog-entry'), expectCatalogEmpty(),
+  expectUnknownCatalog(),
+]);
+
+export const yearCatalogSearchNarrowsTheList = defineScenario('the year catalog search keeps only the typed year', [
+  login(), openView('#/catalog/years'), filterCatalog('2025'), expectResultCount(1), expectCatalogRow('2025'),
+]);
+
+export const calendarMonthAndDayOpenMovies = defineScenario('the calendar changes month and a day opens its movie', [
+  login(), openView('#/calendar'), expectCalendarHeading('11/2026', 0), expectViewHealthy(),
+  shiftCalendar('next'), expectCalendarHeading('12/2026', 0),
+  shiftCalendarWithKeyboard('prev'), expectCalendarHeading('11/2026', 0),
+  openView('#/calendar?month=2024-06'), expectCalendarHeading('6/2024', 15),
+  expectHoverChanges('#view .calcell.has a.lnk', 'color'),
+  resizeTo(390), expectViewHealthy(), resizeTo(1440),
+  openCalendarMovie('SMP-0259'), expectDetailContains('2024-06-02'),
+  openView('#/calendar?month=2024-06'), shiftCalendar('today'), expectCalendarHeading('11/2026', 0),
+  expectCalendarIgnoresBadMonth('2024-13'), expectCalendarHeading('11/2026', 0),
+]);
+
+export const calendarDayOpensOnlyThatDay = defineScenario('a calendar day opens only the movies released that day', [
+  login(), openView('#/calendar?month=2024-06'), openCalendarDay('2024-06-02'), expectDayRequestKeptTheDate('2024-06-02'),
+  expectResultCount(1), expectMovieResults({ contains: 'SMP-0259', atMost: 1 }),
+]);
+
+export const calendarDayHoverChangesTheCell = defineScenario('hovering a calendar day highlights the cell', [
+  login(), openView('#/calendar'), expectHoverChanges('#view .calcell:not(.off):not(.has)', 'backgroundColor'),
 ]);
 
 export const ownerEditsAndResetsANotificationTemplate = defineScenario('the owner edits, saves and resets a notification template', [

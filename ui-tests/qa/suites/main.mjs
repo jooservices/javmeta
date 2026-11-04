@@ -14,4 +14,9 @@ export default defineSuite('javmeta browser E2E', [
   s.settingsSwitchPersists,
   s.addNodeFromTheCommandCenter,
   s.performersCanBeFilteredOpenedAndFollowed,
+  s.catalogEntriesOpenMatchingMovies,
+  s.yearCatalogSearchNarrowsTheList,
+  s.calendarMonthAndDayOpenMovies,
+  s.calendarDayOpensOnlyThatDay,
+  s.calendarDayHoverChangesTheCell,
 ]);

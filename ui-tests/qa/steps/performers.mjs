@@ -4,17 +4,17 @@ import { escapeRegExp, typeInto, viewText, waitForHash, waitForList, waitForSett
 
 const nameLink = (page, name) => page.locator('#view a[href*="#/performer/"]').filter({ hasText: new RegExp(`^${escapeRegExp(name)}$`) });
 
-async function unfollow(page, id) {
-  await page.evaluate(async performerId => {
+async function unfollow(page, mark) {
+  await page.evaluate(async target => {
     const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
     const res = await fetch('/ui-me/marks', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
-      body: JSON.stringify({ kind: 'follow', subject: 'performer', key: String(performerId), on: false }),
+      body: JSON.stringify({ kind: 'follow', subject: target.subject, key: String(target.key), on: false }),
     });
     if (!res.ok) throw new Error(String(res.status));
-  }, id);
+  }, mark);
 }
 
 export const filterPerformersByName = defineStep('filterPerformersByName', async (ctx, name) => {
@@ -157,19 +157,20 @@ export const setFollow = defineStep('setFollow', async (ctx, on) => {
   const pressed = await button.getAttribute('aria-pressed');
   const want = on ? 'true' : 'false';
   if (pressed === want) throw new Error(on ? 'Already following, so the click would prove nothing.' : 'Already not following, so the click would prove nothing.');
-  const id = await button.getAttribute('data-key');
-  await button.click();
-  await ctx.page.waitForFunction(expected => document.querySelector('#view [data-mark][data-kind=follow]')?.getAttribute('aria-pressed') === expected, want, { timeout: 8000 })
-    .catch(() => { throw new Error(`Follow stayed ${pressed === 'true' ? 'on' : 'off'} after the click.`); });
-  ctx.state.followedPerformerId = on ? id : null;
+  const mark = { subject: await button.getAttribute('data-subject'), key: await button.getAttribute('data-key') };
+  if (on) ctx.state.followedMark = mark;
   if (on && !ctx.state.followCleanup) {
     ctx.state.followCleanup = true;
     onContextClose(ctx, async () => {
-      if (!ctx.state.followedPerformerId) return;
-      await unfollow(ctx.page, ctx.state.followedPerformerId);
-      ctx.state.followedPerformerId = null;
+      if (!ctx.state.followedMark) return;
+      await unfollow(ctx.page, ctx.state.followedMark);
+      ctx.state.followedMark = null;
     });
   }
+  await button.click();
+  await ctx.page.waitForFunction(expected => document.querySelector('#view [data-mark][data-kind=follow]')?.getAttribute('aria-pressed') === expected, want, { timeout: 8000 })
+    .catch(() => { throw new Error(`Follow stayed ${pressed === 'true' ? 'on' : 'off'} after the click.`); });
+  if (!on) ctx.state.followedMark = null;
 });
 
 export const expectFeedState = defineStep('expectFeedState', async (ctx, follows) => {
