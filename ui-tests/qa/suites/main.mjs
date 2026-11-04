@@ -9,6 +9,7 @@ export default defineSuite('javmeta browser E2E', [
   s.browseFilterOpenAndFavouriteAMovie,
   s.topBarAndKeyboardWork,
   s.ownerManagesAnApiKey,
+  s.ownerEditsAndResetsANotificationTemplate,
   s.settingsTabsShowTheirControls,
   s.settingsSwitchPersists,
   s.addNodeFromTheCommandCenter,

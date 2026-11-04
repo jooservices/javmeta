@@ -4,6 +4,7 @@ import { openView, openPath, expectViewHealthy, resizeTo, expectNoConsoleErrors 
 import { openTab, expectTabShowsControls, tabNames, toggleFirstSwitch, saveSwitchGroup, expectSwitchPersisted, restoreSwitch } from '../steps/settings.mjs';
 import { filterMoviesByKeyword, expectMovieResults, openMovie, expectMovieDetail, toggleFavourite, expectInFavourites } from '../steps/movies.mjs';
 import { toggleTheme, expectThemeSurvivesReload, resetThemeToDark, openHelp, closeWithEscape, focusSearchWithKeyboard, expectSidebarLinksLead } from '../steps/chrome.mjs';
+import { openNotificationEditor, typeInTitle, expectLivePreviewShows, insertVariable, saveTemplate, expectTitlePersisted, expectTitleDiffersFromOriginal, resetTemplate } from '../steps/notifications.mjs';
 import { createApiKey, expectApiKeyStatus, revokeApiKey } from '../steps/admin.mjs';
 import { expectDiscoverForBrowsers, searchFromDiscover, expectSearchFound } from '../steps/discover.mjs';
 import { fillNodeName, submitNodeForm, expectBrowserRejectsNodeName, expectJoinCommand, copyJoinCommand, expectNodeListed } from '../steps/nodes.mjs';
@@ -59,4 +60,10 @@ export const topBarAndKeyboardWork = defineScenario('the theme button, help dial
 export const ownerManagesAnApiKey = defineScenario('the owner creates and revokes an API key', [
   login(), openView('#/admin'), createApiKey('e2e-key-' + Date.now().toString(36)),
   expectApiKeyStatus('đang dùng'), revokeApiKey(), expectApiKeyStatus('đã thu hồi'),
+]);
+
+export const ownerEditsAndResetsANotificationTemplate = defineScenario('the owner edits, saves and resets a notification template', [
+  login(), openView('#/settings/notifications'), openNotificationEditor(0),
+  typeInTitle('E2E title {success_rate}'), expectLivePreviewShows('E2E title'), insertVariable(),
+  saveTemplate(), expectTitlePersisted(), expectTitleDiffersFromOriginal(), resetTemplate(),
 ]);
