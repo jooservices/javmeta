@@ -37,6 +37,7 @@ return [
         'media' => 'Xử lý media',
         'capture' => 'Ghi luồng',
         'ui_security' => 'Bảo mật giao diện',
+        'nodes' => 'Thêm node',
         'startup_health' => 'Sức khỏe khi khởi động',
         'normalization' => 'Performer normalization',
     ],
@@ -64,6 +65,9 @@ return [
         'ui_security.login_required' => ['group' => 'ui_security', 'label' => 'Yêu cầu đăng nhập chủ sở hữu', 'description' => 'Bảo vệ giao diện và cấu hình quản trị bằng phiên đăng nhập chủ sở hữu.', 'type' => 'bool', 'legacy_env' => ['JAVMETA_UI_LOGIN_REQUIRED'], 'config' => ['javmeta.ui_login_required']],
         'ui_security.owner_admin_token' => ['group' => 'ui_security', 'label' => 'Token quản trị chủ sở hữu', 'description' => 'Được mã hóa trong cơ sở dữ liệu và không hiển thị lại.', 'type' => 'secret', 'legacy_env' => ['JAVMETA_OWNER_ADMIN_TOKEN'], 'config' => ['javmeta_auth.owner_admin_token']],
         'ui_security.mcp_api_key' => ['group' => 'ui_security', 'label' => 'API key MCP cũ', 'description' => 'Được mã hóa trong cơ sở dữ liệu và không hiển thị lại; API key mới nên dùng scope MCP.', 'type' => 'secret', 'legacy_env' => ['JAVMETA_MCP_API_KEY'], 'config' => ['javmeta_auth.mcp_api_key']],
+        'nodes.enrollment_ttl_minutes' => ['group' => 'nodes', 'label' => 'Thời hạn mã thêm node (phút)', 'description' => 'Mã dùng một lần để thêm node hết hạn sau số phút này.', 'type' => 'int', 'config' => ['javmeta_nodes.enrollment_ttl_minutes'], 'min' => 5, 'max' => 240],
+        'nodes.release_repo_url' => ['group' => 'nodes', 'label' => 'Kho mã nguồn cho node mới', 'description' => 'Địa chỉ Git mà node mới dùng để cài đặt; node phải đọc được kho này.', 'type' => 'string', 'config' => ['javmeta_nodes.release_repo_url']],
+        'nodes.release_ref' => ['group' => 'nodes', 'label' => 'Nhánh, tag hoặc commit cho node mới', 'description' => 'Bản phát hành mà node mới cài đặt; nên trùng bản đang chạy.', 'type' => 'string', 'config' => ['javmeta_nodes.release_ref']],
         'dataset.allowed_databases' => ['group' => 'dataset', 'label' => 'Cơ sở dữ liệu cho phép nạp dữ liệu mẫu', 'description' => 'Chỉ cho phép nạp và xóa dữ liệu mẫu trên các cơ sở dữ liệu này; ngoài kiểm thử luôn cần --force.', 'type' => 'string_list', 'config' => ['javmeta_dataset.allowed_databases']],
         'perf.warm_enabled' => ['group' => 'search', 'label' => 'Làm ấm bộ nhớ đệm', 'description' => 'Tự làm mới trạng thái và bộ lọc toàn bộ danh mục theo lịch, giảm thời gian chờ khi bộ nhớ đệm hết hạn.', 'type' => 'bool', 'config' => ['javmeta_perf.warm_enabled']],
 
