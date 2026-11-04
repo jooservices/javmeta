@@ -58,7 +58,9 @@ final class CrawlStatsRollupTest extends IntegrationTestCase
             'bytes_total' => 1024,
             'queue_ready_avg' => 1.5,
             'queue_samples' => 2,
+            'postgres_samples' => 2,
         ]);
+        self::assertNotNull(DB::table('crawl_stats_hourly')->where('source_slug', '__global__')->value('postgres_connections_avg'));
         self::assertSame(1, $rollup['attempt_rows']);
         self::assertLessThan(1000, $elapsedMs, 'PostgreSQL rollup should finish in under one second.');
 

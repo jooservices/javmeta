@@ -4,30 +4,27 @@ declare(strict_types=1);
 
 namespace App\Services\Crawl;
 
-use App\Models\CrawlQueue;
-use App\Models\CrawlRun;
-use App\Models\Movie;
-use App\Models\Performer;
-use App\Models\Source;
+use App\Repositories\CrawlSourceServiceRepository;
+use App\Repositories\CrawlStatusServiceRepository;
 use DateTimeInterface;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Aggregate crawl pipeline status for monitoring (MCP `crawl_status`).
  */
 final class CrawlStatusService
 {
-    public function __construct(private readonly WorkerHeartbeat $heartbeat) {}
+    public function __construct(
+        private readonly WorkerHeartbeat $heartbeat,
+        private readonly ?CrawlStatusServiceRepository $statusRepository = null,
+        private readonly ?CrawlSourceServiceRepository $sourceRepository = null,
+    ) {}
 
     /**
      * @return array{movies: int, performers: int}
      */
     public function counts(): array
     {
-        return [
-            'movies' => (int) Movie::query()->count(),
-            'performers' => (int) Performer::query()->whereNull('canonical_performer_id')->count(),
-        ];
+        return $this->statusRepository()->counts();
     }
 
     /**
@@ -42,12 +39,7 @@ final class CrawlStatusService
         return [
             'checked_at' => $now->toIso8601String(),
             'counts' => $this->counts(),
-            'ingest' => [
-                'movies_1h' => $this->newSince(Movie::class, 'first_seen_at', 3600),
-                'movies_24h' => $this->newSince(Movie::class, 'first_seen_at', 86400),
-                'performers_1h' => $this->newSince(Performer::class, 'first_seen_at', 3600),
-                'performers_24h' => $this->newSince(Performer::class, 'first_seen_at', 86400),
-            ],
+            'ingest' => $this->statusRepository()->ingestCounts(now()->subHour(), now()->subDay()),
             'queue' => $this->queueStatus($claimCutoff),
             'sources' => $this->sourceStatus(),
             'workers' => $this->workerStatus($claimCutoff),
@@ -60,42 +52,7 @@ final class CrawlStatusService
      */
     private function queueStatus(DateTimeInterface $claimCutoff): array
     {
-        $queueByStatus = CrawlQueue::query()
-            ->select('status', DB::raw('count(*) as total'))
-            ->groupBy('status')
-            ->pluck('total', 'status')
-            ->map(static fn(mixed $value): int => (int) $value)
-            ->all();
-
-        $pendingKinds = DB::table('crawl_queue')
-            ->select('kind', 'status', DB::raw('count(*) as total'))
-            ->whereIn('status', [CrawlQueue::STATUS_PENDING, CrawlQueue::STATUS_CLAIMED, CrawlQueue::STATUS_FAILED])
-            ->groupBy('kind', 'status')
-            ->orderBy('kind')
-            ->get()
-            ->map(fn($row): array => [
-                'kind' => $row->kind,
-                'status' => $row->status,
-                'count' => (int) $row->total,
-            ])
-            ->all();
-
-        $oldestPending = CrawlQueue::query()
-            ->where('status', CrawlQueue::STATUS_PENDING)
-            ->orderBy('next_attempt_at')
-            ->value('next_attempt_at');
-
-        return [
-            'by_status' => $queueByStatus,
-            'by_kind_status' => $pendingKinds,
-            'oldest_pending_at' => $oldestPending instanceof DateTimeInterface
-                ? $oldestPending->format(DATE_ATOM)
-                : null,
-            'stuck_claimed' => CrawlQueue::query()
-                ->where('status', CrawlQueue::STATUS_CLAIMED)
-                ->where('claimed_at', '<', $claimCutoff)
-                ->count(),
-        ];
+        return $this->statusRepository()->queueStatus($claimCutoff);
     }
 
     /**
@@ -106,21 +63,21 @@ final class CrawlStatusService
         $rows = [];
         $lanes = app(CrawlLaneService::class);
         $browser = $lanes->browserSources();
-        foreach (Source::query()->orderBy('priority')->orderBy('slug')->get() as $source) {
+        foreach ($this->sourceRepository()->statusRows() as $source) {
             $rows[] = [
-                'slug' => $source->slug,
-                'name' => $source->name,
-                'enabled' => (bool) $source->enabled,
-                'lane' => config('javmeta_queues.lanes_enabled', true) && in_array((string) $source->slug, $browser, true) ? 'browser' : 'direct',
+                'slug' => $source['slug'],
+                'name' => $source['name'],
+                'enabled' => $source['enabled'],
+                'lane' => config('javmeta_queues.lanes_enabled', true) && in_array($source['slug'], $browser, true) ? 'browser' : 'direct',
                 // Deprecated: crawlerx owns fetch health; kept so MCP crawl_status keys stay stable.
                 'circuit_state' => 'closed',
                 'consecutive_failures' => 0,
-                'gap_seconds_current' => (float) $source->gap_seconds_current,
-                'gap_seconds_min' => (float) $source->gap_seconds_min,
-                'gap_seconds_max' => (float) $source->gap_seconds_max,
-                'last_success_at' => $this->dateTime($source->getAttribute('last_success_at')),
-                'last_error_at' => $this->dateTime($source->getAttribute('last_error_at')),
-                'last_error' => $source->last_error,
+                'gap_seconds_current' => $source['gap_seconds_current'],
+                'gap_seconds_min' => $source['gap_seconds_min'],
+                'gap_seconds_max' => $source['gap_seconds_max'],
+                'last_success_at' => $this->dateTime($source['last_success_at']),
+                'last_error_at' => $this->dateTime($source['last_error_at']),
+                'last_error' => $source['last_error'],
             ];
         }
 
@@ -132,14 +89,7 @@ final class CrawlStatusService
      */
     private function workerStatus(DateTimeInterface $claimCutoff): array
     {
-        $activeClaims = CrawlQueue::query()
-            ->where('status', CrawlQueue::STATUS_CLAIMED)
-            ->where('claimed_at', '>=', $claimCutoff)
-            ->select('locked_by', DB::raw('count(*) as total'))
-            ->groupBy('locked_by')
-            ->pluck('total', 'locked_by')
-            ->map(static fn(mixed $value): int => (int) $value)
-            ->all();
+        $activeClaims = $this->statusRepository()->activeClaimsByWorker($claimCutoff);
 
         $workers = [];
         foreach ($this->heartbeat->instances() as $row) {
@@ -160,24 +110,17 @@ final class CrawlStatusService
      */
     private function runsStatus(): array
     {
-        // Aggregate in PostgreSQL instead of hydrating every run in the busy 24-hour window.
-        $runs = CrawlRun::query()
-            ->where('started_at', '>=', now()->subDay())
-            ->selectRaw('COUNT(*) AS runs, SUM(pages_fetched) AS pages_fetched, SUM(movies_new) AS movies_new, SUM(movies_updated) AS movies_updated, SUM(failures) AS failures')
-            ->first();
-
-        return [
-            'runs' => (int) $runs?->getAttribute('runs'),
-            'pages_fetched' => (int) $runs?->getAttribute('pages_fetched'),
-            'movies_new' => (int) $runs?->getAttribute('movies_new'),
-            'movies_updated' => (int) $runs?->getAttribute('movies_updated'),
-            'failures' => (int) $runs?->getAttribute('failures'),
-        ];
+        return $this->statusRepository()->runTotals(now()->subDay());
     }
 
-    private function newSince(string $model, string $column, int $seconds): int
+    private function statusRepository(): CrawlStatusServiceRepository
     {
-        return (int) $model::query()->where($column, '>=', now()->subSeconds($seconds))->count();
+        return $this->statusRepository ?? app(CrawlStatusServiceRepository::class);
+    }
+
+    private function sourceRepository(): CrawlSourceServiceRepository
+    {
+        return $this->sourceRepository ?? app(CrawlSourceServiceRepository::class);
     }
 
     private function dateTime(mixed $value): ?string

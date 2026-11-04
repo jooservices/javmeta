@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace App\Services\Crawl;
 
 use App\Models\Source;
+use App\Repositories\CrawlSourceServiceRepository;
 use InvalidArgumentException;
 
 final class SourceThrottle
 {
     private readonly SourceGapPolicy $gapPolicy;
 
-    public function __construct(?SourceGapPolicy $gapPolicy = null)
+    public function __construct(?SourceGapPolicy $gapPolicy = null, private readonly ?CrawlSourceServiceRepository $sources = null)
     {
         $this->gapPolicy = $gapPolicy ?? new SourceGapPolicy();
     }
@@ -47,9 +48,10 @@ final class SourceThrottle
             $next = $this->gapPolicy->clamp($next, $bounds);
         }
 
-        $model->forceFill(['gap_seconds_current' => $next])->save();
+        $this->repository()->updateSource((string) $model->getKey(), ['gap_seconds_current' => $next]);
+        $model->setAttribute('gap_seconds_current', $next);
 
-        return $model->refresh();
+        return $model;
     }
 
     /**
@@ -86,9 +88,10 @@ final class SourceThrottle
             $next = $this->gapPolicy->clamp($next, $bounds);
         }
 
-        $model->forceFill(['gap_seconds_current' => $next])->save();
+        $this->repository()->updateSource((string) $model->getKey(), ['gap_seconds_current' => $next]);
+        $model->setAttribute('gap_seconds_current', $next);
 
-        return $model->refresh();
+        return $model;
     }
 
     private function source(Source|string $source): Source
@@ -97,11 +100,16 @@ final class SourceThrottle
             return $source;
         }
 
-        $model = Source::query()->find($source);
+        $model = $this->repository()->findSource($source);
         if (! $model instanceof Source) {
             throw new InvalidArgumentException("Unknown source [{$source}].");
         }
 
         return $model;
+    }
+
+    private function repository(): CrawlSourceServiceRepository
+    {
+        return $this->sources ?? app(CrawlSourceServiceRepository::class);
     }
 }
