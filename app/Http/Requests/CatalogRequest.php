@@ -29,7 +29,7 @@ final class CatalogRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $kind = (string) $this->route('kind');
+        $kind = (string) ($this->route('kind') ?? basename($this->path()));
         $this->merge([
             'kind' => $kind,
             'q' => trim((string) $this->query('q', '')),
