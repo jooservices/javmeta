@@ -7,6 +7,8 @@ export default defineSuite('javmeta browser E2E', [
   s.everyViewRendersOnPhone,
   s.discoverIsForBrowsingAndSearchWorks,
   s.browseFilterOpenAndFavouriteAMovie,
+  s.topBarAndKeyboardWork,
+  s.ownerManagesAnApiKey,
   s.settingsTabsShowTheirControls,
   s.settingsSwitchPersists,
   s.addNodeFromTheCommandCenter,
