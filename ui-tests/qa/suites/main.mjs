@@ -27,4 +27,7 @@ export default defineSuite('javmeta browser E2E', [
   s.reportSwitchSavesAndRestores,
   s.notificationListTogglesAndRestores,
   s.notificationSwitchLabelFollowsTheClick,
+  s.guestCanBrowsePublicPages,
+  s.guestBannerKeepsItsSentence,
+  s.phoneMenuDismisses,
 ]);

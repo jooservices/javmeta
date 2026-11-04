@@ -15,6 +15,7 @@ import { filterCatalog, sortCatalogWithKeyboard, expectFirstCatalogEntry, expect
 import { armSavedSearchCleanup, searchFor, expectSearchPrompt, expectSearchEmpty, openMeaningSearch, expectMeaningMode, submitSearchWithKeyboard, expectKeywordMode, rememberResultCount, expectRememberedCount, chooseMovieChoice, filterMovieField, expectMovieListEmpty, saveCurrentSearch, cancelSaveSearch, applySavedSearch, deleteSavedSearch } from '../steps/searchpage.mjs';
 import { expectFeedHasNoActions, expectLibraryUnconfigured, expectDownloadsOff, openSettingsFromEmptyState, openSettingsWithKeyboard, expectMediaCaptureOff, refreshMedia, submitDisabledCapture, openMediaLibrary, expectCrawlReadOnly } from '../steps/ownerpages.mjs';
 import { expectReportPreview, refreshReportPreview, expectReportSwitchInView, expectReportStartsEnabled, toggleReportEnabled, toggleReportEnabledWithKeyboard, expectReportSwitchLabel, saveReportSettings, expectReportEnabledSaved, expectNotificationList, rememberNotificationForm, toggleNotificationEnabled, expectNotificationSwitchLabel, saveNotificationEdits, expectFirstNotificationEnabled, markNotificationRestored, toggleQuietMode } from '../steps/reports.mjs';
+import { enableGuestMode, browseAsGuest, expectGuestShell, expectGuestBannerSentence, openGuestLoginWithKeyboard, expectGuestPrompt, openGuestLogin, expectPathRequiresLogin, togglePhoneMenu, choosePhoneNav, expectPhoneMenuDismisses, openBottomNav, openFirstGuestMovie, expectGuestMovie, openGuestMovieCodes, expectGuestMediaBlocked, expectGuestHasNoFollow, expectGuestSavedSearchHidden, restoreLoginRequired } from '../steps/guest.mjs';
 
 export const VIEWS = [
   '#/', '#/search', '#/stats', '#/movies', '#/performers', '#/bio', '#/movies?sort=update_date',
@@ -215,6 +216,43 @@ export const notificationListTogglesAndRestores = defineScenario('a notification
 
 export const notificationSwitchLabelFollowsTheClick = defineScenario('the notification switch label follows the click', [
   login(), openView('#/settings/notifications'), openNotificationEditor(0), toggleNotificationEnabled(), expectNotificationSwitchLabel(),
+]);
+
+export const guestCanBrowsePublicPages = defineScenario('a guest can browse public pages and private routes ask for login', [
+  login(), enableGuestMode(), browseAsGuest(),
+  openView('#/'), expectGuestShell(), expectViewHealthy(), expectDiscoverForBrowsers(),
+  expectHoverChanges('#side a.nav[href="#/movies"]', 'color'),
+  resizeTo(390), expectViewHealthy(), expectGuestShell(), togglePhoneMenu(), expectGuestShell(), choosePhoneNav('Tìm kiếm'), openBottomNav('Phim'),
+  resizeTo(1440),
+  openGuestLoginWithKeyboard(), expectOnLoginPage(),
+  openView('#/search'), expectGuestShell(), expectSearchPrompt(), searchFor('SMP-0520'), expectSearchFound('SMP-0520'),
+  searchFor('zzzz-no-such-movie-xyz'), expectSearchEmpty(),
+  openView('#/movies'), expectViewHealthy(), expectGuestSavedSearchHidden(), openFirstGuestMovie(), expectGuestMovie(), openGuestMovieCodes(), expectGuestMediaBlocked(),
+  openView('#/performers'), expectViewHealthy(), openFirstPerformer(), expectGuestHasNoFollow(), openPerformerTab('Hồ sơ chi tiết'),
+  openView('#/catalog/genres'), expectCatalogRow('Sample Genre 01'), openCatalogEntry('Sample Genre 01'), expectFacetCountMatchesCatalog(),
+  openView('#/calendar'), expectCalendarHeading('11/2026', 0),
+  openView('#/crawl'), expectCrawlReadOnly(), expectViewHealthy(),
+  openView('#/catalog/nope'), expectUnknownCatalog(),
+  openView('#/admin'), expectGuestPrompt('Quản trị'), expectHoverChanges('#view .guest-login-prompt a.btn', 'filter'),
+  resizeTo(390), expectGuestPrompt('Quản trị'), expectViewHealthy(), resizeTo(1440),
+  openView('#/settings'), expectGuestPrompt('Cài đặt'),
+  openView('#/settings/report'), expectGuestPrompt('Cài đặt'),
+  openView('#/settings/notifications'), expectGuestPrompt('Cài đặt'),
+  openView('#/library'), expectGuestPrompt('Thư viện'),
+  openView('#/downloads'), expectGuestPrompt('Tải về'),
+  openView('#/media'), expectGuestPrompt('Media'),
+  openView('#/feed'), expectGuestPrompt('Tính năng cá nhân'),
+  openView('#/me/favourite'), expectGuestPrompt('Tính năng cá nhân'), openGuestLogin(), expectOnLoginPage(),
+  expectPathRequiresLogin('/ops'),
+  restoreLoginRequired(),
+]);
+
+export const guestBannerKeepsItsSentence = defineScenario('the guest banner keeps its sentence together', [
+  login(), enableGuestMode(), browseAsGuest(), openView('#/'), expectGuestBannerSentence(), restoreLoginRequired(),
+]);
+
+export const phoneMenuDismisses = defineScenario('the phone menu can be dismissed without choosing a page', [
+  login(), enableGuestMode(), browseAsGuest(), openView('#/'), resizeTo(390), togglePhoneMenu(), expectPhoneMenuDismisses(), restoreLoginRequired(),
 ]);
 
 export const ownerEditsAndResetsANotificationTemplate = defineScenario('the owner edits, saves and resets a notification template', [
