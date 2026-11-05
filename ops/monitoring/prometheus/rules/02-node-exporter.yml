@@ -240,15 +240,37 @@ groups:
     # The alert threshold depends on the nature of the application.
     # Please read: https://github.com/samber/awesome-prometheus-alerts/issues/58
     - alert: HostPhysicalComponentTooHot
-      expr: 'node_hwmon_temp_celsius > node_hwmon_temp_max_celsius'
+      expr: 'node_hwmon_temp_celsius{vm_name!="mgmt01"} > node_hwmon_temp_max_celsius{vm_name!="mgmt01"}'
       for: 5m
       labels:
         severity: warning
       annotations:
         value: "{{ $value }}"
-        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host physical component too hot (instance {{ $labels.instance }})
         description: "Physical hardware component too hot\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+        runbook: https://wiki.jooservices.local/runbooks/linux#temperature
+
+    - alert: Mgmt01TemperatureWarning
+      expr: '(node_hwmon_temp_celsius{vm_name="mgmt01"} >= 75) and (node_hwmon_temp_celsius{vm_name="mgmt01"} < 85)'
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        value: "{{ $value }}"
+        summary: mgmt01 temperature is high
+        description: "mgmt01 temperature is at least 75°C.\n  VALUE = {{ $value }}°C"
+        runbook: https://wiki.jooservices.local/runbooks/linux#temperature
+
+    - alert: Mgmt01TemperatureCritical
+      expr: 'node_hwmon_temp_celsius{vm_name="mgmt01"} >= 85'
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        value: "{{ $value }}"
+        summary: mgmt01 temperature is critical
+        description: "mgmt01 temperature is at least 85°C.\n  VALUE = {{ $value }}°C"
+        runbook: https://wiki.jooservices.local/runbooks/linux#temperature
 
     - alert: HostClockSkew
       expr: '((node_timex_offset_seconds > 0.05 and deriv(node_timex_offset_seconds[5m]) >= 0) or (node_timex_offset_seconds < -0.05 and deriv(node_timex_offset_seconds[5m]) <= 0))'
