@@ -30,3 +30,24 @@ export const loginWith = defineStep('loginWithWrongPassword', async (ctx, passwo
 export const expectOnLoginPage = defineStep('expectOnLoginPage', async ctx => {
   if (!ctx.page.url().includes('/login')) throw new Error(`Expected the login page, on ${ctx.page.url()}`);
 });
+
+/** The email field is empty: no hardcoded address is shown to a visitor. */
+export const expectSignInEmailEmpty = defineStep('expectSignInEmailEmpty', async ctx => {
+  const value = await ctx.page.$eval('#email', el => el.value);
+  if (value !== '') throw new Error(`Sign-in email is prefilled with "${value}".`);
+});
+
+/** The public front door is Vietnamese XCrawler, not the English operations console. */
+export const expectFrontDoorIsXCrawlerInVietnamese = defineStep('expectFrontDoorIsXCrawlerInVietnamese', async ctx => {
+  const info = await ctx.page.evaluate(() => ({
+    lang: document.documentElement.lang,
+    title: document.title,
+    h1: document.querySelector('h1')?.innerText || '',
+    text: document.body.innerText,
+  }));
+  if (info.lang !== 'vi') throw new Error(`Sign-in lang is "${info.lang}", expected vi.`);
+  if (!/XCrawler/.test(info.title) || !/Đăng nhập/.test(info.title)) throw new Error(`Sign-in title is "${info.title}".`);
+  if (info.h1 !== 'Đăng nhập') throw new Error(`Sign-in heading is "${info.h1}".`);
+  if (!/riêng tư/.test(info.text)) throw new Error('Sign-in does not explain that the catalog is private.');
+  if (/Operations sign in|JavMeta Operations|Command Center/.test(info.text + info.title)) throw new Error('Sign-in still uses operations jargon.');
+});
