@@ -3,12 +3,26 @@ import { defineStep } from '../lib/step.mjs';
 /** Creates an API key from the admin page, checks that its secret is shown once with the usual prefix, and that it is listed as in use. */
 export const createApiKey = defineStep('createApiKey', async (ctx, label) => {
   await ctx.page.fill('#view input[name=label]', label);
+  const catalog = ctx.page.locator('#view input[name=scopes][value=catalog]');
+  if (!(await catalog.isChecked())) await catalog.check();
   await ctx.page.click('#view button:has-text("Tạo khoá")');
+  await ctx.page.waitForSelector('[data-confirm-yes]', { timeout: 4000 }).catch(() => { throw new Error('Creating a key did not ask for confirmation.'); });
+  await ctx.page.click('[data-confirm-yes]');
   await ctx.page.waitForFunction(() => /Khoá mới \(chỉ hiện một lần\)/.test(document.querySelector('#view')?.innerText || ''), null, { timeout: 8000 })
     .catch(() => { throw new Error('The page did not show the new key after creating it.'); });
   const text = await ctx.page.$eval('#view', e => e.innerText);
   if (!/Khoá mới \(chỉ hiện một lần\): jvm_[A-Za-z0-9]{20,}/.test(text)) throw new Error('The new key secret is not shown with its jvm_ prefix.');
   ctx.state.apiKeyLabel = label;
+});
+
+export const expectApiKeyRequiresAScope = defineStep('expectApiKeyRequiresAScope', async ctx => {
+  await ctx.page.fill('#view input[name=label]', 'no-scope-' + Date.now().toString(36));
+  await ctx.page.locator('#view input[name=scopes]').evaluateAll(els => els.forEach(el => { el.checked = false; }));
+  await ctx.page.click('#view button:has-text("Tạo khoá")');
+  await ctx.page.waitForTimeout(400);
+  const text = await ctx.page.$eval('#newkey', e => e.innerText);
+  if (!/ít nhất một quyền/.test(text)) throw new Error(`Creating a key with no scope did not fail: ${text}`);
+  if (await ctx.page.$('[data-confirm-yes]')) throw new Error('A no-scope submit still opened the confirm dialog.');
 });
 
 /** The row of the key created by this scenario (older keys with a similar name may exist). */

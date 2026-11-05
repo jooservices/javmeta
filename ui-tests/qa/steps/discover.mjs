@@ -20,6 +20,36 @@ export const searchFromDiscover = defineStep('searchFromDiscover', async (ctx, t
   await ctx.page.waitForTimeout(1500);
 });
 
+/** Discover suggestion chips come from catalog genres, not hardcoded empty examples. */
+export const expectDiscoverChipsAreRealGenres = defineStep('expectDiscoverChipsAreRealGenres', async ctx => {
+  const chips = await ctx.page.$$eval('#view .hero .chips a.chip', as => as.map(a => a.textContent.trim()));
+  if (chips.some(c => /^(Drama|Văn phòng|Du lịch|Học đường)$/i.test(c))) throw new Error(`Discover still shows dead chips: ${chips.join(', ')}`);
+  if (chips.length === 0) throw new Error('Discover has no suggestion chips from the catalog.');
+});
+
+/** Search reports the catalog total and, in meaning mode, says when it fell back to keywords. */
+export const expectSearchIsHonest = defineStep('expectSearchIsHonest', async ctx => {
+  const info = await ctx.page.evaluate(() => ({
+    hash: location.hash,
+    text: document.querySelector('#view')?.innerText || '',
+    movieTotal: document.querySelector('[data-search-movie-total]')?.textContent || '',
+    cards: document.querySelectorAll('#view .mc').length,
+    fallback: !!document.querySelector('[data-search-fallback]'),
+  }));
+  const total = Number(String(info.movieTotal).replace(/\D/g, ''));
+  if (!(total > info.cards)) throw new Error(`Search total "${info.movieTotal}" is not larger than the ${info.cards} cards on the page.`);
+  if (info.hash.includes('mode=meaning') && !info.fallback && !/Tìm theo nghĩa chưa sẵn sàng/.test(info.text)) {
+    throw new Error('Meaning mode did not say it fell back to keywords.');
+  }
+});
+
+export const expectSearchTooShortMessage = defineStep('expectSearchTooShortMessage', async ctx => {
+  await ctx.page.evaluate(() => { location.hash = '#/search?q=a'; });
+  await ctx.page.waitForTimeout(800);
+  const text = await ctx.page.$eval('#view', e => e.innerText);
+  if (!/ít nhất 2 ký tự/.test(text)) throw new Error('A one-character query has no too-short message.');
+});
+
 /** The search result lists at least one movie whose link opens its detail page, and the typed words are shown back. */
 export const expectSearchFound = defineStep('expectSearchFound', async (ctx, term) => {
   const found = await ctx.page.evaluate(() => ({

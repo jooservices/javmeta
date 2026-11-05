@@ -1,12 +1,12 @@
 import { defineScenario } from '../lib/step.mjs';
-import { login, loginWith, expectOnLoginPage } from '../steps/auth.mjs';
+import { login, loginWith, expectOnLoginPage, expectSignInEmailEmpty, expectFrontDoorIsXCrawlerInVietnamese } from '../steps/auth.mjs';
 import { openView, openPath, expectViewHealthy, resizeTo, expectNoConsoleErrors } from '../steps/navigation.mjs';
 import { openTab, expectTabShowsControls, tabNames, toggleFirstSwitch, saveSwitchGroup, expectSwitchPersisted, restoreSwitch } from '../steps/settings.mjs';
-import { filterMoviesByKeyword, expectMovieResults, openMovie, expectMovieDetail, toggleFavourite, expectInFavourites } from '../steps/movies.mjs';
-import { toggleTheme, expectThemeSurvivesReload, resetThemeToDark, openHelp, closeWithEscape, focusSearchWithKeyboard, expectSidebarLinksLead } from '../steps/chrome.mjs';
-import { openNotificationEditor, typeInTitle, expectLivePreviewShows, insertVariable, saveTemplate, expectTitlePersisted, expectTitleDiffersFromOriginal, resetTemplate } from '../steps/notifications.mjs';
-import { createApiKey, expectApiKeyStatus, revokeApiKey } from '../steps/admin.mjs';
-import { expectDiscoverForBrowsers, searchFromDiscover, expectSearchFound } from '../steps/discover.mjs';
+import { filterMoviesByKeyword, expectMovieResults, openMovie, expectMovieDetail, toggleFavourite, expectInFavourites, expectCalendarOpensWithReleases } from '../steps/movies.mjs';
+import { toggleTheme, expectThemeSurvivesReload, resetThemeToDark, openHelp, closeWithEscape, closeHelpWithButton, focusSearchWithKeyboard, expectSidebarLinksLead, expectHelpListsOnlyWorkingKeys, expectCjkFontStack, expectActiveBottomNav, expectContrastTokensMeetAa, expectCrawlEmptyState, expectPlainEmptyStates } from '../steps/chrome.mjs';
+import { openNotificationEditor, typeInTitle, expectLivePreviewShows, insertVariable, saveTemplate, expectTitlePersisted, expectTitleDiffersFromOriginal, resetTemplate, expectTestSendAsksToConfirm, expectReportSendAsksToConfirm } from '../steps/notifications.mjs';
+import { createApiKey, expectApiKeyStatus, revokeApiKey, expectApiKeyRequiresAScope } from '../steps/admin.mjs';
+import { expectDiscoverForBrowsers, searchFromDiscover, expectSearchFound, expectDiscoverChipsAreRealGenres, expectSearchIsHonest, expectSearchTooShortMessage } from '../steps/discover.mjs';
 import { fillNodeName, submitNodeForm, expectBrowserRejectsNodeName, expectJoinCommand, copyJoinCommand, expectNodeListed } from '../steps/nodes.mjs';
 
 export const VIEWS = [
@@ -17,6 +17,14 @@ export const VIEWS = [
 export const SETTINGS_TABS = ['personal', 'crawl', 'notify', 'health', 'search', 'media', 'system'];
 
 export const loginRejectsAWrongPassword = defineScenario('login rejects a wrong password', [loginWith('definitely-wrong'), expectOnLoginPage()]);
+
+export const signInFormHasNoPrefilledEmail = defineScenario('the sign-in form has no prefilled email', [
+  openPath('/login'), expectSignInEmailEmpty(),
+]);
+
+export const frontDoorIsVietnameseXCrawler = defineScenario('the front door is Vietnamese XCrawler', [
+  openPath('/login'), expectFrontDoorIsXCrawlerInVietnamese(),
+]);
 
 export const everyViewRendersOnDesktop = defineScenario('every view renders on desktop', [login(), ...VIEWS.flatMap(v => [openView(v), expectViewHealthy()])]);
 
@@ -40,7 +48,9 @@ export const addNodeFromTheCommandCenter = defineScenario('the owner adds a node
 ]);
 
 export const discoverIsForBrowsingAndSearchWorks = defineScenario('Discover is for browsing and its search finds a movie', [
-  login(), openView('#/'), expectViewHealthy(), expectDiscoverForBrowsers(), searchFromDiscover('Sample Movie Number 520'), expectViewHealthy(), expectSearchFound('Sample Movie Number 520'),
+  login(), openView('#/'), expectViewHealthy(), expectDiscoverForBrowsers(), expectDiscoverChipsAreRealGenres(),
+  searchFromDiscover('Sample Movie Number 520'), expectViewHealthy(), expectSearchFound('Sample Movie Number 520'),
+  openView('#/search?q=Sample&mode=meaning'), expectSearchIsHonest(), expectSearchTooShortMessage(),
 ]);
 
 export const browseFilterOpenAndFavouriteAMovie = defineScenario('a user filters movies, opens one and favourites it', [
@@ -54,16 +64,28 @@ export const browseFilterOpenAndFavouriteAMovie = defineScenario('a user filters
 export const topBarAndKeyboardWork = defineScenario('the theme button, help dialog and keyboard shortcuts work', [
   login(), openView('#/'), expectSidebarLinksLead(['Discover', 'Phim', 'Diễn viên', 'Cài đặt']),
   toggleTheme(), expectThemeSurvivesReload(), resetThemeToDark(),
+  openHelp(), expectHelpListsOnlyWorkingKeys(), closeHelpWithButton(),
   openHelp(), closeWithEscape(), focusSearchWithKeyboard(),
+  expectCjkFontStack(), expectContrastTokensMeetAa(), expectActiveBottomNav(),
 ]);
 
 export const ownerManagesAnApiKey = defineScenario('the owner creates and revokes an API key', [
-  login(), openView('#/admin'), createApiKey('e2e-key-' + Date.now().toString(36)),
+  login(), openView('#/admin'), expectApiKeyRequiresAScope(), createApiKey('e2e-key-' + Date.now().toString(36)),
   expectApiKeyStatus('đang dùng'), revokeApiKey(), expectApiKeyStatus('đã thu hồi'),
 ]);
 
 export const ownerEditsAndResetsANotificationTemplate = defineScenario('the owner edits, saves and resets a notification template', [
   login(), openView('#/settings/notifications'), openNotificationEditor(0),
-  typeInTitle('E2E title {success_rate}'), expectLivePreviewShows('E2E title'), insertVariable(),
-  saveTemplate(), expectTitlePersisted(), expectTitleDiffersFromOriginal(), resetTemplate(),
+  typeInTitle('E2E title {success_rate} ' + Date.now().toString(36)), expectLivePreviewShows('E2E title'), insertVariable(),
+  saveTemplate(), expectTitlePersisted(), expectTitleDiffersFromOriginal(),
+  expectTestSendAsksToConfirm(), resetTemplate(),
+]);
+
+export const emptyStatesCalendarAndReportConfirm = defineScenario('empty states, calendar and report send are honest', [
+  login(),
+  openView('#/crawl'), expectCrawlEmptyState(), expectPlainEmptyStates(),
+  openView('#/library'), expectPlainEmptyStates(),
+  openView('#/downloads'), expectPlainEmptyStates(),
+  openView('#/calendar'), expectCalendarOpensWithReleases(),
+  openView('#/settings/report'), expectReportSendAsksToConfirm(),
 ]);
