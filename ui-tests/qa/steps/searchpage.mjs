@@ -53,7 +53,9 @@ export const searchFor = defineStep('searchFor', async (ctx, term) => {
 
 export const expectSearchPrompt = defineStep('expectSearchPrompt', async ctx => {
   const text = await viewText(ctx.page);
-  if (!text.includes('Ví dụ') || !text.includes('Drama')) throw new Error('The search prompt does not show its examples.');
+  if (!text.includes('Ví dụ')) throw new Error('The search prompt does not show its examples.');
+  const chips = await ctx.page.locator('#view .hero a.chip').count();
+  if (chips === 0) throw new Error('The search prompt has no example chips from the catalog.');
   if (text.includes('Không có phim khớp')) throw new Error('The search prompt is showing an empty result.');
   const movies = await ctx.page.locator('#view a[href*="#/movie/"]').count();
   if (movies !== 0) throw new Error(`The search prompt lists ${movies} movies.`);
@@ -162,6 +164,8 @@ export const saveCurrentSearch = defineStep('saveCurrentSearch', async (ctx, nam
   if (!response.ok()) throw new Error(`Saving the search failed with HTTP ${response.status()}.`);
   await ctx.page.waitForFunction(saved => (document.querySelector('#view [data-saved-list]')?.textContent || '').includes(saved), name, { timeout: 8000 })
     .catch(() => { throw new Error(`The saved list does not show "${name}".`); });
+  const open = await ctx.page.$eval('#view details', el => el.open).catch(() => false);
+  if (!open) throw new Error('U-14: saving a filter left the saved list closed.');
 });
 
 export const cancelSaveSearch = defineStep('cancelSaveSearch', async ctx => {
@@ -200,6 +204,9 @@ export const deleteSavedSearch = defineStep('deleteSavedSearch', async (ctx, nam
   await target.waitFor({ state: 'visible', timeout: 8000 });
   const pending = ctx.page.waitForResponse(response => response.url().includes('/ui-me/marks') && response.request().method() === 'POST', { timeout: 12000 });
   await target.click();
+  const yes = ctx.page.locator('[data-confirm-yes]');
+  await yes.waitFor({ state: 'visible', timeout: 4000 }).catch(() => { throw new Error('U-14: deleting a saved filter did not ask to confirm.'); });
+  await yes.click();
   const response = await pending.catch(() => { throw new Error('Deleting the search did not call the server.'); });
   if (!response.ok()) throw new Error(`Deleting the search failed with HTTP ${response.status()}.`);
   await ctx.page.waitForFunction(saved => !(document.querySelector('#view [data-saved-list]')?.textContent || '').includes(saved), name, { timeout: 8000 })

@@ -9,7 +9,7 @@ const settled = (page, needle) => page.waitForFunction(text => {
 export const expectFeedHasNoActions = defineStep('expectFeedHasNoActions', async ctx => {
   await settled(ctx.page, 'Chưa theo dõi gì');
   const text = await viewText(ctx.page);
-  if (!text.includes('Bấm “Theo dõi” ở trang diễn viên, maker hoặc series.')) {
+  if (!/Bấm .Theo dõi. ở trang diễn viên, hãng hoặc loạt phim/.test(text)) {
     throw new Error('The empty feed does not tell the owner where to follow something.');
   }
   const buttons = await ctx.page.locator('#view button').count();

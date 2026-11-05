@@ -2,7 +2,7 @@ import { defineStep } from '../lib/step.mjs';
 import { onContextClose, putSetting } from './cleanup.mjs';
 import { viewText } from './dom.mjs';
 
-const HIDDEN_NAV = ['Yêu thích', 'Xem sau', 'Đã xem', 'Theo dõi', 'Thư viện', 'Tải về', 'Media', 'Quản trị', 'Cài đặt', 'Vận hành'];
+const HIDDEN_NAV = ['Yêu thích', 'Xem sau', 'Đã xem', 'Theo dõi', 'Thư viện', 'Tải về', 'Tệp media', 'Quản trị', 'Cài đặt', 'Vận hành'];
 const PUBLIC_NAV = ['Phim', 'Diễn viên', 'Tìm kiếm', 'Lịch phát hành'];
 
 function watchIssues(page, base, issues) {
