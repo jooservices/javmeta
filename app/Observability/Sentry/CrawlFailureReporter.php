@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Observability\Sentry;
 
+use App\Enums\CrawlErrorCode;
+use Illuminate\Queue\TimeoutExceededException;
+use Sentry\Severity;
 use Sentry\State\HubInterface;
 use Sentry\State\Scope;
 use Throwable;
@@ -33,6 +36,11 @@ final class CrawlFailureReporter
             $scope->setTag('crawl_kind', $crawlKind);
             $scope->setTag('error_code', $errorCode);
             $scope->setFingerprint([$errorCode, $source]);
+            $expectedSourceOutcome = in_array(CrawlErrorCode::tryFrom($errorCode), [CrawlErrorCode::Blocked, CrawlErrorCode::Network, CrawlErrorCode::Timeout], true)
+                && ! ($errorCode === CrawlErrorCode::Timeout->value && $exception instanceof TimeoutExceededException);
+            if ($expectedSourceOutcome) {
+                $scope->setLevel(Severity::warning());
+            }
 
             $this->hub->captureException($exception);
         });
