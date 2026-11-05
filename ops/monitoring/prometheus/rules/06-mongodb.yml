@@ -1,0 +1,77 @@
+groups:
+
+- name: PerconaMongodbExporter
+
+
+  rules:
+
+    # 1m delay allows a restart without triggering an alert.
+    - alert: MongodbDown
+      expr: 'mongodb_up == 0'
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: MongoDB Down (instance {{ $labels.instance }})
+        description: "MongoDB instance is down\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+
+    # 1m delay allows a restart without triggering an alert.
+    - alert: MongodbTooManyConnections(percona)
+      expr: 'mongodb_ss_connections{conn_type="current"} / (mongodb_ss_connections{conn_type="current"} + mongodb_ss_connections{conn_type="available"}) * 100 > 80 and (mongodb_ss_connections{conn_type="current"} + mongodb_ss_connections{conn_type="available"}) > 0'
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: MongoDB too many connections (Percona) (instance {{ $labels.instance }})
+        description: "Too many connections (> 80%)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+
+    # This query mixes old (mongodb_mongod_*) and new (mongodb_rs_*) metric names. It requires the Percona exporter to run with --compatible-mode to expose both.
+    - alert: MongodbNumberCursorsOpen(percona)
+      expr: 'mongodb_ss_metrics_cursor_open{csr_type="total"} > 10 * 1000'
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: MongoDB number cursors open (Percona) (instance {{ $labels.instance }})
+        description: "Too many cursors opened by MongoDB for clients (> 10k)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+
+    # 100 timeouts/min is a rough default; scales with your query volume and concurrency — adjust based on your workload.
+    - alert: MongodbCursorsTimeouts(percona)
+      expr: 'increase(mongodb_ss_metrics_cursor_timedOut[1m]) > 100'
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: MongoDB cursors timeouts (Percona) (instance {{ $labels.instance }})
+        description: "Too many cursors are timing out ({{ $value }} in the last minute)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+
+    # 50 is a rough default relative to MongoDB's default 128 concurrent read transactions; adjust based on your configured wiredTigerConcurrentReadTransactions and workload concurrency.
+    - alert: MongodbWiredtigerReadTicketsExhausted
+      expr: 'mongodb_ss_wt_concurrentTransactions_available{txn_rw_type="read"} < 50'
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: MongoDB WiredTiger read tickets exhausted (instance {{ $labels.instance }})
+        description: "WiredTiger available read tickets on {{ $labels.instance }} have dropped to {{ $value }}, which causes read requests to queue and latency to spike.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+
+    # 50 is a rough default relative to MongoDB's default 128 concurrent write transactions; adjust based on your configured wiredTigerConcurrentWriteTransactions and workload concurrency.
+    - alert: MongodbWiredtigerWriteTicketsExhausted
+      expr: 'mongodb_ss_wt_concurrentTransactions_available{txn_rw_type="write"} < 50'
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: MongoDB WiredTiger write tickets exhausted (instance {{ $labels.instance }})
+        description: "WiredTiger available write tickets on {{ $labels.instance }} have dropped to {{ $value }}, which causes write requests to queue and latency to spike.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+
+    # mongodb_ss_uptime (from serverStatus.uptime) is exposed in default mode.
+    # Older exporters (or --compatible-mode) instead expose mongodb_instance_uptime_seconds.
+    - alert: MongodbInstanceRecentlyRestarted
+      expr: 'mongodb_ss_uptime < 300'
+      for: 0m
+      labels:
+        severity: info
+      annotations:
+        summary: MongoDB instance recently restarted (instance {{ $labels.instance }})
+        description: "MongoDB instance {{ $labels.instance }} was restarted {{ $value }} seconds ago.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

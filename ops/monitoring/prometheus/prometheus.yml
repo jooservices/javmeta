@@ -1,0 +1,86 @@
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["127.0.0.1:9093"]
+
+scrape_configs:
+  - job_name: node_exporter
+    static_configs:
+      - targets: ["192.168.10.4:9100"]
+        labels: { vm_name: gatekeeper }
+      - targets: ["192.168.10.11:9100"]
+        labels: { vm_name: mariadb }
+      - targets: ["192.168.10.12:9100"]
+        labels: { vm_name: postgres }
+      - targets: ["192.168.10.13:9100"]
+        labels: { vm_name: mongodb }
+      - targets: ["192.168.10.14:9100"]
+        labels: { vm_name: redis }
+      - targets: ["192.168.10.15:9100"]
+        labels: { vm_name: elasticsearch }
+      - targets: ["192.168.10.16:9100"]
+        labels: { vm_name: rabbitmq }
+      - targets: ["192.168.10.17:9100"]
+        labels: { vm_name: sentry }
+      - targets: ["192.168.10.18:9100"]
+        labels: { vm_name: openobserve }
+      - targets: ["192.168.10.20:9100"]
+        labels: { vm_name: xcrawler }
+      - targets: ["192.168.10.21:9100"]
+        labels: { vm_name: xcrawler-worker-1 }
+      - targets: ["192.168.10.22:9100"]
+        labels: { vm_name: xcrawler-worker-2 }
+      - targets: ["192.168.10.19:9100"]
+        labels: { vm_name: vm-tools }
+      - targets: ["127.0.0.1:9100"]
+        labels: { vm_name: monitor }
+      - targets: ["192.168.1.11:9100"]
+        labels: { vm_name: mgmt01 }
+      - targets: ["192.168.1.12:9100"]
+        labels: { vm_name: netsvc01 }
+  - job_name: mariadb_exporter
+    static_configs:
+      - targets: ["192.168.10.11:9104"]
+        labels: { vm_name: mariadb }
+  - job_name: postgres_exporter
+    static_configs:
+      - targets: ["192.168.10.12:9187"]
+        labels: { vm_name: postgres }
+  - job_name: redis_exporter
+    static_configs:
+      - targets: ["192.168.10.14:9121"]
+        labels: { vm_name: redis }
+
+  - job_name: mongodb_exporter
+    static_configs:
+      - targets: ["192.168.10.13:9216"]
+        labels: { vm_name: mongodb }
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["192.168.10.10:9090"]
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["127.0.0.1:9093"]
+  - job_name: loki
+    static_configs:
+      - targets: ["192.168.10.10:3100"]
+  - job_name: alloy
+    static_configs:
+      - targets: ["127.0.0.1:12345"]
+
+  - job_name: rabbitmq_exporter
+    static_configs:
+      - targets: ["192.168.10.16:9419"]
+        labels:
+          vm_name: rabbitmq
+    basic_auth:
+      username: exporter
+      password_file: /etc/prometheus/secrets/rabbitmq_exporter_password
