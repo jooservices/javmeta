@@ -1,6 +1,7 @@
 import { esc } from '../util.js';
 import { head, loadingBox } from '../components.js';
 import { admin, send } from '../api.js';
+import { askConfirm } from '../confirm.js';
 
 export default {
   async render() {
@@ -15,7 +16,7 @@ export default {
     return {
       html: `<div class="wrap">${head('Báo cáo', 'Cài đặt → Báo cáo')}<div class="grid g2">
         <section class="panel" style="grid-column:1/-1"><div class="hd"><h2>Lịch và nội dung</h2><span class="sp"></span><span class="muted" data-report-status aria-live="polite"></span><button class="btn sm pri" data-report-save>Lưu cài đặt</button></div><div class="bd muted">Báo cáo gửi bằng tiếng Anh theo mẫu XCrawler; thay đổi được áp dụng từ cơ sở dữ liệu.</div>${rows}</section>
-        <section class="panel" style="grid-column:1/-1"><div class="hd"><h2>Xem trước trực tiếp</h2><span class="sp"></span><button class="btn sm" data-report-refresh>Làm mới</button><button class="btn sm pri" data-report-send>Gửi ngay qua Telegram</button></div><div class="bd"><pre data-report-preview style="white-space:pre-wrap;overflow-wrap:anywhere;margin:0">${esc(preview.data.text)}</pre></div></section>
+        <section class="panel" style="grid-column:1/-1"><div class="hd"><h2>Xem trước trực tiếp</h2><span class="sp"></span><button class="btn sm" data-report-refresh>Làm mới</button><button class="btn sm" data-report-send>Gửi ngay qua Telegram</button></div><div class="bd"><pre data-report-preview style="white-space:pre-wrap;overflow-wrap:anywhere;margin:0">${esc(preview.data.text)}</pre></div></section>
         <section class="panel" style="grid-column:1/-1"><div class="hd"><h2>Lần gửi gần nhất</h2></div><div class="bd" data-report-last>${lastReport(preview.data.last)}</div></section>
         <section class="panel" style="grid-column:1/-1"><div class="hd"><h2>Lịch sử gửi gần đây</h2></div><div class="bd" data-report-history>${history(preview.data.history)}</div></section>
       </div></div>`,
@@ -80,6 +81,7 @@ function mount(root) {
         status.textContent = 'Đã lưu cài đặt.';
         await refresh();
       } else if (button.hasAttribute('data-report-send')) {
+        if (!await askConfirm({ title: 'Gửi báo cáo qua Telegram', body: 'Gửi báo cáo định kỳ ngay bây giờ tới Telegram?', confirmLabel: 'Gửi ngay' })) { button.disabled = false; return; }
         status.textContent = 'Đang gửi…';
         await send('POST', '/ui-admin/report/periodic/send-now', {});
         status.textContent = 'Đã gửi báo cáo qua Telegram.';
