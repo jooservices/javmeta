@@ -87,4 +87,15 @@ final class CatalogEndpointTest extends TestCase
         $this->assertSame([['name' => 'Drama', 'movie_count' => 2]], $this->getJson('/api/v1/meta/catalog/genres', $this->headers())->json('data'));
         $this->assertSame([['name' => '2025', 'movie_count' => 2], ['name' => '2024', 'movie_count' => 1]], $this->getJson('/api/v1/meta/catalog/years', $this->headers())->json('data'));
     }
+
+    public function test_year_catalog_search_keeps_only_the_typed_year(): void
+    {
+        Movie::factory()->create(['release_date' => '2025-03-01']);
+        Movie::factory()->create(['release_date' => '2024-01-01']);
+
+        $response = $this->getJson('/api/v1/meta/catalog/years?q=2025', $this->headers())->assertOk();
+
+        $this->assertSame([['name' => '2025', 'movie_count' => 1]], $response->json('data'));
+        $this->assertSame(1, $response->json('meta.pagination.total'));
+    }
 }

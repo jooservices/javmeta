@@ -119,13 +119,55 @@ export const expectUnknownCatalog = defineStep('expectUnknownCatalog', async ctx
 });
 
 const calendarControl = (page, which) => {
-  if (which === 'today') return page.locator('#view a[href="#/calendar"]', { hasText: 'Hôm nay' });
+  if (which === 'today') return page.locator('#view a[href*="#/calendar?month="]', { hasText: 'Hôm nay' });
   return page.locator('#view a[href*="#/calendar?month="]', { hasText: which === 'next' ? '›' : '‹' });
 };
 
 async function calendarMonth(page) {
   return page.$eval('#view .sub', e => (e.textContent || '').trim());
 }
+
+function monthFromHeading(heading) {
+  const match = heading.match(/^(\d{1,2})\/(\d{4})/);
+  if (!match) throw new Error(`The calendar heading has no month: "${heading}".`);
+
+  return `${match[2]}-${String(match[1]).padStart(2, '0')}`;
+}
+
+export const expectCalendarUsesLatestReleaseMonth = defineStep('expectCalendarUsesLatestReleaseMonth', async ctx => {
+  const result = await ctx.page.evaluate(async () => {
+    const response = await fetch('/ui-api/movies/calendar', { headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error(`The calendar API returned HTTP ${response.status}.`);
+    const body = await response.json();
+    return { meta: body.meta || {}, heading: document.querySelector('#view .sub')?.textContent?.trim() || '' };
+  });
+  const latest = result.meta.latest_month;
+  if (!latest || result.meta.month !== latest || Number(result.meta.total) < 1) {
+    throw new Error(`The default calendar did not choose a month with releases: ${JSON.stringify(result.meta)}.`);
+  }
+  const expected = `${Number(latest.slice(5))}/${latest.slice(0, 4)}`;
+  if (result.heading.split('·')[0].trim() !== expected) {
+    throw new Error(`The calendar shows "${result.heading}", expected the latest release month ${expected}.`);
+  }
+  ctx.state.calendarMonth = latest;
+});
+
+export const expectCalendarMonthShifted = defineStep('expectCalendarMonthShifted', async (ctx, offset) => {
+  if (typeof ctx.state.calendarMonth !== 'string') throw new Error('The starting calendar month was not recorded.');
+  const [year, month] = ctx.state.calendarMonth.split('-').map(Number);
+  const target = new Date(year, month - 1 + offset, 1);
+  const expected = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}`;
+  const actual = monthFromHeading(await calendarMonth(ctx.page));
+  if (actual !== expected) throw new Error(`The calendar moved to ${actual}, expected ${expected}.`);
+  ctx.state.calendarMonth = actual;
+});
+
+export const expectCalendarIsCurrentMonth = defineStep('expectCalendarIsCurrentMonth', async ctx => {
+  const current = await ctx.page.evaluate(() => `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
+  const actual = monthFromHeading(await calendarMonth(ctx.page));
+  if (actual !== current) throw new Error(`The Hôm nay control opened ${actual}, expected ${current}.`);
+  ctx.state.calendarMonth = actual;
+});
 
 /** Clicks the month control and waits until the heading month changes. */
 export const shiftCalendar = defineStep('shiftCalendar', async (ctx, which) => {
@@ -193,7 +235,7 @@ export const openCalendarMovie = defineStep('openCalendarMovie', async (ctx, cod
   }, code, { timeout: 12000 }).catch(() => { throw new Error(`The calendar did not open ${code}.`); });
 });
 
-/** A month the route does not understand falls back to the current month instead of inventing a page. */
+/** A month the route does not understand falls back to the latest month with a release. */
 export const expectCalendarIgnoresBadMonth = defineStep('expectCalendarIgnoresBadMonth', async (ctx, month) => {
   await ctx.page.evaluate(value => { location.hash = '#/calendar?month=' + value; }, month);
   await ctx.page.waitForFunction(bad => {

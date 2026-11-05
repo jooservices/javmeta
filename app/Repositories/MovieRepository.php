@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Repositories;
 
 use App\Models\Movie;
+use DateTimeImmutable;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -62,8 +63,11 @@ final class MovieRepository extends BusinessQueryRepository
                 ->groupBy($nameColumn),
         };
 
-        if ($query !== '' && $kind !== 'years') {
-            $base->whereRaw('LOWER(' . $nameColumn . ') LIKE ?', ['%' . mb_strtolower(str_replace(['%', '_'], ['\\%', '\\_'], $query)) . '%']);
+        if ($query !== '') {
+            $pattern = '%' . mb_strtolower(str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $query)) . '%';
+            $kind === 'years'
+                ? $base->whereRaw('CAST(' . $nameColumn . ' AS TEXT) LIKE ?', [$pattern])
+                : $base->whereRaw('LOWER(' . $nameColumn . ') LIKE ?', [$pattern]);
         }
 
         $total = (int) DB::query()->fromSub(clone $base, 'c')->count();
@@ -79,6 +83,48 @@ final class MovieRepository extends BusinessQueryRepository
     public function countAll(): int
     {
         return $this->newQuery()->count();
+    }
+
+    public function latestReleaseDate(): ?string
+    {
+        $latest = $this->tableQuery('movies')->whereNull('delisted_at')->whereNotNull('release_date')->max('release_date');
+
+        return is_string($latest) ? $latest : null;
+    }
+
+    /**
+     * @return list<array{
+     *     release_date: string,
+     *     display_code: ?string,
+     *     title_en: ?string,
+     *     title_jp: ?string,
+     *     cover_thumb_url: ?string,
+     *     cover_url: ?string,
+     *     maker: ?string
+     * }>
+     */
+    public function releaseCalendarRows(string $month): array
+    {
+        $from = new DateTimeImmutable($month . '-01');
+        $until = $from->modify('+1 month')->format('Y-m-d');
+        $rows = $this->tableQuery('movies')
+            ->where('release_date', '>=', $from->format('Y-m-d'))
+            ->where('release_date', '<', $until)
+            ->whereNull('delisted_at')
+            ->orderBy('release_date')
+            ->orderByDesc('community_score')
+            ->orderBy('id')
+            ->get(['release_date', 'display_code', 'title_en', 'title_jp', 'cover_thumb_url', 'cover_url', 'maker']);
+
+        return $rows->map(static fn(object $row): array => [
+            'release_date' => (string) $row->release_date,
+            'display_code' => $row->display_code === null ? null : (string) $row->display_code,
+            'title_en' => $row->title_en === null ? null : (string) $row->title_en,
+            'title_jp' => $row->title_jp === null ? null : (string) $row->title_jp,
+            'cover_thumb_url' => $row->cover_thumb_url === null ? null : (string) $row->cover_thumb_url,
+            'cover_url' => $row->cover_url === null ? null : (string) $row->cover_url,
+            'maker' => $row->maker === null ? null : (string) $row->maker,
+        ])->all();
     }
 
     public function countFirstSeenSince(DateTimeInterface $since): int

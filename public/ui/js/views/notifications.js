@@ -1,6 +1,7 @@
 import { esc } from '../util.js';
 import { head, ic } from '../components.js';
 import { admin, send } from '../api.js';
+import { askConfirm } from '../confirm.js';
 
 const endpoint = '/ui-admin/notifications';
 
@@ -153,6 +154,7 @@ function mount(root) {
     if (action === 'reload-template') { await loadTemplate(selected); return; }
     if (action === 'save') { event.preventDefault(); await save(); return; }
     if (action === 'reset') {
+      if (!await askConfirm({ title: 'Khôi phục mặc định', body: 'Khôi phục mẫu này về bản mặc định? Bản đang sửa sẽ mất.', confirmLabel: 'Khôi phục', danger: true })) return;
       button.disabled = true;
       try { template = (await send('POST', `${endpoint}/${encodeURIComponent(selected)}/reset`)).data; await loadTemplate(selected); await refreshList(); }
       catch (error) { if (status()) status().innerHTML = `<span class="err" role="alert">${esc(error.message)}</span>`; }
@@ -160,6 +162,7 @@ function mount(root) {
       return;
     }
     if (action === 'test') {
+      if (!await askConfirm({ title: 'Gửi thử qua Telegram', body: 'Gửi mẫu thử của thông báo này tới Telegram ngay bây giờ?', confirmLabel: 'Gửi thử' })) return;
       button.disabled = true;
       if (status()) status().textContent = 'Đang gửi thử…';
       const form = editor().querySelector('form');
@@ -173,6 +176,7 @@ function mount(root) {
     }
     if (action === 'preview') { await refreshPreview(); return; }
     if (action === 'restore') {
+      if (!await askConfirm({ title: 'Khôi phục bản cũ', body: 'Thay mẫu hiện tại bằng bản đã lưu này?', confirmLabel: 'Khôi phục', danger: true })) return;
       button.disabled = true;
       try { template = (await send('POST', `${endpoint}/${encodeURIComponent(selected)}/revisions/${encodeURIComponent(button.dataset.revision)}/restore`)).data; await loadTemplate(selected); await refreshList(); }
       catch (error) { if (status()) status().innerHTML = `<span class="err" role="alert">${esc(error.message)}</span>`; }
@@ -188,6 +192,13 @@ function mount(root) {
       textarea.focus();
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
     }
+  });
+
+  root.addEventListener('change', event => {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement) || input.name !== 'enabled') return;
+    const label = input.parentElement?.querySelector('.txt');
+    if (label) label.textContent = input.checked ? 'Đang bật' : 'Đang tắt';
   });
 
   root.addEventListener('input', event => {

@@ -8,7 +8,6 @@ use App\Repositories\MovieRepository;
 use App\Exceptions\InvalidFilterException;
 use App\Exceptions\MovieNotFoundException;
 use App\Data\Catalog\CatalogQuery;
-use App\Http\Controllers\MovieCalendarController;
 use App\Http\Controllers\MovieRelatedController;
 use App\Data\Suggest\SuggestQuery;
 use Illuminate\Http\JsonResponse;
@@ -21,6 +20,7 @@ use App\Models\Performer;
 use App\Repositories\PerformerRepository;
 use App\Services\Crawl\CrawlStatusService;
 use App\Services\Catalog\CatalogService;
+use App\Services\Calendar\MovieCalendarService;
 use App\Services\Suggest\SuggestService;
 use App\Services\Health\SystemStatusService;
 use App\Services\Miss\ConsumerMissReporter;
@@ -45,6 +45,7 @@ final class McpToolService
         private readonly CrawlStatusService $crawlStatusService,
         private readonly SystemStatusService $systemStatusService,
         private readonly CatalogService $catalogService,
+        private readonly MovieCalendarService $calendarService,
     ) {}
 
     /** @return list<array<string, mixed>> */
@@ -246,7 +247,7 @@ final class McpToolService
                 'get_catalog' => $this->getCatalog($arguments),
                 'suggest' => $this->suggest($arguments),
                 'get_related_movies' => $this->viaController(fn() => app(MovieRelatedController::class)->show((string) ($arguments['code'] ?? ''), $this->movieLookup, $this->movieSearch)),
-                'get_release_calendar' => $this->viaController(fn() => app(MovieCalendarController::class)->index($this->request($arguments))),
+                'get_release_calendar' => $this->releaseCalendar($arguments),
                 'crawl_status' => $this->crawlStatus(),
                 'system_status' => $this->systemStatus(),
                 'search_scenes' => $this->searchScenes($arguments),
@@ -275,6 +276,19 @@ final class McpToolService
         $query = SuggestQuery::from((string) ($arguments['q'] ?? ''), (int) ($arguments['limit'] ?? 5));
 
         return ['items' => app(SuggestService::class)->suggest($query)->toArray(), 'meta' => []];
+    }
+
+    /** @param array<string, mixed> $arguments @return array<string, mixed> */
+    private function releaseCalendar(array $arguments): array
+    {
+        $month = $arguments['month'] ?? null;
+        if ($month !== null && ! is_string($month)) {
+            throw new InvalidFilterException('Invalid month.', ['month' => ['YYYY-MM']]);
+        }
+
+        $snapshot = $this->calendarService->get($month);
+
+        return ['items' => $snapshot->days, 'meta' => $snapshot->meta()];
     }
 
     /** @param array<string, mixed> $arguments @return array<string, mixed> */
@@ -566,9 +580,9 @@ final class McpToolService
     {
         return [
             'name' => 'get_release_calendar',
-            'description' => 'Movies released in one month, grouped by day.',
+            'description' => 'Movies released in one month, grouped by day; defaults to the latest month with a release.',
             'inputSchema' => ['type' => 'object', 'properties' => [
-                'month' => ['type' => 'string', 'description' => 'YYYY-MM; default the current month.'],
+                'month' => ['type' => 'string', 'pattern' => '^\\d{4}-(0[1-9]|1[0-2])$', 'description' => 'YYYY-MM; defaults to the latest month with a release.'],
             ]],
         ];
     }

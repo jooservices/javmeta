@@ -40,6 +40,14 @@ export const toggleFavourite = defineStep('toggleFavourite', async ctx => {
   ctx.state.favouriteLabel = await label();
 });
 
+export const expectCalendarOpensWithReleases = defineStep('expectCalendarOpensWithReleases', async ctx => {
+  const info = await ctx.page.evaluate(() => ({
+    text: document.querySelector('#view')?.innerText || '',
+    movies: document.querySelectorAll('#view a[href*="#/movie/"]').length,
+  }));
+  if (info.movies === 0 || /0 phim/.test(info.text.split('\n')[0] || '')) throw new Error(`The calendar opened empty: ${info.text.slice(0, 120)}`);
+});
+
 export const expectInFavourites = defineStep('expectInFavourites', async (ctx, code, shouldBe = true) => {
   await ctx.page.goto(ctx.base + '/app#/me/favourite');
   await ctx.page.waitForTimeout(1800);

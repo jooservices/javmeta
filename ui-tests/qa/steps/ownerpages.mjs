@@ -85,9 +85,10 @@ export const openMediaLibrary = defineStep('openMediaLibrary', async ctx => {
 export const expectCrawlReadOnly = defineStep('expectCrawlReadOnly', async ctx => {
   await settled(ctx.page, 'Crawl theo nguồn');
   const text = await viewText(ctx.page);
-  for (const needle of ['520', '210', '0 / 0', 'nguồn ổn', 'việc chờ', 'crawler:source-toggle']) {
+  for (const needle of ['520', '210', '0 / 0', 'nguồn ổn', 'việc chờ']) {
     if (!text.includes(needle)) throw new Error(`Crawl does not show "${needle}".`);
   }
+  if (/crawler:source-toggle|php artisan|JOOXCR-\d+/.test(text)) throw new Error('The crawl page shows operator-only instructions.');
   const buttons = await ctx.page.locator('#view button, #view a.btn').count();
   if (buttons !== 0) throw new Error(`The read-only crawl page has ${buttons} actions.`);
 });

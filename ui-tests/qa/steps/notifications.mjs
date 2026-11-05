@@ -51,8 +51,27 @@ export const expectTitleDiffersFromOriginal = defineStep('expectTitleDiffersFrom
 });
 
 export const resetTemplate = defineStep('resetTemplate', async ctx => {
-  ctx.page.once('dialog', dialog => dialog.accept());
   await ctx.page.click('[data-editor] [data-action=reset]');
+  await ctx.page.waitForSelector('[data-confirm-yes]', { timeout: 4000 }).catch(() => { throw new Error('Reset did not ask for confirmation.'); });
+  await ctx.page.click('[data-confirm-yes]');
   await ctx.page.waitForFunction(t => document.querySelector('[data-editor] textarea[name=title_template]')?.value === t, ctx.state.titleBefore, { timeout: 8000 })
     .catch(() => { throw new Error('Resetting did not bring back the original title.'); });
+});
+
+export const expectReportSendAsksToConfirm = defineStep('expectReportSendAsksToConfirm', async ctx => {
+  await ctx.page.click('[data-report-send]');
+  await ctx.page.waitForSelector('[data-confirm-yes]', { timeout: 4000 }).catch(() => { throw new Error('Telegram send did not ask for confirmation.'); });
+  await ctx.page.click('[data-confirm-no]');
+  await ctx.page.waitForTimeout(300);
+  if (await ctx.page.$('[data-confirm-yes]')) throw new Error('Cancelling the send confirm left the dialog open.');
+});
+
+export const expectTestSendAsksToConfirm = defineStep('expectTestSendAsksToConfirm', async ctx => {
+  await ctx.page.click('[data-editor] [data-action=test]');
+  await ctx.page.waitForSelector('[data-confirm-yes]', { timeout: 4000 }).catch(() => { throw new Error('Test send did not ask for confirmation.'); });
+  const title = await ctx.page.$eval('#confirm-title', e => e.innerText);
+  if (!/gửi thử/i.test(title)) throw new Error(`Confirm title is "${title}".`);
+  await ctx.page.click('[data-confirm-no]');
+  await ctx.page.waitForTimeout(300);
+  if (await ctx.page.$('[data-confirm-yes]')) throw new Error('Cancelling the test-send confirm left the dialog open.');
 });

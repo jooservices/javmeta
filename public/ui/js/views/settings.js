@@ -3,7 +3,8 @@ import { head, ic } from '../components.js';
 import { admin, send } from '../api.js';
 import { applyTheme, applyDensity, currentTheme, currentDensity } from '../theme.js';
 
-const KEYS = [['⌘K hoặc /', 'Tìm kiếm'], ['g h', 'Discover'], ['g m', 'Phim'], ['g p', 'Diễn viên'], ['g c', 'Crawl'], ['g s', 'Tìm kiếm'], ['t', 'Đổi sáng/tối'], ['Esc', 'Đóng'], ['?', 'Bảng phím tắt']];
+const shortcutMod = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? '⌘' : 'Ctrl';
+const KEYS = [[`${shortcutMod}+K hoặc /`, 'Tìm kiếm'], ['t', 'Đổi sáng/tối'], ['Esc', 'Đóng'], ['?', 'Bảng phím tắt']];
 
 /* Proposal: the long page becomes tabs; each tab holds the related groups as sections. */
 const TABS = [
