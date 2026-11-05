@@ -153,6 +153,7 @@ tr.sel td:first-child{box-shadow:inset 2px 0 var(--accent)}
 .mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--cw,210px),1fr));gap:12px 10px}
 .mgrid.S{--cw:150px}.mgrid.L{--cw:300px}
 .mc{display:flex;flex-direction:column;gap:3px;cursor:pointer;border-radius:6px;padding:5px;margin:-5px;position:relative;min-width:0;animation:in .3s both;animation-delay:calc(var(--i,0)*16ms)}
+.mc-main{display:flex;flex-direction:column;gap:3px;min-width:0;color:inherit}
 .mc:hover,.mc.sel{background:var(--panel2)}
 .mc.sel{box-shadow:0 0 0 1px var(--accent)}
 .mc .t{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -175,9 +176,12 @@ tr.sel td:first-child{box-shadow:inset 2px 0 var(--accent)}
 .ac.tile{flex-direction:column;align-items:stretch;gap:6px}
 .kv{display:grid;grid-template-columns:104px minmax(0,1fr);gap:5px 10px;margin:0}
 .kv dt{color:var(--dim)}.kv dd{margin:0;min-width:0}
-.row-i{display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid var(--line);min-width:0}
+.row-i{display:flex;align-items:flex-start;flex-wrap:wrap;gap:10px;padding:7px 12px;border-bottom:1px solid var(--line);min-width:0;max-width:100%}
 .row-i:last-child{border-bottom:0}
-.row-i .grow{flex:1;min-width:0}
+.row-i .grow{flex:1;min-width:0;max-width:100%}
+.row-i .ctrl{min-width:0;max-width:100%;flex:1 1 220px}
+.row-i [role=group]{display:flex;flex-wrap:wrap;gap:8px;max-width:100%}
+.row-i input,.row-i select,.row-i textarea{max-width:100%;min-width:0;box-sizing:border-box}
 .ell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .scene{display:flex;flex-direction:column;gap:5px}
 .switch{position:relative;width:32px;height:18px;border-radius:9px;background:var(--line);border:0;flex:none;transition:background .15s}
@@ -292,7 +296,7 @@ tr.sel td:first-child{box-shadow:inset 2px 0 var(--accent)}
   .stat{border-right:0;border-bottom:1px solid var(--line)}
 }
 @media (max-width:480px){.mgrid,.mgrid.S,.mgrid.L{grid-template-columns:repeat(2,minmax(0,1fr))}.agrid,.agrid.S,.agrid.L{grid-template-columns:minmax(0,1fr)}.strip{grid-auto-columns:140px}.bigq{flex-direction:column}.top{gap:6px}}
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.cu{transition:none}}
 
 /* ---- real-data additions ---- */
 .th img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
