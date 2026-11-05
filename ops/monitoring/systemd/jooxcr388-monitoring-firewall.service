@@ -1,0 +1,14 @@
+[Unit]
+Description=Limit Prometheus blackbox exporter ingress to the local Prometheus host
+After=network-online.target nftables.service
+Wants=network-online.target
+Before=prometheus-blackbox-exporter.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/jooxcr388/blackbox-firewall.nft
+ExecStop=/usr/sbin/nft delete table inet jooxcr388_monitoring
+
+[Install]
+WantedBy=multi-user.target
