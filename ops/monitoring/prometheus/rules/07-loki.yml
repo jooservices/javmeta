@@ -12,6 +12,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Loki compactor not running compaction (instance {{ $labels.instance }})
         description: "The Loki compactor in {{ $labels.namespace }} has not completed a successful compaction in over 3 hours (or never since startup), leaving index growth unbounded and retention unenforced.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -21,6 +23,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Loki request errors (instance {{ $labels.instance }})
         description: "The {{ $labels.job }} and {{ $labels.route }} are experiencing {{ printf \"%.2f\" $value }}% errors.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -30,6 +34,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Loki request panic (instance {{ $labels.instance }})
         description: "{{ $labels.job }} is experiencing {{ $value | humanize }} panic(s) in the last 5 minutes.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -40,6 +46,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Loki request latency (instance {{ $labels.instance }})
         description: "The {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf \"%.2f\" $value }}s 99th percentile latency.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -49,6 +57,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Loki process too many restarts (instance {{ $labels.instance }})
         description: "A loki process had too many restarts (target {{ $labels.instance }})\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -58,5 +68,7 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Loki too many compactors running (instance {{ $labels.instance }})
         description: "More than one Loki compactor is running in cluster {{ $labels.cluster }}; the compactor must run as a singleton, or index compaction and retention can be duplicated or corrupted.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

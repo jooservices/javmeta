@@ -11,6 +11,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host high CPU load (instance {{ $labels.instance }})
         description: "CPU load is > 80%\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -20,6 +22,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host CPU steal noisy neighbor (instance {{ $labels.instance }})
         description: "CPU steal is > 10%. A noisy neighbor is killing VM performances or a spot instance may be out of credit.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -29,6 +33,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host CPU high iowait (instance {{ $labels.instance }})
         description: "CPU iowait > 10%. Your CPU is idling waiting for storage to respond.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -38,6 +44,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host CPU load saturation (instance {{ $labels.instance }})
         description: "Load average (1m) per CPU core on {{ $labels.instance }} is more than double the number of idle cores, meaning processes are queued waiting for CPU even if raw CPU utilization looks normal.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -48,6 +56,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host out of memory (instance {{ $labels.instance }})
         description: "Node memory is filling up (< 10% left)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -58,6 +68,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host memory under memory pressure (instance {{ $labels.instance }})
         description: "The node is under heavy memory pressure. High rate of major page faults ({{ $value }}/s).\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -68,6 +80,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host out of disk space (instance {{ $labels.instance }})
         description: "Disk is almost full (< 10% left)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -77,6 +91,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host out of inodes (instance {{ $labels.instance }})
         description: "Disk is almost running out of available inodes (< 10% left)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -89,6 +105,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host disk may fill in 24 hours (instance {{ $labels.instance }})
         description: "Filesystem will likely run out of space within the next 24 hours.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -98,6 +116,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host inodes may fill in 24 hours (instance {{ $labels.instance }})
         description: "Filesystem will likely run out of inodes within the next 24 hours at current write rate\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -107,6 +127,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host unusual disk IO (instance {{ $labels.instance }})
         description: "Disk usage >80%. Check storage for issues or increase IOPS capabilities.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -117,6 +139,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host disk IO saturation (instance {{ $labels.instance }})
         description: "Weighted disk I/O time on {{ $labels.instance }} indicates a growing request queue depth (similar to iostat's aqu-sz), a distinct saturation symptom from raw disk busy-time utilization.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -126,6 +150,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host unusual network throughput in (instance {{ $labels.instance }})
         description: "Host receive bandwidth is high (>80%).\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -135,6 +161,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host unusual network throughput out (instance {{ $labels.instance }})
         description: "Host transmit bandwidth is high (>80%)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -144,6 +172,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host Network Bond Degraded (instance {{ $labels.instance }})
         description: "Bond \"{{ $labels.device }}\" degraded on \"{{ $labels.instance }}\".\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -153,6 +183,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host file descriptors limit critical (instance {{ $labels.instance }})
         description: "Kernel file descriptor usage on {{ $labels.instance }} is above 90% of the configured maximum, and file descriptor exhaustion is imminent.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -162,6 +194,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host swap is filling up (instance {{ $labels.instance }})
         description: "Swap is filling up (>80%)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -171,6 +205,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host file descriptors limit warning (instance {{ $labels.instance }})
         description: "Kernel file descriptor usage on {{ $labels.instance }} is above 70% of the configured maximum, risking failures for daemons or the kernel when they can no longer open new files.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -180,6 +216,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host node overtemperature alarm (instance {{ $labels.instance }})
         description: "Physical node temperature alarm triggered\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -193,6 +231,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host software RAID insufficient drives (instance {{ $labels.instance }})
         description: "MD RAID array {{ $labels.device }} on {{ $labels.instance }} has insufficient drives remaining.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -205,6 +245,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host physical component too hot (instance {{ $labels.instance }})
         description: "Physical hardware component too hot\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -214,6 +256,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host clock skew (instance {{ $labels.instance }})
         description: "Clock skew detected. Clock is out of sync. Ensure NTP is configured correctly on this host.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -223,6 +267,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host clock not synchronising (instance {{ $labels.instance }})
         description: "Clock not synchronising. Ensure NTP is configured on this host.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -232,6 +278,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host filesystem device error (instance {{ $labels.instance }})
         description: "Error stat-ing the {{ $labels.mountpoint }} filesystem\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -242,6 +290,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host unusual disk read latency (instance {{ $labels.instance }})
         description: "Disk latency is growing (read operations > 100ms)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -252,6 +302,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host unusual disk write latency (instance {{ $labels.instance }})
         description: "Disk latency is growing (write operations > 100ms)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -261,6 +313,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host systemd service crashed (instance {{ $labels.instance }})
         description: "systemd service {{ $labels.name }} crashed\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -270,6 +324,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host software RAID disk failure (instance {{ $labels.instance }})
         description: "MD RAID array {{ $labels.device }} on {{ $labels.instance }} needs attention.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -280,6 +336,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host OOM kill detected (instance {{ $labels.instance }})
         description: "OOM kill detected\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -289,6 +347,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host EDAC Uncorrectable Errors detected (instance {{ $labels.instance }})
         description: "Host {{ $labels.instance }} has had {{ printf \"%.0f\" $value }} uncorrectable memory errors reported by EDAC.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -298,6 +358,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host Network Receive Errors (instance {{ $labels.instance }})
         description: "Host {{ $labels.instance }} interface {{ $labels.device }} has encountered {{ printf \"%.0f\" $value }} receive errors in the last two minutes.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -307,6 +369,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host Network Transmit Errors (instance {{ $labels.instance }})
         description: "Host {{ $labels.instance }} interface {{ $labels.device }} has encountered {{ printf \"%.0f\" $value }} transmit errors in the last two minutes.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -316,6 +380,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host conntrack limit (instance {{ $labels.instance }})
         description: "The number of conntrack is approaching limit\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -325,6 +391,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host textfile collector scrape error (instance {{ $labels.instance }})
         description: "Node exporter's textfile collector failed to scrape a custom .prom file on {{ $labels.instance }}, indicating a broken or misconfigured custom collector script that will silently stop reporting its metrics.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -334,6 +402,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host systemd service crash looping (instance {{ $labels.instance }})
         description: "Systemd service {{ $labels.name }} on {{ $labels.instance }} has restarted more than twice in the last 5 minutes, indicating a crash loop that a simple 'failed' state check would miss because the service keeps restarting successfully.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -343,6 +413,8 @@ groups:
       labels:
         severity: info
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host EDAC Correctable Errors detected (instance {{ $labels.instance }})
         description: "Host {{ $labels.instance }} has had {{ printf \"%.0f\" $value }} correctable memory errors reported by EDAC in the last 1 minute.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -352,5 +424,7 @@ groups:
       labels:
         severity: info
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Host rebooted (instance {{ $labels.instance }})
         description: "Node {{ $labels.instance }} uptime is less than 3 minutes.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

@@ -1,5 +1,18 @@
 groups:
 
+- name: Watchdog
+  rules:
+    - alert: Watchdog
+      expr: vector(1)
+      labels:
+        severity: info
+        vm_name: monitor
+      annotations:
+        value: "{{ $value }}"
+        summary: Prometheus and Alertmanager notification heartbeat
+        description: "This alert remains firing as a daily notification heartbeat."
+        runbook: https://wiki.jooservices.local/runbooks/monitoring#watchdog
+
 - name: PrometheusSelfMonitoring
 
 
@@ -13,6 +26,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus target missing (instance {{ $labels.instance }})
         description: "A Prometheus target has disappeared. An exporter might be crashed.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -22,6 +37,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus all targets missing (instance {{ $labels.instance }})
         description: "A Prometheus job does not have living target anymore.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -31,6 +48,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus target missing with warmup time (instance {{ $labels.instance }})
         description: "Allow a job time to start up (10 minutes) before alerting that it's down.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -40,6 +59,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus not connected to alertmanager (instance {{ $labels.instance }})
         description: "Prometheus cannot connect the alertmanager\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -50,6 +71,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus job missing (instance {{ $labels.instance }})
         description: "A Prometheus job has disappeared\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -60,6 +83,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus AlertManager job missing (instance {{ $labels.instance }})
         description: "A Prometheus AlertManager job has disappeared\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -69,6 +94,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus target scrape out of order (instance {{ $labels.instance }})
         description: "Prometheus is dropping samples because their timestamps arrive out of order ({{ $value }} samples in the last 5 minutes), indicating a misbehaving target or clock skew.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -78,6 +105,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus rule evaluation failures (instance {{ $labels.instance }})
         description: "Prometheus encountered {{ $value }} rule evaluation failures, leading to potentially ignored alerts.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -87,6 +116,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus template text expansion failures (instance {{ $labels.instance }})
         description: "Prometheus encountered {{ $value }} template text expansion failures\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -96,6 +127,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus AlertManager notification failing (instance {{ $labels.instance }})
         description: "Alertmanager is failing to send {{ $value | humanizePercentage }} of notifications\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -105,6 +138,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus target empty (instance {{ $labels.instance }})
         description: "Prometheus has no target in service discovery\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -114,6 +149,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus TSDB checkpoint creation failures (instance {{ $labels.instance }})
         description: "Prometheus encountered {{ $value }} checkpoint creation failures\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -123,6 +160,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus TSDB checkpoint deletion failures (instance {{ $labels.instance }})
         description: "Prometheus encountered {{ $value }} checkpoint deletion failures\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -132,6 +171,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus TSDB compactions failed (instance {{ $labels.instance }})
         description: "Prometheus encountered {{ $value }} TSDB compactions failures\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -141,6 +182,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus TSDB head truncations failed (instance {{ $labels.instance }})
         description: "Prometheus encountered {{ $value }} TSDB head truncation failures\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -150,6 +193,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus TSDB reload failures (instance {{ $labels.instance }})
         description: "Prometheus encountered {{ $value }} TSDB reload failures\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -159,6 +204,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus TSDB WAL corruptions (instance {{ $labels.instance }})
         description: "Prometheus encountered {{ $value }} TSDB WAL corruptions\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -168,6 +215,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus TSDB WAL truncations failed (instance {{ $labels.instance }})
         description: "Prometheus encountered {{ $value }} TSDB WAL truncation failures\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -177,6 +226,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus error sending alerts to any AlertManager (instance {{ $labels.instance }})
         description: "Prometheus is failing to send at least {{ $value | humanize }}% of alerts to every configured Alertmanager, meaning alert delivery is broadly impaired.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -186,6 +237,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus not ingesting samples (instance {{ $labels.instance }})
         description: "Prometheus has stopped appending new samples to its TSDB head although targets or rule groups are still configured, meaning monitoring data may be lost.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -195,6 +248,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus target sync failure (instance {{ $labels.instance }})
         description: "{{ $value }} Prometheus targets failed to sync because invalid scrape configuration was supplied, meaning those targets are not being scraped.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -204,6 +259,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus too many restarts (instance {{ $labels.instance }})
         description: "Prometheus has restarted more than twice in the last 15 minutes. It might be crashlooping.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -213,6 +270,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus rule evaluation slow (instance {{ $labels.instance }})
         description: "Prometheus rule evaluation took more time than the scheduled interval. It indicates a slower storage backend access or too complex query.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -222,6 +281,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus notifications backlog (instance {{ $labels.instance }})
         description: "The Prometheus notification queue has not been empty for 10 minutes\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -231,6 +292,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus target scraping slow (instance {{ $labels.instance }})
         description: "Prometheus is scraping exporters slowly since it exceeded the requested interval time. Your Prometheus server is under-provisioned.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -240,6 +303,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus large scrape (instance {{ $labels.instance }})
         description: "Prometheus has many scrapes that exceed the sample limit ({{ $value }} scrapes)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -249,6 +314,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus target scrape duplicate (instance {{ $labels.instance }})
         description: "Prometheus has many samples rejected due to duplicate timestamps but different values ({{ $value }} samples)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -259,6 +326,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus timeseries cardinality (instance {{ $labels.instance }})
         description: "The \"{{ $labels.name }}\" timeseries cardinality is getting very high: {{ $value }}\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -268,6 +337,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus error sending alerts to AlertManager (instance {{ $labels.instance }})
         description: "Prometheus is failing to send {{ $value | humanize }}% of alerts to a specific Alertmanager instance, meaning some alerts may not be delivered.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -277,6 +348,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus service discovery refresh failure (instance {{ $labels.instance }})
         description: "Prometheus failed to refresh service discovery targets using mechanism {{ $labels.mechanism }}, meaning target lists may become stale.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -286,6 +359,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus rule evaluations missed (instance {{ $labels.instance }})
         description: "Prometheus missed {{ $value }} rule group evaluations in the last 5 minutes, usually caused by rule groups taking longer to evaluate than their configured interval.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -295,6 +370,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus high query load (instance {{ $labels.instance }})
         description: "Prometheus query engine has less than 20% available capacity for concurrent queries, meaning it is approaching its configured concurrency limit and may start rejecting queries.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -304,6 +381,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus configuration reload failure (instance {{ $labels.instance }})
         description: "Prometheus configuration reload error\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -313,6 +392,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus AlertManager configuration reload failure (instance {{ $labels.instance }})
         description: "AlertManager configuration reload error\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -324,5 +405,7 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Prometheus AlertManager config not synced (instance {{ $labels.instance }})
         description: "Configurations of AlertManager cluster instances are out of sync\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

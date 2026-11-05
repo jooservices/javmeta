@@ -12,6 +12,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MySQL down (instance {{ $labels.instance }})
         description: "MySQL instance is down on {{ $labels.instance }}\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -22,6 +24,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MySQL too many connections (> 80%) (instance {{ $labels.instance }})
         description: "More than 80% of MySQL connections are in use on {{ $labels.instance }}\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -31,6 +35,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MySQL high prepared statements utilization (> 80%) (instance {{ $labels.instance }})
         description: "High utilization of prepared statements (>80%) on {{ $labels.instance }}\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -40,6 +46,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MySQL high threads running (instance {{ $labels.instance }})
         description: "More than 60% of MySQL connections are in running state on {{ $labels.instance }}\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -49,6 +57,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MySQL slow queries (instance {{ $labels.instance }})
         description: "MySQL server has some new slow queries ({{ $value }} in the last minute).\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -59,6 +69,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MySQL InnoDB log waits (instance {{ $labels.instance }})
         description: "MySQL innodb log writes stalling ({{ $value }} waits/s)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -68,6 +80,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MySQL too many open files (instance {{ $labels.instance }})
         description: "MySQL has too many open files, consider increase variables open_files_limit on {{ $labels.instance }}.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -78,6 +92,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MySQL InnoDB history_len too long (instance {{ $labels.instance }})
         description: "MySQL history_len (undo log) too long on {{ $labels.instance }}\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -88,6 +104,8 @@ groups:
       labels:
         severity: info
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MySQL restarted (instance {{ $labels.instance }})
         description: "MySQL has just been restarted, less than one minute ago on {{ $labels.instance }}.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -98,6 +116,8 @@ groups:
       labels:
         severity: info
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MySQL High QPS (instance {{ $labels.instance }})
         description: "MySQL is being overload with unusual QPS (> 10k QPS).\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -107,5 +127,7 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MySQL InnoDB Force Recovery is enabled (instance {{ $labels.instance }})
         description: "MySQL InnoDB force recovery is enabled on {{ $labels.instance }}\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

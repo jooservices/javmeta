@@ -12,6 +12,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MongoDB Down (instance {{ $labels.instance }})
         description: "MongoDB instance is down\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -22,6 +24,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MongoDB too many connections (Percona) (instance {{ $labels.instance }})
         description: "Too many connections (> 80%)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -32,6 +36,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MongoDB number cursors open (Percona) (instance {{ $labels.instance }})
         description: "Too many cursors opened by MongoDB for clients (> 10k)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -42,6 +48,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MongoDB cursors timeouts (Percona) (instance {{ $labels.instance }})
         description: "Too many cursors are timing out ({{ $value }} in the last minute)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -52,6 +60,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MongoDB WiredTiger read tickets exhausted (instance {{ $labels.instance }})
         description: "WiredTiger available read tickets on {{ $labels.instance }} have dropped to {{ $value }}, which causes read requests to queue and latency to spike.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -62,6 +72,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MongoDB WiredTiger write tickets exhausted (instance {{ $labels.instance }})
         description: "WiredTiger available write tickets on {{ $labels.instance }} have dropped to {{ $value }}, which causes write requests to queue and latency to spike.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -73,5 +85,7 @@ groups:
       labels:
         severity: info
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: MongoDB instance recently restarted (instance {{ $labels.instance }})
         description: "MongoDB instance {{ $labels.instance }} was restarted {{ $value }} seconds ago.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

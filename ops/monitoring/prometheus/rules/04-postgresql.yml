@@ -12,6 +12,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql down (instance {{ $labels.instance }})
         description: "Postgresql instance is down\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -21,6 +23,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql replication role changed (instance {{ $labels.instance }})
         description: "The replication role (primary/replica) of {{ $labels.instance }} has just changed, which usually indicates a failover happened. Verify whether this was expected.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -31,6 +35,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql bloat index high (> 80%) (instance {{ $labels.instance }})
         description: "The index {{ $labels.idxname }} is bloated. You should execute `REINDEX INDEX CONCURRENTLY {{ $labels.idxname }};`\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -41,6 +47,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql bloat table high (> 80%) (instance {{ $labels.instance }})
         description: "The table {{ $labels.relname }} is bloated. You should execute `VACUUM {{ $labels.relname }};`\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -51,6 +59,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql long-running transaction (instance {{ $labels.instance }})
         description: "A transaction on database {{ $labels.datname }} has been running for more than 2 minutes, which can hold locks, cause table bloat, and delay replication.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -60,6 +70,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql low cache hit rate (instance {{ $labels.instance }})
         description: "PostgreSQL buffer cache hit rate for database {{ $labels.datname }} is {{ $value | humanizePercentage }}, below the 98% target, indicating heavy disk I/O; consider increasing shared_buffers.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -70,6 +82,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql too many locks acquired (instance {{ $labels.instance }})
         description: "Too many locks acquired on the database. If this alert happens frequently, we may need to increase the postgres setting max_locks_per_transaction.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -79,6 +93,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql max connections reached (instance {{ $labels.instance }})
         description: "PostgreSQL instance {{ $labels.instance }} has reached the maximum usable connection limit (max_connections minus superuser_reserved_connections). New client connections will be rejected until connections free up.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -88,6 +104,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql too many connections (instance {{ $labels.instance }})
         description: "PostgreSQL instance has too many connections (> 80%).\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -97,6 +115,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql restarted (instance {{ $labels.instance }})
         description: "Postgresql restarted\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -106,6 +126,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql exporter error (instance {{ $labels.instance }})
         description: "Postgresql exporter is showing errors. A query may be buggy in query.yaml\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -116,6 +138,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql table not auto vacuumed (instance {{ $labels.instance }})
         description: "Table {{ $labels.relname }} has not been auto vacuumed for 10 days\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -126,6 +150,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql table not auto analyzed (instance {{ $labels.instance }})
         description: "Table {{ $labels.relname }} has not been auto analyzed for 10 days\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -135,6 +161,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql dead locks (instance {{ $labels.instance }})
         description: "PostgreSQL has dead-locks ({{ $value }} in the last minute)\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -144,6 +172,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql high rollback rate (instance {{ $labels.instance }})
         description: "Ratio of transactions being aborted compared to committed is > 10 %\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -154,6 +184,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql low XID consumption (instance {{ $labels.instance }})
         description: "Postgresql seems to be consuming transaction IDs very slowly\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -163,6 +195,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql unused replication slot (instance {{ $labels.instance }})
         description: "Unused Replication Slots\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -172,6 +206,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql too many dead tuples (instance {{ $labels.instance }})
         description: "PostgreSQL dead tuples is too large\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -182,6 +218,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql invalid index (instance {{ $labels.instance }})
         description: "The table {{ $labels.relname }} has an invalid index: {{ $labels.indexrelname }}. You should execute `DROP INDEX {{ $labels.indexrelname }};`\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -192,6 +230,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql too many checkpoints requested (instance {{ $labels.instance }})
         description: "More than half of the checkpoints on {{ $labels.instance }} are unscheduled (requested) rather than timed, which usually means checkpoint_timeout or max_wal_size needs tuning.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -202,6 +242,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql SSL compression active (instance {{ $labels.instance }})
         description: "Database allows connections with SSL compression enabled. This may add significant jitter in replication delay. Replicas should turn off SSL compression via `sslcompression=0` in `recovery.conf`.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -211,5 +253,7 @@ groups:
       labels:
         severity: info
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Postgresql configuration changed (instance {{ $labels.instance }})
         description: "Postgres Database configuration change has occurred\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

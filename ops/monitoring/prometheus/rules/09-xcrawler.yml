@@ -6,30 +6,40 @@ groups:
         for: 10m
         labels: {severity: warning, service: xcrawler}
         annotations:
+          value: "{{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/monitoring
           summary: "{{ $labels.instance }} has browser-stack processes older than 45 minutes after the watchdog ran"
       - alert: XcrawlerBrowserWatchdogStale
         expr: time() - xcrawler_browser_cleanup_last_run_timestamp_seconds > 900
         for: 5m
         labels: {severity: warning, service: xcrawler}
         annotations:
+          value: "{{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/monitoring
           summary: "{{ $labels.instance }} browser watchdog has not run for 15+ minutes"
       - alert: XcrawlerBrowserZombies
         expr: xcrawler_browser_zombies > 20
         for: 15m
         labels: {severity: warning, service: xcrawler}
         annotations:
+          value: "{{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/monitoring
           summary: "{{ $labels.instance }} has many zombie browser processes"
       - alert: XcrawlerBrowserChromeProcessesHigh
         expr: xcrawler_browser_chrome_processes > 150
         for: 10m
         labels: {severity: warning, service: xcrawler}
         annotations:
+          value: "{{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/monitoring
           summary: "{{ $labels.instance }} has {{ $value }} chrome processes"
       - alert: XcrawlerBrowserTmpEntriesHigh
         expr: xcrawler_browser_tmp_entries > 5000
         for: 15m
         labels: {severity: warning, service: xcrawler}
         annotations:
+          value: "{{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/monitoring
           summary: "{{ $labels.instance }} /tmp has {{ $value }} entries (leaked browser data)"
   - name: xcrawler-nodes
     rules:
@@ -38,39 +48,53 @@ groups:
         for: 3m
         labels: {severity: critical, service: xcrawler}
         annotations:
+          value: "{{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/monitoring
           summary: "XCrawler fleet node {{ $labels.instance }} is not scraped"
       - alert: XcrawlerNodeCpuHigh
         expr: 100 - avg by(instance)(rate(node_cpu_seconds_total{mode="idle",instance=~"192.168.10.(19|20|21|22):9100"}[10m])) * 100 > 75
         for: 15m
         labels: {severity: warning, service: xcrawler}
         annotations:
+          value: "{{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/monitoring
           summary: "{{ $labels.instance }} CPU above 75% for 15 minutes (consider more workers/nodes)"
       - alert: XcrawlerNodeDiskLow
         expr: node_filesystem_avail_bytes{instance=~"192.168.10.(19|20|21|22):9100",mountpoint="/"} / node_filesystem_size_bytes{instance=~"192.168.10.(19|20|21|22):9100",mountpoint="/"} < 0.2
         for: 10m
         labels: {severity: warning, service: xcrawler}
         annotations:
+          value: "{{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/monitoring
           summary: "{{ $labels.instance }} root filesystem below 20% free"
       - alert: XcrawlerNodeMemoryLow
         expr: node_memory_MemAvailable_bytes{instance=~"192.168.10.(19|20|21|22):9100"} < 3e9
         for: 10m
         labels: {severity: warning, service: xcrawler}
         annotations:
+          value: "{{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/monitoring
           summary: "{{ $labels.instance }} has less than 3 GB available memory"
       - alert: XcrawlerEgressIpChanged
         expr: increase(xcrawler_egress_changes_total[15m]) > 0
         labels: {severity: warning, service: xcrawler}
         annotations:
+          value: "{{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/monitoring
           summary: "{{ $labels.instance }} changed its public egress IP (cf_clearance cookies bound to the old IP may be lost)"
       - alert: XcrawlerEgressIpShared
         expr: count by (ip) (xcrawler_egress_info) > 1
         for: 10m
         labels: {severity: info, service: xcrawler}
         annotations:
+          value: "{{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/monitoring
           summary: "Two or more XCrawler nodes share the public IP {{ $labels.ip }} (no dedicated egress)"
       - alert: XcrawlerEgressProbeFailing
         expr: xcrawler_egress_probe_ok == 0
         for: 10m
         labels: {severity: warning, service: xcrawler}
         annotations:
+          value: "{{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/monitoring
           summary: "{{ $labels.instance }} cannot determine its public egress IP (no Internet or DNS problem)"

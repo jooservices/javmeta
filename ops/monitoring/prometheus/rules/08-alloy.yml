@@ -11,6 +11,8 @@ groups:
       labels:
         severity: critical
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Grafana Alloy service down (instance {{ $labels.instance }})
         description: "Alloy on instance {{ $labels.instance }} is not responding or has stopped running.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -20,6 +22,8 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Grafana Alloy unhealthy components (instance {{ $labels.instance }})
         description: "One or more Alloy pipeline components (receivers, exporters, processors, discovery, etc.) under job {{ $labels.job }} are reporting a non-healthy status, even though the Alloy process itself is still running.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
 
@@ -29,5 +33,7 @@ groups:
       labels:
         severity: warning
       annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
         summary: Grafana Alloy slow component evaluations (instance {{ $labels.instance }})
         description: "Component {{ $labels.component_id }} at path {{ $labels.component_path }} under job {{ $labels.job }} is taking too long to evaluate, which can lead to stale scrape targets or delayed pipeline processing.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
