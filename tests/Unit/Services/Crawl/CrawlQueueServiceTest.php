@@ -83,7 +83,7 @@ final class CrawlQueueServiceTest extends TestCase
             'locked_by' => null,
         ]);
         $redis = Mockery::mock();
-        $redis->shouldReceive('eval')->once()->withArgs(static function (string $script, array $arguments, int $keyCount): bool {
+        $redis->shouldReceive('eval')->once()->withArgs(static function (string $script, int $keyCount, string ...$arguments): bool {
             return str_contains($script, "redis.call('TIME')")
                 && str_contains($script, 'last + gap')
                 && $keyCount === 1
@@ -120,7 +120,7 @@ final class CrawlQueueServiceTest extends TestCase
             'attempts' => 1,
         ]);
         $redis = Mockery::mock();
-        $redis->shouldReceive('eval')->once()->withArgs(static function (string $script, array $arguments, int $keyCount): bool {
+        $redis->shouldReceive('eval')->once()->withArgs(static function (string $script, int $keyCount, string ...$arguments): bool {
             $limitCheck = strpos($script, 'if wait > maximum_wait then');
             $slotWrite = strpos($script, "redis.call('SET'");
 

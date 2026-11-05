@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Crawl;
 
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Redis\Connections\PhpRedisConnection;
 use RuntimeException;
 
 final class SourceRequestPacer
@@ -31,15 +32,15 @@ LUA;
     {
         $gapMicroseconds = (int) round($gapSeconds * 1_000_000);
         $ttlMilliseconds = max(60_000, (int) ceil($gapMicroseconds * 2 / 1000));
-        $wait = Redis::connection((string) config('horizon.use', 'default'))->eval(
+        /** @var PhpRedisConnection $connection */
+        $connection = Redis::connection((string) config('horizon.use', 'default'));
+        $wait = $connection->eval(
             self::RESERVE_START,
-            [
-                'javmeta:source-gap:start:' . $lane . ':' . rawurlencode($sourceSlug),
-                (string) $gapMicroseconds,
-                (string) $ttlMilliseconds,
-                (string) $maximumWaitMicroseconds,
-            ],
             1,
+            'javmeta:source-gap:start:' . $lane . ':' . rawurlencode($sourceSlug),
+            (string) $gapMicroseconds,
+            (string) $ttlMilliseconds,
+            (string) $maximumWaitMicroseconds,
         );
 
         if (! is_numeric($wait) || $wait < -1) {
