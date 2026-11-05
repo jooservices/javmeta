@@ -1,6 +1,7 @@
-import { esc } from '../util.js';
+import { esc, fold } from '../util.js';
 import { head, ic } from '../components.js';
 import { admin, send } from '../api.js';
+import { askConfirm } from '../confirm.js';
 import { applyTheme, applyDensity, currentTheme, currentDensity } from '../theme.js';
 
 const shortcutMod = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? '⌘' : 'Ctrl';
@@ -9,12 +10,17 @@ const KEYS = [[`${shortcutMod}+K hoặc /`, 'Tìm kiếm'], ['t', 'Đổi sáng/
 /* Proposal: the long page becomes tabs; each tab holds the related groups as sections. */
 const TABS = [
   ['personal', 'Cá nhân', 'user', null],
-  ['crawl', 'Crawl & hàng đợi', 'spider', ['queue', 'worker', 'browser', 'retry', 'crawl', 'cleanup', 'timeouts']],
+  ['crawl', 'Thu thập & hàng đợi', 'spider', ['queue', 'worker', 'browser', 'retry', 'crawl', 'cleanup', 'timeouts']],
   ['notify', 'Thông báo & báo cáo', 'bell', ['alerts', 'telegram', 'report', 'follow_notifications']],
   ['health', 'Giám sát & sao lưu', 'clock', ['readiness', 'observability', 'stats', 'startup_health', 'backup']],
   ['search', 'Tìm kiếm & AI', 'search', ['search', 'ai', 'normalization']],
   ['media', 'Thư viện & media', 'film', ['library', 'downloads', 'files', 'media', 'capture', 'dataset']],
   ['system', 'Hệ thống & bảo mật', 'gear', ['domains', 'ui_security']],
+];
+const CRAWL_SUBS = [
+  ['queue', 'Hàng đợi', ['queue', 'cleanup']],
+  ['worker', 'Worker & trình duyệt', ['worker', 'browser', 'retry']],
+  ['loop', 'Vòng lặp thu thập', ['crawl', 'timeouts']],
 ];
 const tabStore = { get: () => { try { return sessionStorage.getItem('settings-tab'); } catch { return null; } }, set: v => { try { sessionStorage.setItem('settings-tab', v); } catch { /* ignore */ } } };
 
@@ -28,7 +34,7 @@ export default {
     const known = new Set(TABS.flatMap(t => t[3] || []));
     const pane = (id, inner) => `<section class="pane" data-pane="${id}" ${id === active ? '' : 'hidden'}>${inner}</section>`;
     const tabs = `<div class="tabs" role="tablist" style="margin-bottom:12px">${TABS.map(t => `<button type="button" class="tab ${t[0] === active ? 'on' : ''}" role="tab" data-tab="${t[0]}">${ic(t[2])}${t[1]}</button>`).join('')}</div>`;
-    const html = `<div class="wrap">${head('Cài đặt', 'chia theo nhóm; lưu từng mục')}${tabs}
+    const html = `<div class="wrap">${head('Cài đặt', 'chia theo nhóm; lưu từng mục')}<label class="f" style="max-width:360px"><span>Lọc cài đặt</span><input type="search" data-settings-filter placeholder="Tên hoặc khoá…" aria-label="Lọc cài đặt" autocomplete="off"></label>${tabs}
       ${pane('personal', `<div class="grid g2">
       <div class="panel"><div class="hd"><h2>Giao diện</h2></div>
         ${row('Chủ đề', 'Tối là mặc định', `<div class="seg">${['dark', 'light', 'system'].map(t => `<button class="${theme === t ? 'on' : ''}" data-act="settheme" data-v="${t}">${{ dark: 'Tối', light: 'Sáng', system: 'Hệ thống' }[t]}</button>`).join('')}</div>`)}
@@ -36,14 +42,24 @@ export default {
       <div class="panel"><div class="hd"><h2>Hệ thống</h2></div>
         ${row('Thông báo', 'Sửa mẫu, xem trước và phục hồi lịch sử thông báo', `<a class="btn sm" href="#/settings/notifications">${ic('edit')}Quản lý mẫu</a>`)}
         ${row('Báo cáo định kỳ', 'Xem trước, chỉnh lịch và gửi báo cáo Telegram.', `<a class="btn sm" href="#/settings/report">${ic('send')}Mở Báo cáo</a>`)}
-        ${row('Bảng điều khiển vận hành', 'Số liệu crawl và hàng đợi', `<a class="btn sm" href="${esc(document.querySelector('meta[name=command-center-url]')?.content || '/ops')}">${ic('ext')}Mở Command Center</a>`)}
+        ${row('Bảng điều khiển vận hành', 'Số liệu thu thập và hàng đợi', `<a class="btn sm" href="${esc(document.querySelector('meta[name=command-center-url]')?.content || '/ops')}">${ic('ext')}Mở vận hành</a>`)}
         ${row('Đăng xuất', 'Kết thúc phiên của chủ sở hữu', `<form method="post" action="/logout" class="logout-form"><input type="hidden" name="_token" value="${esc(document.querySelector('meta[name=csrf-token]')?.content || '')}"><button class="btn sm" type="submit">${ic('logout')}Đăng xuất</button></form>`)}
         ${row('API và MCP', 'Cùng dữ liệu cho các công cụ AI', '<span class="chip ok">/api/v1</span>')}</div>
       <div class="panel" style="grid-column:1/-1"><div class="hd"><h2>Phím tắt</h2></div><div class="bd"><dl class="kv" style="grid-template-columns:130px 1fr">${KEYS.map(k => `<dt><kbd>${k[0]}</kbd></dt><dd>${k[1]}</dd>`).join('')}</dl></div></div></div></div>`)}
-      ${sys ? TABS.filter(t => t[3]).map(t => pane(t[0], systemPanels(sys, t[0] === 'system' ? [...t[3], ...Object.keys(sys.groups).filter(g => !known.has(g))] : t[3]))).join('') : ''}</div>`;
+      ${sys ? TABS.filter(t => t[3]).map(t => pane(t[0], t[0] === 'crawl' ? crawlPanels(sys, t[3]) : systemPanels(sys, t[0] === 'system' ? [...t[3], ...Object.keys(sys.groups).filter(g => !known.has(g))] : t[3]))).join('') : ''}</div>`;
     return {
       html,
-      mount: root => { mountSystem(root); root.addEventListener('click', e => {
+      mount: root => { mountSystem(root); mountSettingsFilter(root); root.querySelector('.logout-form')?.addEventListener('submit', async e => {
+        e.preventDefault();
+        if (await askConfirm({ title: 'Đăng xuất', body: 'Kết thúc phiên chủ sở hữu trên máy này?', confirmLabel: 'Đăng xuất', danger: true })) e.target.submit();
+      }); root.addEventListener('click', e => {
+        const sub = e.target.closest('[data-subtab]');
+        if (sub) {
+          const host = sub.closest('[data-pane]');
+          host.querySelectorAll('[data-subtab]').forEach(b => b.classList.toggle('on', b === sub));
+          host.querySelectorAll('[data-subpane]').forEach(p => { p.hidden = p.dataset.subpane !== sub.dataset.subtab; });
+          return;
+        }
         const tab = e.target.closest('[data-tab]');
         if (tab) { tabStore.set(tab.dataset.tab); root.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('on', b === tab)); root.querySelectorAll('[data-pane]').forEach(p => { p.hidden = p.dataset.pane !== tab.dataset.tab; }); return; }
         const t = e.target.closest('[data-act]'); if (!t) return;
@@ -70,13 +86,46 @@ const input = r => {
   return `<input ${num ? `type="number" step="${r.type === 'float' ? '0.05' : '1'}"` : 'type="text"'} id="${id}" data-key="${esc(r.key)}" data-type="${r.type}" value="${esc(Array.isArray(r.value) ? r.value.join(',') : (r.value ?? ''))}" ${r.min != null ? `min="${r.min}"` : ''} ${r.max != null ? `max="${r.max}"` : ''} style="min-width:140px">`;
 };
 
+function crawlPanels(sys, groups) {
+  const used = new Set(CRAWL_SUBS.flatMap(s => s[2]));
+  const extra = groups.filter(g => !used.has(g));
+  const subs = extra.length ? [...CRAWL_SUBS, ['more', 'Khác', extra]] : CRAWL_SUBS;
+  return `<div class="tabs" role="tablist" data-subtabs="crawl" style="margin-bottom:12px">${subs.map((s, i) => `<button type="button" class="tab ${i === 0 ? 'on' : ''}" data-subtab="${s[0]}">${s[1]}</button>`).join('')}</div>`
+    + subs.map((s, i) => `<div data-subpane="${s[0]}" ${i === 0 ? '' : 'hidden'}>${systemPanels(sys, s[2])}</div>`).join('');
+}
+
+function mountSettingsFilter(root) {
+  const input = root.querySelector('[data-settings-filter]');
+  if (!input) return;
+  input.addEventListener('input', () => {
+    const q = fold(input.value.trim());
+    root.querySelectorAll('[data-settings-row]').forEach(row => {
+      const hay = fold((row.textContent || '') + ' ' + (row.dataset.settingsRow || ''));
+      row.hidden = !!(q && !hay.includes(q));
+    });
+    root.querySelectorAll('[data-group]').forEach(sec => {
+      const any = [...sec.querySelectorAll('[data-settings-row]')].some(r => !r.hidden);
+      sec.hidden = !!(q && !any);
+    });
+    if (!q) {
+      root.querySelectorAll('[data-subpane]').forEach((p, i) => { p.hidden = i !== 0; });
+      return;
+    }
+    root.querySelectorAll('[data-pane]').forEach(pane => {
+      pane.querySelectorAll('[data-subpane]').forEach(p => {
+        p.hidden = ![...p.querySelectorAll('[data-settings-row]')].some(r => !r.hidden);
+      });
+    });
+  });
+}
+
 /* every feature switch and operational value, stored in the database; grouped, saved per group */
 function systemPanels(sys, only) {
   const byGroup = {};
   sys.settings.forEach(r => { (byGroup[r.group] ||= []).push(r); });
   return '<div class="muted" style="margin-bottom:10px"><span class="chip ok">lưu trong cơ sở dữ liệu</span> Sau khi lưu, mỗi mục hiển thị thời gian áp dụng dự kiến.</div>' + '<div class="section-stack">' +
     Object.entries(sys.groups).filter(([g]) => byGroup[g] && (!only || only.includes(g))).map(([g, title]) => `<div class="section" data-group="${esc(g)}"><div class="hd"><h2>${esc(title)}</h2><span class="sp"></span><span class="muted" data-msg></span><button class="btn sm pri" data-save="${esc(g)}">${ic('save')}Lưu</button></div>` +
-      byGroup[g].map(r => `<div class="row-i" style="align-items:flex-start;flex-wrap:wrap"><div class="grow" style="min-width:220px"><b>${esc(r.label)}</b> ${r.source === 'database' ? '<span class="chip ok">DB</span>' : r.source === 'environment' ? '<span class="chip warn">env chuyển đổi</span>' : '<span class="chip warn">mặc định</span>'}${r.apply_after_seconds > 0 ? ` <span class="chip">áp dụng sau tối đa ${r.apply_after_seconds} giây</span>` : ''}${r.restart ? ` <span class="chip">khởi động lại ${esc(r.restart)}</span>` : ''}<div class="muted">${esc(r.description)}</div>${r.warning ? `<div class="err" role="alert">${esc(r.warning)}</div>` : ''}</div><div>${input(r)}</div></div>`).join('') + '</div>').join('') + '</div>';
+      byGroup[g].map(r => `<div class="row-i" data-settings-row="${esc(r.key)}" style="align-items:flex-start"><div class="grow"><b>${esc(r.label)}</b> ${r.source === 'database' ? '<span class="chip ok">DB</span>' : r.source === 'environment' ? '<span class="chip warn">env chuyển đổi</span>' : '<span class="chip warn">mặc định</span>'}${r.apply_after_seconds > 0 ? ` <span class="chip">áp dụng sau tối đa ${r.apply_after_seconds} giây</span>` : ''}${r.restart ? ` <span class="chip">khởi động lại ${esc(r.restart)}</span>` : ''}<div class="muted">${esc(r.description)}</div>${r.warning ? `<div class="err" role="alert">${esc(r.warning)}</div>` : ''}</div><div>${input(r)}</div></div>`).join('') + '</div>').join('') + '</div>';
 }
 
 function mountSystem(root) {
