@@ -32,12 +32,14 @@ final class ApiKeyControllerTest extends TestCase
         $response = $this->postJson('/api/v1/admin/keys', [
             'label' => fake()->words(2, true),
             'abuse_rpm' => 7,
+            'scopes' => ['movies'],
         ], [
             'X-Owner-Token' => $ownerToken,
         ]);
 
         $response->assertCreated()
             ->assertJsonPath('data.abuse_rpm', 7)
+            ->assertJsonPath('data.scopes', ['movies'])
             ->assertJsonPath('data.status', ApiKey::STATUS_ACTIVE)
             ->assertJsonStructure(['data' => ['id', 'prefix', 'plaintext']]);
 
@@ -82,6 +84,7 @@ final class ApiKeyControllerTest extends TestCase
 
         $created = $this->postJson('/api/v1/admin/keys', [
             'label' => fake()->words(2, true),
+            'scopes' => ['movies'],
         ], ['X-Owner-Token' => $ownerToken])->assertCreated();
         $id = (int) $created->json('data.id');
         $this->deleteJson('/api/v1/admin/keys/' . $id, [], ['X-Owner-Token' => $ownerToken])->assertNoContent();
