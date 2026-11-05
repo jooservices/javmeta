@@ -1,23 +1,45 @@
+# Selected rules adapted from samber/awesome-prometheus-alerts Blackbox exporter rules (CC BY 4.0):
+# https://samber.github.io/awesome-prometheus-alerts/rules/basic-resource-monitoring/blackbox/
 groups:
   - name: blackbox-exporter
     rules:
-      - alert: BlackboxProbeFailed
+      - alert: BlackboxHttpProbeFailed
         expr: probe_success{job="blackbox_http"} == 0
         for: 2m
         labels:
           severity: warning
         annotations:
           value: "{{ $value }}"
-          summary: HTTP or HTTPS probe failed for {{ $labels.instance }}
-          description: "Blackbox probe failed for at least two minutes.\n  VALUE = {{ $value }}"
+          summary: LAN HTTP probe failed for {{ $labels.instance }}
+          description: "The service endpoint failed its LAN HTTP probe for at least two minutes.\n  VALUE = {{ $value }}"
           runbook: https://wiki.jooservices.local/runbooks/monitoring#blackbox
-      - alert: BlackboxTlsCertificateExpiresSoon
-        expr: 'probe_success{job="blackbox_http",instance=~"https://.*"} == 1 and (probe_ssl_earliest_cert_expiry{job="blackbox_http",instance=~"https://.*"} - time()) < 14 * 24 * 60 * 60'
-        for: 1h
+      - alert: BlackboxTlsProbeFailed
+        expr: probe_success{job="blackbox_tls"} == 0
+        for: 2m
         labels:
           severity: warning
         annotations:
           value: "{{ $value }}"
-          summary: TLS certificate expires within 14 days for {{ $labels.instance }}
-          description: "The probed TLS certificate is near expiration.\n  VALUE = {{ $value }} seconds"
+          summary: TLS edge probe failed for {{ $labels.instance }}
+          description: "The HTTPS endpoint failed its TLS edge probe for at least two minutes.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/monitoring#blackbox
+      - alert: BlackboxTlsCertificateExpiresSoon
+        expr: 'probe_success{job="blackbox_tls"} == 1 and 3 <= round((last_over_time(probe_ssl_earliest_cert_expiry{job="blackbox_tls"}[10m]) - time()) / 86400, 0.1) < 20'
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          value: "{{ $value }}"
+          summary: TLS certificate expires within 20 days for {{ $labels.instance }}
+          description: "The probed TLS certificate is near expiration.\n  VALUE = {{ $value }} days"
+          runbook: https://wiki.jooservices.local/runbooks/monitoring#tls-expiry
+      - alert: BlackboxTlsCertificateExpiresVerySoon
+        expr: 'probe_success{job="blackbox_tls"} == 1 and 0 <= round((last_over_time(probe_ssl_earliest_cert_expiry{job="blackbox_tls"}[10m]) - time()) / 86400, 0.1) < 3'
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          value: "{{ $value }}"
+          summary: TLS certificate expires within 3 days for {{ $labels.instance }}
+          description: "The probed TLS certificate is near expiration.\n  VALUE = {{ $value }} days"
           runbook: https://wiki.jooservices.local/runbooks/monitoring#tls-expiry
