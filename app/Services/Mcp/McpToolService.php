@@ -6,10 +6,10 @@ namespace App\Services\Mcp;
 
 use App\Exceptions\InvalidFilterException;
 use App\Exceptions\MovieNotFoundException;
-use App\Http\Controllers\CatalogController;
+use App\Data\Catalog\CatalogQuery;
 use App\Http\Controllers\MovieCalendarController;
 use App\Http\Controllers\MovieRelatedController;
-use App\Http\Controllers\SuggestController;
+use App\Data\Suggest\SuggestQuery;
 use Illuminate\Http\JsonResponse;
 use App\Http\Resources\MovieResource;
 use App\Http\Resources\MovieSummaryResource;
@@ -19,6 +19,8 @@ use App\Models\Movie;
 use App\Models\Performer;
 use App\Repositories\PerformerRepository;
 use App\Services\Crawl\CrawlStatusService;
+use App\Services\Catalog\CatalogService;
+use App\Services\Suggest\SuggestService;
 use App\Services\Health\SystemStatusService;
 use App\Services\Miss\ConsumerMissReporter;
 use App\Services\Movies\MovieLookupService;
@@ -41,6 +43,7 @@ final class McpToolService
         private readonly ConsumerMissReporter $misses,
         private readonly CrawlStatusService $crawlStatusService,
         private readonly SystemStatusService $systemStatusService,
+        private readonly CatalogService $catalogService,
     ) {}
 
     /** @return list<array<string, mixed>> */
@@ -239,8 +242,8 @@ final class McpToolService
                 'lookup_performers' => $this->lookupPerformers($arguments),
                 'get_performer' => $this->getPerformer($arguments),
                 'get_counts' => $this->getCounts($arguments),
-                'get_catalog' => $this->viaController(fn() => app(CatalogController::class)->index($this->request($arguments), (string) ($arguments['kind'] ?? ''))),
-                'suggest' => $this->viaController(fn() => app(SuggestController::class)->index($this->request($arguments))),
+                'get_catalog' => $this->getCatalog($arguments),
+                'suggest' => $this->suggest($arguments),
                 'get_related_movies' => $this->viaController(fn() => app(MovieRelatedController::class)->show((string) ($arguments['code'] ?? ''), $this->movieLookup, $this->movieSearch)),
                 'get_release_calendar' => $this->viaController(fn() => app(MovieCalendarController::class)->index($this->request($arguments))),
                 'crawl_status' => $this->crawlStatus(),
@@ -263,6 +266,43 @@ final class McpToolService
             throw new InvalidFilterException('Scene q must be 3–200 characters and per_page 1–50.');
         }
         return ['items' => app(\App\Services\Media\SceneSearchService::class)->search($q, $limit)];
+    }
+
+    /** @param array<string, mixed> $arguments @return array{items: array<string, mixed>, meta: array{}} */
+    private function suggest(array $arguments): array
+    {
+        $query = SuggestQuery::from((string) ($arguments['q'] ?? ''), (int) ($arguments['limit'] ?? 5));
+
+        return ['items' => app(SuggestService::class)->suggest($query)->toArray(), 'meta' => []];
+    }
+
+    /** @param array<string, mixed> $arguments @return array<string, mixed> */
+    private function getCatalog(array $arguments): array
+    {
+        $request = $this->request($arguments);
+        $kind = (string) ($arguments['kind'] ?? '');
+        if (! in_array($kind, CatalogQuery::KINDS, true)) {
+            throw new InvalidFilterException('Unknown catalog.');
+        }
+
+        $query = trim((string) $request->query('q', ''));
+        $sort = (string) $request->query('sort', $kind === 'years' ? 'name' : 'movie_count');
+        $perPage = (int) $request->query('per_page', 50);
+        $page = max(1, (int) $request->query('page', 1));
+        if (! in_array($sort, CatalogQuery::SORTS, true) || $perPage < 1 || $perPage > 200) {
+            throw new InvalidFilterException('Invalid sort or per_page.', ['sort' => ['movie_count or name'], 'per_page' => ['1 to 200']]);
+        }
+
+        $result = $this->catalogService->index(new CatalogQuery(
+            $kind,
+            $query,
+            $sort,
+            $perPage,
+            $page,
+            $request->boolean('include_unknown'),
+        ));
+
+        return ['items' => $result->items, 'meta' => ['pagination' => $result->pagination]];
     }
 
     /** @param array<string, mixed> $arguments */
