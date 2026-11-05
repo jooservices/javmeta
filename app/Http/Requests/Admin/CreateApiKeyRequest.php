@@ -19,8 +19,17 @@ final class CreateApiKeyRequest extends FormRequest
         return [
             'label' => ['required', 'string', 'max:255'],
             'abuse_rpm' => ['sometimes', 'integer', 'min:1', 'max:10000'],
-            'scopes' => ['sometimes', 'nullable', 'array'],
-            'scopes.*' => ['string', 'in:' . implode(',', \App\Models\ApiKey::SCOPES)],
+            'scopes' => ['required', 'array', 'min:1'],
+            'scopes.*' => ['required', 'string', 'in:' . implode(',', \App\Models\ApiKey::SCOPES)],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public function messages(): array
+    {
+        return [
+            'scopes.required' => 'Chọn ít nhất một quyền.',
+            'scopes.min' => 'Chọn ít nhất một quyền.',
         ];
     }
 }

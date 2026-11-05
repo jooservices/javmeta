@@ -34,7 +34,7 @@ final class ApiKeyController extends BaseApiController
         $created = $apiKeyService->create(
             (string) $validated['label'],
             (int) ($validated['abuse_rpm'] ?? 60),
-            isset($validated['scopes']) ? array_values(array_unique($validated['scopes'])) : null,
+            array_values(array_unique($validated['scopes'])),
         );
 
         $observability->emitOps('admin_api_key', [
