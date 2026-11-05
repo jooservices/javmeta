@@ -55,10 +55,10 @@ const ROUTES = [
 ];
 
 const NAV = [
-  ['Khám phá', [['home', 'Discover', 'home', '#/'], ['search', 'Tìm kiếm', 'search', '#/search'], ['stats', 'Thống kê', 'chart', '#/stats']]],
-  ['Danh mục', [['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers'], ['bio', 'Hồ sơ diễn viên', 'user', '#/bio'], ['smart-new', 'Mới cập nhật', 'film', '#/movies?sort=update_date'], ['catalog-genres', 'Thể loại', 'tag', '#/catalog/genres'], ['catalog-makers', 'Maker', 'building', '#/catalog/makers'], ['catalog-series', 'Series', 'folder', '#/catalog/series'], ['catalog-labels', 'Label', 'layers', '#/catalog/labels'], ['catalog-years', 'Năm', 'cal', '#/catalog/years'], ['calendar', 'Lịch phát hành', 'cal', '#/calendar']]],
-  ['Của tôi', [['me-favourite', 'Yêu thích', 'tag', '#/me/favourite'], ['me-watch_later', 'Xem sau', 'cal', '#/me/watch_later'], ['me-seen', 'Đã xem', 'film', '#/me/seen'], ['feed', 'Theo dõi', 'user', '#/feed'], ['library', 'Thư viện', 'layers', '#/library'], ['downloads', 'Tải về', 'disk', '#/downloads'], ['media', 'Media', 'film', '#/media']]],
-  ['Công cụ', [['crawl', 'Crawl & nguồn', 'spider', '#/crawl'], ['ops', 'Vận hành (Command Center)', 'chart', document.querySelector('meta[name=command-center-url]')?.content || '/ops'], ['admin', 'Quản trị', 'gear', '#/admin'], ['settings', 'Cài đặt', 'gear', '#/settings']]],
+  ['Khám phá', [['home', 'Khám phá', 'home', '#/'], ['search', 'Tìm kiếm', 'search', '#/search'], ['stats', 'Thống kê', 'chart', '#/stats']]],
+  ['Danh mục', [['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers'], ['bio', 'Hồ sơ diễn viên', 'user', '#/bio'], ['smart-new', 'Mới cập nhật', 'film', '#/movies?sort=update_date'], ['catalog-genres', 'Thể loại', 'tag', '#/catalog/genres'], ['catalog-makers', 'Hãng', 'building', '#/catalog/makers'], ['catalog-series', 'Loạt phim', 'folder', '#/catalog/series'], ['catalog-labels', 'Nhãn', 'layers', '#/catalog/labels'], ['catalog-years', 'Năm', 'cal', '#/catalog/years'], ['calendar', 'Lịch phát hành', 'cal', '#/calendar']]],
+  ['Của tôi', [['me-favourite', 'Yêu thích', 'tag', '#/me/favourite'], ['me-watch_later', 'Xem sau', 'cal', '#/me/watch_later'], ['me-seen', 'Đã xem', 'film', '#/me/seen'], ['feed', 'Theo dõi', 'user', '#/feed'], ['library', 'Thư viện', 'layers', '#/library'], ['downloads', 'Tải về', 'disk', '#/downloads'], ['media', 'Tệp media', 'film', '#/media']]],
+  ['Công cụ', [['crawl', 'Thu thập & nguồn', 'spider', '#/crawl'], ['ops', 'Vận hành', 'chart', document.querySelector('meta[name=command-center-url]')?.content || '/ops'], ['admin', 'Quản trị', 'gear', '#/admin'], ['settings', 'Cài đặt', 'gear', '#/settings']]],
 ];
 
 let cleanup = null;
@@ -67,7 +67,7 @@ const guestMode = document.body.dataset.guestMode === 'true';
 const OWNER_ONLY_NAV_IDS = new Set(['me-favourite', 'me-watch_later', 'me-seen', 'feed', 'library', 'downloads', 'media', 'ops', 'admin', 'settings']);
 
 function guestLoginPrompt(page) {
-  const pageNames = { admin: 'Quản trị', settings: 'Cài đặt', library: 'Thư viện', downloads: 'Tải về', media: 'Media', feed: 'Theo dõi' };
+  const pageNames = { admin: 'Quản trị', settings: 'Cài đặt', library: 'Thư viện', downloads: 'Tải về', media: 'Tệp media', feed: 'Theo dõi' };
   const label = pageNames[page] || page;
   return `<div class="wrap"><section class="panel guest-login-prompt"><div class="bd"><h1>Đăng nhập để dùng tính năng này</h1><p>${label} chỉ dành cho chủ sở hữu đã đăng nhập.</p><a class="btn pri" href="/login">Đăng nhập</a></div></section></div>`;
 }
@@ -99,8 +99,8 @@ function drawShell(top) {
     : NAV;
   $('#side').innerHTML = '<div class="brand"><i>X</i>XCrawler</div>' + groups.map(g => `<div class="nav-h">${g[0]}</div>` + g[1].map(n => `<a class="nav ${top === n[0] ? 'on' : ''}" href="${n[3]}" style="text-decoration:none">${ic(n[2])}<span>${n[1]}</span></a>`).join('')).join('') + '<div class="side-foot">JavMeta API · dữ liệu thật</div>';
   const bn = guestMode
-    ? [['home', 'Discover', 'home', '#/'], ['search', 'Tìm', 'search', '#/search'], ['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers']]
-    : [['home', 'Discover', 'home', '#/'], ['search', 'Tìm', 'search', '#/search'], ['movies', 'Phim', 'film', '#/movies'], ['me-favourite', 'Yêu thích', 'tag', '#/me/favourite'], ['settings', 'Cài đặt', 'gear', '#/settings']];
+    ? [['home', 'Khám phá', 'home', '#/'], ['search', 'Tìm', 'search', '#/search'], ['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers']]
+    : [['home', 'Khám phá', 'home', '#/'], ['search', 'Tìm', 'search', '#/search'], ['movies', 'Phim', 'film', '#/movies'], ['me-favourite', 'Yêu thích', 'tag', '#/me/favourite'], ['settings', 'Cài đặt', 'gear', '#/settings']];
   $('#bnav').innerHTML = bn.map(n => `<a class="${top === n[0] ? 'on' : ''}" href="${n[3]}">${ic(n[2])}${n[1]}</a>`).join('');
   $('.top .menu').innerHTML = ic('menu');
 }
@@ -117,7 +117,7 @@ async function render() {
     view.innerHTML = guestLoginPrompt(page);
     return;
   }
-  if (!r.view) { view.innerHTML = '<div class="wrap"><div class="empty">Trang không tồn tại.<a class="btn" href="#/">Về Discover</a></div></div>'; return; }
+  if (!r.view) { view.innerHTML = '<div class="wrap"><div class="empty">Trang không tồn tại.<a class="btn" href="#/">Về Khám phá</a></div></div>'; return; }
   view.innerHTML = loadingBox();
   try {
     await loadDisk(disk);
@@ -145,8 +145,8 @@ async function omniDraw() {
     OM.items = [
       ...(sg.movies || []).map(x => ({ g: 'Phim', href: href.movie(x.code), label: `${codeLabel(x.code)} · ${x.title || ''}`, sub: x.maker || '' })),
       ...(sg.performers || []).map(x => ({ g: 'Diễn viên', href: href.performer(x.id), label: x.name || `#${x.id}`, sub: `#${x.id}`, p: { id: x.id, name_romaji: x.name } })),
-      ...(sg.makers || []).map(x => ({ g: 'Maker', href: href.facet('maker', x.name), label: x.name, sub: `${fmt(x.movie_count)} phim` })),
-      ...(sg.series || []).map(x => ({ g: 'Series', href: href.facet('series', x.name), label: x.name, sub: `${fmt(x.movie_count)} phim` })),
+      ...(sg.makers || []).map(x => ({ g: 'Hãng', href: href.facet('maker', x.name), label: x.name, sub: `${fmt(x.movie_count)} phim` })),
+      ...(sg.series || []).map(x => ({ g: 'Loạt phim', href: href.facet('series', x.name), label: x.name, sub: `${fmt(x.movie_count)} phim` })),
       { g: 'Tìm kiếm', href: href.search(q), label: `Tìm “${q}” trong mọi thứ`, sub: 'Enter' },
     ];
     OM.i = 0;

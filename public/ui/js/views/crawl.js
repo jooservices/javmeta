@@ -26,7 +26,7 @@ export default {
         ${stat(fmt(s.counts.performers), 'diễn viên', '+' + fmt(s.ingest.performers_1h) + ' / giờ')}
         ${stat(`${count('ok')} / ${rows.length}`, 'nguồn ổn', count('bad') ? count('bad') + ' hỏng' : '')}
         ${stat(fmt(s.queue.by_status.pending || 0), 'việc chờ', fmt(s.queue.by_status.failed || 0) + ' lỗi')}</div></div>
-      ${rows.length === 0 ? emptyBox('Chưa có nguồn', 'Chưa bật nguồn crawl nào. Bật nguồn trong Cài đặt → Crawl & hàng đợi.', a('#/settings', 'Mở Cài đặt', 'btn')) : `<div class="panel tbl-wrap"><table class="crawl-table"><thead><tr><th>Nguồn</th><th>Trạng thái</th><th>Làn</th><th>Khoảng nghỉ</th><th>Chờ</th><th>Đang chạy</th><th>Xong</th><th>Lỗi</th><th>Thành công cuối</th><th>Lỗi cuối</th></tr></thead><tbody>
+      ${rows.length === 0 ? emptyBox('Chưa có nguồn', 'Chưa bật nguồn thu thập nào. Bật nguồn trong Cài đặt → Thu thập & hàng đợi.', a('#/settings', 'Mở Cài đặt', 'btn')) : `<div class="panel tbl-wrap"><table class="crawl-table"><thead><tr><th>Nguồn</th><th>Trạng thái</th><th>Làn</th><th>Khoảng nghỉ</th><th>Chờ</th><th>Đang chạy</th><th>Xong</th><th>Lỗi</th><th>Thành công cuối</th><th>Lỗi cuối</th></tr></thead><tbody>
       ${rows.map((r, i) => { const st = states[i]; return `<tr><td><b>${esc(r.name)}</b><div class="dim mono">${esc(r.slug)}</div></td>
         <td><span class="chip ${st.chip}"><span class="dot ${st.dot}"></span> ${st.label}</span></td>
         <td>${r.lane === 'browser' ? 'Trình duyệt' : r.lane === 'direct' ? 'Trực tiếp' : '—'}</td>
@@ -35,7 +35,7 @@ export default {
         <td class="muted">${r.last_success_at ? ago(r.last_success_at) : '—'}</td>
         <td class="muted"${!guestMode && r.last_error ? ` title="${esc(r.last_error)}"` : ''}>${guestMode ? (r.has_recent_failure ? 'Lỗi gần đây' : '—') : (r.last_error ? esc(r.last_error.slice(0, 70)) + (r.last_error.length > 70 ? '…' : '') + '<div class="dim">' + ago(r.last_error_at) + '</div>' : '—')}</td></tr>`; }).join('')}
       </tbody></table></div>
-      <p class="dim">Bật hay tắt một nguồn trong Cài đặt → Crawl & hàng đợi; màn hình này chỉ đọc. Khoảng nghỉ tự tăng khi site chặn hoặc giới hạn tốc độ.</p>`}</div>`;
+      <p class="dim">Bật hay tắt một nguồn trong Cài đặt → Thu thập & hàng đợi; màn hình này chỉ đọc. Khoảng nghỉ tự tăng khi site chặn hoặc giới hạn tốc độ.</p>`}</div>`;
     return { html, mount: root => { /* refreshed by the app timer */ } };
   },
 };

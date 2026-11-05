@@ -18,8 +18,8 @@ export default {
     const requestedTab = new URLSearchParams(location.hash.split('?')[1] || '').get('tab') || 'meta';
     const tab = requestedTab;
     const tabs = guestMode
-      ? [['meta', 'Metadata'], ['codes', 'Mã & nguồn']]
-      : [['meta', 'Metadata'], ['media', 'Liên kết & media'], ['codes', 'Mã & nguồn']];
+      ? [['meta', 'Thông tin'], ['codes', 'Mã & nguồn']]
+      : [['meta', 'Thông tin'], ['media', 'Liên kết & media'], ['codes', 'Mã & nguồn']];
     const tabsHtml = `<div class="tabs">${tabs.map(t => `<a class="tab ${tab === t[0] ? 'on' : ''}" href="#/movie/${encodeURIComponent(m.code)}?tab=${t[0]}">${t[1]}</a>`).join('')}</div>`;
     let content = '';
     if (tab === 'meta') {
@@ -29,9 +29,9 @@ export default {
         ['Tên (JP)', m.title_jp ? esc(m.title_jp) : notKnown()],
         ['Phát hành', m.release_date ? `<span class="mono">${esc(m.release_date)}</span> ${a(href.facet('year', m.release_date.slice(0, 4)), esc(m.release_date.slice(0, 4)), 'chip')}` : notKnown()],
         ['Thời lượng', m.runtime_minutes ? `<span class="mono">${m.runtime_minutes} phút</span>` : notKnown()],
-        ['Maker', m.maker ? facetLink('maker', m.maker) : notKnown()],
-        ['Label', m.label ? facetLink('label', m.label) : notKnown()],
-        ['Series', m.series ? facetLink('series', m.series) : '<span class="dim">không thuộc series</span>'],
+        ['Hãng', m.maker ? facetLink('maker', m.maker) : notKnown()],
+        ['Nhãn', m.label ? facetLink('label', m.label) : notKnown()],
+        ['Loạt phim', m.series ? facetLink('series', m.series) : '<span class="dim">không thuộc loạt phim</span>'],
         ['Kiểm duyệt', m.censored === null ? notKnown() : (m.censored ? 'Có che' : 'Không che')],
         ['Điểm cộng đồng', m.community_score !== null ? `<span class="mono">★ ${esc(m.community_score)}</span>` : notKnown()],
         ['Độ đầy đủ', `<span class="mono">tầng ${esc(m.completeness_tier ?? '—')}</span>`],
