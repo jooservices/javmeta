@@ -78,6 +78,9 @@ final class SearchTest extends TestCase
         $performers = $this->getJson('/api/v1/search?q=' . urlencode('Aiko'), $headers)->assertOk();
         $this->assertNotEmpty($performers->json('data.performers'));
         $this->assertSame('none', $this->getJson('/api/v1/search?q=Aiko&understand=0', $headers)->json('data.interpretation.by'));
+        $totals = $this->getJson('/api/v1/search?q=' . urlencode('Sample Maker 03') . '&per_page=5', $headers)->assertOk();
+        $this->assertGreaterThan(count($totals->json('data.movies')), $totals->json('data.totals.movies'));
+        $this->assertArrayHasKey('used_vectors', $totals->json('data.interpretation'));
     }
 
     public function test_a_key_without_the_movies_scope_cannot_search(): void

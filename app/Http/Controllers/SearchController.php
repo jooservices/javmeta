@@ -33,6 +33,7 @@ final class SearchController extends BaseApiController
                 'movies' => MovieSummaryResource::collection($result['movies'])->resolve($request),
                 'performers' => PerformerSummaryResource::collection($result['performers'])->resolve($request),
                 'interpretation' => $result['interpretation'],
+                'totals' => $result['totals'],
             ];
         });
 

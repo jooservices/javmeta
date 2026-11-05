@@ -10,6 +10,7 @@ const countUp = root => root.querySelectorAll('.cu').forEach(e => {
   requestAnimationFrame(f);
 });
 const cu = n => `<span class="cu" data-to="${n}">0</span>`;
+const suggestionChips = genres => (genres || []).filter(g => g.movie_count > 0).slice(0, 4);
 
 export default {
   async render() {
@@ -24,9 +25,10 @@ export default {
       ]);
     } catch (e) { return { html: `<div class="wrap">${errorBox(e)}</div>` }; }
     const s = summary.data;
+    const chips = suggestionChips(genres.data);
     const html = `<div class="wrap">
       <div class="hero"><form class="bigq" id="hsearch"><input type="text" id="hsq" placeholder="Tìm phim, diễn viên, mã phim, thể loại…" autocomplete="off"><button class="btn pri" type="submit">Tìm</button></form>
-        <div class="chips"><span class="dim" style="line-height:20px">Gợi ý</span>${['Drama', 'Văn phòng', 'Du lịch', 'Học đường'].map(r => a(href.search(r), esc(r), 'chip')).join('')}</div></div>
+        ${chips.length ? `<div class="chips"><span class="dim" style="line-height:20px">Gợi ý</span>${chips.map(g => a(href.search(g.name), esc(g.name), 'chip')).join('')}</div>` : ''}</div>
       <div class="panel"><div class="grid g6" style="gap:0">
         <div class="stat"><b>${cu(s.counts.movies)}</b><span>phim trong kho</span><em>+${fmt(s.ingest.movies_24h)} trong 24 giờ</em></div>
         <div class="stat"><b>${cu(s.counts.performers)}</b><span>diễn viên</span><em>+${fmt(s.ingest.performers_24h)} trong 24 giờ</em></div>
