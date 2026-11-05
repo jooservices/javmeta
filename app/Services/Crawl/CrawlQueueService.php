@@ -581,13 +581,21 @@ final class CrawlQueueService
 
     public function reclaimStaleClaimed(int $timeoutSeconds): int
     {
+        $timeoutSeconds = max(1, $timeoutSeconds);
         $cutoff = now()->subSeconds($timeoutSeconds);
+        $unstartedCutoff = now()->subSeconds($this->unstartedClaimTimeoutSeconds($timeoutSeconds));
         $lostRows = [];
 
-        $reclaimed = DB::transaction(function () use ($cutoff, &$lostRows): int {
+        $reclaimed = DB::transaction(function () use ($cutoff, $unstartedCutoff, &$lostRows): int {
             $query = CrawlQueue::query()
                 ->where('status', CrawlQueue::STATUS_CLAIMED)
-                ->where('claimed_at', '<', $cutoff)
+                ->where(function (Builder $query) use ($cutoff, $unstartedCutoff): void {
+                    $query->where(function (Builder $started) use ($cutoff): void {
+                        $started->whereNotNull('started_at')->where('claimed_at', '<', $cutoff);
+                    })->orWhere(function (Builder $unstarted) use ($unstartedCutoff): void {
+                        $unstarted->whereNull('started_at')->where('claimed_at', '<', $unstartedCutoff);
+                    });
+                })
                 ->orderBy('id');
 
             if (DB::getDriverName() === 'pgsql') {
@@ -644,6 +652,19 @@ final class CrawlQueueService
         }
 
         return $reclaimed;
+    }
+
+    private function unstartedClaimTimeoutSeconds(int $configuredTimeout): int
+    {
+        $queueDepth = max(
+            1,
+            (int) config('javmeta_queues.depth_limit', 100),
+            (int) config('javmeta_queues.browser_depth_limit', 100),
+            (int) config('javmeta_queues.retry.depth_limit', 10),
+        );
+        $workerTimeout = max(1, (int) config('javmeta_queues.worker_timeout', 180));
+
+        return max($configuredTimeout, $queueDepth * $workerTimeout);
     }
 
     private function returnUnstartedClaimToPending(CrawlQueue $row): void

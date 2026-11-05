@@ -185,7 +185,7 @@ final class SentryReportingTest extends TestCase
             'status' => CrawlQueue::STATUS_CLAIMED,
             'attempts' => 0,
             'max_attempts' => 3,
-            'claimed_at' => now()->subHour(),
+            'claimed_at' => now()->subSeconds(18_001),
             'started_at' => null,
         ]);
 
