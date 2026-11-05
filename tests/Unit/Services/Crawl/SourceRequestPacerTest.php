@@ -14,7 +14,7 @@ final class SourceRequestPacerTest extends TestCase
     public function test_reserves_sequential_subsecond_start_slots_atomically(): void
     {
         $redis = Mockery::mock();
-        $redis->shouldReceive('eval')->times(3)->withArgs(static function (string $script, array $arguments, int $keyCount): bool {
+        $redis->shouldReceive('eval')->times(3)->withArgs(static function (string $script, int $keyCount, string ...$arguments): bool {
             return str_contains($script, 'local last = tonumber(redis.call(\'GET\', KEYS[1]))')
                 && str_contains($script, 'last + gap')
                 && $keyCount === 1

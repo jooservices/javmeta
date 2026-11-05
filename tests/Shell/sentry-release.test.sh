@@ -9,13 +9,13 @@ trap 'rm -rf "${TEST_TMP}"' EXIT INT TERM
 # shellcheck source=deploy/repository.sh
 source "${REPOSITORY_SCRIPT}"
 
-# A checkout gives the git short SHA.
+# A checkout gives the full deployed commit SHA.
 git init -q "${TEST_TMP}/app"
 git -C "${TEST_TMP}/app" -c user.name=test -c user.email=test@example.test commit -q --allow-empty -m "chore: Test"
 JAVMETA_APP_DIR="${TEST_TMP}/app"
 unset SENTRY_RELEASE
 export_sentry_release
-expected="$(git -C "${JAVMETA_APP_DIR}" rev-parse --short --verify HEAD)"
+expected="$(git -C "${JAVMETA_APP_DIR}" rev-parse --verify HEAD)"
 [[ "${SENTRY_RELEASE}" == "${expected}" ]] || { echo "SENTRY_RELEASE is ${SENTRY_RELEASE}, expected ${expected}" >&2; exit 1; }
 
 # A directory without git must stop the deployment instead of baking "unknown".

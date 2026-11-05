@@ -265,10 +265,12 @@ final class CrawlQueueService
 
     public function reclaimStaleClaimed(int $timeoutSeconds): int
     {
+        $timeoutSeconds = max(1, $timeoutSeconds);
         $cutoff = now()->subSeconds($timeoutSeconds);
+        $unstartedCutoff = now()->subSeconds($this->unstartedClaimTimeoutSeconds($timeoutSeconds));
         $lostRows = [];
 
-        $reclaimed = $this->queueRepository()->forEachStaleClaimed($cutoff, function (CrawlQueue $row) use (&$lostRows): void {
+        $reclaimed = $this->queueRepository()->forEachStaleClaimed($cutoff, $unstartedCutoff, function (CrawlQueue $row) use (&$lostRows): void {
             if ($row->started_at === null) {
                 $this->eventRepository()->record(
                     (string) $row->source_slug,
@@ -286,7 +288,6 @@ final class CrawlQueueService
                     'last_failed_at' => now(),
                 ]);
                 $lostRows[] = [$row->source_slug, $row->kind, 'Worker claim expired before the crawl row started.'];
-
                 return;
             }
 
@@ -306,6 +307,18 @@ final class CrawlQueueService
         return $reclaimed;
     }
 
+    private function unstartedClaimTimeoutSeconds(int $configuredTimeout): int
+    {
+        $queueDepth = max(
+            1,
+            (int) config('javmeta_queues.depth_limit', 100),
+            (int) config('javmeta_queues.browser_depth_limit', 100),
+            (int) config('javmeta_queues.retry.depth_limit', 10),
+        );
+        $workerTimeout = max(1, (int) config('javmeta_queues.worker_timeout', 180));
+
+        return max($configuredTimeout, $queueDepth * $workerTimeout);
+    }
     private function pacingWaitBudgetMicroseconds(): int
     {
         $workerTimeout = max(1, (int) config('javmeta_queues.worker_timeout', 180));

@@ -108,6 +108,7 @@ stop_line="$(grep -n '/usr/bin/systemctl stop' "$CALLS" | head -1 | cut -d: -f1)
 [[ -n "$refresh_line" && -n "$stop_line" ]] || fail 'deploy omitted systemd unit refresh or quiesce'
 (( startup_line < refresh_line && refresh_line < stop_line )) || fail 'unit refresh must follow staged health and precede unit stops'
 [[ "$(stat -c '%a' "$fixture/node/shared/.env")" == 640 ]] || fail 'unsafe env mode'
+grep -q "^SENTRY_RELEASE=\"$sha\"$" "$fixture/node/shared/.env" || fail 'deployed commit missing from SENTRY_RELEASE'
 ! grep -q '^JAVMETA_UI_LOGIN_REQUIRED=' "$fixture/node/shared/.env" || fail 'database-backed UI login setting leaked into env'
 [[ "$(stat -c '%a' "$fixture/node.credentials")" == 600 ]] || fail 'unsafe credentials mode'
 grep -q 'OWNER_PASSWORD=private-owner-password' "$fixture/node.credentials" || fail 'owner password not captured'

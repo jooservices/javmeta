@@ -420,11 +420,20 @@ final class CrawlQueueRepository extends BusinessQueryRepository
     }
 
     /** @param callable(CrawlQueue): void $handle */
-    public function forEachStaleClaimed(DateTimeInterface $cutoff, callable $handle): int
+    public function forEachStaleClaimed(DateTimeInterface $startedCutoff, DateTimeInterface $unstartedCutoff, callable $handle): int
     {
-        return DB::transaction(function () use ($cutoff, $handle): int {
+        return DB::transaction(function () use ($startedCutoff, $unstartedCutoff, $handle): int {
             /** @var Builder<CrawlQueue> $query */
-            $query = $this->newQuery()->where('status', CrawlQueue::STATUS_CLAIMED)->where('claimed_at', '<', $cutoff)->orderBy('id');
+            $query = $this->newQuery()
+                ->where('status', CrawlQueue::STATUS_CLAIMED)
+                ->where(static function (Builder $stale) use ($startedCutoff, $unstartedCutoff): void {
+                    $stale->where(static function (Builder $started) use ($startedCutoff): void {
+                        $started->whereNotNull('started_at')->where('claimed_at', '<', $startedCutoff);
+                    })->orWhere(static function (Builder $unstarted) use ($unstartedCutoff): void {
+                        $unstarted->whereNull('started_at')->where('claimed_at', '<', $unstartedCutoff);
+                    });
+                })
+                ->orderBy('id');
             if (DB::getDriverName() === 'pgsql') {
                 $query->lockForUpdate();
             }

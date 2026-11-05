@@ -83,7 +83,7 @@ final class CrawlQueueServiceTest extends TestCase
             'locked_by' => null,
         ]);
         $redis = Mockery::mock();
-        $redis->shouldReceive('eval')->once()->withArgs(static function (string $script, array $arguments, int $keyCount): bool {
+        $redis->shouldReceive('eval')->once()->withArgs(static function (string $script, int $keyCount, string ...$arguments): bool {
             return str_contains($script, "redis.call('TIME')")
                 && str_contains($script, 'last + gap')
                 && $keyCount === 1
@@ -120,7 +120,7 @@ final class CrawlQueueServiceTest extends TestCase
             'attempts' => 1,
         ]);
         $redis = Mockery::mock();
-        $redis->shouldReceive('eval')->once()->withArgs(static function (string $script, array $arguments, int $keyCount): bool {
+        $redis->shouldReceive('eval')->once()->withArgs(static function (string $script, int $keyCount, string ...$arguments): bool {
             $limitCheck = strpos($script, 'if wait > maximum_wait then');
             $slotWrite = strpos($script, "redis.call('SET'");
 
@@ -247,6 +247,34 @@ final class CrawlQueueServiceTest extends TestCase
         $this->assertSame(CrawlErrorCode::WorkerLost->value, $row->error_code);
         $this->assertNotNull($row->last_error);
         $this->assertNotNull($row->last_failed_at);
+    }
+
+    public function test_unstarted_claims_wait_for_the_queue_backlog_window_before_reclaiming(): void
+    {
+        $claimTimeout = 900;
+        $queueDepth = max(
+            (int) config('javmeta_queues.depth_limit', 100),
+            (int) config('javmeta_queues.browser_depth_limit', 100),
+            (int) config('javmeta_queues.retry.depth_limit', 10),
+        );
+        $workerTimeout = (int) config('javmeta_queues.worker_timeout', 180);
+        $queueBacklogWindow = $queueDepth * $workerTimeout;
+        $waiting = CrawlQueue::factory()->create([
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'claimed_at' => now()->subSeconds($claimTimeout + 1),
+            'started_at' => null,
+        ]);
+        $expired = CrawlQueue::factory()->create([
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'claimed_at' => now()->subSeconds($queueBacklogWindow + 1),
+            'started_at' => null,
+        ]);
+
+        $reclaimed = (new CrawlQueueService())->reclaimStaleClaimed($claimTimeout);
+
+        self::assertSame(1, $reclaimed);
+        self::assertSame(CrawlQueue::STATUS_CLAIMED, $waiting->refresh()->status);
+        self::assertSame(CrawlQueue::STATUS_PENDING, $expired->refresh()->status);
     }
 
     public function test_failed_handler_records_timeout_and_keeps_remaining_attempts(): void

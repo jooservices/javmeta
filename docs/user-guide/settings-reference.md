@@ -336,7 +336,7 @@ Ghi đè tùy chọn endpoint trình duyệt, HTTP proxy, nhãn egress và thứ
 
 ### Việc kẹt được giải phóng sau (giây)
 
-Việc ở trạng thái claimed lâu hơn mức này được trả lại hàng đợi.
+Việc đã bắt đầu được thu hồi sau mức này; việc chưa bắt đầu còn được chờ theo giới hạn hàng đợi và timeout worker.
 
 Số nguyên; từ 60 đến 86400. Mã mục: `crawl.stale_claim_timeout_seconds`.
 

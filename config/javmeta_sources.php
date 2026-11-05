@@ -20,6 +20,7 @@ return [
             'cooldown_seconds' => 300,
         ],
         'queue' => [
+            // Running claims use this timeout; unstarted claims also wait out the maximum configured queue backlog.
             'stale_claim_timeout_seconds' => 900,
             // A blocked crawl is retried after these delays; the database setting overrides this default.
             'block_delays_seconds' => [60, 120, 180],

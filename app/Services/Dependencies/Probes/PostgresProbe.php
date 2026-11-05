@@ -7,7 +7,6 @@ namespace App\Services\Dependencies\Probes;
 use App\Services\Dependencies\DetailedDependencyProbe;
 use App\Services\Dependencies\ProbeResult;
 use Illuminate\Support\Facades\DB;
-use PDO;
 use Throwable;
 
 final class PostgresProbe implements DetailedDependencyProbe
@@ -32,25 +31,13 @@ final class PostgresProbe implements DetailedDependencyProbe
             }
 
             $timeout = max(1, (int) config('javmeta_health.startup.timeout_seconds', 2));
-            $connectionConfig = (array) config("database.connections.{$connectionName}", []);
-            $connectionConfig['options'] = array_replace(
-                (array) ($connectionConfig['options'] ?? []),
-                [PDO::ATTR_TIMEOUT => $timeout],
-            );
-            $probeConnectionName = 'startup_health_' . bin2hex(random_bytes(8));
-            $connectionConfig['name'] = $probeConnectionName;
+            $connection = DB::connection($connectionName);
+            $timezone = $connection->transaction(function () use ($connection, $timeout): array {
+                $connection->statement('SET LOCAL statement_timeout TO ' . ($timeout * 1000));
+                $connection->select('SELECT 1');
 
-            try {
-                $connection = DB::build($connectionConfig);
-                $timezone = $connection->transaction(function () use ($connection, $timeout): array {
-                    $connection->statement('SET LOCAL statement_timeout TO ' . ($timeout * 1000));
-                    $connection->select('SELECT 1');
-
-                    return $connection->select('SHOW timezone');
-                });
-            } finally {
-                DB::purge($probeConnectionName);
-            }
+                return $connection->select('SHOW timezone');
+            });
 
             $first = (array) ($timezone[0] ?? []);
             $value = strtoupper(trim((string) (reset($first) ?: '')));
