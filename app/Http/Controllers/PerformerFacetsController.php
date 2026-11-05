@@ -18,7 +18,7 @@ final class PerformerFacetsController extends BaseApiController
         $filters = $request->validated();
         $filters['include_unknown'] = $request->boolean('include_unknown');
         unset($filters['sort'], $filters['cursor'], $filters['page'], $filters['per_page']);
-        $data = Cache::remember('javmeta:pfacets:' . md5(json_encode($filters, JSON_THROW_ON_ERROR)), 60, fn(): array => $performers->facets($filters));
+        $data = Cache::remember('javmeta:pfacets:' . hash('sha256', json_encode($filters, JSON_THROW_ON_ERROR)), 60, fn(): array => $performers->facets($filters));
 
         return $this->respondWithData(data: $data, message: 'Facets retrieved successfully.');
     }

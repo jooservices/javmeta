@@ -156,7 +156,7 @@ final class LibraryScanner
                 $tail = (string) fread($handle, $bytes);
             }
 
-            return sha1($size . '|' . $head . '|' . $tail);
+            return hash('sha256', $size . '|' . $head . '|' . $tail);
         } finally {
             fclose($handle);
         }

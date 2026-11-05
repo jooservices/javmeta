@@ -76,8 +76,28 @@ final class LibraryTest extends TestCase
         $this->assertSame(5000, $row->size);
         $this->assertSame('SSIS-123', $row->code);
         $this->assertNotNull($row->movie_id);
-        $this->assertSame(40, strlen($row->quick_hash));
+        $this->assertSame(64, strlen($row->quick_hash));
+        $this->assertSame(hash('sha256', '5000|' . str_repeat('x', 5000) . '|'), $row->quick_hash);
         $this->assertNull(DB::table('library_files')->where('path', 'like', '%holiday%')->value('movie_id'));
+    }
+
+    public function test_quick_hash_is_deterministic_and_differs_for_different_content(): void
+    {
+        app(LibraryScanner::class)->scan();
+        $first = DB::table('library_files')->where('path', 'like', '%SSIS-123%')->value('quick_hash');
+        $this->assertSame(hash('sha256', '5000|' . str_repeat('x', 5000) . '|'), $first);
+
+        app(LibraryScanner::class)->scan();
+        $again = DB::table('library_files')->where('path', 'like', '%SSIS-123%')->value('quick_hash');
+        $this->assertSame($first, $again);
+
+        file_put_contents($this->root . '/a/[grp] SSIS-123 title.mp4', str_repeat('y', 5000));
+        touch($this->root . '/a/[grp] SSIS-123 title.mp4', time() + 2);
+        clearstatcache();
+        app(LibraryScanner::class)->scan();
+        $changed = DB::table('library_files')->where('path', 'like', '%SSIS-123%')->value('quick_hash');
+        $this->assertNotSame($first, $changed);
+        $this->assertSame(hash('sha256', '5000|' . str_repeat('y', 5000) . '|'), $changed);
     }
 
     public function test_scanning_twice_adds_nothing_and_a_vanished_file_is_marked_missing(): void

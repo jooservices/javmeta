@@ -25,7 +25,7 @@ final class CatalogService
 
     public function index(CatalogQuery $query): CatalogSnapshot
     {
-        $key = 'javmeta:catalog:' . md5(json_encode([$query->kind, $query->query, $query->sort, $query->perPage, $query->page, $query->includeUnknown], JSON_THROW_ON_ERROR));
+        $key = 'javmeta:catalog:' . hash('sha256', json_encode([$query->kind, $query->query, $query->sort, $query->perPage, $query->page, $query->includeUnknown], JSON_THROW_ON_ERROR));
         /** @var array{items: list<array<string, mixed>>, total: int} $result */
         $result = Cache::remember($key, 120, fn(): array => $this->load($query));
 
