@@ -16,9 +16,14 @@ final class MovieCalendarController extends BaseApiController
 {
     public function index(Request $request): JsonResponse
     {
-        $month = (string) $request->query('month', now()->format('Y-m'));
-        if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month) !== 1) {
-            throw new InvalidFilterException('Invalid month.', ['month' => ['YYYY-MM']]);
+        $requested = (string) $request->query('month', '');
+        if ($requested === '') {
+            $month = $this->latestMonth();
+        } else {
+            if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $requested) !== 1) {
+                throw new InvalidFilterException('Invalid month.', ['month' => ['YYYY-MM']]);
+            }
+            $month = $requested;
         }
 
         $days = Cache::remember('javmeta:calendar:' . $month, 120, fn(): array => $this->load($month));
@@ -26,8 +31,21 @@ final class MovieCalendarController extends BaseApiController
         return $this->respondWithData(
             data: $days,
             message: 'Release calendar retrieved successfully.',
-            meta: ['month' => $month, 'total' => array_sum(array_column($days, 'count'))],
+            meta: [
+                'month' => $month,
+                'total' => array_sum(array_column($days, 'count')),
+                'latest_month' => $this->latestMonth(),
+            ],
         );
+    }
+
+    private function latestMonth(): string
+    {
+        $latest = DB::table('movies')->whereNull('delisted_at')->whereNotNull('release_date')->max('release_date');
+
+        return is_string($latest) && preg_match('/^\d{4}-\d{2}/', $latest) === 1
+            ? substr($latest, 0, 7)
+            : now()->format('Y-m');
     }
 
     /** @return list<array{date: string, count: int, movies: list<array<string, mixed>>}> */

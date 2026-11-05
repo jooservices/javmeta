@@ -34,6 +34,18 @@ final class CalendarRelatedEndpointTest extends TestCase
         $this->assertSame(['2026-10-05', '2026-10-31'], array_column($r->json('data'), 'date'));
         $this->assertSame([2, 1], array_column($r->json('data'), 'count'));
         $this->assertSame(3, $r->json('meta.total'));
+        $this->assertSame('2026-11', $r->json('meta.latest_month'));
+    }
+
+    public function test_the_calendar_opens_on_the_latest_month_with_a_release(): void
+    {
+        Movie::factory()->create(['release_date' => '2025-11-06']);
+        Movie::factory()->create(['release_date' => '2024-03-01']);
+
+        $r = $this->getJson('/api/v1/movies/calendar', $this->headers())->assertOk();
+        $this->assertSame('2025-11', $r->json('meta.month'));
+        $this->assertSame('2025-11', $r->json('meta.latest_month'));
+        $this->assertGreaterThan(0, $r->json('meta.total'));
     }
 
     public function test_related_movies_share_series_or_maker_and_exclude_the_movie(): void
