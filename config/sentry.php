@@ -8,6 +8,7 @@ return [
     'dsn' => env('JAVMETA_SENTRY_DSN') ?: env('SENTRY_LARAVEL_DSN'),
     'release' => env('SENTRY_RELEASE'),
     'environment' => env('SENTRY_ENVIRONMENT', env('APP_ENV', 'production')),
+    'server_name' => env('JAVMETA_NODE_NAME') ?: gethostname() ?: 'unknown',
     'sample_rate' => 1.0,
     'traces_sample_rate' => 0.0,
     'profiles_sample_rate' => 0.0,
