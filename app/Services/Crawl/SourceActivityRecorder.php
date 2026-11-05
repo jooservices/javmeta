@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Crawl;
 
 use App\Models\Source;
+use App\Repositories\SourceRepository;
 
 /**
  * Records the last crawl success / failure per source for status and the
@@ -13,9 +14,11 @@ use App\Models\Source;
  */
 final class SourceActivityRecorder
 {
+    public function __construct(private readonly ?SourceRepository $sources = null) {}
+
     public function recordSuccess(Source|string $source): void
     {
-        Source::query()->whereKey($this->slug($source))->update([
+        $this->repository()->updateSource($this->slug($source), [
             'last_success_at' => now(),
             'last_error' => null,
         ]);
@@ -23,7 +26,7 @@ final class SourceActivityRecorder
 
     public function recordFailure(Source|string $source, string $error): void
     {
-        Source::query()->whereKey($this->slug($source))->update([
+        $this->repository()->updateSource($this->slug($source), [
             'last_error_at' => now(),
             'last_error' => $error,
         ]);
@@ -32,5 +35,10 @@ final class SourceActivityRecorder
     private function slug(Source|string $source): string
     {
         return $source instanceof Source ? $source->slug : $source;
+    }
+
+    private function repository(): SourceRepository
+    {
+        return $this->sources ?? app(SourceRepository::class);
     }
 }

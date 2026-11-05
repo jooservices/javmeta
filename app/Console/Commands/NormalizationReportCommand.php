@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Repositories\NormalizationServiceRepository;
 use App\Observability\MetricStreams;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 
 /** Prints cumulative rejected normalization values using the exported metric labels. */
 final class NormalizationReportCommand extends Command
@@ -17,7 +17,7 @@ final class NormalizationReportCommand extends Command
 
     public function handle(): int
     {
-        $rows = DB::table('normalization_rejections')
+        $rows = app(NormalizationServiceRepository::class)->tableQuery('normalization_rejections')
             ->orderBy('entity')->orderBy('field')->orderBy('source')
             ->get(['entity', 'field', 'source', 'rejected_total']);
 

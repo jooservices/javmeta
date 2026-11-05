@@ -4,18 +4,19 @@ declare(strict_types=1);
 
 namespace App\Services\Alerts;
 
-use App\Models\AlertEvent;
-use App\Models\Source;
 use App\Observability\MetricStreams;
+use App\Repositories\AlertOperationsServiceRepository;
 
 final class AlertMetrics
 {
+    public function __construct(private readonly AlertOperationsServiceRepository $repository) {}
+
     /** @return list<array{name: string, value: int, labels?: array<string, string>}> */
     public function points(): array
     {
-        $activeRules = AlertEvent::query()->whereNull('resolved_at')->pluck('rule')->map('strval')->all();
+        $activeRules = $this->repository->activeRules();
         $knownRules = ['success_rate', 'blocked_ratio', 'postgres_connections', 'dispatch_age'];
-        foreach (Source::query()->where('enabled', true)->orderBy('slug')->pluck('slug')->map('strval') as $source) {
+        foreach ($this->repository->enabledSourceSlugs() as $source) {
             $knownRules[] = 'source_success_rate:' . $source;
             $knownRules[] = 'backlog_depth:' . $source;
         }
@@ -37,25 +38,14 @@ final class AlertMetrics
     private function eventCountPoints(): array
     {
         $retentionDays = max(1, (int) config('javmeta_alerts.history_retention_days', 90));
-        $rows = AlertEvent::query()
-            ->where(static function ($query) use ($retentionDays): void {
-                $query->whereNull('resolved_at')
-                    ->orWhere('resolved_at', '>=', now()->subDays($retentionDays));
-            })
-            ->selectRaw("CASE WHEN resolved_at IS NULL THEN 'firing' ELSE 'resolved' END AS state, severity, COUNT(*) AS event_count")
-            ->groupBy('state', 'severity')
-            ->get();
-        $counts = [];
-        foreach ($rows as $row) {
-            $counts[(string) $row->getAttribute('state')][(string) $row->getAttribute('severity')] = (int) $row->getAttribute('event_count');
-        }
+        $counts = $this->repository->recentEventCounts(now()->subDays($retentionDays));
 
         $points = [];
         foreach (['firing', 'resolved'] as $state) {
             foreach (['warning', 'critical', 'info'] as $severity) {
                 $points[] = [
                     'name' => MetricStreams::NAMES['alert_event_count'],
-                    'value' => $counts[$state][$severity] ?? 0,
+                    'value' => $counts[$state . ':' . $severity] ?? 0,
                     'labels' => ['state' => $state, 'severity' => $severity],
                 ];
             }

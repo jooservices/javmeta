@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Dataset;
 
+use App\Repositories\MovieRepository;
 use App\Models\Movie;
 use App\Models\Performer;
 use App\Services\Search\ElasticsearchIndexer;
 use App\Support\Code\NormalizedCode;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Query\Builder;
 use RuntimeException;
 
@@ -40,7 +40,7 @@ final class SampleDataset
     public function load(bool $index = false): array
     {
         $now = now();
-        DB::transaction(function () use ($now): void {
+        app(MovieRepository::class)->transaction(function () use ($now): void {
             $this->loadGenres();
             $this->loadPerformers($now);
             $this->loadMovies($now);
@@ -66,26 +66,26 @@ final class SampleDataset
     /** Remove exactly the rows the load created. */
     public function wipe(): void
     {
-        DB::transaction(function (): void {
+        app(MovieRepository::class)->transaction(function (): void {
             $movieIds = $this->owned('movies', 'movie_id')->pluck('id')->all();
             $performerIds = $this->owned('performers', 'performer_id')->pluck('id')->all();
             $genreIds = $this->owned('genres', 'genre_id')->pluck('id')->all();
 
             foreach (array_chunk($movieIds, 500) as $chunk) {
-                DB::table('movie_genres')->whereIn('movie_id', $chunk)->delete();
-                DB::table('movie_performers')->whereIn('movie_id', $chunk)->delete();
-                DB::table('movie_observations')->whereIn('movie_id', $chunk)->delete();
-                DB::table('movie_codes')->whereIn('movie_id', $chunk)->delete();
-                DB::table('movies')->whereIn('id', $chunk)->delete();
+                app(MovieRepository::class)->tableQuery('movie_genres')->whereIn('movie_id', $chunk)->delete();
+                app(MovieRepository::class)->tableQuery('movie_performers')->whereIn('movie_id', $chunk)->delete();
+                app(MovieRepository::class)->tableQuery('movie_observations')->whereIn('movie_id', $chunk)->delete();
+                app(MovieRepository::class)->tableQuery('movie_codes')->whereIn('movie_id', $chunk)->delete();
+                app(MovieRepository::class)->tableQuery('movies')->whereIn('id', $chunk)->delete();
             }
             foreach (array_chunk($performerIds, 500) as $chunk) {
-                DB::table('movie_performers')->whereIn('performer_id', $chunk)->delete();
-                DB::table('performer_aliases')->whereIn('performer_id', $chunk)->delete();
-                DB::table('performer_sources')->whereIn('performer_id', $chunk)->delete();
-                DB::table('performers')->whereIn('id', $chunk)->delete();
+                app(MovieRepository::class)->tableQuery('movie_performers')->whereIn('performer_id', $chunk)->delete();
+                app(MovieRepository::class)->tableQuery('performer_aliases')->whereIn('performer_id', $chunk)->delete();
+                app(MovieRepository::class)->tableQuery('performer_sources')->whereIn('performer_id', $chunk)->delete();
+                app(MovieRepository::class)->tableQuery('performers')->whereIn('id', $chunk)->delete();
             }
-            DB::table('movie_genres')->whereIn('genre_id', $genreIds)->delete();
-            DB::table('genres')->whereIn('id', $genreIds)->delete();
+            app(MovieRepository::class)->tableQuery('movie_genres')->whereIn('genre_id', $genreIds)->delete();
+            app(MovieRepository::class)->tableQuery('genres')->whereIn('id', $genreIds)->delete();
         });
     }
 
@@ -146,16 +146,16 @@ final class SampleDataset
         // Every sample performer is known by one source page, like a crawled performer.
         $sources = [];
         foreach ($ids as $external => $performerId) {
-            $row = DB::table('performers')->where('id', $performerId)->first(['name_romaji', 'name_kanji', 'name_kana', 'birth_date']);
+            $row = app(MovieRepository::class)->tableQuery('performers')->where('id', $performerId)->first(['name_romaji', 'name_kanji', 'name_kana', 'birth_date']);
             $sources[] = ['performer_id' => $performerId, 'site_slug' => self::SOURCE, 'mongo_id' => 'sample-' . $external, 'external_id' => $external, 'source_url' => null, 'crawled_at' => $now, 'name_romaji' => $row->name_romaji, 'name_kanji' => $row->name_kanji, 'name_kana' => $row->name_kana, 'birth_date' => $row->birth_date];
         }
         foreach (array_chunk($sources, 100) as $chunk) {
-            DB::table('performer_sources')->upsert($chunk, ['site_slug', 'mongo_id'], ['performer_id', 'name_romaji', 'name_kanji', 'name_kana', 'birth_date', 'crawled_at']);
+            app(MovieRepository::class)->tableQuery('performer_sources')->upsert($chunk, ['site_slug', 'mongo_id'], ['performer_id', 'name_romaji', 'name_kanji', 'name_kana', 'birth_date', 'crawled_at']);
         }
 
         // The aliases belong to the sample performers: replace them, so a second load adds nothing.
-        DB::table('performer_aliases')->whereIn('performer_id', array_values($ids))->delete();
-        DB::table('performer_aliases')->insert($aliases);
+        app(MovieRepository::class)->tableQuery('performer_aliases')->whereIn('performer_id', array_values($ids))->delete();
+        app(MovieRepository::class)->tableQuery('performer_aliases')->insert($aliases);
     }
 
     private function loadMovies(\DateTimeInterface $now): void
@@ -214,19 +214,19 @@ final class SampleDataset
             }
         }
         foreach (array_chunk($codes, 200) as $chunk) {
-            DB::table('movie_codes')->upsert($chunk, ['code_normalized', 'source_slug'], ['movie_id', 'code', 'kind', 'crawled_at']);
+            app(MovieRepository::class)->tableQuery('movie_codes')->upsert($chunk, ['code_normalized', 'source_slug'], ['movie_id', 'code', 'kind', 'crawled_at']);
         }
         foreach (array_chunk(array_values($links), 200) as $chunk) {
-            DB::table('movie_performers')->insertOrIgnore($chunk);
+            app(MovieRepository::class)->tableQuery('movie_performers')->insertOrIgnore($chunk);
         }
         foreach (array_chunk(array_values($movieGenres), 200) as $chunk) {
-            DB::table('movie_genres')->insertOrIgnore($chunk);
+            app(MovieRepository::class)->tableQuery('movie_genres')->insertOrIgnore($chunk);
         }
         // Observations have no natural key: write them once, and only for movies that have none yet.
-        $have = DB::table('movie_observations')->whereIn('movie_id', array_values($movies))->distinct()->pluck('movie_id')->flip()->all();
+        $have = app(MovieRepository::class)->tableQuery('movie_observations')->whereIn('movie_id', array_values($movies))->distinct()->pluck('movie_id')->flip()->all();
         $fresh = array_values(array_filter($observations, static fn(array $o): bool => ! isset($have[$o['movie_id']])));
         foreach (array_chunk($fresh, 200) as $chunk) {
-            DB::table('movie_observations')->insert($chunk);
+            app(MovieRepository::class)->tableQuery('movie_observations')->insert($chunk);
         }
     }
 
@@ -237,12 +237,12 @@ final class SampleDataset
         }
 
         $indexed = 0;
-        Movie::query()->whereIn('id', DB::table('sample_dataset_rows')->select('movie_id')->whereNotNull('movie_id'))->with(['codes', 'performers', 'genres'])->chunkById(100, function ($movies) use (&$indexed): void {
+        app(MovieRepository::class)->modelQuery(Movie::class)->whereIn('id', app(MovieRepository::class)->tableQuery('sample_dataset_rows')->select('movie_id')->whereNotNull('movie_id'))->with(['codes', 'performers', 'genres'])->chunkById(100, function ($movies) use (&$indexed): void {
             foreach ($movies as $movie) {
                 $indexed += $this->indexer->indexMovie($movie) ? 1 : 0;
             }
         });
-        Performer::query()->whereIn('id', DB::table('sample_dataset_rows')->select('performer_id')->whereNotNull('performer_id'))->chunkById(100, function ($performers) use (&$indexed): void {
+        app(MovieRepository::class)->modelQuery(Performer::class)->whereIn('id', app(MovieRepository::class)->tableQuery('sample_dataset_rows')->select('performer_id')->whereNotNull('performer_id'))->chunkById(100, function ($performers) use (&$indexed): void {
             foreach ($performers as $performer) {
                 $indexed += $this->indexer->indexPerformer($performer) ? 1 : 0;
             }
@@ -253,22 +253,22 @@ final class SampleDataset
 
     private function owned(string $table, string $column): Builder
     {
-        return DB::table($table)->whereIn('id', DB::table('sample_dataset_rows')->select($column)->whereNotNull($column));
+        return app(MovieRepository::class)->tableQuery($table)->whereIn('id', app(MovieRepository::class)->tableQuery('sample_dataset_rows')->select($column)->whereNotNull($column));
     }
 
     /** @param list<array<string, mixed>> $rows @param list<string> $keys */
     private function saveOwned(string $table, string $column, array $rows, array $keys): void
     {
         foreach ($rows as $row) {
-            $query = DB::table($table)->where(array_intersect_key($row, array_flip($keys)));
+            $query = app(MovieRepository::class)->tableQuery($table)->where(array_intersect_key($row, array_flip($keys)));
             $id = $query->value('id');
             if ($id === null) {
                 // A concurrent insert must fail its unique constraint, never become an upsert over real data.
-                $id = DB::table($table)->insertGetId($row);
-                DB::table('sample_dataset_rows')->insert([$column => $id]);
+                $id = app(MovieRepository::class)->tableQuery($table)->insertGetId($row);
+                app(MovieRepository::class)->tableQuery('sample_dataset_rows')->insert([$column => $id]);
                 continue;
             }
-            if (! DB::table('sample_dataset_rows')->where($column, $id)->exists()) {
+            if (! app(MovieRepository::class)->tableQuery('sample_dataset_rows')->where($column, $id)->exists()) {
                 throw new RuntimeException('Sample dataset collision with an unmarked ' . $table . ' row.');
             }
             $this->owned($table, $column)->where('id', $id)->update(array_diff_key($row, ['uuid' => 1, 'first_seen_at' => 1]));

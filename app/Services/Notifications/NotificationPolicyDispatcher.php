@@ -63,7 +63,7 @@ final class NotificationPolicyDispatcher
                 $tier = 'critical';
             }
             if ($tier === 'warning' && ! $digest) {
-                $openedAt = CarbonImmutable::parse((string) $event->first_seen_at);
+                $openedAt = CarbonImmutable::parse((string) $event['first_seen_at']);
                 if ($policy['escalation_minutes'] <= 0 || $openedAt->greaterThan(now()->subMinutes($policy['escalation_minutes']))) {
                     return $this->suppress($key, $policyKey, $causeKey, $quiet && ! $security ? 'quiet_mode' : 'warning_digest', false);
                 }
@@ -84,7 +84,7 @@ final class NotificationPolicyDispatcher
                 return $this->reserveDecision($key, $policyKey, $causeKey, $tier, false);
             }
 
-            if ($tier === 'notice' && $event->notice_sent_at !== null && ! $this->usesRecurringNoticeCooldown($policyKey)) {
+            if ($tier === 'notice' && $event['notice_sent_at'] !== null && ! $this->usesRecurringNoticeCooldown($policyKey)) {
                 return $this->suppress($key, $policyKey, $causeKey, 'duplicate_event', false);
             }
             if ($this->isCoolingDown($event, (int) $policy['cooldown_minutes'])) {
@@ -156,10 +156,10 @@ final class NotificationPolicyDispatcher
         if (! $policy['send_resolved']) {
             return $this->suppress($key, $policyKey, $causeKey, 'resolved_disabled', true);
         }
-        if ($event !== null && $event->resolved_at !== null) {
+        if ($event !== null && $event['resolved_at'] !== null) {
             return $this->suppress($key, $policyKey, $causeKey, 'already_resolved', true);
         }
-        if ($event === null || $event->critical_sent_at === null) {
+        if ($event === null || $event['critical_sent_at'] === null) {
             return $this->suppress($key, $policyKey, $causeKey, 'resolved_without_critical', true);
         }
         if ($this->reservationActive($event)) {
@@ -205,22 +205,24 @@ final class NotificationPolicyDispatcher
         ];
     }
 
-    private function isCoolingDown(object $event, int $minutes): bool
+    /** @param array<string, mixed> $event */
+    private function isCoolingDown(array $event, int $minutes): bool
     {
-        if ($minutes <= 0 || $event->last_sent_at === null) {
+        if ($minutes <= 0 || $event['last_sent_at'] === null) {
             return false;
         }
 
-        return CarbonImmutable::parse((string) $event->last_sent_at)->greaterThan(now()->subMinutes($minutes));
+        return CarbonImmutable::parse((string) $event['last_sent_at'])->greaterThan(now()->subMinutes($minutes));
     }
 
-    private function reservationActive(object $event): bool
+    /** @param array<string, mixed> $event */
+    private function reservationActive(array $event): bool
     {
-        if ($event->reserved_at === null) {
+        if ($event['reserved_at'] === null) {
             return false;
         }
 
-        return CarbonImmutable::parse((string) $event->reserved_at)->greaterThan(now()->subMinutes(5));
+        return CarbonImmutable::parse((string) $event['reserved_at'])->greaterThan(now()->subMinutes(5));
     }
 
     private function quietMode(): bool

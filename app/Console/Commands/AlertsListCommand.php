@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Models\AlertEvent;
+use App\Repositories\AlertOperationsServiceRepository;
 use Illuminate\Console\Command;
 
 final class AlertsListCommand extends Command
@@ -13,32 +13,30 @@ final class AlertsListCommand extends Command
 
     protected $description = 'List recent alert history.';
 
+    public function __construct(private readonly AlertOperationsServiceRepository $repository)
+    {
+        parent::__construct();
+    }
+
     public function handle(): int
     {
         $hours = max(1, (int) $this->option('hours'));
         $since = now()->subHours($hours);
-        $events = AlertEvent::query()
-            ->where(static function ($query) use ($since): void {
-                $query->where('started_at', '>=', $since)
-                    ->orWhere('resolved_at', '>=', $since)
-                    ->orWhereNull('resolved_at');
-            })
-            ->orderByRaw('COALESCE(resolved_at, started_at) DESC')
-            ->get(['rule', 'severity', 'value', 'threshold', 'started_at', 'resolved_at', 'notified_at']);
+        $events = $this->repository->recentEvents($since);
 
         $this->table(
             ['Rule', 'Severity', 'Value', 'Threshold', 'Started', 'Resolved', 'Notified'],
-            $events->map(static fn(AlertEvent $event): array => [
-                $event->getAttribute('rule'),
-                $event->getAttribute('severity'),
-                $event->getAttribute('value'),
-                $event->getAttribute('threshold'),
-                $event->getAttribute('started_at'),
-                $event->getAttribute('resolved_at') ?? '—',
-                $event->getAttribute('notified_at') ?? '—',
-            ])->all(),
+            array_map(static fn(array $event): array => [
+                $event['rule'],
+                $event['severity'],
+                $event['value'],
+                $event['threshold'],
+                $event['started_at'],
+                $event['resolved_at'] ?? '—',
+                $event['notified_at'] ?? '—',
+            ], $events),
         );
-        if ($events->isEmpty()) {
+        if ($events === []) {
             $this->components->info("No alert events in the last {$hours} hour(s).");
         }
 

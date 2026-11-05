@@ -6,8 +6,8 @@ namespace App\Services\Catalog;
 
 use App\Data\Catalog\CatalogQuery;
 use App\Data\Catalog\CatalogSnapshot;
-use App\Repositories\MovieCatalogRepository;
-use App\Repositories\PerformerCatalogRepository;
+use App\Repositories\MovieRepository;
+use App\Repositories\PerformerRepository;
 use App\Services\Normalize\PerformerAttributeNormalizer;
 use Illuminate\Support\Facades\Cache;
 
@@ -18,8 +18,8 @@ final class CatalogService
     private const PERFORMER_COLUMNS = ['cups' => 'cup', 'blood_types' => 'blood_type', 'locations' => 'location'];
 
     public function __construct(
-        private readonly MovieCatalogRepository $movies,
-        private readonly PerformerCatalogRepository $performers,
+        private readonly MovieRepository $movies,
+        private readonly PerformerRepository $performers,
         private readonly PerformerAttributeNormalizer $normalizer,
     ) {}
 

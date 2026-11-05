@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Repositories;
 
 use App\Models\LibraryFile;
+use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
 use JOOservices\LaravelRepository\Contracts\ReadRepositoryInterface;
 use JOOservices\LaravelRepository\Repositories\EloquentRepository;
@@ -84,5 +85,43 @@ final class LibraryFileRepository extends EloquentRepository implements ReadRepo
             ->get()
             ->map(static fn(object $row): array => ['code' => (string) $row->code, 'files' => (int) $row->files, 'bytes' => (int) $row->bytes])
             ->all();
+    }
+
+    /** @return list<int> */
+    public function presentIdsInFolder(string $folder): array
+    {
+        return array_map('intval', $this->newQuery()->toBase()
+            ->where('folder', $folder)
+            ->whereNull('missing_at')
+            ->pluck('id')
+            ->all());
+    }
+
+    /** @param list<int> $ids */
+    public function markMissing(array $ids, DateTimeInterface $at): int
+    {
+        if ($ids === []) {
+            return 0;
+        }
+
+        return $this->newQuery()->whereIn('id', $ids)->update(['missing_at' => $at]);
+    }
+
+    /** @return object|null */
+    public function findByPath(string $path): ?object
+    {
+        return $this->newQuery()->toBase()->where('path', $path)->first(['id', 'size', 'mtime', 'quick_hash', 'movie_id', 'code']);
+    }
+
+    /** @param array<string, mixed> $attributes */
+    public function createFile(array $attributes): int
+    {
+        return (int) $this->newQuery()->create($attributes)->getKey();
+    }
+
+    /** @param array<string, mixed> $attributes */
+    public function updateFile(int $id, array $attributes): void
+    {
+        $this->newQuery()->whereKey($id)->update($attributes);
     }
 }

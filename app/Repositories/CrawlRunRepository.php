@@ -32,4 +32,9 @@ final class CrawlRunRepository extends EloquentRepository implements ReadReposit
             ->selectRaw('COUNT(*) AS total, COALESCE(SUM(pages_fetched), 0) AS pages, COALESCE(SUM(movies_new), 0) AS movies_new, COALESCE(SUM(movies_updated), 0) AS movies_updated, COALESCE(SUM(failures), 0) AS failures')
             ->first();
     }
+
+    public function incrementMovieCount(int $crawlRunId, bool $isNewMovie): void
+    {
+        $this->newQuery()->whereKey($crawlRunId)->increment($isNewMovie ? 'movies_new' : 'movies_updated');
+    }
 }

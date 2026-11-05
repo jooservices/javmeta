@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueRepository;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -16,7 +17,7 @@ final class RetryStatsCommand extends Command
     public function handle(): int
     {
         $stats = [];
-        $pending = DB::table('crawl_queue')->where('status', 'retry_pending')
+        $pending = app(CrawlQueueRepository::class)->tableQuery('crawl_queue')->where('status', 'retry_pending')
             ->select('source_slug', 'retry_round', 'retry_egress_label', DB::raw('COUNT(*) AS pending'))
             ->when(is_string($this->option('source')) && $this->option('source') !== '', fn($query) => $query->where('source_slug', (string) $this->option('source')))
             ->groupBy('source_slug', 'retry_round', 'retry_egress_label')->get();
@@ -34,7 +35,7 @@ final class RetryStatsCommand extends Command
             ];
         }
 
-        $metrics = DB::table('crawl_retry_metrics')->when(
+        $metrics = app(CrawlQueueRepository::class)->tableQuery('crawl_retry_metrics')->when(
             is_string($this->option('source')) && $this->option('source') !== '',
             fn($query) => $query->where('source_slug', (string) $this->option('source')),
         )->orderBy('source_slug')->orderBy('round')->orderBy('egress_label')->get();

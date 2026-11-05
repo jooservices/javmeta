@@ -145,6 +145,7 @@ final class PeriodicReportServiceTest extends TestCase
             app(ReportRenderer::class),
             $channel,
             app(ReportMetrics::class),
+            app(\App\Repositories\ReportDataServiceRepository::class),
         );
     }
 

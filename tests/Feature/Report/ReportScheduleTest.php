@@ -37,7 +37,7 @@ final class ReportScheduleTest extends TestCase
 
     public function test_default_grid_is_aligned_to_even_hours_in_the_configured_timezone(): void
     {
-        $schedule = new ReportSchedule();
+        $schedule = new ReportSchedule(app(\App\Repositories\ReportDataServiceRepository::class));
 
         self::assertSame('2026-11-02 18:00', $schedule->dueSlot(CarbonImmutable::parse('2026-11-02 18:00:14 America/Mexico_City'))?->format('Y-m-d H:i'));
         self::assertNull($schedule->dueSlot(CarbonImmutable::parse('2026-11-02 19:00:00 America/Mexico_City')));
@@ -46,7 +46,7 @@ final class ReportScheduleTest extends TestCase
     public function test_quiet_grid_slot_is_skipped_without_a_later_catch_up(): void
     {
         config(['javmeta_report.quiet_hours_start' => '22:00', 'javmeta_report.quiet_hours_end' => '06:00']);
-        $schedule = new ReportSchedule();
+        $schedule = new ReportSchedule(app(\App\Repositories\ReportDataServiceRepository::class));
 
         self::assertNull($schedule->dueSlot(CarbonImmutable::parse('2026-11-03 02:00:00 America/Mexico_City')));
         self::assertNull($schedule->dueSlot(CarbonImmutable::parse('2026-11-03 02:01:00 America/Mexico_City')));
@@ -62,7 +62,7 @@ final class ReportScheduleTest extends TestCase
             'rendered_text' => 'Previous',
             'raw_numbers' => [],
         ]);
-        $schedule = new ReportSchedule();
+        $schedule = new ReportSchedule(app(\App\Repositories\ReportDataServiceRepository::class));
 
         self::assertNull($schedule->dueSlot(CarbonImmutable::parse('2026-11-02 17:00:00 America/Mexico_City')));
         self::assertSame('2026-11-02 18:00', $schedule->dueSlot(CarbonImmutable::parse('2026-11-02 18:00:00 America/Mexico_City'))?->format('Y-m-d H:i'));
@@ -72,6 +72,6 @@ final class ReportScheduleTest extends TestCase
     {
         config(['javmeta_report.enabled' => false]);
 
-        self::assertNull((new ReportSchedule())->dueSlot(CarbonImmutable::parse('2026-11-02 18:00:00 America/Mexico_City')));
+        self::assertNull((new ReportSchedule(app(\App\Repositories\ReportDataServiceRepository::class)))->dueSlot(CarbonImmutable::parse('2026-11-02 18:00:00 America/Mexico_City')));
     }
 }

@@ -4,16 +4,17 @@ declare(strict_types=1);
 
 namespace App\Services\Crawl;
 
-use App\Models\Source;
-use Illuminate\Support\Facades\DB;
+use App\Repositories\SourceRepository;
 
 /** Source routing is a snapshot: no fetch-history queries on the dispatch path. */
 final class CrawlLaneService
 {
+    public function __construct(private readonly ?SourceRepository $sources = null) {}
+
     /** @return list<string> */
     public function browserSources(): array
     {
-        $computed = Source::query()->where('browser_lane', true)->pluck('slug')->all();
+        $computed = $this->repository()->browserLaneSlugs();
         $browser = [...(array) config('javmeta_queues.browser_sources', []), ...$computed, ...(array) config('javmeta_queues.lane_browser_pins', [])];
 
         // A direct pin also lets an operator override the static browser list.
@@ -29,21 +30,18 @@ final class CrawlLaneService
     {
         $minimum = max(1, (int) config('javmeta_queues.lane_min_attempts', 40));
         $share = max(0, min(100, (int) config('javmeta_queues.lane_browser_percent', 25)));
-        $rows = DB::table('crawl_fetch_attempts')
-            ->where('created_at', '>=', now()->subDay())
-            ->where('outcome', '!=', 'skipped')
-            ->select('source_slug')
-            ->selectRaw('COUNT(*) AS total, SUM(CASE WHEN method IN (?, ?) THEN 1 ELSE 0 END) AS browser', ['flaresolverr', 'playwright'])
-            ->groupBy('source_slug')->get();
+        $rows = $this->repository()->fetchMethodTotals(now()->subDay());
         $slugs = [];
         foreach ($rows as $row) {
             if ((int) $row->total >= $minimum && (int) $row->browser * 100 >= (int) $row->total * $share) {
                 $slugs[] = (string) $row->source_slug;
             }
         }
-        DB::transaction(static function () use ($slugs): void {
-            Source::query()->where('browser_lane', true)->update(['browser_lane' => false]);
-            Source::query()->whereIn('slug', $slugs)->update(['browser_lane' => true]);
-        });
+        $this->repository()->replaceBrowserLaneSlugs($slugs);
+    }
+
+    private function repository(): SourceRepository
+    {
+        return $this->sources ?? app(SourceRepository::class);
     }
 }

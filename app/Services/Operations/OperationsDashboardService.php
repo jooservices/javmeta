@@ -9,7 +9,7 @@ use App\Repositories\CrawlEventRepository;
 use App\Repositories\CrawlQueueRepository;
 use App\Repositories\CrawlRunRepository;
 use App\Repositories\FailedJobRepository;
-use App\Repositories\MovieDashboardRepository;
+use App\Repositories\MovieRepository;
 use App\Repositories\PerformerRepository;
 use App\Repositories\SourceRepository;
 use Illuminate\Support\Carbon;
@@ -22,7 +22,7 @@ final class OperationsDashboardService
         private readonly CrawlRunRepository $crawlRuns,
         private readonly SourceRepository $sources,
         private readonly CrawlEventRepository $crawlEvents,
-        private readonly MovieDashboardRepository $movies,
+        private readonly MovieRepository $movies,
         private readonly PerformerRepository $performers,
         private readonly FailedJobRepository $failedJobs,
     ) {}

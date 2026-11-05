@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueRepository;
 use App\Contracts\ReportChannel;
 use App\Models\Source;
 use App\Services\Crawl\CrawlLaneService;
@@ -28,7 +29,7 @@ final class SourceHealthCommand extends Command
             sleep($seconds);
         });
         $only = trim((string) $this->option('source'));
-        $enabledInDatabase = Source::query()->where('enabled', true)->pluck('slug')->all();
+        $enabledInDatabase = app(CrawlQueueRepository::class)->modelQuery(Source::class)->where('enabled', true)->pluck('slug')->all();
 
         $rows = [];
         foreach ((array) config('javmeta_sources.sources', []) as $slug => $config) {

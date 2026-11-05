@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Workers;
 
+use App\Repositories\CrawlEventRepository;
 use App\Models\CrawlEvent;
 use App\Services\Settings\SettingsService;
 use Illuminate\Support\Facades\Redis;
@@ -129,13 +130,11 @@ final class HorizonWorkerReconciler
         }
 
         try {
-            CrawlEvent::query()->create([
-                'source_slug' => 'worker-reconcile',
-                'kind' => CrawlEvent::KIND_WORKERS_RECONFIGURED,
-                'url' => null,
-                'detail' => ['node' => $node, 'old' => $old, 'new' => $desired],
-                'created_at' => now(),
-            ]);
+            app(CrawlEventRepository::class)->record(
+                'worker-reconcile',
+                CrawlEvent::KIND_WORKERS_RECONFIGURED,
+                ['node' => $node, 'old' => $old, 'new' => $desired],
+            );
             $this->scaleWorkers($master, $old, $desired, $commandMayBeQueued);
             Log::info('Horizon worker counts reconciled.', [
                 'node' => $node,

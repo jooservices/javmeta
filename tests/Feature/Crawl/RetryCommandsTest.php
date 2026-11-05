@@ -96,4 +96,32 @@ final class RetryCommandsTest extends TestCase
         $this->artisan('crawler:retry-requeue', ['id' => $terminal->id])->assertFailed();
         self::assertSame(CrawlQueue::STATUS_FAILED, $terminal->refresh()->status);
     }
+
+    public function test_retry_requeue_rejects_conflicting_or_missing_arguments_and_requeues_source_batch(): void
+    {
+        $source = Source::factory()->create(['slug' => 'retry-batch']);
+        $retryable = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::Timeout->value,
+        ]);
+
+        $this->artisan('crawler:retry-requeue', ['id' => $retryable->id, '--source' => $source->slug])
+            ->expectsOutputToContain('Use either an ID or --source.')
+            ->assertFailed();
+        $this->artisan('crawler:retry-requeue')
+            ->expectsOutputToContain('Provide a row ID or --source.')
+            ->assertFailed();
+        $this->artisan('crawler:retry-requeue', ['id' => 'not-a-number'])
+            ->expectsOutputToContain('Provide a row ID or --source.')
+            ->assertFailed();
+        $this->artisan('crawler:retry-requeue', ['id' => 999999])
+            ->expectsOutputToContain('The row is missing or its error is not retryable.')
+            ->assertFailed();
+        $this->artisan('crawler:retry-requeue', ['--source' => $source->slug])
+            ->expectsOutputToContain("Requeued 1 retryable failure(s) for {$source->slug}.")
+            ->assertSuccessful();
+
+        self::assertSame(CrawlQueue::STATUS_RETRY_PENDING, $retryable->refresh()->status);
+    }
 }

@@ -6,8 +6,8 @@ namespace App\Services\Notifications;
 
 use App\Services\Downloads\DownloadService;
 use App\Services\Settings\SettingsService;
+use App\Repositories\NotificationDeliveryServiceRepository;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
@@ -21,6 +21,7 @@ final class FollowNotifier
     public function __construct(
         private readonly SettingsService $settings,
         private readonly DownloadService $downloads,
+        private readonly NotificationDeliveryServiceRepository $repository,
         private readonly ?NotificationRenderer $renderer = null,
     ) {}
 
@@ -37,7 +38,7 @@ final class FollowNotifier
             return ['sent' => 0, 'held' => 0, 'skipped' => 'telegram is not configured'];
         }
 
-        $owner = DB::table('users')->where('role', 'super_administrator')->orderBy('id')->value('id');
+        $owner = $this->repository->ownerId();
         if ($owner === null) {
             return ['sent' => 0, 'held' => 0, 'skipped' => 'no owner'];
         }
@@ -51,7 +52,7 @@ final class FollowNotifier
         }
 
         $cap = (int) $this->settings->get('follow_notifications.daily_cap');
-        $sentToday = (int) DB::table('follow_notifications')->where('channel', 'telegram')->where('sent_at', '>=', $now->startOfDay()->utc())->count();
+        $sentToday = $this->repository->sentToday($now->startOfDay()->utc());
         $sent = 0;
         $held = 0;
         foreach ($matches as $match) {
@@ -60,7 +61,7 @@ final class FollowNotifier
                 continue;
             }
             if ($this->send($token, $chat, $match)) {
-                DB::table('follow_notifications')->insertOrIgnore(['user_id' => $owner, 'movie_code' => $match['code'], 'reason' => $match['reason'], 'channel' => 'telegram', 'sent_at' => now()]);
+                $this->repository->recordSent((int) $owner, $match);
                 $sent++;
             }
         }
@@ -75,45 +76,31 @@ final class FollowNotifier
      */
     public function matches(int $userId, CarbonImmutable $since): array
     {
-        $follows = DB::table('user_marks')->where('user_id', $userId)->where('kind', 'follow')->get(['subject', 'key']);
-        if ($follows->isEmpty()) {
+        $follows = $this->repository->follows($userId);
+        if ($follows === []) {
             return [];
         }
-        $performers = $follows->where('subject', 'performer')->pluck('key')->map(static fn($k): int => (int) $k)->all();
-        $makers = $follows->where('subject', 'maker')->pluck('key')->all();
-        $series = $follows->where('subject', 'series')->pluck('key')->all();
+        $performers = array_values(array_map(static fn(array $row): int => (int) $row['key'], array_filter($follows, static fn(array $row): bool => $row['subject'] === 'performer')));
+        $makers = array_values(array_map(static fn(array $row): string => $row['key'], array_filter($follows, static fn(array $row): bool => $row['subject'] === 'maker')));
+        $series = array_values(array_map(static fn(array $row): string => $row['key'], array_filter($follows, static fn(array $row): bool => $row['subject'] === 'series')));
 
-        $rows = DB::table('movies')->where('first_seen_at', '>=', $since->utc())->whereNull('delisted_at')
-            ->whereNotIn('display_code', DB::table('follow_notifications')->where('user_id', $userId)->where('channel', 'telegram')->select('movie_code'))
-            ->where(function ($w) use ($performers, $makers, $series): void {
-                if ($performers !== []) {
-                    $w->orWhereIn('id', DB::table('movie_performers')->whereIn('performer_id', $performers)->select('movie_id'));
-                }
-                if ($makers !== []) {
-                    $w->orWhereIn('maker', $makers);
-                }
-                if ($series !== []) {
-                    $w->orWhereIn('series', $series);
-                }
-            })
-            ->orderByDesc('first_seen_at')->limit(200)->get(['id', 'display_code', 'title_en', 'title_jp', 'cover_url', 'maker', 'series']);
-
-        $names = $performers === [] ? collect() : DB::table('performers')->whereIn('id', $performers)->pluck(DB::raw('COALESCE(name_romaji, name_kanji)'), 'id');
+        $rows = $this->repository->candidateMovies($userId, $since, $performers, $makers, $series);
+        $names = $this->repository->performerNames($performers);
         $out = [];
         foreach ($rows as $row) {
             $reasons = [];
-            if ($row->maker !== null && in_array($row->maker, $makers, true)) {
-                $reasons[] = 'maker ' . $row->maker;
+            if ($row['maker'] !== null && in_array($row['maker'], $makers, true)) {
+                $reasons[] = 'maker ' . $row['maker'];
             }
-            if ($row->series !== null && in_array($row->series, $series, true)) {
-                $reasons[] = 'series ' . $row->series;
+            if ($row['series'] !== null && in_array($row['series'], $series, true)) {
+                $reasons[] = 'series ' . $row['series'];
             }
             if ($performers !== []) {
-                foreach (DB::table('movie_performers')->where('movie_id', $row->id)->whereIn('performer_id', $performers)->pluck('performer_id') as $pid) {
+                foreach ($this->repository->matchingPerformers($row['id'], $performers) as $pid) {
                     $reasons[] = 'performer ' . ($names[$pid] ?? '#' . $pid);
                 }
             }
-            $out[] = ['code' => (string) $row->display_code, 'title' => (string) ($row->title_en ?? $row->title_jp ?? $row->display_code), 'cover' => $row->cover_url, 'reason' => implode(', ', $reasons)];
+            $out[] = ['code' => $row['display_code'], 'title' => (string) ($row['title_en'] ?? $row['title_jp'] ?? $row['display_code']), 'cover' => $row['cover_url'], 'reason' => implode(', ', $reasons)];
         }
 
         return $out;

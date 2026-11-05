@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Repositories\MovieRepository;
 use App\Models\Movie;
 use App\Models\Performer;
 use App\Services\Embedding\EmbedderClient;
@@ -70,8 +71,8 @@ final class SwitchEmbeddingsCommand extends Command
 
             $failed = 0;
             $done = 0;
-            $movieQuery = Movie::query()->with(['codes', 'performers', 'genres']);
-            $performerQuery = Performer::query()->whereNull('canonical_performer_id');
+            $movieQuery = app(MovieRepository::class)->modelQuery(Movie::class)->with(['codes', 'performers', 'genres']);
+            $performerQuery = app(MovieRepository::class)->modelQuery(Performer::class)->whereNull('canonical_performer_id');
             if ($limit > 0) {
                 $movieQuery->limit($limit);
                 $performerQuery->limit($limit);

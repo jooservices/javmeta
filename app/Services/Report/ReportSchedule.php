@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Services\Report;
 
-use App\Models\ReportSnapshot;
+use App\Repositories\ReportDataServiceRepository;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 
 final class ReportSchedule
 {
+    public function __construct(private readonly ReportDataServiceRepository $repository) {}
+
     public function dueSlot(?CarbonImmutable $now = null): ?CarbonImmutable
     {
         if (! (bool) config('javmeta_report.enabled', true)) {
@@ -34,7 +36,7 @@ final class ReportSchedule
             return null;
         }
 
-        $lastScheduled = ReportSnapshot::query()->where('report_type', 'periodic')->whereNotNull('scheduled_for')->max('scheduled_for');
+        $lastScheduled = $this->repository->lastScheduledAt();
         if (is_string($lastScheduled) && CarbonImmutable::parse($lastScheduled, 'UTC')->addMinutes($interval)->greaterThan($slot->utc())) {
             return null;
         }

@@ -5,13 +5,12 @@ declare(strict_types=1);
 namespace App\Services\Settings;
 
 use App\Events\SettingsApplied;
-use App\Models\Source;
+use App\Repositories\SettingsServiceRepository;
 use DateTimeZone;
 use InvalidArgumentException;
 use RuntimeException;
 use Illuminate\Support\Env;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Support\ConfigType;
 use Throwable;
@@ -31,7 +30,12 @@ final class SettingsService
     /** @var list<string> */
     private array $invalidWorkerSettings = [];
 
-    public function __construct(private readonly ConfigStore $store) {}
+    private readonly SettingsServiceRepository $repository;
+
+    public function __construct(private readonly ConfigStore $store, SettingsServiceRepository $repository)
+    {
+        $this->repository = $repository;
+    }
 
     /** @return array<string, array<string, mixed>> */
     public function definitions(): array
@@ -880,10 +884,8 @@ final class SettingsService
         }
         if ($shape === 'source_gap_override_map') {
             $knownSources = array_fill_keys(array_map('strval', array_keys((array) config('javmeta_sources.sources', []))), true);
-            if (Schema::hasTable('sources')) {
-                foreach (Source::query()->pluck('slug') as $sourceSlug) {
-                    $knownSources[(string) $sourceSlug] = true;
-                }
+            foreach ($this->repository->sourceSlugs() as $sourceSlug) {
+                $knownSources[$sourceSlug] = true;
             }
 
             foreach ($value as $slug => $bounds) {

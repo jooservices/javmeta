@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Identity;
 
+use App\Repositories\PerformerRepository;
 use App\Models\Performer;
 use App\Models\PerformerIdentityEvent;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -18,12 +18,12 @@ final class PerformerMergeGuard
     public function assertMergeCanBeSplit(PerformerIdentityEvent $merge, array $details): void
     {
         $canonicalId = (int) $merge->to_performer_id;
-        $canonical = Performer::query()->find($canonicalId);
+        $canonical = app(PerformerRepository::class)->modelQuery(Performer::class)->find($canonicalId);
         if (! $canonical instanceof Performer || $canonical->canonical_performer_id !== null) {
             throw new RuntimeException('Split later merge events first; the recorded canonical performer has changed.');
         }
 
-        $members = Performer::query()->whereIn('id', $details['source_performer_ids'])
+        $members = app(PerformerRepository::class)->modelQuery(Performer::class)->whereIn('id', $details['source_performer_ids'])
             ->get(['id', 'canonical_performer_id'])->keyBy('id');
         foreach ($details['source_performer_ids'] as $performerId) {
             $member = $members->get($performerId);
@@ -32,7 +32,7 @@ final class PerformerMergeGuard
             }
         }
 
-        $sourceLinksChanged = DB::table('performer_sources')->whereIn('id', $details['source_link_ids'])
+        $sourceLinksChanged = app(PerformerRepository::class)->tableQuery('performer_sources')->whereIn('id', $details['source_link_ids'])
             ->where('performer_id', '<>', $canonicalId)->exists();
         if ($sourceLinksChanged) {
             throw new RuntimeException('Split later merge events first; the recorded source links have changed.');
@@ -48,8 +48,8 @@ final class PerformerMergeGuard
 
         $fromId = (int) $merge->from_performer_id;
         $toId = (int) $merge->to_performer_id;
-        $from = Performer::query()->find($fromId);
-        $to = Performer::query()->find($toId);
+        $from = app(PerformerRepository::class)->modelQuery(Performer::class)->find($fromId);
+        $to = app(PerformerRepository::class)->modelQuery(Performer::class)->find($toId);
         if (! $from instanceof Performer || $from->canonical_performer_id !== null
             || ! $to instanceof Performer || $to->canonical_performer_id !== null) {
             throw new RuntimeException('Restore later identity changes before undoing this split.');
@@ -61,20 +61,20 @@ final class PerformerMergeGuard
 
         $children = array_values(array_diff($details['source_performer_ids'], [$fromId]));
         if ($children !== []) {
-            $linkedChildren = Performer::query()->whereIn('id', $children)
+            $linkedChildren = app(PerformerRepository::class)->modelQuery(Performer::class)->whereIn('id', $children)
                 ->where('canonical_performer_id', $fromId)->count();
             if ($linkedChildren !== count($children)) {
                 throw new RuntimeException('Restore later identity changes before undoing this split.');
             }
         }
 
-        $unexpectedChildren = Performer::query()->where('canonical_performer_id', $fromId)
+        $unexpectedChildren = app(PerformerRepository::class)->modelQuery(Performer::class)->where('canonical_performer_id', $fromId)
             ->whereNotIn('id', $details['source_performer_ids'])->exists();
         if ($unexpectedChildren) {
             throw new RuntimeException('Restore later identity changes before undoing this split.');
         }
 
-        $sourceLinksChanged = DB::table('performer_sources')->whereIn('id', $details['source_link_ids'])
+        $sourceLinksChanged = app(PerformerRepository::class)->tableQuery('performer_sources')->whereIn('id', $details['source_link_ids'])
             ->where('performer_id', '<>', $fromId)->exists();
         if ($sourceLinksChanged) {
             throw new RuntimeException('Restore later identity changes before undoing this split.');
