@@ -22,7 +22,17 @@ final class UiPlayerController
             $query->where('code', strtoupper($code));
         }
         $files = $query->orderBy('id')->get(['id', 'code', 'path']);
-        abort_if($files->isEmpty(), 404, 'Không có tệp trên đĩa.');
+        if ($files->isEmpty()) {
+            return response()->json(['data' => [
+                'enabled' => $links->enabled(),
+                'url' => null,
+                'error' => 'Không có tệp trên đĩa.',
+                'library_file_id' => null,
+                'files' => [],
+                'subtitles' => [],
+                'scenes' => [],
+            ]])->header('Cache-Control', 'no-store');
+        }
         $file = isset($v['file']) ? $files->firstWhere('id', (int) $v['file']) : $files->first();
         abort_if($file === null, 404, 'Tệp không thuộc phim này.');
         $enabled = $links->enabled();
