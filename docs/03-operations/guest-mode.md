@@ -78,6 +78,7 @@ session or API credential.
 | `GET, HEAD` | `horizon/api/workload` | Login required | Horizon authorization gate protects worker workload. |
 | `GET, HEAD` | `horizon/{view?}` | Login required | Horizon authorization gate protects the dashboard. |
 | `GET, HEAD` | `login` | Guest allowed | Public authentication form; it exposes no owner or API credentials. |
+| `GET, HEAD` | `metrics` | Guest allowed | Exposes configured PostgreSQL worker-budget gauges without session or credential data. |
 | `POST` | `login` | Login required | Not a guest-browsing route. Anonymous clients may submit credentials; invalid input redirects to the login form. |
 | `POST` | `logout` | Login required | Requires an owner session. |
 | `GET, HEAD` | `node/join.sh` | Guest allowed | The node join script; it contains only this installation's address and no secret. |

@@ -60,6 +60,13 @@ On systemd nodes, use `systemctl restart <unit-prefix>-horizon` for an immediate
 reload: a clean Horizon exit does not activate the unit's `Restart=on-failure`
 policy.
 
+Each Horizon process can hold its own PostgreSQL PDO while a job runs. The
+application releases idle PostgreSQL connections between queue jobs and after
+scheduled tasks; active transactions remain connected. Worker settings are
+guarded by the fleet connection budget, which counts the primary and three
+worker nodes. See [PostgreSQL connection budget](postgres-connections.md) for
+the calculation, reserve, metrics, and alert.
+
 Movie and performer persistence dispatches a unique job to `search` after the database transaction commits. The crawl worker does not call Elasticsearch or the embedder; Horizon handles indexing with the configured database retry count and backoff. A failed job is recorded by Laravel's configured failed-job store and Horizon. `search.enabled` prevents new indexing jobs from being dispatched; queued jobs also exit without indexing while the switch is off.
 
 Shared integration tests use the Workspaces Redis account on the project's own database indexes (`provision-project javmeta --redis`: live and test indexes) and the key prefixes `javmeta:`, `javmeta_test:` and `javmeta_wt<id>:`; the shared Redis service has one root account and no per-project Redis users or ACLs. `docker/ci/integration-shared` verifies the target with `check-project` first.

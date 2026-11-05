@@ -141,9 +141,13 @@ application databases/indexes but the appropriate scoped Redis prefix.
 Only **one scheduler** may run across the fleet. The periodic report also uses
 `onOneServer` and a per-slot cache lock. Stop the old scheduler before
 deliberately starting the new one with `--start-scheduler` on a primary node.
-The PostgreSQL application role's
-connection limit **60** and shared `max_connections` **150** limit scale. Size
-worker counts against both limits. Browser capacity on vm-tools is **global**,
+The PostgreSQL application role's connection limit defaults to **120** through
+`JAVMETA_POSTGRES_ROLE_CONNECTION_LIMIT`; the shared `max_connections` remains
+**150**. The application reserves 30 role slots for non-Horizon clients, so
+configured Horizon demand is capped at 90 by default. Keep the role limit and
+primary/worker node counts aligned with the live deployment. See
+[`docs/03-operations/postgres-connections.md`](../../docs/03-operations/postgres-connections.md)
+for the calculation and metrics. Browser capacity on vm-tools is **global**,
 not per worker; adding nodes does not add browser capacity.
 
 ## Local verification

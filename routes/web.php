@@ -9,6 +9,7 @@ use App\Http\Controllers\Ui\UiAdminController;
 use App\Http\Controllers\Ui\UiApiController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\Nodes\NodeEnrollmentController;
+use App\Http\Controllers\Observability\PostgresConnectionMetricsController;
 use App\Http\Controllers\Operations\NodeController;
 use App\Http\Controllers\Ui\UiDownloadsController;
 use App\Http\Controllers\Ui\UiLibraryController;
@@ -23,6 +24,10 @@ use App\Http\Middleware\ThrottleGuestUiApi;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+
+Route::get('/metrics', PostgresConnectionMetricsController::class)
+    ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class])
+    ->name('metrics');
 
 Route::get('/', static fn() => redirect()->route('ui.index'));
 

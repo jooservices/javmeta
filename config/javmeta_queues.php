@@ -45,6 +45,12 @@ return [
     'direct_workers_per_queue' => null,
     'worker_queue_overrides' => [],
     'worker_node_overrides' => [],
+    'postgres_connection_budget' => [
+        'role_limit' => (int) env('JAVMETA_POSTGRES_ROLE_CONNECTION_LIMIT', 120),
+        'reserve' => (int) env('JAVMETA_POSTGRES_CONNECTION_RESERVE', 30),
+        'worker_nodes' => (int) env('JAVMETA_POSTGRES_WORKER_NODE_COUNT', 2),
+        'primary_nodes' => (int) env('JAVMETA_POSTGRES_PRIMARY_NODE_COUNT', 1),
+    ],
     'source_gap_overrides' => [],
 
     /** Queue names included in the feed-pool queue set; only crawl kinds map to crawl_queue rows. */

@@ -29,6 +29,8 @@ use App\Services\Search\ElasticsearchRequestHealth;
 use App\Services\Health\SourceScheduleFreshness;
 use App\Services\Observability\NodeEgressProbe;
 use App\Services\Workers\HorizonLayoutSnapshot;
+use App\Services\Workers\HorizonWorkerLayout;
+use App\Services\Workers\PostgresConnectionBudget;
 use App\Services\Report\NodeSampleAggregator;
 use App\Services\Report\NodeSampleStore;
 use App\Services\Report\ReportMetrics;
@@ -71,6 +73,8 @@ final class PublishMetricsCommand extends Command
         NodeSampleAggregator $sampleAggregator,
         ReportMetrics $reportMetrics,
         NormalizationRejectionMetrics $normalizationMetrics,
+        HorizonWorkerLayout $workerLayout,
+        PostgresConnectionBudget $connectionBudget,
     ): int {
         try {
             $statsSampler->sample();
@@ -100,6 +104,7 @@ final class PublishMetricsCommand extends Command
             $this->catalogMetrics(),
             $this->failedJobMetrics(),
             $this->postgresCapacityMetrics(),
+            $this->postgresConnectionBudgetMetrics($workerLayout, $connectionBudget),
             $this->alertMetricPoints($alertMetrics),
             $this->horizonWorkerMetrics(),
             $this->nodeMetrics($nodeSamples, $sampleAggregator),
@@ -736,6 +741,20 @@ final class PublishMetricsCommand extends Command
             ['name' => MetricStreams::NAMES['postgres_connections_used'], 'value' => $used],
             ['name' => MetricStreams::NAMES['postgres_connections_max'], 'value' => $maximum],
             ['name' => MetricStreams::NAMES['postgres_connection_utilization'], 'value' => $used / $maximum],
+        ];
+    }
+
+    /** @return list<array{name: string, value: float|int}> */
+    private function postgresConnectionBudgetMetrics(HorizonWorkerLayout $layout, PostgresConnectionBudget $budget): array
+    {
+        $summary = $budget->summary($layout->configuredFleetWorkerCount());
+
+        return [
+            ['name' => MetricStreams::NAMES['postgres_connection_demand'], 'value' => $summary['demand']],
+            ['name' => MetricStreams::NAMES['postgres_connection_role_limit'], 'value' => $summary['role_limit']],
+            ['name' => MetricStreams::NAMES['postgres_connection_budget_limit'], 'value' => $summary['budget_limit']],
+            ['name' => MetricStreams::NAMES['postgres_connection_demand_warning_threshold'], 'value' => $summary['warning_threshold']],
+            ['name' => MetricStreams::NAMES['postgres_connection_demand_warning'], 'value' => $summary['warning'] ? 1 : 0],
         ];
     }
 

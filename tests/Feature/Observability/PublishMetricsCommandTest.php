@@ -85,7 +85,18 @@ final class PublishMetricsCommandTest extends TestCase
         Http::assertSent(function ($request): bool {
             $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [];
             $gaps = [];
+            $connectionBudget = [];
             foreach ($metrics as $metric) {
+                if (in_array($metric['name'] ?? null, [
+                    'javmeta_postgres_connection_demand',
+                    'javmeta_postgres_connection_role_limit',
+                    'javmeta_postgres_connection_budget_limit',
+                    'javmeta_postgres_connection_demand_warning_threshold',
+                    'javmeta_postgres_connection_demand_warning',
+                ], true)) {
+                    $point = $metric['gauge']['dataPoints'][0] ?? [];
+                    $connectionBudget[$metric['name']] = (float) ($point['asDouble'] ?? $point['asInt'] ?? 0);
+                }
                 if (! in_array($metric['name'] ?? null, ['javmeta_source_gap_seconds', 'javmeta_source_gap_effective_seconds'], true)) {
                     continue;
                 }
@@ -107,6 +118,11 @@ final class PublishMetricsCommandTest extends TestCase
                 && str_contains($request->body(), 'javmeta_source_gap_seconds')
                 && ($gaps['javmeta_source_gap_seconds'] ?? null) === ['gap' => 20.0, 'source' => 'override']
                 && ($gaps['javmeta_source_gap_effective_seconds'] ?? null) === ['gap' => 15.0, 'source' => 'override']
+                && ($connectionBudget['javmeta_postgres_connection_demand'] ?? null) === 66.0
+                && ($connectionBudget['javmeta_postgres_connection_role_limit'] ?? null) === 120.0
+                && ($connectionBudget['javmeta_postgres_connection_budget_limit'] ?? null) === 90.0
+                && ($connectionBudget['javmeta_postgres_connection_demand_warning_threshold'] ?? null) === 90.0
+                && ($connectionBudget['javmeta_postgres_connection_demand_warning'] ?? null) === 0.0
                 && ! str_contains($request->body(), 'javmeta_source_circuit_state')
                 && ! str_contains($request->body(), 'javmeta_source_consecutive_failures');
         });

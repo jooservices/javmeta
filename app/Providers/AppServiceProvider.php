@@ -9,6 +9,7 @@ use App\Contracts\ReportChannel;
 use App\Http\Middleware\EnsureSuperAdministrator;
 use App\Http\Middleware\GuestSafeStatusResponse;
 use App\Logging\ArrayLogStore;
+use App\Listeners\DisconnectIdlePostgresConnections;
 use App\Listeners\Nodes\NodeEnrollmentSubscriber;
 use App\Listeners\WorkerBusyStateListener;
 use App\Notifications\ActivityLogAlertNotifier;
@@ -39,6 +40,9 @@ use App\Services\Ui\UiLoginStateRecorder;
 use App\Services\Report\ProcWorkerProcessSource;
 use App\Services\Report\WorkerProcessSource;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Console\Events\ScheduledTaskFailed;
+use Illuminate\Console\Events\ScheduledTaskFinished;
+use Illuminate\Queue\Events\Looping;
 use Illuminate\Routing\Events\RouteMatched;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Queue\Events\JobProcessed;
@@ -56,6 +60,11 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(JobProcessing::class, [WorkerBusyStateListener::class, 'processing']);
         Event::listen(JobProcessed::class, [WorkerBusyStateListener::class, 'processed']);
         Event::listen(JobFailed::class, [WorkerBusyStateListener::class, 'processed']);
+        $this->app->booted(static function (): void {
+            Event::listen(Looping::class, [DisconnectIdlePostgresConnections::class, 'afterQueueLoop']);
+            Event::listen(ScheduledTaskFinished::class, [DisconnectIdlePostgresConnections::class, 'afterScheduledTask']);
+            Event::listen(ScheduledTaskFailed::class, [DisconnectIdlePostgresConnections::class, 'afterScheduledTask']);
+        });
 
         Event::listen(RouteMatched::class, static function (RouteMatched $event): void {
             if (in_array($event->route->getName(), ['storage.local', 'storage.local.upload'], true)) {

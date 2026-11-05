@@ -19,6 +19,7 @@ final class HorizonWorkerReconciler
 
     public function __construct(
         private readonly HorizonWorkerLayout $layout,
+        private readonly PostgresConnectionBudget $connectionBudget,
         private readonly SettingsService $settings,
         private readonly HorizonCommandQueue $commands,
         private readonly SupervisorRepository $supervisors,
@@ -40,6 +41,16 @@ final class HorizonWorkerReconciler
         $old = is_array($running['snapshot'] ?? null) ? $running['snapshot'] : null;
         if ($old === null) {
             return ['status' => 'no-running-master'];
+        }
+        $budget = $this->connectionBudget->summary($this->layout->configuredFleetWorkerCount());
+        if (! $budget['within_budget']) {
+            Log::warning('Horizon worker scale refused because configured PostgreSQL demand exceeds its safe role budget.', [
+                'node' => $node,
+                'configured_demand' => $budget['demand'],
+                'budget_limit' => $budget['budget_limit'],
+            ]);
+
+            return ['status' => 'connection-budget-exceeded', 'old' => $old, 'new' => $desired];
         }
         if (hash_equals((string) $desired['hash'], (string) ($old['hash'] ?? ''))) {
             $redis->del($this->mismatchKey($node));

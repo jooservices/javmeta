@@ -57,28 +57,31 @@ final class HorizonWorkerReconcileTest extends IntegrationTestCase
         }
         $this->store->forget('settings.queue.workers_per_queue');
         $this->store->forget('settings.worker.browser_workers_per_queue');
+        $this->store->forget('settings.worker.node_overrides');
         SettingsService::forgetDefaults();
         parent::tearDown();
     }
 
     public function test_database_worker_count_is_applied_by_horizon_scale_without_restarting_the_master(): void
     {
+        config(['javmeta_queues.postgres_connection_budget.role_limit' => 150]);
         $node = 'joo-xcr-301-db-change';
         $master = 'worker-joo-xcr-301-db-change-master';
         $running = $this->seedSnapshot($node, $master);
         SettingsService::forgetDefaults();
         $settings = app(SettingsService::class);
-        $settings->set('queue.workers_per_queue', 4);
+        $settings->set('worker.node_overrides', ['worker' => ['queues' => ['listing' => 3]]]);
         Log::shouldReceive('info')->once()->withArgs(static function (string $message, array $context): bool {
             return $message === 'Horizon worker counts reconciled.'
-                && ($context['workers']['listing'] ?? null) === 4;
+                && ($context['workers']['listing'] ?? null) === 3;
         })->andReturnNull();
 
         $result = app(HorizonWorkerReconciler::class)->reconcile();
 
-        self::assertSame(4, $this->store->get('settings.queue.workers_per_queue'));
+        $storedOverrides = json_decode((string) $this->store->get('settings.worker.node_overrides'), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame(3, $storedOverrides['worker']['queues']['listing']);
         self::assertSame('scaled', $result['status'], 'a worker count change must not terminate or restart Horizon');
-        self::assertSame(4, $result['new']['supervisors']['crawler-listing']['maxProcesses']);
+        self::assertSame(3, $result['new']['supervisors']['crawler-listing']['maxProcesses']);
         self::assertSame(2, $running['supervisors']['crawler-listing']['maxProcesses']);
         self::assertDatabaseHas('crawl_events', [
             'source_slug' => 'worker-reconcile',
@@ -88,9 +91,34 @@ final class HorizonWorkerReconcileTest extends IntegrationTestCase
         $commands = $this->commands->pending($master . ':crawler-listing');
         self::assertCount(1, $commands);
         self::assertSame(ReconcileHorizonScale::class, $commands[0]->command);
-        self::assertSame(['scale' => 4], $commands[0]->options);
+        self::assertSame(['scale' => 3], $commands[0]->options);
         $this->publishAppliedSnapshot($master, $result['new']['supervisors']);
         self::assertSame('current', app(HorizonWorkerReconciler::class)->reconcile()['status']);
+    }
+
+    public function test_fleet_worker_scale_is_refused_when_it_exceeds_the_reserved_postgres_budget(): void
+    {
+        config([
+            'javmeta_queues.postgres_connection_budget.role_limit' => 80,
+            'javmeta_queues.postgres_connection_budget.reserve' => 30,
+            'javmeta_queues.postgres_connection_budget.worker_nodes' => 3,
+        ]);
+        $node = 'joo-xcr-392-over-budget';
+        $master = 'worker-joo-xcr-392-over-budget-master';
+        $running = $this->seedSnapshot($node, $master);
+        Log::shouldReceive('warning')->twice()->withArgs(static function (string $message, array $context): bool {
+            return $message === 'Horizon worker scale refused because configured PostgreSQL demand exceeds its safe role budget.'
+                && ($context['configured_demand'] ?? null) > ($context['budget_limit'] ?? PHP_INT_MAX);
+        })->andReturnNull();
+
+        $result = app(HorizonWorkerReconciler::class)->reconcile();
+
+        self::assertSame('connection-budget-exceeded', $result['status']);
+        self::assertSame($running['hash'], $result['old']['hash']);
+        self::assertSame([], $this->commands->pending($master . ':crawler-listing'));
+        $this->artisan('horizon:reconcile-workers')
+            ->expectsOutputToContain('configured PostgreSQL connection budget exceeded; keeping the current layout.')
+            ->assertSuccessful();
     }
 
     public function test_database_count_of_one_is_scaled_to_every_queue_and_never_to_zero(): void
@@ -179,11 +207,14 @@ final class HorizonWorkerReconcileTest extends IntegrationTestCase
 
     public function test_fleet_lock_remains_after_a_scale_command_was_queued_before_a_later_failure(): void
     {
+        config(['javmeta_queues.postgres_connection_budget.role_limit' => 150]);
         $node = 'joo-xcr-301-partial-scale';
         $master = 'worker-joo-xcr-301-partial-scale-master';
         $this->seedSnapshot($node, $master);
         SettingsService::forgetDefaults();
-        app(SettingsService::class)->set('queue.workers_per_queue', 4);
+        app(SettingsService::class)->set('worker.node_overrides', [
+            'worker@' . $node => ['queues' => ['listing' => 3, 'detail' => 3]],
+        ]);
         $queued = 0;
         $commands = Mockery::mock(HorizonCommandQueue::class);
         $commands->shouldReceive('push')->twice()->andReturnUsing(static function () use (&$queued): void {
@@ -207,6 +238,7 @@ final class HorizonWorkerReconcileTest extends IntegrationTestCase
 
     public function test_node_jitter_and_fleet_lock_serialize_worker_changes(): void
     {
+        config(['javmeta_queues.postgres_connection_budget.role_limit' => 150]);
         $hostA = $this->hostWithPositiveJitter();
         $nodeA = 'worker-' . str_replace('.', '-', $hostA);
         $masterA = $nodeA . '-master';
@@ -217,7 +249,7 @@ final class HorizonWorkerReconcileTest extends IntegrationTestCase
         $this->seedSnapshot($hostB, $masterB);
         config(['javmeta_workers.reconcile_jitter_seconds' => 60]);
         SettingsService::forgetDefaults();
-        app(SettingsService::class)->set('queue.workers_per_queue', 4);
+        app(SettingsService::class)->set('worker.node_overrides', ['worker' => ['queues' => ['listing' => 3]]]);
         $delay = hexdec(substr(hash('sha256', $nodeA), 0, 8)) % 61;
         $this->assertGreaterThan(0, $delay);
 
@@ -277,12 +309,13 @@ final class HorizonWorkerReconcileTest extends IntegrationTestCase
 
     public function test_a_scale_is_postponed_while_supervisors_are_not_running_or_the_node_is_cooling_down_or_locked(): void
     {
+        config(['javmeta_queues.postgres_connection_budget.role_limit' => 150]);
         $node = 'joo-xcr-374-guards';
         $master = 'worker-joo-xcr-374-guards-master';
         $running = $this->seedSnapshot($node, $master);
         $nodeName = (string) $running['node'];
         SettingsService::forgetDefaults();
-        app(SettingsService::class)->set('queue.workers_per_queue', 4);
+        app(SettingsService::class)->set('worker.node_overrides', ['worker' => ['queues' => ['listing' => 3]]]);
         $redis = Redis::connection($this->redisConnection);
 
         $stopped = Mockery::mock(SupervisorRepository::class);
