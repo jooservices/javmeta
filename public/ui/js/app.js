@@ -98,8 +98,10 @@ function drawShell(top) {
       .filter(group => group[1].length)
     : NAV;
   $('#side').innerHTML = '<div class="brand"><i>X</i>XCrawler</div>' + groups.map(g => `<div class="nav-h">${g[0]}</div>` + g[1].map(n => `<a class="nav ${top === n[0] ? 'on' : ''}" href="${n[3]}" style="text-decoration:none">${ic(n[2])}<span>${n[1]}</span></a>`).join('')).join('') + '<div class="side-foot">JavMeta API · dữ liệu thật</div>';
-  const bn = [['home', 'Discover', 'home', '#/'], ['search', 'Tìm', 'search', '#/search'], ['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers'], ['crawl', 'Crawl', 'spider', '#/crawl']];
-  $('#bnav').innerHTML = bn.map(n => `<a class="${top === n[0] ? 'on' : ''}" href="${n[3]}" style="flex:1;text-decoration:none;color:inherit;display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 0;font-size:10px">${ic(n[2])}${n[1]}</a>`).join('');
+  const bn = guestMode
+    ? [['home', 'Discover', 'home', '#/'], ['search', 'Tìm', 'search', '#/search'], ['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers']]
+    : [['home', 'Discover', 'home', '#/'], ['search', 'Tìm', 'search', '#/search'], ['movies', 'Phim', 'film', '#/movies'], ['me-favourite', 'Yêu thích', 'tag', '#/me/favourite'], ['settings', 'Cài đặt', 'gear', '#/settings']];
+  $('#bnav').innerHTML = bn.map(n => `<a class="${top === n[0] ? 'on' : ''}" href="${n[3]}">${ic(n[2])}${n[1]}</a>`).join('');
   $('.top .menu').innerHTML = ic('menu');
 }
 
@@ -197,9 +199,15 @@ document.addEventListener('click', e => {
   if (act === 'menu') $('#side').classList.toggle('open');
   if (act === 'reload') render();
   if (act === 'copy') copyText(t.dataset.v);
-  if (act === 'help') { $('#dlg').innerHTML = '<h2 style="margin-bottom:8px">Phím tắt</h2><dl class="kv" style="grid-template-columns:120px 1fr"><dt><kbd>⌘K</kbd> <kbd>/</kbd></dt><dd>Tìm kiếm</dd><dt><kbd>t</kbd></dt><dd>Đổi sáng/tối</dd><dt><kbd>Esc</kbd></dt><dd>Đóng</dd></dl>'; $('#ov').classList.add('on'); }
+  if (act === 'help') openHelp();
 });
-$('#ov').addEventListener('click', e => { if (e.target.id === 'ov') $('#ov').classList.remove('on'); });
+$('#ov').addEventListener('click', e => {
+  if (e.target.closest('[data-dlg-close]')) { $('#ov').classList.remove('on'); return; }
+  if (e.target.id !== 'ov') return;
+  const cancel = document.querySelector('#dlg [data-confirm-no], #dlg [data-dlg-close]');
+  if (cancel) cancel.click();
+  else $('#ov').classList.remove('on');
+});
 document.addEventListener('keydown', e => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('#omq').focus(); $('#omq').select(); }
@@ -208,6 +216,24 @@ document.addEventListener('keydown', e => {
   else if (!typing && e.key === '?') document.querySelector('[data-act=help]').click();
   else if (e.key === 'Escape') { $('#ov').classList.remove('on'); }
 });
+function shortcutMod() {
+  return /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? '⌘' : 'Ctrl';
+}
+
+function openHelp() {
+  const mod = shortcutMod();
+  const dlg = $('#dlg');
+  dlg.setAttribute('role', 'dialog');
+  dlg.setAttribute('aria-modal', 'true');
+  dlg.setAttribute('aria-labelledby', 'help-title');
+  dlg.innerHTML = `<h2 id="help-title" style="margin-bottom:8px">Phím tắt</h2><dl class="kv" style="grid-template-columns:120px 1fr"><dt><kbd>${mod}+K</kbd> <kbd>/</kbd></dt><dd>Tìm kiếm</dd><dt><kbd>t</kbd></dt><dd>Đổi sáng/tối</dd><dt><kbd>Esc</kbd></dt><dd>Đóng</dd><dt><kbd>?</kbd></dt><dd>Bảng phím tắt</dd></dl><button type="button" class="btn" data-dlg-close>Đóng</button>`;
+  $('#ov').classList.add('on');
+  dlg.querySelector('[data-dlg-close]')?.focus();
+}
+
+const omniKbd = document.querySelector('.omni kbd');
+if (omniKbd) omniKbd.textContent = shortcutMod() + 'K';
+
 initLightbox();
 render();
 live();
