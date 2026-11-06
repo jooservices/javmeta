@@ -101,6 +101,7 @@ export const expectReportSwitchInView = defineStep('expectReportSwitchInView', a
 export const expectReportEnabledSaved = defineStep('expectReportEnabledSaved', async ctx => {
   const on = ctx.state.reportEnabledNow;
   await ctx.page.reload({ waitUntil: 'load' });
+  await ctx.page.evaluate(() => { if (!location.hash.includes('settings/report')) location.hash = '#/settings/report'; });
   await ctx.page.waitForSelector('#view input[data-key="report.enabled"]', { timeout: 12000 });
   const checked = await ctx.page.locator('#view input[data-key="report.enabled"]').isChecked();
   if (checked !== on) throw new Error(`After a reload the report switch is ${checked ? 'on' : 'off'}, expected ${on ? 'on' : 'off'}.`);
