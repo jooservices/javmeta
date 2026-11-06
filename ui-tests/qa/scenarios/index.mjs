@@ -254,7 +254,7 @@ export const guestCanBrowsePublicPages = defineScenario('a guest can browse publ
   openView('#/settings/notifications'), expectGuestPrompt('Cài đặt'),
   openView('#/library'), expectGuestPrompt('Thư viện'),
   openView('#/downloads'), expectGuestPrompt('Tải về'),
-  openView('#/media'), expectGuestPrompt('Media'),
+  openView('#/media'), expectGuestPrompt('Tệp media'),
   openView('#/feed'), expectGuestPrompt('Tính năng cá nhân'),
   openView('#/me/favourite'), expectGuestPrompt('Tính năng cá nhân'), openGuestLogin(), expectOnLoginPage(),
   expectPathRequiresLogin('/ops'),

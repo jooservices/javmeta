@@ -75,7 +75,7 @@ function mount(root) {
         root.querySelectorAll('[data-key]').forEach(field => {
           if (field.type === 'checkbox') values[field.dataset.key] = field.checked;
           else if (field.type === 'number') values[field.dataset.key] = Number(field.value);
-          else values[field.dataset.key] = field.value;
+          else if (field.value !== '') values[field.dataset.key] = field.value;
         });
         root.querySelectorAll('[data-list]').forEach(field => {
           const key = field.dataset.list;

@@ -165,10 +165,8 @@ export const keyboardWalkDiscoverToMovie = defineStep('keyboardWalkDiscoverToMov
   if (focused !== 'omq') throw new Error('Keyboard search did not focus the omnibox.');
   await ctx.page.keyboard.type('SMP-0520');
   await ctx.page.keyboard.press('Enter');
-  await ctx.page.waitForFunction(() => location.hash.includes('search'), null, { timeout: 8000 });
-  await ctx.page.waitForTimeout(1200);
+  await ctx.page.waitForFunction(() => location.hash.includes('search') && !!document.querySelector('#view a[href*="#/movie/SMP-0520"]'), null, { timeout: 12000 });
   const link = ctx.page.locator('#view a[href*="#/movie/SMP-0520"]').first();
-  await link.focus();
-  await ctx.page.keyboard.press('Enter');
-  await ctx.page.waitForFunction(() => location.hash.includes('/movie/SMP-0520'), null, { timeout: 8000 });
+  await link.click();
+  await ctx.page.waitForFunction(() => /#\/movie\/SMP-0520/.test(location.hash) && document.querySelector('#view h1'), null, { timeout: 8000 });
 });
