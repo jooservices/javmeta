@@ -14,10 +14,17 @@ use JOOservices\LaravelController\Http\Controllers\BaseApiController;
 
 final class StatusController extends BaseApiController
 {
+    /** Worker rows returned in the summary; the full count is reported in `workers_total`. */
+    private const WORKER_LIMIT = 50;
+
     /** Totals, ingest, queue, workers and the 24 hour runs: the same data as the MCP tool crawl_status. Cached for 15 seconds. */
     public function summary(PerformanceCache $cache): JsonResponse
     {
         $data = $cache->summary();
+        $workers = $data['workers'];
+        $data['workers'] = array_slice($workers, 0, self::WORKER_LIMIT);
+        $data['workers_total'] = count($workers);
+        $data['workers_truncated'] = $data['workers_total'] > self::WORKER_LIMIT;
 
         return $this->respondWithData(data: $data, message: 'Crawl status retrieved successfully.');
     }

@@ -14,6 +14,7 @@ use App\Models\MovieMedia;
 use App\Models\Performer;
 use App\Models\Source;
 use App\Models\User;
+use App\Services\Crawl\WorkerHeartbeat;
 use App\Services\Ui\UiLoginStateRecorder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -139,6 +140,17 @@ final class UiGuestModeTest extends TestCase
         $bridge->assertHeader('X-Robots-Tag', 'noindex, nofollow');
         self::assertStringContainsString('no-store', (string) $bridge->headers->get('Cache-Control'));
         self::assertFalse($bridge->headers->has('Set-Cookie'));
+    }
+
+    public function test_guest_status_summary_has_no_workers(): void
+    {
+        Cache::put(WorkerHeartbeat::INDEX_KEY, ['node-a:100' => now()->getTimestamp()], now()->addDay());
+
+        $summary = $this->getJson('/ui-api/status/summary')->assertOk();
+
+        $this->assertArrayNotHasKey('workers', $summary->json('data'));
+        $this->assertArrayNotHasKey('workers_total', $summary->json('data'));
+        $this->assertStringNotContainsString('node-a', (string) $summary->getContent());
     }
 
     public function test_guest_movie_details_do_not_expose_private_paths_or_signed_media_links(): void
