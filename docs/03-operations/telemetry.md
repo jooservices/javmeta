@@ -243,6 +243,8 @@ when it clears. Follow messages and bot replies use product-specific templates.
 | Due pending backlog | Due pending items reach `JAVMETA_WATCHDOG_PENDING_QUEUE_LIMIT` (default 1,000); a recovery message follows below the limit | `crawler:watchdog` |
 | Old backup | Last backup older than `backup.stale_after_seconds` (26 hours) or missing | `javmeta:backup-status` |
 
+Backup monitoring is OFF by default (setting `backup.monitoring_enabled`). When off, `javmeta:backup-status` is not scheduled, no metric or alert is sent and the readiness report ignores backups. Turn it on in Settings > Sao lưu.
+
 `OPENOBSERVE_STREAM_METRICS` is retained in configuration for compatibility;
 the current metrics client sends OTLP metric names and does not route them into
 one shared `javmeta_metrics` stream.
