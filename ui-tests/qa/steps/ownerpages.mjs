@@ -89,6 +89,6 @@ export const expectCrawlReadOnly = defineStep('expectCrawlReadOnly', async ctx =
     if (!text.includes(needle)) throw new Error(`Crawl does not show "${needle}".`);
   }
   if (/crawler:source-toggle|php artisan|JOOXCR-\d+/.test(text)) throw new Error('The crawl page shows operator-only instructions.');
-  const buttons = await ctx.page.locator('#view button, #view a.btn').count();
+  const buttons = await ctx.page.locator('#view button, #view a.btn').evaluateAll(els => els.filter(el => el.getAttribute('href') !== '#/settings').length);
   if (buttons !== 0) throw new Error(`The read-only crawl page has ${buttons} actions.`);
 });

@@ -109,13 +109,13 @@ export const cancelLogout = defineStep('cancelLogout', async ctx => {
 export const expectReducedMotionCounters = defineStep('expectReducedMotionCounters', async ctx => {
   await ctx.page.emulateMedia({ reducedMotion: 'reduce' });
   await ctx.page.reload({ waitUntil: 'load' });
-  await ctx.page.waitForTimeout(400);
+  await ctx.page.evaluate(() => { location.hash = '#/'; });
+  await ctx.page.waitForFunction(() => document.querySelector('#view .cu')?.dataset.to, null, { timeout: 12000 })
+    .catch(() => { throw new Error('Discover has no counter to check.'); });
   const info = await ctx.page.evaluate(() => {
     const el = document.querySelector('#view .cu');
-    const live = document.querySelector('#livetxt')?.textContent || '';
-    return { shown: el?.textContent?.trim() || '', to: el?.dataset.to || '', live };
+    return { shown: el?.textContent?.trim() || '', to: el?.dataset.to || '' };
   });
-  if (!info.to) throw new Error('Discover has no counter to check.');
   const shown = Number(String(info.shown).replace(/\D/g, ''));
   const to = Number(info.to);
   if (shown !== to) throw new Error(`U-21: reduced motion still animates the counter (${info.shown} vs ${info.to}).`);

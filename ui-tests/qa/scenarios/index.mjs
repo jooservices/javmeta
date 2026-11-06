@@ -159,7 +159,7 @@ export const searchPageFindsAMovieAndShowsNothing = defineScenario('the search p
   login(), openView('#/search'), expectSearchPrompt(),
   expectHoverChanges('#view #sform button', 'filter'),
   resizeTo(390), expectViewHealthy(), resizeTo(1440),
-  searchFor('a'), expectSearchPrompt(),
+  searchFor('a'), expectSearchTooShortMessage(),
   searchFor('zzzz-no-such-movie-xyz'), expectSearchEmpty(),
   searchFor('SMP-0520'), expectSearchFound('SMP-0520'), expectViewHealthy(),
   expectHoverChanges('#view a.lnk', 'color'),
