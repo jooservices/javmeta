@@ -17,7 +17,7 @@ export default {
       preview = { data: { text: String(error.message || 'Không tải được bản xem trước.'), last: null, history: [] } };
     }
     const reportSettings = settings.data.settings.filter(row => row.group === 'report');
-    const rows = reportSettings.map(row => `<div class="row-i" style="align-items:flex-start;flex-wrap:wrap"><div class="grow" style="min-width:220px"><label for="report-${esc(row.key)}"><b>${esc(row.label)}</b></label><div class="muted">${esc(row.description)}</div></div><div>${control(row)}</div></div>`).join('');
+    const rows = reportSettings.map(row => `<div class="row-i" style="align-items:flex-start"><div class="grow"><label for="report-${esc(row.key)}"><b>${esc(row.label)}</b></label><div class="muted">${esc(row.description)}</div></div><div class="ctrl">${control(row)}</div></div>`).join('');
     return {
       html: `<div class="wrap">${head('Báo cáo', 'Cài đặt → Báo cáo')}<div class="grid g2">
         <section class="panel" style="grid-column:1/-1"><div class="hd"><h2>Lịch và nội dung</h2><span class="sp"></span><span class="muted" data-report-status aria-live="polite"></span><button class="btn sm pri" data-report-save>Lưu cài đặt</button></div><div class="bd muted">Báo cáo gửi bằng tiếng Anh theo mẫu XCrawler; thay đổi được áp dụng từ cơ sở dữ liệu.</div>${rows}</section>
@@ -36,10 +36,10 @@ function control(row) {
   if (row.type === 'int' && Array.isArray(row.options)) return `<select id="${id}" data-key="${esc(row.key)}">${row.options.map(value => `<option value="${value}" ${Number(value) === Number(row.value) ? 'selected' : ''}>${value === 1440 ? '24 giờ' : `${value} phút`}</option>`).join('')}</select>`;
   if (row.type === 'string_list' && Array.isArray(row.item_options)) return `<div role="group" aria-label="${esc(row.label)}">${row.item_options.map(value => `<label class="switch"><input type="checkbox" data-list="${esc(row.key)}" value="${esc(value)}" ${(row.value || []).includes(value) ? 'checked' : ''}><span class="track"></span><span class="txt">${esc(optionLabel(value))}</span></label>`).join('')}</div>`;
   if (row.type === 'string_list') return `<textarea id="${id}" data-list-text="${esc(row.key)}" rows="3">${esc((row.value || []).join('\n'))}</textarea>`;
-  if (row.multiline) return `<textarea id="${id}" data-key="${esc(row.key)}" rows="6" maxlength="${row.max_length || 1000}" style="width:min(100%,520px);max-width:100%;box-sizing:border-box">${esc(row.value || '')}</textarea>`;
+  if (row.multiline) return `<textarea id="${id}" data-key="${esc(row.key)}" rows="6" maxlength="${row.max_length || 1000}">${esc(row.value || '')}</textarea>`;
   if (row.format === 'time') return `<input id="${id}" data-key="${esc(row.key)}" type="time" value="${esc(row.value || '')}">`;
   if (row.type === 'int') return `<input id="${id}" data-key="${esc(row.key)}" type="number" step="1" min="${row.min ?? 0}" max="${row.max ?? 100000}" value="${esc(row.value ?? '')}">`;
-  return `<input id="${id}" data-key="${esc(row.key)}" type="text" value="${esc(row.value ?? '')}" style="min-width:min(100%,320px)">`;
+  return `<input id="${id}" data-key="${esc(row.key)}" type="text" value="${esc(row.value ?? '')}">`;
 }
 
 function optionLabel(value) {
@@ -80,7 +80,7 @@ function mount(root) {
         root.querySelectorAll('[data-key]').forEach(field => {
           if (field.type === 'checkbox') values[field.dataset.key] = field.checked;
           else if (field.type === 'number') values[field.dataset.key] = Number(field.value);
-          else values[field.dataset.key] = field.value;
+          else if (field.value !== '') values[field.dataset.key] = field.value;
         });
         root.querySelectorAll('[data-list]').forEach(field => {
           const key = field.dataset.list;

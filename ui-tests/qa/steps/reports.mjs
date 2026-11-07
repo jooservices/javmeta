@@ -101,7 +101,8 @@ export const expectReportSwitchInView = defineStep('expectReportSwitchInView', a
 export const expectReportEnabledSaved = defineStep('expectReportEnabledSaved', async ctx => {
   const on = ctx.state.reportEnabledNow;
   await ctx.page.reload({ waitUntil: 'load' });
-  // The switch checkbox is visually hidden; wait for attachment like reportBox(), then assert state.
+  // Restore the report hash after reload, then wait for the hidden switch like reportBox().
+  await ctx.page.evaluate(() => { if (!location.hash.includes('settings/report')) location.hash = '#/settings/report'; });
   const box = ctx.page.locator('#view input[data-key="report.enabled"]');
   await box.waitFor({ state: 'attached', timeout: 12000 });
   const checked = await box.isChecked();

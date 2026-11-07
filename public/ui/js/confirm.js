@@ -3,8 +3,8 @@ import { esc } from './util.js';
 /** In-page confirm using the shared overlay. Resolves true/false; Escape and overlay click cancel. */
 export function askConfirm({ title, body, confirmLabel = 'Xác nhận', cancelLabel = 'Huỷ', danger = false } = {}) {
   return new Promise(resolve => {
-    const ov = document.getElementById('ov');
-    const dlg = document.getElementById('dlg');
+    const ov = document.getElementById?.('ov');
+    const dlg = document.getElementById?.('dlg');
     if (!ov || !dlg) { resolve(false); return; }
     const previous = { html: dlg.innerHTML, modal: dlg.getAttribute('aria-modal'), labelled: dlg.getAttribute('aria-labelledby') };
     dlg.setAttribute('role', 'dialog');

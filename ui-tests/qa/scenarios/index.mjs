@@ -16,11 +16,12 @@ import { armSavedSearchCleanup, searchFor, expectSearchPrompt, expectSearchEmpty
 import { expectFeedHasNoActions, expectLibraryUnconfigured, expectDownloadsOff, openSettingsFromEmptyState, openSettingsWithKeyboard, expectMediaCaptureOff, refreshMedia, submitDisabledCapture, openMediaLibrary, expectCrawlReadOnly } from '../steps/ownerpages.mjs';
 import { expectReportPreview, refreshReportPreview, expectReportSwitchInView, expectReportStartsEnabled, toggleReportEnabled, toggleReportEnabledWithKeyboard, expectReportSwitchLabel, saveReportSettings, expectReportEnabledSaved, expectNotificationList, rememberNotificationForm, toggleNotificationEnabled, expectNotificationSwitchLabel, saveNotificationEdits, expectFirstNotificationEnabled, markNotificationRestored, toggleQuietMode } from '../steps/reports.mjs';
 import { enableGuestMode, browseAsGuest, expectGuestShell, expectGuestBannerSentence, openGuestLoginWithKeyboard, expectGuestPrompt, openGuestLogin, expectPathRequiresLogin, togglePhoneMenu, choosePhoneNav, expectPhoneMenuDismisses, openBottomNav, openFirstGuestMovie, expectGuestMovie, openGuestMovieCodes, expectGuestMediaBlocked, expectGuestHasNoFollow, expectGuestSavedSearchHidden, restoreLoginRequired } from '../steps/guest.mjs';
+import { expectToast, expectDiscoverHeading, expectVietnameseNav, expectOneMovieLinkPerCard, expectNoChoCrawl, expectPlayerEmptyState, filterSettings, expectSettingsFilterHidesRows, expectCrawlSubtabs, confirmLogout, cancelLogout, expectReducedMotionCounters, keyboardWalkDiscoverToMovie, openMovieTab, expectMovieTab, copyMovieCode, toggleWatchLater, openBioValue, openStatsLink } from '../steps/ux.mjs';
 
 export const VIEWS = [
   '#/', '#/search', '#/stats', '#/movies', '#/performers', '#/bio', '#/movies?sort=update_date',
   '#/catalog/genres', '#/catalog/makers', '#/catalog/series', '#/catalog/labels', '#/catalog/years', '#/calendar',
-  '#/me/favourite', '#/me/watch_later', '#/me/seen', '#/feed', '#/library', '#/downloads', '#/media', '#/crawl', '#/admin', '#/settings',
+  '#/me/favourite', '#/me/watch_later', '#/me/seen', '#/feed', '#/library', '#/downloads', '#/media', '#/player/SMP-0520', '#/crawl', '#/admin', '#/settings', '#/settings/report', '#/settings/notifications',
 ];
 export const SETTINGS_TABS = ['personal', 'crawl', 'notify', 'health', 'search', 'media', 'system'];
 
@@ -43,6 +44,7 @@ export const everyViewRendersOnPhone = {
 
 export const settingsTabsShowTheirControls = defineScenario('every settings tab shows its controls', [
   login(), openView('#/settings'), ...SETTINGS_TABS.flatMap(t => [openTab(t), expectTabShowsControls(t)]),
+  openTab('crawl'), expectCrawlSubtabs(), filterSettings('queue'), expectSettingsFilterHidesRows('queue'),
 ]);
 
 export const settingsSwitchPersists = defineScenario('a settings switch saves and survives a reload', [
@@ -64,13 +66,13 @@ export const discoverIsForBrowsingAndSearchWorks = defineScenario('Discover is f
 export const browseFilterOpenAndFavouriteAMovie = defineScenario('a user filters movies, opens one and favourites it', [
   login(), openView('#/movies'), expectMovieResults({ atLeast: 10 }),
   filterMoviesByKeyword('Number 520'), expectMovieResults({ atLeast: 1, atMost: 3, contains: 'SMP-0520' }),
-  openMovie('SMP-0520'), expectMovieDetail('SMP-0520', 'Sample Movie Number 520'),
-  toggleFavourite(), expectInFavourites('SMP-0520', true),
+  openMovie('SMP-0520'), expectMovieDetail('SMP-0520', 'Sample Movie Number 520'), expectNoChoCrawl(),
+  toggleFavourite(), expectToast(/yêu thích/i), expectInFavourites('SMP-0520', true),
   openView('#/movie/SMP-0520'), toggleFavourite(), expectInFavourites('SMP-0520', false),
 ]);
 
 export const topBarAndKeyboardWork = defineScenario('the theme button, help dialog and keyboard shortcuts work', [
-  login(), openView('#/'), expectSidebarLinksLead(['Discover', 'Phim', 'Diễn viên', 'Cài đặt']),
+  login(), openView('#/'), expectSidebarLinksLead(['Khám phá', 'Phim', 'Diễn viên', 'Cài đặt']), expectVietnameseNav(), expectDiscoverHeading(), expectOneMovieLinkPerCard(),
   toggleTheme(), expectThemeSurvivesReload(), resetThemeToDark(),
   openHelp(), expectHelpListsOnlyWorkingKeys(), closeHelpWithButton(),
   openHelp(), closeWithEscape(), focusSearchWithKeyboard(),
@@ -157,7 +159,7 @@ export const searchPageFindsAMovieAndShowsNothing = defineScenario('the search p
   login(), openView('#/search'), expectSearchPrompt(),
   expectHoverChanges('#view #sform button', 'filter'),
   resizeTo(390), expectViewHealthy(), resizeTo(1440),
-  searchFor('a'), expectSearchPrompt(),
+  searchFor('a'), expectSearchTooShortMessage(),
   searchFor('zzzz-no-such-movie-xyz'), expectSearchEmpty(),
   searchFor('SMP-0520'), expectSearchFound('SMP-0520'), expectViewHealthy(),
   expectHoverChanges('#view a.lnk', 'color'),
@@ -252,7 +254,7 @@ export const guestCanBrowsePublicPages = defineScenario('a guest can browse publ
   openView('#/settings/notifications'), expectGuestPrompt('Cài đặt'),
   openView('#/library'), expectGuestPrompt('Thư viện'),
   openView('#/downloads'), expectGuestPrompt('Tải về'),
-  openView('#/media'), expectGuestPrompt('Media'),
+  openView('#/media'), expectGuestPrompt('Tệp media'),
   openView('#/feed'), expectGuestPrompt('Tính năng cá nhân'),
   openView('#/me/favourite'), expectGuestPrompt('Tính năng cá nhân'), openGuestLogin(), expectOnLoginPage(),
   expectPathRequiresLogin('/ops'),
@@ -265,6 +267,34 @@ export const guestBannerKeepsItsSentence = defineScenario('the guest banner keep
 
 export const phoneMenuDismisses = defineScenario('the phone menu can be dismissed without choosing a page', [
   login(), enableGuestMode(), browseAsGuest(), openView('#/'), resizeTo(390), togglePhoneMenu(), expectPhoneMenuDismisses(), restoreLoginRequired(),
+]);
+
+export const markToastsAndLogoutConfirm = defineScenario('a mark toasts and sign-out asks to confirm', [
+  login(), openView('#/movie/SMP-0520'), expectMovieDetail('SMP-0520', 'Sample Movie Number 520'),
+  toggleFavourite(), expectToast(/yêu thích/i), toggleFavourite(), expectToast(/bỏ yêu thích/i),
+  openView('#/settings'), cancelLogout(), confirmLogout(),
+]);
+
+export const reducedMotionAndKeyboardWalk = defineScenario('reduced motion keeps counters honest and a keyboard walk opens a movie', [
+  login(), openView('#/'), expectReducedMotionCounters(), expectDiscoverHeading(),
+  keyboardWalkDiscoverToMovie(), expectMovieDetail('SMP-0520', 'Sample Movie Number 520'), expectNoConsoleErrors(),
+]);
+
+export const reportPageDoesNotOverflow = defineScenario('the report page does not scroll sideways', [
+  login(), openView('#/settings/report'), expectViewHealthy(), resizeTo(390, 844), expectViewHealthy(), resizeTo(1440, 900), expectViewHealthy(),
+]);
+
+export const movieTabsCopyAndWatchLater = defineScenario('movie tabs, copy and watch-later work', [
+  login(), openView('#/movie/SMP-0520'), expectMovieDetail('SMP-0520', 'Sample Movie Number 520'), expectMovieTab('Thông tin'),
+  copyMovieCode(), expectToast(/sao chép|SMP-0520/i),
+  openMovieTab('Liên kết & media'), expectMovieTab('Liên kết'),
+  openMovieTab('Mã & nguồn'), expectMovieTab('Mã'),
+  openMovieTab('Thông tin'), toggleWatchLater(), expectToast(/xem sau/i), toggleWatchLater(),
+]);
+
+export const bioAndStatsLinksOpenLists = defineScenario('bio and stats links open matching lists', [
+  login(), openView('#/bio'), expectViewHealthy(), openBioValue(), expectViewHealthy(),
+  openView('#/stats'), expectViewHealthy(), openStatsLink(), expectViewHealthy(),
 ]);
 
 export const ownerEditsAndResetsANotificationTemplate = defineScenario('the owner edits, saves and resets a notification template', [
@@ -280,5 +310,6 @@ export const emptyStatesCalendarAndReportConfirm = defineScenario('empty states,
   openView('#/library'), expectPlainEmptyStates(),
   openView('#/downloads'), expectPlainEmptyStates(),
   openView('#/calendar'), expectCalendarOpensWithReleases(),
-  openView('#/settings/report'), expectReportSendAsksToConfirm(),
+  openView('#/settings/report'), expectReportSendAsksToConfirm(), expectViewHealthy(),
+  openView('#/player/SMP-0520'), expectPlayerEmptyState(), expectViewHealthy(),
 ]);

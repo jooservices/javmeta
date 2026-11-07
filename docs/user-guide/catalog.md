@@ -1,4 +1,4 @@
-# Thể loại / Maker / Series / Label / Năm
+# Thể loại / Hãng / Loạt phim / Nhãn / Năm
 
 [Mục lục](README.md)
 
@@ -8,7 +8,7 @@ Duyệt phim theo một tên phân loại đã có trong kho.
 
 ## Cách dùng
 
-Mở đúng menu: Thể loại là nhóm nội dung, Maker là hãng, Series là loạt phim, Label là nhãn, Năm là năm phát hành. Tìm trong danh mục, đổi thứ tự rồi bấm tên hoặc năm để mở danh sách phim tương ứng. Danh sách đó vẫn có bộ lọc bổ sung. Trang maker và series có nút Theo dõi.
+Mở đúng menu: Thể loại là nhóm nội dung, Hãng là studio, Loạt phim là series, Nhãn là label, Năm là năm phát hành. Tìm trong danh mục, đổi thứ tự rồi bấm tên hoặc năm để mở danh sách phim tương ứng. Danh sách đó vẫn có bộ lọc bổ sung. Trang hãng và loạt phim có nút Theo dõi.
 
 Số phim cạnh tên là số phim JavMeta đã ghi nhận. Cùng một phim có thể thuộc nhiều thể loại hoặc nhiều nguồn; không cộng các nhóm để ra tổng kho.
 

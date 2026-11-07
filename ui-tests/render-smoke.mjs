@@ -6,7 +6,8 @@ const store = {};
 globalThis.localStorage = { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); } };
 globalThis.location = { hash: '#/', href: '', reload() {} };
 globalThis.innerWidth = 1280;
-globalThis.document = { querySelector: () => null, body: { contains: () => true, dataset: { guestMode: 'false' } }, documentElement: { dataset: {} }, addEventListener() {}, createElement: () => ({ append() {}, remove() {} }) };
+globalThis.document = { querySelector: () => null, getElementById: () => null, body: { contains: () => true, dataset: { guestMode: 'false' } }, documentElement: { dataset: {} }, addEventListener() {}, createElement: () => ({ append() {}, remove() {} }) };
+globalThis.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 globalThis.requestAnimationFrame = () => 0;
 globalThis.IntersectionObserver = class { observe() {} disconnect() {} };
 
@@ -107,10 +108,15 @@ assert.match(home, /phim trong kho/); assert.match(home, /data-to="4469"/); asse
 assert.doesNotMatch(home, /Chưa có tín hiệu|WORKER|Sức khoẻ crawl|việc đang chờ/i, 'Discover is for people who browse: queue, worker and source health live in the Command Center');
 assert.doesNotMatch(home, /#\/search\?q=Drama/, 'U-03: Discover chips are catalog genres, not hardcoded Drama');
 assert.match(home, /Gợi ý[\s\S]*School/, 'U-03: Discover chips use a genre that exists');
+assert.match(home, /<h1>Khám phá<\/h1>/, 'U-17: Discover has an h1');
+assert.match(home, /id="hsq"[^>]*aria-label="/, 'U-17: the Discover search box has an accessible name');
+assert.doesNotMatch(home, /class="cu" data-to="4469">0</, 'U-21: counters start at the real total');
 await run('movies', await load('views/movies.js'), { params: {}, query: { genre: 'Drama' } });
 assert.match(out.movies, /Bộ lọc/); assert.match(out.movies, /data-drop="genre" data-value="Drama"/); assert.match(out.movies, /Thể loại: Drama/);
 const detail = await run('movie', await load('views/movie.js'), { params: { code: 'AAA-001' }, query: {} });
 assert.match(detail, /Title of AAA-001/); assert.match(detail, /class="cols detail"/, 'detail uses the fluid cover column'); assert.match(detail, /data-zoom="https:\/\/img\.test\/AAA-001\.jpg"/, 'cover opens the zoom viewer'); assert.match(detail, /role="button"[^>]*aria-label="Phóng to ảnh bìa AAA-001"/); assert.match(detail, /Eimi Fukada/); assert.match(detail, /#\/facet\/genre\/Drama/);
+assert.doesNotMatch(detail, /chờ crawl/, 'U-20: missing fields do not promise a crawl');
+assert.match(detail, />Thông tin</, 'U-15: movie tabs are Vietnamese');
 globalThis.innerWidth = 375;
 for (const code of ['JAVBTC-DERIVED-' + 'A'.repeat(64), 'TOKYOHOT-SLUG-JAPANESE_INVASION_2_AMERICA_SC4']) {
   const longDetail = await (await load('views/movie.js')).render({ params: { code }, query: {} });
@@ -152,6 +158,7 @@ assert.match(sm, /Tìm theo nghĩa chưa sẵn sàng/);
 const searchLanding = await run('search-landing', await load('views/search.js'), { params: {}, query: {} });
 assert.doesNotMatch(searchLanding, /Mankitsu|onsen|>office</, 'U-03: search examples are not dead chips');
 assert.match(searchLanding, /School/, 'U-03: search examples use a genre that exists');
+assert.match(searchLanding, /id="sq"[^>]*aria-label="/, 'U-17: the search-page box has an accessible name');
 const searchShort = await run('search-short', await load('views/search.js'), { params: {}, query: { q: 'a' } });
 assert.match(searchShort, /Nhập ít nhất 2 ký tự/, 'U-04: a one-character query is explained');
 await run('facet-genre', await load('views/facet.js'), { params: { kind: 'genre', value: 'Drama' }, query: {} });
@@ -170,7 +177,10 @@ assert.doesNotMatch(adm, /khoá dùng được mọi thứ/, 'U-07: empty scopes
 assert.match(adm, /value="catalog" checked/, 'U-07: catalog is the default explicit scope');
 const lib = await run('library', await load('views/library.js'), { params: { kind: 'favourite' }, query: {} });
 assert.match(lib, /Yêu thích/); assert.match(lib, /AAA-001/);
-assert.match(await run('feed', await load('views/feed.js'), { params: {}, query: {} }), /Theo dõi/);
+const feedHtml = await run('feed', await load('views/feed.js'), { params: {}, query: {} });
+assert.match(feedHtml, /Theo dõi/);
+assert.match(feedHtml, /data-feed-seen/, 'U-14: feed marks seen from an explicit control');
+assert.match(feedHtml, /1 phim/, 'U-14: the feed subtitle counts the movies in the grid');
 assert.match(out.movie, /data-mark/); assert.match(out.movie, /aria-pressed="true"/);
 const bioHtml = await run('bio', await load('views/bio.js'), { params: {}, query: {} });
 assert.match(bioHtml, /Hồ sơ diễn viên/); assert.match(bioHtml, /#\/performers\?cup=/);
@@ -185,6 +195,9 @@ const st = await run('settings', await load('views/settings.js'), { params: {}, 
 assert.doesNotMatch(st, /<kbd>g [hmpsc]<\/kbd>/, 'U-13: Settings lists only shortcuts that exist');
 assert.match(st, /Ctrl\+K hoặc \//, 'U-13: the search chord is labelled Ctrl+K on this platform');
 assert.match(st, /data-tab="crawl"/); assert.match(st, /data-pane="crawl"/); assert.match(st, /lưu trong cơ sở dữ liệu/); assert.match(st, /class="switch"/); assert.match(st, /queue\.feed_pool_limit/); assert.ok(!st.includes('<b>x</b>'), 'labels are escaped'); assert.match(st, /đã đặt, nhập để thay/);
+assert.match(st, /data-settings-filter/, 'U-19: Settings has a name filter');
+assert.match(st, /data-subtab="queue"/, 'U-19: the crawl tab is split into smaller panes');
+assert.match(st, /logout-form/, 'U-21: sign-out is a form that can ask to confirm');
 assert.match(st, /worker\.node_overrides/); assert.match(st, /textarea[^>]+data-type="json"/); assert.match(st, /áp dụng sau tối đa 900 giây/); assert.match(st, /env chuyển đổi/);
 assert.match(st, /textarea id="st-crawl\.source_gap_overrides"[^>]+maxlength="10000"/);
 assert.match(st, /<select id="st-queue\.feed_interval_seconds" data-key="queue\.feed_interval_seconds" data-type="int"/);
@@ -219,7 +232,8 @@ assert.match(reportHtml, /<button class="btn sm" data-report-send>/, 'U-06: Tele
 assert.doesNotMatch(reportHtml, /data-report-send[^>]*pri/, 'U-06: Telegram send is not the primary button');
 assert.match(reportHtml, /data-key="report\.interval_minutes"/);
 assert.match(reportHtml, /data-key="report\.template"/);
-assert.match(reportHtml, /max-width:100%/);
+assert.doesNotMatch(reportHtml, /min-width:220px|min-width:min\(100%,320px\)/, 'U-16: report inputs do not force a wider row');
+assert.match(reportHtml, /class="ctrl"/, 'U-16: report controls sit in a shrinking slot');
 globalThis.innerWidth = 1280;
 const reportFetch = globalThis.fetch;
 globalThis.fetch = async url => url.startsWith('/ui-admin/') ? Promise.reject(new Error('Offline')) : reportFetch(url);
@@ -249,6 +263,8 @@ const notificationPage = await run('notifications', await load('views/notificati
 assert.match(notificationPage, /Chính sách thông báo/); assert.match(notificationPage, /Danh sách thông báo/);
 assert.match(notificationPage, /Tỷ lệ crawl thành công thấp/); assert.match(notificationPage, /Gửi gần nhất/);
 assert.match(notificationPage, /Chế độ yên lặng/); assert.match(notificationPage, /Báo cáo định kỳ/); assert.match(notificationPage, /Báo cáo hằng ngày/);
+assert.match(notificationPage, /Cảnh báo|Nghiêm trọng/, 'U-15: notification severity names are Vietnamese');
+assert.doesNotMatch(notificationPage, />CRITICAL<|>WARNING<|>NOTICE</, 'U-15: English severity tokens stay off the list');
 assert.match(notificationPage, /Lịch báo cáo hằng ngày/); assert.match(notificationPage, /Giờ gửi cục bộ/); assert.match(notificationPage, /Múi giờ IANA/);
 assert.match(notificationPage, /data-daily-time/); assert.match(notificationPage, /data-daily-timezone/); assert.match(notificationPage, /save-daily-schedule/);
 assert.ok(!notificationPage.includes('<script>'), 'notification labels are escaped');
@@ -277,8 +293,14 @@ await run('catalog-years', await load('views/catalog.js'), { params: { kind: 'ye
 assert.match(await run('catalog-unknown', await load('views/catalog.js'), { params: { kind: 'nope' }, query: {} }), /không tồn tại/);
 
 // a title with markup must never reach the page unescaped
-const movieList = (await import('../public/ui/js/components.js')).movieCard(movie('XSS-1', { title_en: '<img src=x onerror=alert(1)>' }));
+const components = await import('../public/ui/js/components.js');
+const movieList = components.movieCard(movie('XSS-1', { title_en: '<img src=x onerror=alert(1)>' }));
 assert.ok(!movieList.includes('<img src=x'), 'titles are escaped');
+const oneLinkCard = components.movieCard(movie('AAA-001'));
+assert.equal([...oneLinkCard.matchAll(/href="#\/movie\/AAA-001"/g)].length, 1, 'U-17: a movie card has one link to the film');
+assert.match(oneLinkCard, /alt="Title of AAA-001"/, 'U-17: the cover uses the title as its name');
+assert.equal(components.notKnown(), '<span class="dim">chưa có</span>', 'U-20: missing data is only "chưa có"');
+assert.doesNotMatch(components.notKnown(), /chờ crawl/);
 await import('./search-filters.mjs');
 
 // Keep user instructions tied to the current menus and filter labels.
@@ -365,6 +387,11 @@ playerModule.selectTrack(videoFake, 'subtitle-2'); assert.equal(videoFake.textTr
 playerModule.selectTrack(videoFake, ''); assert.ok(videoFake.textTracks.every(t => t.mode === 'disabled'));
 globalThis.fetch = async () => jsonResponse({ data: { ...playerData, enabled: false } });
 assert.match((await playerView.render({ params: { code: 'GEN-001' } })).html, /Máy chủ tệp đang tắt/);
+globalThis.fetch = async () => jsonResponse({ data: { enabled: true, url: null, files: [], error: 'Không có tệp trên đĩa.', library_file_id: null, subtitles: [], scenes: [] } });
+const playerEmpty = (await playerView.render({ params: { code: 'SMP-0520' } })).html;
+assert.match(playerEmpty, /Không có tệp trên đĩa/, 'U-18: a movie with no file is an empty state');
+assert.match(playerEmpty, /#\/settings/, 'U-18: the empty player state links to Settings');
+assert.doesNotMatch(playerEmpty, /Thử lại/, 'U-18: the empty player state does not offer a retry that will 404');
 globalThis.fetch = async () => jsonResponse({ data: { ...playerData, url: null, error: 'Missing' } });
 assert.match((await playerView.render({ params: { code: 'GEN-001' } })).html, /Không thể mở video/);
 globalThis.fetch = async () => { throw new Error('Offline'); };
@@ -506,6 +533,26 @@ assert.match(notifySource, /askConfirm/, 'U-06: notification test/reset ask for 
 const appSource = await readFile(new URL('../public/ui/js/app.js', import.meta.url), 'utf8');
 assert.match(appSource, /data-dlg-close/, 'U-13: the help dialog has a close button');
 assert.match(appSource, /me-favourite/, 'U-10: Yêu thích is on the phone bar');
+assert.match(appSource, /\['home', 'Khám phá'/, 'U-15: Discover is labelled Khám phá');
+assert.match(appSource, /\['catalog-makers', 'Hãng'/, 'U-15: Maker is labelled Hãng');
+assert.match(appSource, /\['catalog-series', 'Loạt phim'/, 'U-15: Series is labelled Loạt phim');
+assert.match(appSource, /\['catalog-labels', 'Nhãn'/, 'U-15: Label is labelled Nhãn');
+assert.match(appSource, /\['crawl', 'Thu thập & nguồn'/, 'U-15: crawl nav is Vietnamese');
+assert.match(appSource, /\['ops', 'Vận hành'/, 'U-15: operations nav drops Command Center jargon');
+const marksSource = await readFile(new URL('../public/ui/js/marks.js', import.meta.url), 'utf8');
+assert.match(marksSource, /toast\(/, 'U-14: toggleMark toasts the result');
+const savedSource = await readFile(new URL('../public/ui/js/savedSearches.js', import.meta.url), 'utf8');
+assert.match(savedSource, /details\.open = true/, 'U-14: saving a filter opens the saved list');
+assert.match(savedSource, /askConfirm/, 'U-14: deleting a saved filter asks to confirm');
+const feedSource = await readFile(new URL('../public/ui/js/views/feed.js', import.meta.url), 'utf8');
+assert.doesNotMatch(feedSource, /mount: \(\) => \{ send\('POST', '\/ui-me\/feed\/seen'/, 'U-14: opening the feed does not silently mark it seen');
+const homeSource = await readFile(new URL('../public/ui/js/views/home.js', import.meta.url), 'utf8');
+assert.match(homeSource, /prefers-reduced-motion/, 'U-21: countUp respects reduced motion');
+const settingsSource = await readFile(new URL('../public/ui/js/views/settings.js', import.meta.url), 'utf8');
+assert.match(settingsSource, /askConfirm/, 'U-21: sign-out asks for confirmation');
+assert.match(settingsSource, /CRAWL_SUBS/, 'U-19: the crawl tab is split');
+assert.match(cssText, /\.mc-main/, 'U-17: the movie card uses one main link');
+assert.match(cssText, /\.row-i \.ctrl/, 'U-16: report/settings controls shrink with the row');
 
 const loginController = await readFile(new URL('../app/Http/Controllers/Operations/LoginController.php', import.meta.url), 'utf8');
 const loginBlade = await readFile(new URL('../resources/views/operations/login.blade.php', import.meta.url), 'utf8');

@@ -2,7 +2,7 @@ import { defineStep } from '../lib/step.mjs';
 import { onContextClose, putSetting } from './cleanup.mjs';
 import { viewText } from './dom.mjs';
 
-const HIDDEN_NAV = ['Yêu thích', 'Xem sau', 'Đã xem', 'Theo dõi', 'Thư viện', 'Tải về', 'Media', 'Quản trị', 'Cài đặt', 'Vận hành'];
+const HIDDEN_NAV = ['Yêu thích', 'Xem sau', 'Đã xem', 'Theo dõi', 'Thư viện', 'Tải về', 'Tệp media', 'Quản trị', 'Cài đặt', 'Vận hành'];
 const PUBLIC_NAV = ['Phim', 'Diễn viên', 'Tìm kiếm', 'Lịch phát hành'];
 
 function watchIssues(page, base, issues) {
@@ -185,7 +185,7 @@ export const expectGuestSavedSearchHidden = defineStep('expectGuestSavedSearchHi
 });
 
 export const openFirstGuestMovie = defineStep('openFirstGuestMovie', async ctx => {
-  const link = ctx.page.locator('#view a.lnk[href*="#/movie/"]').first();
+  const link = ctx.page.locator('#view a[href*="#/movie/"]').first();
   await link.waitFor({ state: 'visible', timeout: 8000 });
   const href = await link.getAttribute('href');
   const code = decodeURIComponent((href || '').split('#/movie/')[1] || '').split('?')[0];
@@ -196,7 +196,7 @@ export const openFirstGuestMovie = defineStep('openFirstGuestMovie', async ctx =
     const view = document.querySelector('#view');
     if (!view || view.querySelector('.loader') || !location.hash.includes(`/movie/${c}`)) return false;
     const title = view.querySelector('h1')?.innerText || '';
-    return title.includes('Sample Movie') && [...view.querySelectorAll('a.tab')].some(tab => tab.textContent.includes('Metadata'));
+    return title.includes('Sample Movie') && [...view.querySelectorAll('a.tab')].some(tab => tab.textContent.includes('Thông tin'));
   }, code, { timeout: 12000 }).catch(() => { throw new Error(`Opening ${code} did not show its detail.`); });
 });
 
@@ -211,7 +211,7 @@ export const expectGuestMovie = defineStep('expectGuestMovie', async ctx => {
   });
   if (!info.code) throw new Error('The guest movie page shows no sample code.');
   if (info.favourite) throw new Error('A guest can see the favourite button.');
-  if (!info.tabs.includes('Metadata') || !info.tabs.includes('Mã & nguồn')) throw new Error(`Guest movie tabs are ${info.tabs.join(', ') || 'missing'}.`);
+  if (!info.tabs.includes('Thông tin') || !info.tabs.includes('Mã & nguồn')) throw new Error(`Guest movie tabs are ${info.tabs.join(', ') || 'missing'}.`);
   if (info.tabs.some(tab => tab.includes('Liên kết'))) throw new Error('A guest can see the media tab.');
 });
 

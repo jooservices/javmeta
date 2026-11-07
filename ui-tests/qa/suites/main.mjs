@@ -33,4 +33,9 @@ export default defineSuite('javmeta browser E2E', [
   s.guestCanBrowsePublicPages,
   s.guestBannerKeepsItsSentence,
   s.phoneMenuDismisses,
+  s.markToastsAndLogoutConfirm,
+  s.reducedMotionAndKeyboardWalk,
+  s.reportPageDoesNotOverflow,
+  s.movieTabsCopyAndWatchLater,
+  s.bioAndStatsLinksOpenLists,
 ]);

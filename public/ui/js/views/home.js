@@ -4,12 +4,17 @@ import { a, href, stat, movieCard, performerCard, errorBox } from '../components
 
 /* Discover for people who browse the catalog: collection numbers, what is new, who is new, what is popular, what releases today.
    Queue, worker and source-health panels live in the Command Center, not here. */
-const countUp = root => root.querySelectorAll('.cu').forEach(e => {
-  const to = +e.dataset.to, t0 = performance.now();
-  const f = t => { const k = Math.min(1, (t - t0) / 700); e.textContent = fmt(Math.round(to * (1 - Math.pow(1 - k, 3)))); if (k < 1 && document.body.contains(e)) requestAnimationFrame(f); };
-  requestAnimationFrame(f);
-});
-const cu = n => `<span class="cu" data-to="${n}">0</span>`;
+const prefersReducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+const countUp = root => {
+  if (prefersReducedMotion()) return;
+  root.querySelectorAll('.cu').forEach(e => {
+    const to = +e.dataset.to, t0 = performance.now();
+    e.textContent = fmt(0);
+    const f = t => { const k = Math.min(1, (t - t0) / 700); e.textContent = fmt(Math.round(to * (1 - Math.pow(1 - k, 3)))); if (k < 1 && document.body.contains(e)) requestAnimationFrame(f); };
+    requestAnimationFrame(f);
+  });
+};
+const cu = n => `<span class="cu" data-to="${n}">${fmt(n)}</span>`;
 const suggestionChips = genres => (genres || []).filter(g => g.movie_count > 0).slice(0, 4);
 
 export default {
@@ -27,7 +32,7 @@ export default {
     const s = summary.data;
     const chips = suggestionChips(genres.data);
     const html = `<div class="wrap">
-      <div class="hero"><form class="bigq" id="hsearch"><input type="text" id="hsq" placeholder="Tìm phim, diễn viên, mã phim, thể loại…" autocomplete="off"><button class="btn pri" type="submit">Tìm</button></form>
+      <div class="hero"><h1>Khám phá</h1><form class="bigq" id="hsearch"><input type="text" id="hsq" placeholder="Tìm phim, diễn viên, mã phim, thể loại…" autocomplete="off" aria-label="Tìm phim, diễn viên, mã phim, thể loại"><button class="btn pri" type="submit">Tìm</button></form>
         ${chips.length ? `<div class="chips"><span class="dim" style="line-height:20px">Gợi ý</span>${chips.map(g => a(href.search(g.name), esc(g.name), 'chip')).join('')}</div>` : ''}</div>
       <div class="panel"><div class="grid g6" style="gap:0">
         <div class="stat"><b>${cu(s.counts.movies)}</b><span>phim trong kho</span><em>+${fmt(s.ingest.movies_24h)} trong 24 giờ</em></div>

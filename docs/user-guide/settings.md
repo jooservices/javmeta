@@ -8,7 +8,7 @@
 
 ## Cách dùng
 
-Giao diện có Chủ đề (Tối, Sáng, Hệ thống) và Mật độ (Vừa, Gọn), lưu riêng trong trình duyệt. Hệ thống có Mở Command Center và Đăng xuất.
+Giao diện có Chủ đề (Tối, Sáng, Hệ thống) và Mật độ (Vừa, Gọn), lưu riêng trong trình duyệt. Hệ thống có Mở vận hành và Đăng xuất (có xác nhận). Ô Lọc cài đặt thu hẹp danh sách theo tên hoặc khoá. Tab Thu thập & hàng đợi tách Hàng đợi, Worker và Vòng lặp thu thập.
 
 Cấu hình hệ thống lưu trong cơ sở dữ liệu. Mỗi nhóm có nút Lưu riêng: sửa giá trị rồi bấm Lưu, đợi “Đã lưu” và trang tải lại. DB nghĩa là đã lưu; mặc định nghĩa là đang dùng giá trị có sẵn. Nhãn “khởi động lại” yêu cầu người quản lý khởi động lại tiến trình được nêu.
 

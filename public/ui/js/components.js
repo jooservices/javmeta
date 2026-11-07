@@ -15,7 +15,7 @@ export const href = {
 export const a = (h, label, cls = 'lnk') => `<a href="${h}" class="${cls}">${label}</a>`;
 export const facetLink = (kind, value, cls = 'lnk') => value ? a(href.facet(kind, value), esc(value), cls) : '<span class="dim">chưa có</span>';
 export const facetChip = (kind, value, extra = '') => value ? a(href.facet(kind, value), esc(value), 'chip' + (extra ? ' ' + extra : '')) : '';
-export const notKnown = () => '<span class="dim">chưa có</span> <span class="chip warn">chờ crawl</span>';
+export const notKnown = () => '<span class="dim">chưa có</span>';
 
 export const head = (t, sub = '', right = '') => `<div class="ph"><h1>${t}</h1><span class="sub">${sub}</span><span class="sp"></span>${right}</div>`;
 export const crumbs = list => `<div class="crumbs">${list.map((c, i) => (i ? '<span>›</span>' : '') + (c[1] ? a(c[1], esc(c[0]), '') : `<span>${esc(c[0])}</span>`)).join('')}</div>`;
@@ -24,10 +24,10 @@ export const errorBox = e => emptyBox('Không tải được dữ liệu', `<spa
 export const loadingBox = () => '<div class="empty"><span class="loader"><i></i><i></i><i></i></span></div>';
 
 /* ---------- covers and avatars ---------- */
-export function cover(m, { dur = false, zoom = false } = {}) {
+export function cover(m, { dur = false, zoom = false, alt = '' } = {}) {
   const h = hueOf(m.code);
   const zoomable = zoom && /^https?:\/\//i.test(m.cover_url || '');
-  const img = m.cover_url ? `<img loading="lazy" referrerpolicy="no-referrer" alt="" src="${esc(m.cover_url)}" onerror="this.remove()">` : '';
+  const img = m.cover_url ? `<img loading="lazy" referrerpolicy="no-referrer" alt="${esc(alt || titleOf(m))}" src="${esc(m.cover_url)}" onerror="this.remove()">` : '';
   return `<div class="th${zoomable ? ' big' : ''}" style="--h:${h}"${zoomable ? ` data-zoom="${esc(m.cover_url)}" data-zoom-label="${esc(codeLabel(m.code))}" tabindex="0" role="button" aria-label="Phóng to ảnh bìa ${esc(codeLabel(m.code))}"` : ''}>${img}<span class="code" title="${esc(m.code)}">${esc(codeLabel(m.code))}</span>${dur && m.runtime_minutes ? `<span class="dur">${m.runtime_minutes}′</span>` : ''}${m.needs_review ? '<div class="bdg"><span>XEM LẠI</span></div>' : ''}</div>`;
 }
 export function avatar(p, cls = '') {
@@ -41,10 +41,10 @@ export const performerName = p => p.name_romaji || p.name_kanji || p.name_kana |
 /* codes of the movies that have a file on disk (loaded from the library); the cards show a badge for them */
 export const disk = { codes: new Set() };
 export function movieCard(m, i = 0) {
+  const name = titleOf(m);
   const performers = (m.performers || []).slice(0, 3).map(p => a(href.performer(p.id), esc(performerName(p)))).join(', ');
   const genres = (m.genres || []).slice(0, 2).map(g => facetChip('genre', g, 'g')).join('');
-  return `<div class="mc" style="--i:${i % 14}"><a href="${href.movie(m.code)}" style="display:contents">${cover(m, { dur: true })}</a>
-   <div class="t ell"><a href="${href.movie(m.code)}" class="lnk" title="${esc(titleOf(m))}">${esc(titleOf(m))}</a></div>
+  return `<div class="mc" style="--i:${i % 14}"><a href="${href.movie(m.code)}" class="mc-main">${cover(m, { dur: true, alt: name })}<span class="t ell">${esc(name)}</span></a>
    <div class="m">${performers || '<span class="dim">chưa có diễn viên</span>'}</div>
    <div class="chips mini">${disk.codes.has(m.code) ? '<span class="chip ok">Trên máy</span>' : ''}${genres}${(m.genres || []).length > 2 ? `<span class="chip">+${m.genres.length - 2}</span>` : ''}</div></div>`;
 }
@@ -55,7 +55,7 @@ export function movieRow(m) {
    <td class="mono">${esc(m.release_date || '—')}</td><td class="mono">${m.runtime_minutes ? m.runtime_minutes + '′' : '—'}</td>
    <td class="mono">${m.community_score ?? '—'}</td><td><div class="chips mini">${(m.genres || []).slice(0, 3).map(g => facetChip('genre', g)).join('')}</div></td></tr>`;
 }
-export const movieHead = '<tr><th>Mã</th><th>Tên</th><th>Diễn viên</th><th>Maker</th><th>Series</th><th>Phát hành</th><th>Dài</th><th>★</th><th>Thể loại</th></tr>';
+export const movieHead = '<tr><th>Mã</th><th>Tên</th><th>Diễn viên</th><th>Hãng</th><th>Loạt phim</th><th>Phát hành</th><th>Dài</th><th>★</th><th>Thể loại</th></tr>';
 
 export function performerCard(p, i = 0) {
   const src = (p.sources || []).length;

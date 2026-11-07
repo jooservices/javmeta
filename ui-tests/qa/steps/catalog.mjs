@@ -82,7 +82,7 @@ export const expectFacetCountMatchesCatalog = defineStep('expectFacetCountMatche
 });
 
 export const openFirstMovie = defineStep('openFirstMovie', async ctx => {
-  const link = ctx.page.locator('#view a.lnk[href*="#/movie/"]').first();
+  const link = ctx.page.locator('#view a[href*="#/movie/"]').first();
   await link.waitFor({ state: 'visible', timeout: 8000 });
   const href = await link.getAttribute('href');
   const code = decodeURIComponent((href || '').split('#/movie/')[1] || '').split('?')[0];

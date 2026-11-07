@@ -9,7 +9,7 @@ const settled = (page, needle) => page.waitForFunction(text => {
 export const expectFeedHasNoActions = defineStep('expectFeedHasNoActions', async ctx => {
   await settled(ctx.page, 'Chưa theo dõi gì');
   const text = await viewText(ctx.page);
-  if (!text.includes('Bấm “Theo dõi” ở trang diễn viên, maker hoặc series.')) {
+  if (!/Bấm .Theo dõi. ở trang diễn viên, hãng hoặc loạt phim/.test(text)) {
     throw new Error('The empty feed does not tell the owner where to follow something.');
   }
   const buttons = await ctx.page.locator('#view button').count();
@@ -89,6 +89,6 @@ export const expectCrawlReadOnly = defineStep('expectCrawlReadOnly', async ctx =
     if (!text.includes(needle)) throw new Error(`Crawl does not show "${needle}".`);
   }
   if (/crawler:source-toggle|php artisan|JOOXCR-\d+/.test(text)) throw new Error('The crawl page shows operator-only instructions.');
-  const buttons = await ctx.page.locator('#view button, #view a.btn').count();
+  const buttons = await ctx.page.locator('#view button, #view a.btn').evaluateAll(els => els.filter(el => el.getAttribute('href') !== '#/settings').length);
   if (buttons !== 0) throw new Error(`The read-only crawl page has ${buttons} actions.`);
 });

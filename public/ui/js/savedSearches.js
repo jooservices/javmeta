@@ -1,5 +1,6 @@
 import { admin, send } from './api.js';
-import { esc, queryString } from './util.js';
+import { esc, queryString, toast } from './util.js';
+import { askConfirm } from './confirm.js';
 
 export const savedSearchesHtml = () => document.body.dataset.guestMode === 'true'
   ? '<p class="guest-login-hint"><a href="/login">Đăng nhập để dùng tìm kiếm đã lưu.</a></p>'
@@ -22,15 +23,18 @@ export function mountSavedSearches(root, kind, query, signal) {
     const qs = queryString(query).replace(/^\?/, '');
     if (qs.length > 1500) { error.textContent = 'Bộ lọc quá dài (tối đa 1500 ký tự).'; return; }
     const button = form.querySelector('[type=submit]'); button.disabled = true; error.textContent = '';
-    try { await send('POST', '/ui-me/marks', { kind: 'saved_search', subject: kind, key: JSON.stringify({ name, query: qs }), on: true }); if (!signal.aborted) { form.hidden = true; await load(); root.querySelector('[data-save-search]').focus(); } }
+    try { await send('POST', '/ui-me/marks', { kind: 'saved_search', subject: kind, key: JSON.stringify({ name, query: qs }), on: true }); if (!signal.aborted) { form.hidden = true; const details = root.querySelector('details'); if (details) details.open = true; await load(); toast('Đã lưu bộ lọc'); root.querySelector('[data-save-search]').focus(); } }
     catch (e) { if (!signal.aborted) error.textContent = e.message; }
     finally { button.disabled = false; }
   }, { signal });
   host.addEventListener('click', async e => {
     if (e.target.closest('[data-saved-retry]')) { error.textContent = ''; load(); return; }
     const button = e.target.closest('[data-delete-search]'); if (!button) return;
+    const row = rows[Number(button.dataset.deleteSearch)];
+    if (!row) return;
+    if (!await askConfirm({ title: 'Xoá bộ lọc đã lưu', body: `Xoá “${row.name}”?`, confirmLabel: 'Xoá', danger: true })) return;
     button.disabled = true; error.textContent = '';
-    try { await send('POST', '/ui-me/marks', { kind: 'saved_search', subject: kind, key: rows[Number(button.dataset.deleteSearch)].key, on: false }); await load(); }
+    try { await send('POST', '/ui-me/marks', { kind: 'saved_search', subject: kind, key: row.key, on: false }); await load(); toast('Đã xoá bộ lọc'); }
     catch (e) { if (!signal.aborted) error.textContent = e.message; }
     finally { button.disabled = false; }
   }, { signal });
