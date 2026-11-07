@@ -9,8 +9,10 @@ use App\Contracts\ReportChannel;
 use App\Http\Middleware\EnsureSuperAdministrator;
 use App\Http\Middleware\GuestSafeStatusResponse;
 use App\Logging\ArrayLogStore;
+use App\Events\SourceCircuitOpened;
 use App\Listeners\DisconnectIdlePostgresConnections;
 use App\Listeners\Nodes\NodeEnrollmentSubscriber;
+use App\Listeners\SendSourceCircuitAlert;
 use App\Listeners\WorkerBusyStateListener;
 use App\Notifications\ActivityLogAlertNotifier;
 use App\Notifications\CompositeAlertNotifier;
@@ -73,6 +75,7 @@ class AppServiceProvider extends ServiceProvider
             // release the boot-time settings PDO so it does not idle for the process lifetime.
             Event::listen(CommandStarting::class, [DisconnectIdlePostgresConnections::class, 'afterScheduleWorkStarted']);
         });
+        Event::listen(SourceCircuitOpened::class, SendSourceCircuitAlert::class);
 
         Event::listen(RouteMatched::class, static function (RouteMatched $event): void {
             if (in_array($event->route->getName(), ['storage.local', 'storage.local.upload'], true)) {

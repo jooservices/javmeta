@@ -35,4 +35,13 @@ final class NotificationRegistryTest extends TestCase
             self::assertSame([], array_values(array_diff(array_unique($matches[1]), array_keys($samples))), $key);
         }
     }
+
+    public function test_source_circuit_notification_explains_automatic_resume_in_english(): void
+    {
+        $definition = (new NotificationRegistry())->all()['crawl.source_circuit_open'];
+
+        self::assertStringContainsString('Source {source_slug}', $definition['body_template']);
+        self::assertStringContainsString('paused', $definition['body_template']);
+        self::assertStringContainsString('resume automatically', $definition['body_template']);
+    }
 }

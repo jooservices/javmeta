@@ -24,6 +24,7 @@ use App\Services\Crawl\CrawlStatsOperationalSampler;
 use App\Services\Crawl\FeedPoolDiagnostics;
 use App\Services\Crawl\SourceGapPolicy;
 use App\Services\Crawl\SourceThrottle;
+use App\Services\Crawl\SourceCircuitBreaker;
 use App\Services\Health\CrawlDispatchHeartbeat;
 use App\Services\Search\ElasticsearchHttpClient;
 use App\Services\Search\ElasticsearchRequestHealth;
@@ -147,6 +148,7 @@ final class PublishMetricsCommand extends Command
      */
     private function sourceMetrics(SourceScheduleFreshness $sourceFreshness, SourceGapPolicy $gapPolicy, SourceThrottle $throttle): array
     {
+        app(SourceCircuitBreaker::class)->pausedSourceSlugs();
         $points = [];
         $defaultStaleSeconds = (int) config('javmeta_alerts.watchdog.source_stale_seconds', 86400);
 
@@ -177,6 +179,16 @@ final class PublishMetricsCommand extends Command
             $points[] = [
                 'name' => MetricStreams::NAMES['source_past_due'],
                 'value' => $source->enabled && $sourceFreshness->isPastDue($source->last_success_at, (string) $source->slug, $defaultStaleSeconds) ? 1 : 0,
+                'labels' => $labels,
+            ];
+            $points[] = [
+                'name' => MetricStreams::NAMES['source_circuit_open'],
+                'value' => $source->circuit_state === 'open' ? 1 : 0,
+                'labels' => $labels,
+            ];
+            $points[] = [
+                'name' => MetricStreams::NAMES['source_consecutive_blocks'],
+                'value' => (int) $source->consecutive_failures,
                 'labels' => $labels,
             ];
         }

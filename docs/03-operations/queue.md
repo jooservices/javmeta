@@ -115,6 +115,12 @@ rows of the same kind, so one source with thousands of older rows cannot fill th
 Parallelism comes from `queue.workers_per_queue` and its lane, queue and node overrides; each source is still limited by its own
 throttle gap.
 
+After 3 consecutive `blocked`, `rate_limited` or `challenge` responses, the source circuit pauses claims and jobs for
+5 minutes. Repeated opens double the cooldown up to 60 minutes. Successful fetches reset the failure streak and backoff;
+expired pauses close automatically so the next due claim resumes without operator action. `javmeta_source_circuit_open`
+and `javmeta_source_consecutive_blocks` report the current state by source, and an English notification reports each
+transition into the open state.
+
 
 ## Request pacing and adaptive gap
 

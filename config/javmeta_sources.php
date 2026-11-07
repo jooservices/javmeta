@@ -18,6 +18,7 @@ return [
         'circuit' => [
             'failure_threshold' => 3,
             'cooldown_seconds' => 300,
+            'max_cooldown_seconds' => 3600,
         ],
         'queue' => [
             // Running claims use this timeout; unstarted claims also wait out the maximum configured queue backlog.

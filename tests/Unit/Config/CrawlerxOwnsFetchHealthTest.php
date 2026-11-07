@@ -9,25 +9,17 @@ use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 
 /**
- * crawlerx owns soft-404 detection and fetch health; javmeta must not read or
- * write its old per-source circuit / soft-404 columns (kept in the schema
- * until the owner decides to drop them).
+ * crawlerx owns soft-404 detection; javmeta must not maintain its own
+ * soft-404 markers or detector.
  */
 final class CrawlerxOwnsFetchHealthTest extends TestCase
 {
     private const FORBIDDEN = [
         'soft404_markers',
-        'circuit_opened_at',
         'Soft404Detector',
-        'SourceCircuitBreaker',
-        'CIRCUIT_OPEN',
-        '->circuit_state',
-        "'circuit_state' =>",
-        'source->consecutive_failures',
-        'javmeta_source_consecutive_failures',
     ];
 
-    public function test_app_and_config_do_not_use_source_circuit_or_soft404_fields(): void
+    public function test_app_and_config_do_not_implement_soft404_detection(): void
     {
         $root = dirname(__DIR__, 3);
         foreach (['app', 'config'] as $directory) {

@@ -191,6 +191,51 @@ final class CrawlQueueServiceTest extends TestCase
         $this->assertSame(CrawlQueue::STATUS_PENDING, $skipped->refresh()->status);
     }
 
+    public function test_open_circuit_excludes_new_claims_until_automatic_resume(): void
+    {
+        $source = Source::factory()->create([
+            'circuit_state' => 'open',
+            'circuit_opened_at' => now(),
+            'circuit_open_count' => 1,
+            'circuit_cooldown_seconds' => 60,
+            'consecutive_failures' => 3,
+        ]);
+        $row = CrawlQueue::factory()->create(['source_slug' => $source->slug, 'status' => CrawlQueue::STATUS_PENDING]);
+        $service = new CrawlQueueService();
+
+        $this->assertNull($service->claimNext('worker-paused'));
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $row->refresh()->status);
+
+        $this->travel(61)->seconds();
+        $this->assertSame($row->id, $service->claimNext('worker-resumed')?->id);
+        $this->assertSame('closed', $source->refresh()->circuit_state);
+    }
+
+    public function test_already_claimed_job_is_returned_to_pending_if_circuit_opens_before_start(): void
+    {
+        $source = Source::factory()->create();
+        $row = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'claimed_at' => now(),
+            'locked_by' => 'worker-paused',
+            'attempts' => 0,
+        ]);
+        $source->forceFill([
+            'circuit_state' => 'open',
+            'circuit_opened_at' => now(),
+            'circuit_open_count' => 1,
+            'circuit_cooldown_seconds' => 60,
+            'consecutive_failures' => 3,
+        ])->save();
+
+        $this->assertNull((new CrawlQueueService())->startClaimedRow($row->id, $row->kind, 'worker-paused'));
+        $row->refresh();
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $row->status);
+        $this->assertSame(0, $row->attempts);
+        $this->assertNull($row->locked_by);
+    }
+
     public function test_a_site_waiting_out_a_block_delay_gets_no_new_claims_but_other_sites_do(): void
     {
         $blocked = Source::factory()->create();

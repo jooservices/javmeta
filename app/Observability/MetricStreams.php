@@ -14,6 +14,8 @@ final class MetricStreams
         'source_gap_effective_seconds' => self::PREFIX . 'source_gap_effective_seconds',
         'source_last_success_age_seconds' => self::PREFIX . 'source_last_success_age_seconds',
         'source_past_due' => self::PREFIX . 'source_past_due',
+        'source_circuit_open' => self::PREFIX . 'source_circuit_open',
+        'source_consecutive_blocks' => self::PREFIX . 'source_consecutive_blocks',
         'crawl_queue_depth' => self::PREFIX . 'crawl_queue_depth',
         'crawl_queue_claimed_age_seconds' => self::PREFIX . 'crawl_queue_claimed_age_seconds',
         'crawl_queue_avg_attempts' => self::PREFIX . 'crawl_queue_avg_attempts',
