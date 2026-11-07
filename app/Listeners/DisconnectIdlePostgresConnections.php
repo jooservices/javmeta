@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Listeners;
 
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Console\Events\ScheduledTaskFailed;
 use Illuminate\Console\Events\ScheduledTaskFinished;
 use Illuminate\Queue\Events\Looping;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Laravel\Horizon\Events\MasterSupervisorLooped;
+use Laravel\Horizon\Events\SupervisorLooped;
 use Throwable;
 
 final class DisconnectIdlePostgresConnections
@@ -20,6 +23,20 @@ final class DisconnectIdlePostgresConnections
 
     public function afterScheduledTask(ScheduledTaskFinished|ScheduledTaskFailed $event): void
     {
+        $this->disconnectIdleConnections();
+    }
+
+    public function afterHorizonLoop(SupervisorLooped|MasterSupervisorLooped $event): void
+    {
+        $this->disconnectIdleConnections();
+    }
+
+    public function afterScheduleWorkStarted(CommandStarting $event): void
+    {
+        if ($event->command !== 'schedule:work') {
+            return;
+        }
+
         $this->disconnectIdleConnections();
     }
 

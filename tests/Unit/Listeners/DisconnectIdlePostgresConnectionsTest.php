@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Listeners;
 
 use App\Listeners\DisconnectIdlePostgresConnections;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Console\Events\ScheduledTaskFailed;
 use Illuminate\Console\Events\ScheduledTaskFinished;
 use Illuminate\Console\Scheduling\Event as ScheduledEvent;
@@ -12,8 +13,14 @@ use Illuminate\Database\Connection;
 use Illuminate\Queue\Events\Looping;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Laravel\Horizon\Events\MasterSupervisorLooped;
+use Laravel\Horizon\Events\SupervisorLooped;
+use Laravel\Horizon\MasterSupervisor;
+use Laravel\Horizon\Supervisor;
 use Mockery;
 use RuntimeException;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\NullOutput;
 use Tests\TestCase;
 
 final class DisconnectIdlePostgresConnectionsTest extends TestCase
@@ -72,5 +79,33 @@ final class DisconnectIdlePostgresConnectionsTest extends TestCase
 
         $listener->afterScheduledTask(new ScheduledTaskFinished($task, 0.1));
         $listener->afterScheduledTask(new ScheduledTaskFailed($task, new RuntimeException('scheduled task failed'), 0.1));
+    }
+
+    public function test_horizon_supervisor_and_master_loops_disconnect_idle_postgres_connections(): void
+    {
+        config(['database.connections' => ['pgsql' => ['driver' => 'pgsql']]]);
+        $connection = Mockery::mock(Connection::class);
+        $connection->shouldReceive('transactionLevel')->twice()->andReturn(0);
+        DB::shouldReceive('connection')->twice()->with('pgsql')->andReturn($connection);
+        DB::shouldReceive('disconnect')->twice()->with('pgsql');
+        $listener = app(DisconnectIdlePostgresConnections::class);
+        $supervisor = Mockery::mock(Supervisor::class);
+        $master = Mockery::mock(MasterSupervisor::class);
+
+        $listener->afterHorizonLoop(new SupervisorLooped($supervisor));
+        $listener->afterHorizonLoop(new MasterSupervisorLooped($master));
+    }
+
+    public function test_schedule_work_starting_disconnects_while_other_commands_do_not(): void
+    {
+        config(['database.connections' => ['pgsql' => ['driver' => 'pgsql']]]);
+        $connection = Mockery::mock(Connection::class);
+        $connection->shouldReceive('transactionLevel')->once()->andReturn(0);
+        DB::shouldReceive('connection')->once()->with('pgsql')->andReturn($connection);
+        DB::shouldReceive('disconnect')->once()->with('pgsql');
+        $listener = app(DisconnectIdlePostgresConnections::class);
+
+        $listener->afterScheduleWorkStarted(new CommandStarting('inspire', new ArrayInput([]), new NullOutput()));
+        $listener->afterScheduleWorkStarted(new CommandStarting('schedule:work', new ArrayInput([]), new NullOutput()));
     }
 }

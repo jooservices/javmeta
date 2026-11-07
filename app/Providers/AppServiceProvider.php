@@ -40,6 +40,7 @@ use App\Services\Ui\UiLoginStateRecorder;
 use App\Services\Report\ProcWorkerProcessSource;
 use App\Services\Report\WorkerProcessSource;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Console\Events\ScheduledTaskFailed;
 use Illuminate\Console\Events\ScheduledTaskFinished;
 use Illuminate\Queue\Events\Looping;
@@ -50,6 +51,8 @@ use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use JOOservices\LaravelLogging\Contracts\LogStoreInterface;
+use Laravel\Horizon\Events\MasterSupervisorLooped;
+use Laravel\Horizon\Events\SupervisorLooped;
 use Throwable;
 
 class AppServiceProvider extends ServiceProvider
@@ -64,6 +67,11 @@ class AppServiceProvider extends ServiceProvider
             Event::listen(Looping::class, [DisconnectIdlePostgresConnections::class, 'afterQueueLoop']);
             Event::listen(ScheduledTaskFinished::class, [DisconnectIdlePostgresConnections::class, 'afterScheduledTask']);
             Event::listen(ScheduledTaskFailed::class, [DisconnectIdlePostgresConnections::class, 'afterScheduledTask']);
+            Event::listen(SupervisorLooped::class, [DisconnectIdlePostgresConnections::class, 'afterHorizonLoop']);
+            Event::listen(MasterSupervisorLooped::class, [DisconnectIdlePostgresConnections::class, 'afterHorizonLoop']);
+            // schedule:work keeps one long-lived process that only spawns schedule:run children;
+            // release the boot-time settings PDO so it does not idle for the process lifetime.
+            Event::listen(CommandStarting::class, [DisconnectIdlePostgresConnections::class, 'afterScheduleWorkStarted']);
         });
 
         Event::listen(RouteMatched::class, static function (RouteMatched $event): void {

@@ -88,10 +88,21 @@ The scheduler also disconnects idle PostgreSQL connections after each
 scheduled task succeeds or fails. A job that never uses PostgreSQL does not
 open a connection merely because the cleanup listener runs.
 
+Horizon master and supervisor processes also open PostgreSQL at boot when
+`SettingsService::apply()` runs, then never query again during steady-state
+loops. The same disconnect listener runs on Horizon's `SupervisorLooped` and
+`MasterSupervisorLooped` events so those long-lived processes release the idle
+PDO between loops and reconnect lazily if a later restart or terminate path
+needs settings. The long-lived `schedule:work` parent (which only spawns
+`schedule:run` children) disconnects on `CommandStarting` after settings are
+applied at command start, so it does not hold a boot-time idle connection for
+its whole lifetime.
+
 The local integration test uses real PostgreSQL connections to verify that an
 idle default and named connection are released while a connection with an
 active transaction remains open. The test also exercises successful and
-failed scheduled-task events.
+failed scheduled-task events, Horizon loop events, schedule:work startup, and
+lazy reconnect after a supervisor loop release.
 
 No production database was changed for this application fix. PostgreSQL
 `max_connections` and the role limit were not changed, and no server restart
