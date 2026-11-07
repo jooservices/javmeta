@@ -123,14 +123,21 @@ export const expectPathRequiresLogin = defineStep('expectPathRequiresLogin', asy
 
 export const togglePhoneMenu = defineStep('togglePhoneMenu', async ctx => {
   await ctx.page.locator('.top [data-act=menu]').click();
-  await ctx.page.waitForFunction(() => document.querySelector('#side')?.classList.contains('open'), null, { timeout: 4000 })
+  await ctx.page.waitForFunction(() => {
+    const side = document.querySelector('#side');
+    if (!side?.classList.contains('open')) return false;
+    const transform = getComputedStyle(side).transform;
+    return transform === 'none' || transform === 'matrix(1, 0, 0, 1, 0, 0)';
+  }, null, { timeout: 4000 })
     .catch(() => { throw new Error('The phone menu did not open the sidebar.'); });
 });
 
 /** A destination in the open sidebar is the control that dismisses it. render() drops the open class. */
 export const choosePhoneNav = defineStep('choosePhoneNav', async (ctx, label) => {
   const link = ctx.page.locator('#side a.nav').filter({ hasText: label }).first();
-  await link.click();
+  await link.waitFor({ state: 'attached', timeout: 8000 });
+  await link.scrollIntoViewIfNeeded();
+  await link.click({ timeout: 8000 });
   await ctx.page.waitForFunction(wanted => {
     const side = document.querySelector('#side');
     const view = document.querySelector('#view');
@@ -143,25 +150,20 @@ export const choosePhoneNav = defineStep('choosePhoneNav', async (ctx, label) =>
 /** Tapping the page beside an open phone menu should dismiss it. The button that opened it sits underneath the drawer. */
 export const expectPhoneMenuDismisses = defineStep('expectPhoneMenuDismisses', async ctx => {
   const menu = ctx.page.locator('.top [data-act=menu]');
-  await ctx.page.waitForFunction(() => {
-    const button = document.querySelector('.top [data-act=menu]');
-    const box = button?.getBoundingClientRect();
-    if (!box || box.width < 2) return false;
-    const node = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-    return !!node && !node.closest('[data-act=menu]');
-  }, null, { timeout: 1000 }).catch(() => {});
   const box = await menu.boundingBox();
   if (!box) throw new Error('The phone menu button has no box.');
-  const covered = await ctx.page.evaluate(({ x, y }) => {
+  const coveredBy = await ctx.page.evaluate(({ x, y }) => {
     const node = document.elementFromPoint(x, y);
-    return !node || node.closest('[data-act=menu]') ? '' : (node.closest('#side') ? 'the sidebar' : node.tagName);
+    if (!node || node.closest('[data-act=menu]')) return '';
+    return node.closest('#side') ? 'the sidebar' : (node.id === 'sidescrim' ? 'the scrim' : node.tagName);
   }, { x: box.x + Math.min(box.width / 2, 8), y: box.y + box.height / 2 });
-  const banner = await ctx.page.locator('.guest-banner').boundingBox();
-  if (banner) await ctx.page.mouse.click(banner.x + banner.width - 12, banner.y + Math.min(12, banner.height / 2));
-  const stillOpen = await ctx.page.locator('#side.open').count();
-  if (stillOpen || covered) {
-    throw new Error(`The phone menu stays open${covered ? ` and its button is covered by ${covered}` : ''}.`);
+  if (coveredBy !== 'the sidebar') {
+    throw new Error(`The phone menu button should sit under the drawer (got ${coveredBy || 'the button itself'}).`);
   }
+  // Scrim is the page beside the drawer; a click there must close the menu.
+  await ctx.page.locator('#sidescrim').click({ position: { x: 280, y: 240 } });
+  await ctx.page.waitForFunction(() => !document.querySelector('#side')?.classList.contains('open'), null, { timeout: 4000 })
+    .catch(() => { throw new Error('The phone menu stays open after tapping beside it.'); });
 });
 
 export const openBottomNav = defineStep('openBottomNav', async (ctx, label) => {

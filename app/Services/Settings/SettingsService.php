@@ -673,7 +673,10 @@ final class SettingsService
         if ($type === 'json') {
             return $this->validateJson($key, $definition, $value, $fail);
         }
-        // string and secret
+        // string and secret — Laravel's ConvertEmptyStringsToNull turns cleared inputs into null.
+        if ($value === null) {
+            $value = '';
+        }
         if (! is_string($value) && ! is_numeric($value)) {
             $fail('must be text');
         }

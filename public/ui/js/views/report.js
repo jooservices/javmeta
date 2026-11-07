@@ -7,9 +7,14 @@ export default {
   async render() {
     let settings, preview;
     try {
-      [settings, preview] = await Promise.all([admin('/ui-admin/settings'), admin('/ui-admin/report/periodic')]);
+      settings = await admin('/ui-admin/settings');
     } catch (error) {
       return { html: `<div class="wrap">${head('Báo cáo', 'Cài đặt → Báo cáo')}<div class="empty"><div class="err" role="alert">${esc(error.message)}</div><button class="btn" data-act="reload">Thử lại</button></div></div>` };
+    }
+    try {
+      preview = await admin('/ui-admin/report/periodic');
+    } catch (error) {
+      preview = { data: { text: String(error.message || 'Không tải được bản xem trước.'), last: null, history: [] } };
     }
     const reportSettings = settings.data.settings.filter(row => row.group === 'report');
     const rows = reportSettings.map(row => `<div class="row-i" style="align-items:flex-start;flex-wrap:wrap"><div class="grow" style="min-width:220px"><label for="report-${esc(row.key)}"><b>${esc(row.label)}</b></label><div class="muted">${esc(row.description)}</div></div><div>${control(row)}</div></div>`).join('');

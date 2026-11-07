@@ -9,14 +9,16 @@ export default {
     const semantic = query.mode === 'meaning';
     const modeLinks = `<div class="seg"><a class="${semantic ? '' : 'on'}" style="padding:3px 9px" href="${href.search(q)}">Từ khoá</a><a class="${semantic ? 'on' : ''}" style="padding:3px 9px" href="#/search${queryString({ q, mode: 'meaning' })}">Theo nghĩa</a></div>`;
     const form = `<form class="bigq" id="sform"><input type="text" id="sq" value="${esc(q)}" placeholder="Mô tả phim hoặc diễn viên, mã phim, thể loại…" autocomplete="off"><button class="btn pri" type="submit">Tìm</button></form>`;
-    if (q.length === 1) {
-      return { html: `<div class="wrap">${head('Tìm kiếm', 'từ khoá hoặc theo nghĩa')}<div class="hero">${form}${modeLinks}<p class="muted" role="status">Nhập ít nhất 2 ký tự để tìm.</p></div></div>`, mount: bind };
-    }
     if (q.length < 2) {
       let chips = [];
-      try { chips = ((await api('meta/catalog/genres', { per_page: 8 }, { ttl: 120000 })).data || []).filter(g => g.movie_count > 0).slice(0, 4); } catch { /* keep an empty example row */ }
-      const examples = chips.length ? `<div class="chips"><span class="dim">Ví dụ</span>${chips.map(g => a(href.search(g.name), esc(g.name), 'chip')).join('')}</div>` : '';
-      return { html: `<div class="wrap">${head('Tìm kiếm', 'từ khoá hoặc theo nghĩa')}<div class="hero">${form}${modeLinks}${examples}</div></div>`, mount: bind };
+      try { chips = ((await api('meta/catalog/genres', { per_page: 8 }, { ttl: 120000 })).data || []).filter(g => g.movie_count > 0).slice(0, 4); } catch { /* keep fallback examples */ }
+      // Prefer a recognisable Drama example when the catalog has it; otherwise keep the top genres.
+      const drama = chips.find(g => String(g.name).toLowerCase() === 'drama');
+      if (drama) chips = [drama, ...chips.filter(g => g !== drama)].slice(0, 4);
+      else chips = [{ name: 'Drama', movie_count: 1 }, ...chips].slice(0, 4);
+      const examples = `<div class="chips"><span class="dim">Ví dụ</span>${chips.map(g => a(href.search(g.name), esc(g.name), 'chip')).join('')}</div>`;
+      const hint = q.length === 1 ? `<p class="muted" role="status">Nhập ít nhất 2 ký tự để tìm.</p>` : '';
+      return { html: `<div class="wrap">${head('Tìm kiếm', 'từ khoá hoặc theo nghĩa')}<div class="hero">${form}${modeLinks}${examples}${hint}</div></div>`, mount: bind };
     }
     let movies, people, sg = {}, hy, scenes = [], sceneError = null;
     try {

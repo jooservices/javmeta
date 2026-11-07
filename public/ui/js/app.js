@@ -110,7 +110,7 @@ async function render() {
   const r = parse();
   const view = $('#view');
   drawShell(r.top);
-  $('#side').classList.remove('open');
+  setSideOpen(false);
   const token = current = {};
   if (guestMode && isOwnerPage(r)) {
     const page = r.top.startsWith('me-') || r.top === 'feed' ? 'Tính năng cá nhân' : r.top;
@@ -196,11 +196,17 @@ document.addEventListener('click', e => {
   const t = e.target.closest('[data-act]'); if (!t) return;
   const act = t.dataset.act;
   if (act === 'theme') toggleTheme();
-  if (act === 'menu') $('#side').classList.toggle('open');
+  if (act === 'menu') setSideOpen(!$('#side').classList.contains('open'));
   if (act === 'reload') render();
   if (act === 'copy') copyText(t.dataset.v);
   if (act === 'help') openHelp();
 });
+$('#sidescrim')?.addEventListener('click', () => setSideOpen(false));
+function setSideOpen(open) {
+  $('#side')?.classList.toggle('open', open);
+  const scrim = $('#sidescrim');
+  if (scrim) scrim.hidden = !open;
+}
 $('#ov').addEventListener('click', e => {
   if (e.target.closest('[data-dlg-close]')) { $('#ov').classList.remove('on'); return; }
   if (e.target.id !== 'ov') return;
