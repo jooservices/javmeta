@@ -11,6 +11,11 @@ Related product ticket: **JOOXCR-363** (decoy DNS). Commit key for readiness: **
 
 Sentry (project `xcrawler`, groups 58 / 62): exception thrown in `FetchFallbackChain` via `HandlesCrawlQueueRow::markFailed`; fingerprint already `['ssrf_blocked', '<source>']` (JOOXCR-390). Extra/breadcrumbs did not include the blocked address — that gap is addressed in-repo.
 
+## Commits (local only, not pushed)
+
+- CrawlerX `11db072` — `fix(fetch): Allow public pins beside decoy DNS answers` (ticket in CHANGELOG; commit-msg regex forbids nested `(JOOXCR-399)` in the subject).
+- Javmeta `9061c9a` — `fix(fetch): Detect sinkhole DNS and enrich SSRF Sentry (JOOXCR-399)`.
+
 ## What was fixed
 
 ### CrawlerX (`worktree/JOOXCR-399-crawlerx-ssrf`, branch `JOOXCR-399-ssrf`)
