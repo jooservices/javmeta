@@ -117,7 +117,7 @@ final class SsrfDnsAnswerClassifier
             ($first & 0xfe00) === 0xfc00 => false, // fc00::/7
             ($first & 0xffc0) === 0xfe80 => false, // fe80::/10
             ($first & 0xff00) === 0xff00 => false, // ff00::/8
-            $first === 0x2001 && (($hextets[2] & 0xfff0) === 0x0db8) => false, // 2001:db8::/32
+            $first === 0x2001 && $hextets[2] === 0x0db8 => false, // 2001:db8::/32
             $first === 0x2001 && ($hextets[2] & 0xff00) === 0x0000 => false, // 2001::/23 (teredo etc.)
             $first === 0x2002 => false, // 2002::/16 6to4
             $first === 0x0064 && $hextets[2] === 0xff9b => false, // 64:ff9b::/96 and 64:ff9b:1::/48

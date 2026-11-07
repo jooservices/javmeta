@@ -86,4 +86,43 @@ final class SsrfDnsAnswerClassifierTest extends TestCase
         self::assertFalse($result['safe']);
         self::assertSame('dns_failed', $result['reason']);
     }
+
+    public function test_blank_and_non_ip_answers_are_ignored_or_blocked(): void
+    {
+        $result = $this->classifier->classify(['', 'not-an-ip', '8.8.8.8']);
+
+        self::assertTrue($result['safe']);
+        self::assertSame(['8.8.8.8'], $result['public']);
+        self::assertSame(['not-an-ip'], $result['blocked']);
+        self::assertTrue($this->classifier->isBlocked('not-an-ip'));
+    }
+
+    #[DataProvider('additionalBlockedAddressProvider')]
+    public function test_additional_special_use_ranges_are_blocked(string $address): void
+    {
+        self::assertTrue($this->classifier->isBlocked($address), $address);
+        $result = $this->classifier->classify([$address, '1.1.1.1']);
+        self::assertTrue($result['safe']);
+        self::assertContains($address, $result['blocked']);
+        self::assertSame(['1.1.1.1'], $result['public']);
+    }
+
+    /** @return iterable<string, array{0: string}> */
+    public static function additionalBlockedAddressProvider(): iterable
+    {
+        yield 'ietf_protocol' => ['192.0.0.1'];
+        yield 'documentation_testnet' => ['192.0.2.1'];
+        yield 'six_to_four_relay' => ['192.88.99.1'];
+        yield 'documentation_testnet_2' => ['198.51.100.1'];
+        yield 'documentation_testnet_3' => ['203.0.113.1'];
+        yield 'multicast' => ['224.0.0.1'];
+        yield 'reserved' => ['240.0.0.1'];
+        yield 'ipv6_documentation' => ['2001:db8::1'];
+        yield 'ipv6_teredo' => ['2001:0::1'];
+        yield 'ipv6_6to4' => ['2002::1'];
+        yield 'ipv6_nat64' => ['64:ff9b::1'];
+        yield 'ipv6_discard' => ['100::1'];
+        yield 'ipv6_link_local' => ['fe80::1'];
+        yield 'ipv6_multicast' => ['ff02::1'];
+    }
 }

@@ -168,5 +168,9 @@ export const keyboardWalkDiscoverToMovie = defineStep('keyboardWalkDiscoverToMov
   await ctx.page.waitForFunction(() => location.hash.includes('search') && !!document.querySelector('#view a[href*="#/movie/SMP-0520"]'), null, { timeout: 12000 });
   const link = ctx.page.locator('#view a[href*="#/movie/SMP-0520"]').first();
   await link.click();
-  await ctx.page.waitForFunction(() => /#\/movie\/SMP-0520/.test(location.hash) && document.querySelector('#view h1'), null, { timeout: 8000 });
+  // Wait until the movie detail finished loading marks (favourite button), not only the route/heading.
+  await ctx.page.waitForFunction(() => {
+    if (!/#\/movie\/SMP-0520/.test(location.hash)) return false;
+    return [...document.querySelectorAll('#view button')].some(b => /yêu thích/i.test(b.innerText || ''));
+  }, null, { timeout: 12000 }).catch(() => { throw new Error('Keyboard walk opened the movie route but the detail actions never appeared.'); });
 });
