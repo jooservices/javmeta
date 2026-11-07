@@ -121,6 +121,7 @@
         ],
         "coverage:report": "php tools/coverage-report.php build/coverage.xml build/coverage/uncovered-files.md",
         "coverage:check": "php tools/coverage-enforce.php build/coverage.xml 90",
+        "coverage:per-file": "php tools/quality/coverage-per-file.php 85 build/coverage.xml build/integration.xml",
         "check": [
             "@lint",
             "@test",
