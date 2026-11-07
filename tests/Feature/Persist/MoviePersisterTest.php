@@ -17,9 +17,11 @@ use App\Models\MovieGenre;
 use App\Models\MovieMedia;
 use App\Models\MovieObservation;
 use App\Models\MoviePerformer;
+use App\Models\MovieSource;
 use App\Services\Persist\MoviePersister;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class MoviePersisterTest extends TestCase
@@ -439,6 +441,27 @@ final class MoviePersisterTest extends TestCase
         $source->refresh();
         $this->assertLessThan(20.0, (float) $source->gap_seconds_current);
         $this->assertNotNull($source->last_success_at);
+    }
+
+    public function test_movie_source_archive_link_is_written_inside_movie_persistence_transaction(): void
+    {
+        config()->set('mongodb.uri', 'mongodb://127.0.0.1:1');
+
+        $transactionLevel = DB::transactionLevel();
+        $sourceCreatedInsideTransaction = false;
+        MovieSource::creating(static function () use ($transactionLevel, &$sourceCreatedInsideTransaction): void {
+            self::assertGreaterThan($transactionLevel, DB::transactionLevel());
+            $sourceCreatedInsideTransaction = true;
+        });
+
+        $movie = $this->persister()->persist($this->draft(['code' => 'SSIS-001']));
+
+        $this->assertTrue($sourceCreatedInsideTransaction);
+        $this->assertDatabaseHas('movie_sources', [
+            'movie_id' => $movie->id,
+            'site_slug' => 'javdb',
+            'mongo_id' => null,
+        ]);
     }
 
     public function test_variants_from_two_sources_resolve_to_one_movie_row(): void

@@ -6,8 +6,10 @@ namespace App\Services\Persist;
 
 use App\Repositories\CrawlRunRepository;
 use App\Repositories\MovieRepository;
+use App\Repositories\MovieSourceRepository;
 use App\Data\Crawl\MovieDraft;
 use App\Data\Crawl\PerformerDraft;
+use App\Data\Persist\MoviePersistOutcome;
 use App\Jobs\IndexMovieJob;
 use App\Models\Genre;
 use App\Models\Performer;
@@ -91,99 +93,115 @@ final class MoviePersister implements MovieDraftSink
 
     public function persist(MovieDraft $draft, ?int $crawlRunId = null, bool $isRecrawl = false): Movie
     {
-        $sharpDrop = false;
-        $drop = 0;
-        $isNewMovie = false;
+        $mongoId = $this->archive($draft);
 
-        $movie = app(MovieRepository::class)->transaction(function () use ($draft, $crawlRunId, $isRecrawl, &$sharpDrop, &$drop, &$isNewMovie): Movie {
-            $crawledAt = $draft->crawledAt ?? CarbonImmutable::now();
-            $code = NormalizedCode::from($draft->code);
+        $outcome = app(MovieRepository::class)->transaction(
+            fn(): MoviePersistOutcome => $this->persistWithinTransaction($draft, $crawlRunId, $isRecrawl, $mongoId),
+        );
 
-            $isNewMovie = ! app(MovieRepository::class)->modelQuery(MovieCode::class)->where('code_normalized', $code->value())->exists();
-            $movieId = $this->merger->resolveMovieId($draft);
+        $this->publishPersistedMovie($outcome, $draft);
 
-            $this->appendObservations($movieId, $draft, $crawledAt);
+        return $outcome->movie;
+    }
 
-            $observations = $this->observationsFor($movieId);
-            $movie = app(MovieRepository::class)->modelQuery(Movie::class)->lockForUpdate()->findOrFail($movieId);
-            $fieldsBefore = $this->populatedMovieFields($movie);
-            $projection = $this->projectCoreFields($movie, $observations);
-            $sharpDrop = $projection['sharp_drop'];
-            $drop = $projection['drop'];
+    private function persistWithinTransaction(MovieDraft $draft, ?int $crawlRunId, bool $isRecrawl, ?string $mongoId): MoviePersistOutcome
+    {
+        $crawledAt = $draft->crawledAt ?? CarbonImmutable::now();
+        $code = NormalizedCode::from($draft->code);
 
-            $this->upsertCode($movieId, $draft, $code, $crawledAt);
-            $this->upsertGenres($movieId, $draft, $crawledAt);
-            $this->upsertPerformers($movieId, $draft, $crawledAt);
-            $this->upsertMedia($movieId, $draft, $crawledAt);
-            $this->upsertCredits($movieId, $draft, $crawledAt);
+        $isNewMovie = ! app(MovieRepository::class)->modelQuery(MovieCode::class)->where('code_normalized', $code->value())->exists();
+        $movieId = $this->merger->resolveMovieId($draft);
 
-            $movie->forceFill($projection['values']);
+        $this->appendObservations($movieId, $draft, $crawledAt);
 
-            // Fill-empty denormalized media + description from this draft.
-            if ($movie->cover_url === null && $draft->coverUrl !== null) {
-                $movie->cover_url = $draft->coverUrl;
-            }
-            if ($movie->description === null && $draft->description !== null && trim($draft->description) !== '') {
-                $movie->description = trim($draft->description);
-            }
+        $observations = $this->observationsFor($movieId);
+        $movie = app(MovieRepository::class)->modelQuery(Movie::class)->lockForUpdate()->findOrFail($movieId);
+        $fieldsBefore = $this->populatedMovieFields($movie);
+        $projection = $this->projectCoreFields($movie, $observations);
 
-            $attributes = [
-                'completeness_tier' => $this->completenessTier($movie, $observations),
-                'updated_at' => $crawledAt,
-                'crawled_at' => $crawledAt,
-            ];
+        $this->upsertCode($movieId, $draft, $code, $crawledAt);
+        $this->upsertGenres($movieId, $draft, $crawledAt);
+        $this->upsertPerformers($movieId, $draft, $crawledAt);
+        $this->upsertMedia($movieId, $draft, $crawledAt);
+        $this->upsertCredits($movieId, $draft, $crawledAt);
 
-            if ($movie->attrs === null) {
-                $attributes['attrs'] = [];
-            }
+        $movie->forceFill($projection['values']);
 
-            if ($projection['sharp_drop']) {
-                $attributes['needs_review'] = true;
-            }
+        // Fill-empty denormalized media + description from this draft.
+        if ($movie->cover_url === null && $draft->coverUrl !== null) {
+            $movie->cover_url = $draft->coverUrl;
+        }
+        if ($movie->description === null && $draft->description !== null && trim($draft->description) !== '') {
+            $movie->description = trim($draft->description);
+        }
 
-            if ($this->gainedMovieField($fieldsBefore, $this->populatedMovieFields($movie))) {
-                $attributes['recrawl_attempts'] = 0;
-                $attributes['recrawl_status'] = null;
-            } elseif ($isRecrawl) {
-                $maxRounds = max(1, (int) config('javmeta_sources.defaults.recrawl.max_rounds', 3));
-                $attempts = min($maxRounds, (int) $movie->recrawl_attempts + 1);
-                $attributes['recrawl_attempts'] = $attempts;
+        $attributes = [
+            'completeness_tier' => $this->completenessTier($movie, $observations),
+            'updated_at' => $crawledAt,
+            'crawled_at' => $crawledAt,
+        ];
 
-                if ($attempts >= $maxRounds) {
-                    $attributes['recrawl_status'] = Movie::RECRAWL_STATUS_COMPLETE_AS_POSSIBLE;
-                }
-            }
+        if ($movie->attrs === null) {
+            $attributes['attrs'] = [];
+        }
 
-            $movie->forceFill($attributes);
-            $this->fillSearchVector($movie);
-            $movie->save();
+        if ($projection['sharp_drop']) {
+            $attributes['needs_review'] = true;
+        }
 
-            if ($projection['sharp_drop']) {
-                $this->flagSharpDrop($movie, $draft, $projection['drop'], $crawledAt);
-            }
+        $attributes = array_merge($attributes, $this->recrawlAttributes($movie, $fieldsBefore, $isRecrawl));
 
-            if ($crawlRunId !== null) {
-                app(CrawlRunRepository::class)->incrementMovieCount($crawlRunId, $isNewMovie);
-            }
+        $movie->forceFill($attributes);
+        $this->fillSearchVector($movie);
+        $movie->save();
 
-            $this->recordSourceSuccess($draft->sourceSlug);
+        if ($projection['sharp_drop']) {
+            $this->flagSharpDrop($movie, $draft, $projection['drop'], $crawledAt);
+        }
 
-            return $movie->refresh();
-        });
+        if ($crawlRunId !== null) {
+            app(CrawlRunRepository::class)->incrementMovieCount($crawlRunId, $isNewMovie);
+        }
 
-        $this->dispatchIndex($movie);
-        $this->archive($movie, $draft);
+        app(MovieSourceRepository::class)->recordDraft($movieId, $draft, $mongoId);
+        $this->recordSourceSuccess($draft->sourceSlug);
 
+        return new MoviePersistOutcome($movie->refresh(), $isNewMovie, $projection['sharp_drop'], $projection['drop']);
+    }
+
+    private function publishPersistedMovie(MoviePersistOutcome $outcome, MovieDraft $draft): void
+    {
+        $this->dispatchIndex($outcome->movie);
         app(ObservabilityEmitter::class)->emitPersist('movie', [
             'source_slug' => $draft->sourceSlug,
-            'movie_code' => $movie->display_code,
-            'is_new' => $isNewMovie,
-            'sharp_drop' => $sharpDrop,
-            'drop' => $drop,
-            'completeness_tier' => $movie->completeness_tier,
+            'movie_code' => $outcome->movie->display_code,
+            'is_new' => $outcome->isNewMovie,
+            'sharp_drop' => $outcome->sharpDrop,
+            'drop' => $outcome->drop,
+            'completeness_tier' => $outcome->movie->completeness_tier,
         ]);
+    }
 
-        return $movie;
+    /** @param array<string, mixed> $fieldsBefore
+     *  @return array<string, mixed>
+     */
+    private function recrawlAttributes(Movie $movie, array $fieldsBefore, bool $isRecrawl): array
+    {
+        if ($this->gainedMovieField($fieldsBefore, $this->populatedMovieFields($movie))) {
+            return ['recrawl_attempts' => 0, 'recrawl_status' => null];
+        }
+        if (! $isRecrawl) {
+            return [];
+        }
+
+        $maxRounds = max(1, (int) config('javmeta_sources.defaults.recrawl.max_rounds', 3));
+        $attempts = min($maxRounds, (int) $movie->recrawl_attempts + 1);
+        $attributes = ['recrawl_attempts' => $attempts];
+        if ($attempts >= $maxRounds) {
+            $attributes['recrawl_status'] = Movie::RECRAWL_STATUS_COMPLETE_AS_POSSIBLE;
+        }
+
+        return $attributes;
     }
 
     private function dispatchIndex(Movie $movie): void
@@ -197,7 +215,7 @@ final class MoviePersister implements MovieDraftSink
             ->afterCommit();
     }
 
-    private function archive(Movie $movie, MovieDraft $draft): void
+    private function archive(MovieDraft $draft): ?string
     {
         $payload = [
             'code' => $draft->code,
@@ -219,16 +237,7 @@ final class MoviePersister implements MovieDraftSink
             $draft->code,
         );
 
-        if (is_string($mongoId) && $mongoId !== '') {
-            \App\Models\MovieSource::recordArchive(
-                $movie->id,
-                $draft->sourceSlug,
-                $mongoId,
-                $draft->sourceUrl,
-                $draft->code,
-                $draft->crawledAt ?? CarbonImmutable::now(),
-            );
-        }
+        return is_string($mongoId) && $mongoId !== '' ? $mongoId : null;
     }
 
     private function appendObservations(int $movieId, MovieDraft $draft, CarbonImmutable $crawledAt): void
