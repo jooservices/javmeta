@@ -76,6 +76,11 @@ environment.
 | `javmeta_postgres_connections_used` | - | Active PostgreSQL sessions across the instance. |
 | `javmeta_postgres_connections_max` | - | Configured PostgreSQL max_connections. |
 | `javmeta_postgres_connection_utilization` | - | Active sessions divided by max_connections; alert threshold is 85% sustained for five minutes. |
+| `javmeta_postgres_connection_demand` | — | Configured maximum PostgreSQL slots for all Horizon worker profiles across the primary and worker nodes. It is a capacity estimate, not a live session count. |
+| `javmeta_postgres_connection_role_limit` | — | Configured PostgreSQL application-role connection limit. |
+| `javmeta_postgres_connection_budget_limit` | — | Maximum worker demand after subtracting the configured non-worker reserve from the role limit. |
+| `javmeta_postgres_connection_demand_warning_threshold` | — | Warning threshold in PostgreSQL slots; 75% of the role limit by default. |
+| `javmeta_postgres_connection_demand_warning` | — | `1` when configured worker demand meets or exceeds the warning threshold, otherwise `0`. |
 | `javmeta_alert_firing` | `rule` | Unitless 0/1 gauge while a rule is firing. Source rules use `source_success_rate:<slug>` and `backlog_depth:<slug>`. |
 | `javmeta_alert_event_count` | `state`, `severity` | Episode count, split into `firing` or `resolved` and `warning`, `critical` or `info`. Retention follows `alerts.history_retention_days`. |
 | `javmeta_mongo_archive_write_failures` | — | Cumulative count of failed Mongo archive writes since the cache counter was created. |
@@ -125,8 +130,9 @@ complete minute's Redis bucket. Budget, started and waiting are the latest
 per-source snapshot in that minute; dispatched and stop reasons are summed for
 the minute. `javmeta_feed_run_ms` is the average duration across runs in that
 minute. Buckets use the database-configured diagnostics retention and TTL. The
-application has no Prometheus text endpoint; these metrics use the existing
-OpenObserve OTLP metrics path.
+`GET /metrics` also exposes Prometheus text gauges for the PostgreSQL worker
+connection budget only. Other application metrics use the existing OpenObserve
+OTLP metrics path.
 
 Retry metrics are emitted by `obs:publish-metrics`. Pending is a point-in-time
 gauge; the two `_total` metrics are cumulative counters stored in

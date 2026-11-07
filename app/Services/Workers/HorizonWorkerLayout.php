@@ -4,12 +4,55 @@ declare(strict_types=1);
 
 namespace App\Services\Workers;
 
+use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 use Illuminate\Support\Str;
 
 final class HorizonWorkerLayout
 {
     /** @return array<string, array<string, mixed>> */
     public function supervisors(): array
+    {
+        return $this->supervisorsForNode(self::role(), $this->currentHost());
+    }
+
+    /** Count the configured Horizon worker processes across the crawler fleet. */
+    public function configuredFleetWorkerCount(): int
+    {
+        $nodeOverrides = (array) config('javmeta_queues.worker_node_overrides', []);
+        $fleetProcesses = 0;
+        foreach (['main', 'worker'] as $role) {
+            $nodeCount = $this->nodeCountForRole($role);
+            if ($nodeCount === 0) {
+                continue;
+            }
+
+            $hosts = [];
+            foreach (array_keys($nodeOverrides) as $key) {
+                $prefix = $role . '@';
+                if (! is_string($key) || ! str_starts_with($key, $prefix)) {
+                    continue;
+                }
+
+                $host = substr($key, strlen($prefix));
+                if ($host !== '') {
+                    $hosts[Str::slug($host)] = $host;
+                }
+            }
+
+            $baseProcesses = $this->workerProcessCount($this->supervisorsForNode($role, null));
+            $specificProcesses = array_map(
+                fn(string $host): int => $this->workerProcessCount($this->supervisorsForNode($role, $host)),
+                array_values($hosts),
+            );
+            $fleetProcesses += $baseProcesses * max(0, $nodeCount - count($specificProcesses)) + array_sum($specificProcesses);
+        }
+
+        return $fleetProcesses;
+    }
+
+    /** @return array<string, array<string, mixed>> */
+    private function supervisorsForNode(string $role, ?string $host): array
     {
         $queueConfig = (array) config('javmeta_queues');
         $queues = (array) ($queueConfig['horizon_names'] ?? []);
@@ -20,7 +63,7 @@ final class HorizonWorkerLayout
         $browser = max(1, (int) ($queueConfig['browser_workers_per_queue'] ?? $default));
         $retry = max(1, (int) ($queueConfig['retry']['workers_per_queue'] ?? 1));
         $queueOverrides = (array) ($queueConfig['worker_queue_overrides'] ?? []);
-        $nodeOverrides = $this->nodeOverrides((array) ($queueConfig['worker_node_overrides'] ?? []));
+        $nodeOverrides = $this->nodeOverrides((array) ($queueConfig['worker_node_overrides'] ?? []), $role, $host);
         $default = max(1, (int) ($nodeOverrides['default'] ?? $default));
         $direct = $nodeOverrides['direct'] ?? $direct;
         $browser = max(1, (int) ($nodeOverrides['browser'] ?? $browser));
@@ -52,10 +95,35 @@ final class HorizonWorkerLayout
         return $supervisors;
     }
 
+    /** @param array<string, array<string, mixed>> $supervisors */
+    private function workerProcessCount(array $supervisors): int
+    {
+        return array_sum(self::workerCounts($supervisors));
+    }
+
+    private function nodeCountForRole(string $role): int
+    {
+        $setting = $role === 'main' ? 'primary_nodes' : 'worker_nodes';
+        $nodeCount = (int) config('javmeta_queues.postgres_connection_budget.' . $setting, $role === 'main' ? 1 : 2);
+        if ($nodeCount < ($role === 'main' ? 0 : 1)) {
+            throw new InvalidArgumentException('PostgreSQL Horizon node counts are invalid.');
+        }
+
+        return $nodeCount;
+    }
+
     /** @return array<string, mixed> */
     public function snapshot(): array
     {
         $supervisors = $this->supervisors();
+        return $this->snapshotForSupervisors($supervisors);
+    }
+
+    /** @param array<string, array<string, mixed>> $supervisors
+     *  @return array<string, mixed>
+     */
+    private function snapshotForSupervisors(array $supervisors): array
+    {
         $encoded = json_encode($supervisors, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
 
         return [
@@ -87,6 +155,21 @@ final class HorizonWorkerLayout
     public function apply(): array
     {
         $snapshot = $this->snapshot();
+        $budget = app(PostgresConnectionBudget::class);
+        $summary = $budget->summary($this->configuredFleetWorkerCount());
+        if (! $summary['within_budget']) {
+            $defaults = (array) config('horizon.defaults', []);
+            $defaultFleetDemand = $this->workerProcessCount($defaults)
+                * ($this->nodeCountForRole('main') + $this->nodeCountForRole('worker'));
+            $budget->assertWithinBudget($defaultFleetDemand);
+            $snapshot = $this->snapshotForSupervisors($defaults);
+            Log::warning('Horizon worker settings exceed the PostgreSQL connection budget; keeping the code default layout.', [
+                'node' => $snapshot['node'],
+                'configured_demand' => $summary['demand'],
+                'budget_limit' => $summary['budget_limit'],
+            ]);
+        }
+
         $environments = array_fill_keys(['production', 'staging', 'local', 'testing'], $snapshot['supervisors']);
         config(['horizon.defaults' => $snapshot['supervisors'], 'horizon.environments' => $environments]);
         config(['javmeta_workers.booted_layout' => $snapshot]);
@@ -111,11 +194,9 @@ final class HorizonWorkerLayout
     /** @param array<string, mixed> $overrides
      *  @return array<string, mixed>
      */
-    private function nodeOverrides(array $overrides): array
+    private function nodeOverrides(array $overrides, string $role, ?string $host): array
     {
-        $role = self::role();
-        $host = (string) (config('sentry.node') ?: gethostname() ?: 'unknown');
-        $specific = $overrides[$role . '@' . $host] ?? $overrides[$role . '@' . Str::slug($host)] ?? [];
+        $specific = $host === null ? [] : ($overrides[$role . '@' . $host] ?? $overrides[$role . '@' . Str::slug($host)] ?? []);
         $roleOverrides = (array) ($overrides[$role] ?? []);
         $combined = [...$roleOverrides, ...(array) $specific];
         if (isset($roleOverrides['queues']) || isset($specific['queues'])) {
@@ -123,5 +204,10 @@ final class HorizonWorkerLayout
         }
 
         return $combined;
+    }
+
+    private function currentHost(): string
+    {
+        return (string) (config('sentry.node') ?: gethostname() ?: 'unknown');
     }
 }

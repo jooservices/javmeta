@@ -15,6 +15,7 @@ return [
     'success_rate_critical_percent' => 70,
     'blocked_ratio_max_percent' => 10,
     'pg_connections_max' => 45,
+    'postgres_connection_budget_warning_percent' => 75,
     'dispatch_age_max_seconds' => 60,
     'backlog_due_min_per_hot_source' => 10,
     'min_attempts_in_window' => 100,
