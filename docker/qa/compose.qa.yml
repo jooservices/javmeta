@@ -1,6 +1,8 @@
-# Browser QA stack: the real backing services of the integration stack plus the web app on http://localhost:8099
-# with the repeatable sample dataset and one owner account. Data lives in tmpfs, so every start is clean.
-# Start and stop it with docker/qa/qa-up and docker/qa/qa-down; never point it at a real database.
+# Browser QA stack: the real backing services of the integration stack plus the web app on
+# http://localhost:${JAVMETA_QA_PORT:-8099} with the repeatable sample dataset and one owner account.
+# Data lives in tmpfs, so every start is clean. Override the host port with JAVMETA_QA_PORT when 8099
+# is already taken (for example JAVMETA_QA_PORT=18099). Start and stop with docker/qa/qa-up and
+# docker/qa/qa-down; never point it at a real database. Do not reuse javmeta-qa2 / 8098.
 name: javmeta-qa
 
 include:

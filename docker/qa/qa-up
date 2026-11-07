@@ -17,12 +17,14 @@ export JAVMETA_CI_APP_KEY="${JAVMETA_CI_APP_KEY:-base64:$(openssl rand -base64 3
 export JAVMETA_CI_ES_SECURITY=false
 export JAVMETA_CI_XCRAWLER_MONGO_PASSWORD=unused
 port="${JAVMETA_QA_PORT:-8099}"
+export JAVMETA_QA_PORT="$port"
 docker volume create javmeta-ci-composer-cache >/dev/null
 docker compose --file docker/qa/compose.qa.yml up --detach --wait postgres mongo redis elasticsearch openobserve
 docker compose --file docker/qa/compose.qa.yml up --detach web
 for _ in $(seq 1 120); do
   if curl -fsS -o /dev/null "http://localhost:${port}/login"; then
     echo "QA app ready: http://localhost:${port}  owner: ${JAVMETA_QA_EMAIL:-qa@javmeta.test}  (password in .tmp/qa-password)"
+    echo "Browser suite: QA_BASE=http://localhost:${port} node ui-tests/qa/run.mjs"
     exit 0
   fi
   sleep 3
