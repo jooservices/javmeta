@@ -184,6 +184,11 @@ ratio uses the same configured browser slot count as the Playwright estimate.
 | HTTP and crawl spans | OTLP `/api/{org}/v1/traces` | `TraceHttpRequest` and `TraceCrawlJob`. |
 | Watchdog notifications | Application alert events, not a separate metric stream | `WatchdogCommand` dispatches `WorkerHeartbeatStale` and `CrawlSourceUnhealthy`; listeners use `AlertDispatcher` for Telegram/activity-log fan-out. |
 
+The worker heartbeat index is bounded: an instance is forgotten one hour after
+its last beat, and the index keeps at most 200 instances. The owner's status
+summary lists at most 50 workers and reports the real count in `workers_total`
+with `workers_truncated`. Guests never receive worker data.
+
 The crawl dispatch age and severity series are exported by the existing
 `obs:publish-metrics` command. The stale series is active only while due crawl
 rows are pending, so an idle queue does not page. A missing dispatch timestamp
