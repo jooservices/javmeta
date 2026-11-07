@@ -17,8 +17,8 @@ final class ApiKeyService
 
     private const ACTIVE_LOOKUP_CACHE_PREFIX = 'javmeta:api-key:active:';
 
-    /** @param list<string>|null $scopes null grants every scope */
-    public function create(string $label, int $abuseRpm = 60, ?array $scopes = null): CreatedApiKey
+    /** @param list<string> $scopes An empty list grants no API scopes. */
+    public function create(string $label, int $abuseRpm = 60, array $scopes = []): CreatedApiKey
     {
         $plaintext = 'jvm_' . Str::random(48);
         $keyHash = $this->hashPlaintext($plaintext);

@@ -94,6 +94,6 @@ final class FieldCatalogContractTest extends TestCase
 
     private function apiKey(): string
     {
-        return app(ApiKeyService::class)->create('field-catalog')->plaintext;
+        return app(ApiKeyService::class)->create('field-catalog', 60, ['movies', 'performers'])->plaintext;
     }
 }

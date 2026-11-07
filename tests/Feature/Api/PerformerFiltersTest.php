@@ -22,7 +22,7 @@ final class PerformerFiltersTest extends TestCase
     {
         parent::setUp();
         app(SampleDataset::class)->load();
-        $this->headers = ['X-API-Key' => app(ApiKeyService::class)->create('pf')->plaintext];
+        $this->headers = ['X-API-Key' => app(ApiKeyService::class)->create('pf', 60, ['performers'])->plaintext];
         DB::table('performers')->where('external_id', 'p0003')->update(['retired_date' => '2020-01-01', 'image_url' => 'https://img.test/a.jpg']);
     }
 

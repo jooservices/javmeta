@@ -21,7 +21,7 @@ final class MovieFiltersTest extends TestCase
     {
         parent::setUp();
         app(SampleDataset::class)->load();
-        $this->headers = ['X-API-Key' => app(ApiKeyService::class)->create('filters')->plaintext];
+        $this->headers = ['X-API-Key' => app(ApiKeyService::class)->create('filters', 60, ['movies'])->plaintext];
     }
 
     private function codes(string $query): array

@@ -18,7 +18,7 @@ final class CalendarRelatedEndpointTest extends TestCase
     /** @return array<string, string> */
     private function headers(): array
     {
-        return ['X-API-Key' => app(ApiKeyService::class)->create('calendar-test')->plaintext];
+        return ['X-API-Key' => app(ApiKeyService::class)->create('calendar-test', 60, ['movies'])->plaintext];
     }
 
     public function test_the_calendar_groups_a_month_by_day_and_validates_the_month(): void

@@ -60,7 +60,7 @@ final class SearchTest extends TestCase
     public function test_the_search_endpoint_combines_filters_and_text_and_reports_how_it_understood(): void
     {
         Http::fake(['ollama.test:11434/*' => Http::response('down', 500)]);
-        $headers = ['X-API-Key' => app(ApiKeyService::class)->create('search')->plaintext];
+        $headers = ['X-API-Key' => app(ApiKeyService::class)->create('search', 60, ['movies'])->plaintext];
 
         $this->getJson('/api/v1/search?q=x', $headers)->assertStatus(400);
         $this->getJson('/api/v1/search?q=abc', ['X-API-Key' => 'bad'])->assertUnauthorized();
@@ -86,7 +86,7 @@ final class SearchTest extends TestCase
     public function test_search_cache_key_is_deterministic_and_differs_for_different_queries(): void
     {
         Http::fake(['ollama.test:11434/*' => Http::response('down', 500)]);
-        $headers = ['X-API-Key' => app(ApiKeyService::class)->create('search-key')->plaintext];
+        $headers = ['X-API-Key' => app(ApiKeyService::class)->create('search-key', 60, ['movies'])->plaintext];
         \Illuminate\Support\Facades\Cache::flush();
 
         $q = 'Sample Maker 03';
@@ -112,7 +112,7 @@ final class SearchTest extends TestCase
     public function test_an_over_specified_question_falls_back_to_the_filters_and_says_so(): void
     {
         Http::fake(['ollama.test:11434/*' => Http::response('down', 500)]);
-        $headers = ['X-API-Key' => app(ApiKeyService::class)->create('relax')->plaintext];
+        $headers = ['X-API-Key' => app(ApiKeyService::class)->create('relax', 60, ['movies'])->plaintext];
 
         $r = $this->getJson('/api/v1/search?q=' . urlencode('Sample Maker 03 zzqqxx') . '&per_page=20', $headers)->assertOk();
 
