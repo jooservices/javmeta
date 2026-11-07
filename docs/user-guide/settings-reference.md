@@ -1010,6 +1010,12 @@ Tệp trạng thái được lệnh backup cập nhật sau khi hoàn tất.
 
 Văn bản. Mã mục: `backup.manifest_path`.
 
+### Bật giám sát sao lưu
+
+Tắt mặc định. Khi bật, hệ thống kiểm tra tuổi bản sao lưu mỗi phút, gửi cảnh báo nếu quá cũ và tính vào báo cáo sẵn sàng.
+
+Bật/tắt. Mã mục: `backup.monitoring_enabled`.
+
 ## AI (Ollama, embedding)
 
 ### Nhà cung cấp embedding

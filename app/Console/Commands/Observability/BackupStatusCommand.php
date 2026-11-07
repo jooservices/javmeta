@@ -19,6 +19,12 @@ final class BackupStatusCommand extends Command
 
     public function handle(OpenObserveClient $client, AlertDispatcher $alerts): int
     {
+        if (! config('backup.monitoring_enabled')) {
+            $this->info('Backup monitoring is off (setting backup.monitoring_enabled).');
+
+            return self::SUCCESS;
+        }
+
         $age = $this->lastSuccessAge((string) config('backup.manifest_path'));
         $client->ingestMetrics([
             [

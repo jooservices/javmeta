@@ -114,6 +114,10 @@ final class StagingReadiness
     /** @return array{name: string, status: string, message: string, action: ?string} */
     private function backupCheck(): array
     {
+        if (! config('backup.monitoring_enabled')) {
+            return $this->row('backup', 'pass', 'Backup monitoring is off.');
+        }
+
         $file = storage_path('app/private/backups/latest.json');
         $data = is_file($file) ? json_decode((string) file_get_contents($file), true) : null;
         $at = is_array($data) ? ($data['created_at'] ?? $data['finished_at'] ?? $data['generated_at'] ?? null) : null;

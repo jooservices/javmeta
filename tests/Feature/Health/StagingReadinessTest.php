@@ -55,6 +55,20 @@ final class StagingReadinessTest extends TestCase
         $this->assertSame('fail', $this->byName()['newest_movie']['status']);
     }
 
+    public function test_a_missing_backup_manifest_does_not_fail_readiness_while_backup_monitoring_is_off(): void
+    {
+        config(['backup.monitoring_enabled' => false]);
+
+        $this->assertSame('pass', $this->byName()['backup']['status']);
+    }
+
+    public function test_a_missing_backup_manifest_fails_readiness_while_backup_monitoring_is_on(): void
+    {
+        config(['backup.monitoring_enabled' => true]);
+
+        $this->assertSame('fail', $this->byName()['backup']['status']);
+    }
+
     public function test_source_freshness_respects_manifest_cycle_and_keeps_never_succeeded_sources_past_due(): void
     {
         Source::factory()->create(['slug' => 'eporner', 'last_success_at' => now()->subDays(3)]);
