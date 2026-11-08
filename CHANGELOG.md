@@ -4,9 +4,7 @@ All notable changes to javmeta (XCrawler) are documented in this file. The forma
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 Releases are cut from `master` (see `docs/03-operations/release-process.md`).
 
-## [Unreleased]
-
-The entries below are the content of the first stable release, `1.0.0`. The release pull request renames this heading to `## [1.0.0] - <date>` before the release candidate is tagged (the Release workflow reads the section of the tagged version as the release notes).
+## [1.0.0] - 2026-11-09
 
 ### Fixed
 
