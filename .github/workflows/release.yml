@@ -1,0 +1,82 @@
+# JOOservices baseline workflow: validated by workflow-audit.
+# Publishes a GitHub Release when a semver tag is pushed. The tag must sit on master and the tagged commit must
+# already have every required CI check green (the release PR runs them); nothing is rebuilt or re-tested here.
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify the tagged commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tag is on master
+        env:
+          TAG_SHA: ${{ github.sha }}
+        run: git merge-base --is-ancestor "$TAG_SHA" origin/master
+      - name: Required checks are green on the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_SHA: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          required=(
+            "Lint and test"
+            "Integration (Postgres, Mongo, Elasticsearch, OpenObserve)"
+            "E2E journeys (isolated services)"
+            "Secrets scan"
+            "Build app image"
+          )
+          runs="$(gh api "repos/${REPOSITORY}/commits/${TAG_SHA}/check-runs?per_page=100" --jq '.check_runs')"
+          failed=0
+          for name in "${required[@]}"; do
+            conclusion="$(jq -r --arg n "$name" '[.[] | select(.name == $n)] | sort_by(.started_at) | last | .conclusion // "missing"' <<<"$runs")"
+            printf '%-60s %s\n' "$name" "$conclusion"
+            if [ "$conclusion" != "success" ]; then
+              failed=1
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "A required check is not green on ${TAG_SHA}: refusing to publish a release." >&2
+            exit 1
+          fi
+
+  release:
+    name: Create the GitHub Release
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          flags=(--repo "$REPOSITORY" --verify-tag --generate-notes --title "javmeta ${TAG_NAME}")
+          case "$TAG_NAME" in
+            *-*) flags+=(--prerelease) ;;
+          esac
+          gh release create "$TAG_NAME" "${flags[@]}"
