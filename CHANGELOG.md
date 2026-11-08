@@ -6,7 +6,7 @@ Releases are cut from `master` (see `docs/03-operations/release-process.md`).
 
 ## [Unreleased]
 
-## [1.0.0] - first stable release (date set when the tag is pushed)
+The entries below are the content of the first stable release, `1.0.0`. The release pull request renames this heading to `## [1.0.0] - <date>` before the release candidate is tagged (the Release workflow reads the section of the tagged version as the release notes).
 
 ### Fixed
 

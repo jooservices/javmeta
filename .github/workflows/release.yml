@@ -1,6 +1,7 @@
 # JOOservices baseline workflow: validated by workflow-audit.
-# Publishes a GitHub Release when a semver tag is pushed. The tag must sit on master and the tagged commit must
-# already have every required CI check green (the release PR runs them); nothing is rebuilt or re-tested here.
+# Publishes a GitHub Release when a semver tag is pushed. The tag must be a release version, must sit on master,
+# the tagged commit must already have every required CI check green and the release pull request must have passed
+# the commit message and title validations. Nothing is rebuilt or re-tested here.
 name: Release
 
 on:
@@ -22,12 +23,22 @@ jobs:
     permissions:
       contents: read
       checks: read
+      pull-requests: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Tag is a release version
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$TAG_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]]; then
+            echo "Tag ${TAG_NAME} is not vX.Y.Z or vX.Y.Z-rc.N: refusing to publish a release." >&2
+            exit 1
+          fi
       - name: Tag is on master
         env:
           TAG_SHA: ${{ github.sha }}
@@ -46,7 +57,7 @@ jobs:
             "Secrets scan"
             "Build app image"
           )
-          runs="$(gh api "repos/${REPOSITORY}/commits/${TAG_SHA}/check-runs?per_page=100" --jq '.check_runs')"
+          runs="$(gh api --paginate "repos/${REPOSITORY}/commits/${TAG_SHA}/check-runs?per_page=100" --jq '.check_runs[]' | jq -s '.')"
           failed=0
           for name in "${required[@]}"; do
             conclusion="$(jq -r --arg n "$name" '[.[] | select(.name == $n)] | sort_by(.started_at) | last | .conclusion // "missing"' <<<"$runs")"
@@ -59,6 +70,31 @@ jobs:
             echo "A required check is not green on ${TAG_SHA}: refusing to publish a release." >&2
             exit 1
           fi
+      - name: The release pull request passed the commit message and title validations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_SHA: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          head_sha="$(gh api "repos/${REPOSITORY}/commits/${TAG_SHA}/pulls" --jq '[.[] | select(.merged_at != null and .base.ref == "master")] | first | .head.sha // empty')"
+          if [ -z "$head_sha" ]; then
+            echo "No merged pull request into master is associated with ${TAG_SHA}: releases go through a pull request." >&2
+            exit 1
+          fi
+          runs="$(gh api --paginate "repos/${REPOSITORY}/commits/${head_sha}/check-runs?per_page=100" --jq '.check_runs[]' | jq -s '.')"
+          failed=0
+          for name in "Validate commit messages" "Validate PR Title"; do
+            conclusion="$(jq -r --arg n "$name" '[.[] | select(.name == $n)] | sort_by(.started_at) | last | .conclusion // "missing"' <<<"$runs")"
+            printf '%-60s %s\n' "$name" "$conclusion"
+            if [ "$conclusion" != "success" ]; then
+              failed=1
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "The release pull request (head ${head_sha}) did not pass both validations: refusing to publish a release." >&2
+            exit 1
+          fi
 
   release:
     name: Create the GitHub Release
@@ -68,6 +104,34 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: The tag still points to the verified commit
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+          TAG_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          current="$(git rev-parse "refs/tags/${TAG_NAME}^{commit}")"
+          if [ "$current" != "$TAG_SHA" ]; then
+            echo "Tag ${TAG_NAME} moved from ${TAG_SHA} to ${current} after verification: refusing to publish." >&2
+            exit 1
+          fi
+      - name: Extract the prepared release notes from CHANGELOG.md
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG_NAME#v}"
+          version="${version%%-rc.*}"
+          awk -v v="$version" '/^## \[/ { if (index($0, "[" v "]")) { found = 1; next } else if (found) { exit } } found' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/release-notes.md"; then
+            echo "CHANGELOG.md has no filled section for ${version}: write the release notes in the release pull request." >&2
+            exit 1
+          fi
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -75,8 +139,8 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          flags=(--repo "$REPOSITORY" --verify-tag --generate-notes --title "javmeta ${TAG_NAME}")
+          flags=(--repo "$REPOSITORY" --verify-tag --generate-notes --notes-file "$RUNNER_TEMP/release-notes.md" --title "javmeta ${TAG_NAME}")
           case "$TAG_NAME" in
-            *-*) flags+=(--prerelease) ;;
+            *-rc.*) flags+=(--prerelease) ;;
           esac
           gh release create "$TAG_NAME" "${flags[@]}"
