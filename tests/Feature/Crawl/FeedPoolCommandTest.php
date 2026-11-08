@@ -104,7 +104,7 @@ final class FeedPoolCommandTest extends TestCase
     public function test_scheduled_feed_pool_reads_the_current_database_interval_without_scheduler_restart(): void
     {
         config(['cache.default' => 'array']);
-        $settings = new SettingsService(new FakeConfigStore(), app(\App\Repositories\SettingsServiceRepository::class));
+        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class));
         $settings->set('queue.feed_interval_seconds', 15);
         Cache::store('array')->flush();
         $row = CrawlQueue::factory()->create([
