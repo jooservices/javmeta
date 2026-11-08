@@ -76,8 +76,28 @@ final class LibraryTest extends TestCase
         $this->assertSame(5000, $row->size);
         $this->assertSame('SSIS-123', $row->code);
         $this->assertNotNull($row->movie_id);
-        $this->assertSame(40, strlen($row->quick_hash));
+        $this->assertSame(64, strlen($row->quick_hash));
+        $this->assertSame(hash('sha256', '5000|' . str_repeat('x', 5000) . '|'), $row->quick_hash);
         $this->assertNull(DB::table('library_files')->where('path', 'like', '%holiday%')->value('movie_id'));
+    }
+
+    public function test_quick_hash_is_deterministic_and_differs_for_different_content(): void
+    {
+        app(LibraryScanner::class)->scan();
+        $first = DB::table('library_files')->where('path', 'like', '%SSIS-123%')->value('quick_hash');
+        $this->assertSame(hash('sha256', '5000|' . str_repeat('x', 5000) . '|'), $first);
+
+        app(LibraryScanner::class)->scan();
+        $again = DB::table('library_files')->where('path', 'like', '%SSIS-123%')->value('quick_hash');
+        $this->assertSame($first, $again);
+
+        file_put_contents($this->root . '/a/[grp] SSIS-123 title.mp4', str_repeat('y', 5000));
+        touch($this->root . '/a/[grp] SSIS-123 title.mp4', time() + 2);
+        clearstatcache();
+        app(LibraryScanner::class)->scan();
+        $changed = DB::table('library_files')->where('path', 'like', '%SSIS-123%')->value('quick_hash');
+        $this->assertNotSame($first, $changed);
+        $this->assertSame(hash('sha256', '5000|' . str_repeat('y', 5000) . '|'), $changed);
     }
 
     public function test_scanning_twice_adds_nothing_and_a_vanished_file_is_marked_missing(): void
@@ -133,10 +153,20 @@ final class LibraryTest extends TestCase
         $this->assertSame(3, $summary['files']);
         $this->assertSame(2, $summary['matched']);
         $this->assertSame(1, $summary['unmatched']);
+        $this->assertSame(0, $summary['missing']);
         $this->assertSame(5000 + 5 + 7, $summary['bytes']);
         $this->assertCount(1, $summary['by_folder']);
+        $this->assertNotNull($summary['last_scan_at']);
+        $this->assertTrue($summary['configured']);
         $this->assertEqualsCanonicalizing(['SSIS-123', 'ABP-045'], $this->getJson('/ui-me/library/codes')->json('data'));
-        $this->assertCount(1, $this->getJson('/ui-me/library/unmatched')->json('data'));
+        $this->assertSame([
+            ['code' => 'ABP-045', 'files' => 1, 'bytes' => 5],
+            ['code' => 'SSIS-123', 'files' => 1, 'bytes' => 5000],
+        ], $this->getJson('/ui-me/library/on-disk')->assertOk()->json('data'));
+        $unmatched = $this->getJson('/ui-me/library/unmatched')->assertOk();
+        $this->assertCount(1, $unmatched->json('data'));
+        $unmatched->assertJsonPath('meta', ['total' => 1, 'page' => 1, 'per_page' => 100]);
+        $this->getJson('/ui-me/library/unmatched?page=0')->assertOk()->assertJsonPath('meta.page', 1);
 
         $headers = ['X-API-Key' => app(ApiKeyService::class)->create('lib')->plaintext];
         $this->movie('NOT-001');
@@ -144,6 +174,52 @@ final class LibraryTest extends TestCase
         $off = array_column($this->getJson('/api/v1/movies?on_disk=0&per_page=50', $headers)->assertOk()->json('data'), 'code');
         $this->assertEqualsCanonicalizing(['SSIS-123', 'ABP-045'], $on);
         $this->assertSame(['NOT-001'], $off);
+    }
+
+    public function test_library_summary_separates_missing_files_and_reports_empty_configuration(): void
+    {
+        $this->actingAs(User::factory()->create(['role' => 'super_administrator']));
+        config(['javmeta_library.folders' => []]);
+        $now = now();
+        DB::table('library_files')->insert([
+            ['path' => '/root/present.mp4', 'folder' => '/root', 'size' => 3, 'mtime' => 1, 'first_seen_at' => $now, 'last_seen_at' => $now, 'missing_at' => null],
+            ['path' => '/root/missing.mp4', 'folder' => '/root', 'size' => 4, 'mtime' => 1, 'first_seen_at' => $now->copy()->subDay(), 'last_seen_at' => $now->copy()->subHour(), 'missing_at' => $now],
+        ]);
+
+        $summary = $this->getJson('/ui-me/library')->assertOk()->json('data');
+
+        $this->assertSame(1, $summary['files']);
+        $this->assertSame(1, $summary['unmatched']);
+        $this->assertSame(1, $summary['missing']);
+        $this->assertSame(3, $summary['bytes']);
+        $this->assertFalse($summary['configured']);
+        $this->assertSame([['folder' => '/root', 'files' => 1, 'bytes' => 3]], $summary['by_folder']);
+        $this->assertSame([], $this->getJson('/ui-me/library/on-disk')->assertOk()->json('data'));
+    }
+
+    public function test_unmatched_library_files_are_paginated_by_one_hundred_and_page_is_clamped(): void
+    {
+        $this->actingAs(User::factory()->create(['role' => 'super_administrator']));
+        $now = now();
+        $files = [];
+        for ($number = 1; $number <= 101; $number++) {
+            $files[] = [
+                'path' => '/bulk/file-' . $number . '.mp4',
+                'folder' => '/bulk',
+                'size' => $number,
+                'mtime' => 1,
+                'first_seen_at' => $now,
+                'last_seen_at' => $now,
+            ];
+        }
+        DB::table('library_files')->insert($files);
+
+        $secondPage = $this->getJson('/ui-me/library/unmatched?page=2')->assertOk();
+        $this->assertCount(1, $secondPage->json('data'));
+        $secondPage->assertJsonPath('meta', ['total' => 101, 'page' => 2, 'per_page' => 100]);
+        $firstPage = $this->getJson('/ui-me/library/unmatched?page=0')->assertOk();
+        $this->assertCount(100, $firstPage->json('data'));
+        $firstPage->assertJsonPath('meta.page', 1);
     }
     public function test_directory_and_file_symlinks_outside_root_and_cycles_are_skipped(): void
     {

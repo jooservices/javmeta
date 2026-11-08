@@ -16,4 +16,4 @@ Bấm kết quả phim, diễn viên hoặc Danh mục khớp để mở chi ti�
 
 ## Nếu có vẻ sai
 
-Sửa câu ngắn hơn, kiểm tra “Tôi hiểu là”, thử Từ khoá hoặc mã phim. Dịch vụ tìm theo nghĩa tắt hoặc không có vector thì ứng dụng quay về tìm theo chữ. Sau khi gửi lại biểu mẫu, chế độ trở về Từ khoá; chọn lại Theo nghĩa nếu cần. Số ở mỗi nhóm là số kết quả trả về của lần tìm này, không phải tổng toàn bộ kho.
+Sửa câu ngắn hơn, kiểm tra “Tôi hiểu là”, thử Từ khoá hoặc mã phim. Dịch vụ tìm theo nghĩa tắt hoặc không có vector thì ứng dụng quay về tìm theo chữ và ghi rõ “Tìm theo nghĩa chưa sẵn sàng”. Một ký tự thì trang yêu cầu nhập ít nhất 2 ký tự. Sau khi gửi lại biểu mẫu, chế độ trở về Từ khoá; chọn lại Theo nghĩa nếu cần. Số ở mỗi nhóm là tổng trong kho; “Xem tất cả” mở danh sách đầy đủ.

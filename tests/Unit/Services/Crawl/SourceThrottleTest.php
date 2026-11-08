@@ -90,4 +90,18 @@ final class SourceThrottleTest extends TestCase
 
         $this->assertEquals(184.0, (float) $throttle->onSuccess($source)->gap_seconds_current);
     }
+
+    public function test_overrides_clamp_success_and_failure_gaps_to_the_effective_bounds(): void
+    {
+        config()->set('javmeta_queues.source_gap_overrides', [
+            'limited-site' => ['min' => 3.0, 'default' => 5.0, 'max' => 8.0],
+        ]);
+        $source = $this->sourceWithGap(20.0, 1.0, 60.0);
+        $source->forceFill(['slug' => 'limited-site'])->save();
+        $throttle = new SourceThrottle();
+
+        self::assertSame(8.0, $throttle->currentGap($source));
+        self::assertSame(8.0, (float) $throttle->onFailure($source, 'blocked')->gap_seconds_current);
+        self::assertSame(3.0, (float) $throttle->onSuccess($source->forceFill(['gap_seconds_current' => 1.0]))->gap_seconds_current);
+    }
 }

@@ -24,6 +24,7 @@ final class ReportsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->travelTo('2026-11-02T12:34:00Z');
         Cache::flush();
     }
 

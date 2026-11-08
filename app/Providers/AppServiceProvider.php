@@ -9,6 +9,9 @@ use App\Contracts\ReportChannel;
 use App\Http\Middleware\EnsureSuperAdministrator;
 use App\Http\Middleware\GuestSafeStatusResponse;
 use App\Logging\ArrayLogStore;
+use App\Listeners\DisconnectIdlePostgresConnections;
+use App\Listeners\Nodes\NodeEnrollmentSubscriber;
+use App\Listeners\WorkerBusyStateListener;
 use App\Notifications\ActivityLogAlertNotifier;
 use App\Notifications\CompositeAlertNotifier;
 use App\Notifications\TelegramAlertNotifier;
@@ -17,6 +20,11 @@ use App\Support\InsecureDefaults;
 use App\Observability\OpenObserveClient;
 use App\Observability\TelemetrySanitizer;
 use App\Services\Alerts\AlertDispatcher;
+use App\Services\Alerts\AlertChannelDispatcher;
+use App\Services\Alerts\AlertSnapshotReader;
+use App\Services\Alerts\DatabaseAlertSnapshotReader;
+use App\Services\Alerts\TelegramAlertChannel;
+use App\Services\Alerts\WebhookAlertChannel;
 use App\Services\Crawl\MovieDraftSink;
 use App\Services\Crawl\PerformerDraftSink;
 use App\Services\Merge\ConflictPolicy;
@@ -27,18 +35,45 @@ use App\Services\Normalize\Normalizers\JableSourceNormalizer;
 use App\Services\Normalize\SourceNormalizerRegistry;
 use App\Services\Persist\MoviePersister;
 use App\Services\Persist\PerformerPersister;
+use App\Services\Observability\NodeEgressProbe;
 use App\Services\Ui\UiLoginStateRecorder;
+use App\Services\Report\ProcWorkerProcessSource;
+use App\Services\Report\WorkerProcessSource;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Console\Events\CommandStarting;
+use Illuminate\Console\Events\ScheduledTaskFailed;
+use Illuminate\Console\Events\ScheduledTaskFinished;
+use Illuminate\Queue\Events\Looping;
 use Illuminate\Routing\Events\RouteMatched;
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Queue\Events\JobProcessed;
+use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use JOOservices\LaravelLogging\Contracts\LogStoreInterface;
+use Laravel\Horizon\Events\MasterSupervisorLooped;
+use Laravel\Horizon\Events\SupervisorLooped;
 use Throwable;
 
 class AppServiceProvider extends ServiceProvider
 {
     public function boot(): void
     {
+        Event::subscribe(NodeEnrollmentSubscriber::class);
+        Event::listen(JobProcessing::class, [WorkerBusyStateListener::class, 'processing']);
+        Event::listen(JobProcessed::class, [WorkerBusyStateListener::class, 'processed']);
+        Event::listen(JobFailed::class, [WorkerBusyStateListener::class, 'processed']);
+        $this->app->booted(static function (): void {
+            Event::listen(Looping::class, [DisconnectIdlePostgresConnections::class, 'afterQueueLoop']);
+            Event::listen(ScheduledTaskFinished::class, [DisconnectIdlePostgresConnections::class, 'afterScheduledTask']);
+            Event::listen(ScheduledTaskFailed::class, [DisconnectIdlePostgresConnections::class, 'afterScheduledTask']);
+            Event::listen(SupervisorLooped::class, [DisconnectIdlePostgresConnections::class, 'afterHorizonLoop']);
+            Event::listen(MasterSupervisorLooped::class, [DisconnectIdlePostgresConnections::class, 'afterHorizonLoop']);
+            // schedule:work keeps one long-lived process that only spawns schedule:run children;
+            // release the boot-time settings PDO so it does not idle for the process lifetime.
+            Event::listen(CommandStarting::class, [DisconnectIdlePostgresConnections::class, 'afterScheduleWorkStarted']);
+        });
+
         Event::listen(RouteMatched::class, static function (RouteMatched $event): void {
             if (in_array($event->route->getName(), ['storage.local', 'storage.local.upload'], true)) {
                 $event->route->middleware(['auth', EnsureSuperAdministrator::class]);
@@ -93,6 +128,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(TelemetrySanitizer::class);
         $this->app->singleton(OpenObserveClient::class);
         $this->app->singleton(ObservabilityEmitter::class);
+        $this->app->singleton(NodeEgressProbe::class);
+        $this->app->singleton(WorkerProcessSource::class, ProcWorkerProcessSource::class);
 
         if ($this->app->environment('testing')) {
             $this->app->singleton(LogStoreInterface::class, ArrayLogStore::class);
@@ -105,6 +142,11 @@ class AppServiceProvider extends ServiceProvider
             ]);
         });
         $this->app->singleton(AlertDispatcher::class);
+        $this->app->singleton(AlertSnapshotReader::class, DatabaseAlertSnapshotReader::class);
+        $this->app->singleton(AlertChannelDispatcher::class, static fn(Application $app): AlertChannelDispatcher => new AlertChannelDispatcher([
+            'telegram' => $app->make(TelegramAlertChannel::class),
+            'webhook' => $app->make(WebhookAlertChannel::class),
+        ]));
         $this->app->bind(ReportChannel::class, TelegramAlertNotifier::class);
     }
 }

@@ -38,6 +38,18 @@ Cửa sổ dùng để chia nhịp request của mỗi nguồn.
 
 Số nguyên; từ 1 đến 3600. Mã mục: `queue.pacing_horizon_seconds`.
 
+### Bật chẩn đoán feed pool
+
+Ghi số liệu budget, lượt chạy và nguyên nhân dừng của feed pool vào Redis.
+
+Bật/tắt. Mã mục: `queue.feed_diagnostics.enabled`.
+
+### Thời hạn lưu chẩn đoán feed pool (phút)
+
+Số phút giữ bộ đếm feed pool trong Redis để xuất metric và xem báo cáo.
+
+Số nguyên; từ 3 đến 1440. Mã mục: `queue.feed_diagnostics.retention_minutes`.
+
 ### Khoảng nghỉ tối đa khi bị chặn (giây)
 
 Khi một nguồn bị chặn, khoảng nghỉ giữa các request tăng gấp đôi đến mức này.
@@ -82,6 +94,12 @@ Số tiến trình Horizon tối đa cho từng queue cần Playwright hoặc Fl
 
 Số nguyên; từ 1 đến 32. Mã mục: `worker.browser_workers_per_queue`.
 
+### Worker mỗi hàng đợi làn thử lại
+
+Số tiến trình Horizon cho từng queue retry; mặc định chỉ dùng một tiến trình.
+
+Số nguyên; từ 1 đến 8. Mã mục: `worker.retry_workers_per_queue`.
+
 ### Worker ghi đè theo hàng đợi (JSON)
 
 Đối tượng JSON ánh xạ tên queue sang số worker từ 1 đến 32, ví dụ {"listing":2,"browser_detail":1}.
@@ -90,7 +108,7 @@ Số nguyên; từ 1 đến 32. Mã mục: `worker.browser_workers_per_queue`.
 
 ### Worker ghi đè theo node (JSON)
 
-Ánh xạ main, worker hoặc role@hostname sang default, direct, browser và queues.
+Ánh xạ main, worker hoặc role@hostname sang default, direct, browser, retry và queues.
 
 Đối tượng JSON; ghi đè theo vai trò hoặc role@hostname; worker từ 1 đến 32. Mã mục: `worker.node_overrides`.
 
@@ -252,11 +270,73 @@ Mỗi dòng là một mã nguồn ưu tiên dùng trình duyệt.
 
 Danh sách văn bản. Mã mục: `crawl.lane_browser_pins`.
 
+## Làn thử lại
+
+### Độ sâu queue thử lại
+
+Số job chờ tối đa trong mỗi queue riêng của làn thử lại.
+
+Số nguyên; từ 1 đến 1000. Mã mục: `retry.depth_limit`.
+
+### Ngân sách dispatch thử lại mỗi phút
+
+Giới hạn riêng cho số job làn thử lại được đưa vào worker mỗi phút.
+
+Số nguyên; từ 1 đến 100. Mã mục: `retry.feed_pool_limit`.
+
+### Cửa sổ pacing làn thử lại (giây)
+
+Cửa sổ riêng để giới hạn lượng việc thử lại đang chạy hoặc đang chờ theo từng nguồn.
+
+Số nguyên; từ 1 đến 3600. Mã mục: `retry.pacing_horizon_seconds`.
+
+### Hệ số giãn cách request thử lại
+
+Nhân khoảng nghỉ hiện tại của nguồn để retry chậm hơn luồng crawl thường.
+
+Số thập phân; từ 1 đến 20. Mã mục: `retry.pacing_gap_multiplier`.
+
+### Việc thử lại đồng thời mỗi nguồn
+
+Giới hạn riêng số job retry đang chờ hoặc chạy đồng thời cho mỗi nguồn.
+
+Số nguyên; từ 1 đến 8. Mã mục: `retry.per_source_inflight`.
+
+### Thời gian chờ giữa các vòng thử lại (giây)
+
+Danh sách thời gian chờ trước mỗi vòng; mặc định là 30 phút, 2 giờ và 6 giờ.
+
+Danh sách số nguyên. Mã mục: `retry.delays_seconds`.
+
+### Số vòng thử lại tối đa
+
+Sau số vòng này, lỗi còn lại được giữ ở trạng thái thất bại vĩnh viễn.
+
+Số nguyên; từ 1 đến 10. Mã mục: `retry.max_rounds`.
+
+### Số lần thử trong mỗi vòng retry
+
+Mỗi vòng retry dùng số lần thử này trước khi tăng vòng hoặc thất bại vĩnh viễn.
+
+Số nguyên; từ 1 đến 10. Mã mục: `retry.attempts_per_round`.
+
+### Kích thước mỗi lát nhập lỗi cũ
+
+Số dòng failed tối đa được kiểm tra và cập nhật trong một lát lệnh import.
+
+Số nguyên; từ 1 đến 1000. Mã mục: `retry.import_slice_size`.
+
+### Hồ sơ fetch làn thử lại (JSON)
+
+Ghi đè tùy chọn endpoint trình duyệt, HTTP proxy, nhãn egress và thứ tự fetch riêng cho retry.
+
+Đối tượng JSON; các khóa hợp lệ: flaresolverr_url, playwright_url, http_proxy_url, egress_label, preferred_methods. Mã mục: `retry.fetch_profile`.
+
 ## Dọn dẹp
 
 ### Việc kẹt được giải phóng sau (giây)
 
-Việc ở trạng thái claimed lâu hơn mức này được trả lại hàng đợi.
+Việc đã bắt đầu được thu hồi sau mức này; việc chưa bắt đầu còn được chờ theo giới hạn hàng đợi và timeout worker.
 
 Số nguyên; từ 60 đến 86400. Mã mục: `crawl.stale_claim_timeout_seconds`.
 
@@ -384,11 +464,23 @@ Cứ mỗi số request này, thử Playwright trước để phát hiện khi n
 
 Số nguyên; từ 1 đến 1000. Mã mục: `crawl.fetch_method_probe_interval`.
 
+### Khoảng request ghi đè theo nguồn (JSON)
+
+Ánh xạ mã nguồn đã cấu hình hoặc đã lưu sang min, default và max từ 0,25 đến 600 giây; để trống thì giữ nhịp mặc định. 14 nguồn CrawlerX 1.5.0 bắt đầu ở 8 giây (min 4, max 60); chỉnh nhịp qua ánh xạ này.
+
+Đối tượng JSON; cấu trúc do ứng dụng quy định. Mã mục: `crawl.source_gap_overrides`.
+
 ### Thời gian chờ khi bị chặn (giây, cách nhau bằng dấu phẩy)
 
-Mỗi lần bị chặn chờ theo từng giá trị; hết danh sách thì việc thất bại.
+Các lần chặn/challenge trong luồng thường dùng thời gian chờ theo danh sách này trước khi chuyển sang làn retry.
 
 Danh sách số nguyên. Mã mục: `crawl.block_delays_seconds`.
+
+### Backoff giữa các lần thử crawl (giây)
+
+Khoảng nghỉ theo số lần thử trước khi chuyển sang vòng retry riêng.
+
+Danh sách số nguyên. Mã mục: `crawl.retry_backoff_seconds`.
 
 ### Đọc lại trang đầu mỗi (phút)
 
@@ -428,7 +520,7 @@ Số nguyên; từ 1 đến 20. Mã mục: `crawl.recrawl_max_rounds`.
 
 ### Số lần thử crawl tối đa
 
-Sau số lần này một dòng crawl được đánh dấu thất bại.
+Sau số lần này lỗi tạm thời chuyển sang làn retry riêng; lỗi parse và lỗi kết thúc vẫn thất bại ngay.
 
 Số nguyên; từ 1 đến 20. Mã mục: `crawl.max_attempts`.
 
@@ -451,6 +543,108 @@ Số nguyên; từ 1 đến 86400. Mã mục: `crawl.circuit_cooldown_seconds`.
 Tắt thì không có cảnh báo nào được gửi.
 
 Bật/tắt. Mã mục: `alerts.enabled`.
+
+### Kiểm tra cảnh báo mỗi (giây)
+
+Lệnh chạy mỗi phút và bỏ qua lượt chưa đến thời điểm kiểm tra này.
+
+Số nguyên; từ 60 đến 3600. Mã mục: `alerts.evaluate_interval_seconds`.
+
+### Cửa sổ đánh giá crawl (phút)
+
+Khoảng thời gian dùng để tính tỷ lệ thành công và bị chặn.
+
+Số nguyên; từ 1 đến 1440. Mã mục: `alerts.window_minutes`.
+
+### Tỷ lệ tải thành công tối thiểu (%)
+
+Cảnh báo khi tỷ lệ phản hồi HTTP 2xx thấp hơn ngưỡng này.
+
+Số nguyên; từ 1 đến 100. Mã mục: `alerts.success_rate_min_percent`.
+
+### Ngưỡng tỷ lệ thành công nghiêm trọng (%)
+
+Báo CRITICAL khi tỷ lệ thành công thấp hơn ngưỡng này trong cửa sổ đánh giá.
+
+Số nguyên; từ 1 đến 100. Mã mục: `alerts.success_rate_critical_percent`.
+
+### Tỷ lệ bị chặn tối đa (%)
+
+Cảnh báo khi tỷ lệ phản hồi 403, 429 hoặc dấu hiệu Cloudflare vượt ngưỡng này.
+
+Số nguyên; từ 0 đến 100. Mã mục: `alerts.blocked_ratio_max_percent`.
+
+### Số kết nối PostgreSQL tối đa
+
+Cảnh báo khi số kết nối client vượt ngưỡng này.
+
+Số nguyên; từ 1 đến 10000. Mã mục: `alerts.pg_connections_max`.
+
+### Chưa điều phối crawl quá (giây)
+
+Cảnh báo khi còn việc đến hạn nhưng chưa có lần điều phối trong khoảng này.
+
+Số nguyên; từ 1 đến 3600. Mã mục: `alerts.dispatch_age_max_seconds`.
+
+### Ngưỡng metric điều phối crawl (giây)
+
+Ngưỡng warning của metric javmeta_crawl_dispatch_stale; cảnh báo trực tiếp dùng ngưỡng riêng bên trên.
+
+Số nguyên; từ 30 đến 3600. Mã mục: `alerts.crawl_dispatch_warning_seconds`.
+
+### Việc đến hạn tối thiểu mỗi nguồn nóng
+
+Cảnh báo khi nguồn đang crawl còn ít việc đến hạn hơn mức này.
+
+Số nguyên; từ 0 đến 100000. Mã mục: `alerts.backlog_due_min_per_hot_source`.
+
+### Số lần thử tối thiểu trong cửa sổ
+
+Không tính tỷ lệ khi mẫu nhỏ hơn mức này.
+
+Số nguyên; từ 1 đến 100000. Mã mục: `alerts.min_attempts_in_window`.
+
+### Nhắc lại sau (phút)
+
+Nếu sự cố còn tiếp diễn, gửi lại tối đa một lần sau khoảng này.
+
+Số nguyên; từ 1 đến 10080. Mã mục: `alerts.cooldown_minutes`.
+
+### Gửi tin khi đã phục hồi
+
+Gửi một tin khi điều kiện cảnh báo trở lại bình thường.
+
+Bật/tắt. Mã mục: `alerts.recovery_notice`.
+
+### Số lần thử gửi tin phục hồi tối đa
+
+Sau mỗi khoảng nhắc lại, thử gửi lại tin phục hồi chưa tới được kênh; hết số lần này thì dừng.
+
+Số nguyên; từ 1 đến 10. Mã mục: `alerts.recovery_retry_max_attempts`.
+
+### Kênh nhận cảnh báo
+
+Mỗi dòng chọn một kênh đã bật: telegram hoặc webhook.
+
+Danh sách văn bản. Mã mục: `alerts.channels`.
+
+### Địa chỉ webhook cảnh báo
+
+URL HTTPS không chứa thông tin đăng nhập, query hoặc fragment; để trống nếu không dùng webhook.
+
+Văn bản. Mã mục: `alerts.webhook_url`.
+
+### Webhook chờ tối đa (giây)
+
+Giới hạn thời gian chờ gửi cảnh báo tới webhook.
+
+Số nguyên; từ 1 đến 30. Mã mục: `alerts.webhook_timeout_seconds`.
+
+### Số ngày giữ lịch sử cảnh báo
+
+Lịch sử đã xử lý cũ hơn mức này được tự động xóa.
+
+Số nguyên; từ 1 đến 3650. Mã mục: `alerts.history_retention_days`.
 
 ### Gộp cảnh báo trùng trong (giây)
 
@@ -476,31 +670,21 @@ Một phim lỗi quá số lần này sẽ được cảnh báo.
 
 Số nguyên; từ 1 đến 100. Mã mục: `alerts.title_failure_threshold`.
 
-### Cảnh báo khi chưa nạp việc crawl (giây)
+### Ngưỡng metric điều phối crawl mức cao (giây)
 
-Cảnh báo khi còn việc đến hạn nhưng chưa có job crawl mới được đẩy vào hàng đợi trong khoảng này.
-
-Số nguyên; từ 30 đến 3600. Mã mục: `alerts.crawl_dispatch_warning_seconds`.
-
-### Báo động khi chưa nạp việc crawl (giây)
-
-Gửi cảnh báo mức cao khi còn việc đến hạn nhưng chưa có job crawl mới được đẩy vào hàng đợi trong khoảng này.
+Ngưỡng critical của metric javmeta_crawl_dispatch_stale; cảnh báo trực tiếp dùng ngưỡng riêng.
 
 Số nguyên; từ 30 đến 3600. Mã mục: `alerts.crawl_dispatch_critical_seconds`.
 
+## Chính sách thông báo
+
+### Chế độ yên lặng
+
+Chỉ gửi cảnh báo CRITICAL và sự kiện bảo mật; các mức khác được giữ cho báo cáo.
+
+Bật/tắt. Mã mục: `notifications.quiet_mode`.
+
 ## Telegram
-
-### Token của bot
-
-Token do BotFather cấp. Được mã hoá trong cơ sở dữ liệu và không hiển thị lại.
-
-Thông tin bí mật. Mã mục: `telegram.bot_token`.
-
-### Chat ID nhận tin
-
-Chat của chủ sở hữu; chỉ chat này được dùng bot.
-
-Văn bản. Mã mục: `telegram.chat_id`.
 
 ### User ID chủ sở hữu Telegram
 
@@ -522,7 +706,7 @@ Số nguyên; từ 1 đến 60. Mã mục: `telegram.timeout`.
 
 ### Bật bot hỏi đáp
 
-Bot trả lời tin của chủ sở hữu: tìm phim, diễn viên, trạng thái, theo dõi. Chỉ chat ID ở trên được dùng.
+Bot trả lời tin của chủ sở hữu: tìm phim, diễn viên, trạng thái, theo dõi. Bot token và chat ID được cấu hình riêng trong runtime secrets.
 
 Bật/tắt. Mã mục: `telegram.bot_enabled`.
 
@@ -532,19 +716,121 @@ Tối đa 10.
 
 Số nguyên; từ 1 đến 10. Mã mục: `telegram.bot_max_results`.
 
-## Báo cáo hằng giờ
-
-### Múi giờ báo cáo
-
-Ví dụ Asia/Ho_Chi_Minh.
-
-Văn bản. Mã mục: `report.timezone`.
+## Báo cáo
 
 ### Tệp trạng thái báo cáo
 
 Đường dẫn tệp lưu mốc gửi báo cáo hằng giờ.
 
 Văn bản. Mã mục: `report.state_path`.
+
+### Bật báo cáo định kỳ
+
+Lịch tự động gửi báo cáo trạng thái qua Telegram.
+
+Bật/tắt. Mã mục: `report.enabled`.
+
+### Chu kỳ gửi báo cáo (phút)
+
+Báo cáo chạy theo mốc cố định trong ngày theo múi giờ đã chọn.
+
+Số nguyên; từ 15 đến 1440; chọn: 15, 30, 60, 120, 180, 360, 720, 1440. Mã mục: `report.interval_minutes`.
+
+### Múi giờ báo cáo
+
+Tên múi giờ IANA, ví dụ America/Mexico_City.
+
+Văn bản. Mã mục: `report.timezone`.
+
+### Giờ yên lặng bắt đầu
+
+Để trống để không bật giờ yên lặng; định dạng HH:MM.
+
+Văn bản. Mã mục: `report.quiet_hours_start`.
+
+### Giờ yên lặng kết thúc
+
+Giờ kết thúc không bao gồm; định dạng HH:MM.
+
+Văn bản. Mã mục: `report.quiet_hours_end`.
+
+### Các phần trong báo cáo
+
+Chỉ các phần được chọn mới xuất hiện trong báo cáo.
+
+Danh sách văn bản. Mã mục: `report.sections`.
+
+### Số nguồn tối đa trong danh sách
+
+Giới hạn danh sách nguồn bị chặn hoặc đã hết lượt.
+
+Số nguyên; từ 1 đến 5. Mã mục: `report.top_sources_limit`.
+
+### Kênh gửi báo cáo
+
+Telegram là kênh gửi hiện được bật.
+
+Danh sách văn bản. Mã mục: `report.channels`.
+
+### Số ngày lưu lịch sử báo cáo
+
+Bản báo cáo cũ hơn mức này sẽ được tự động xóa sau lần gửi.
+
+Số nguyên; từ 1 đến 365. Mã mục: `report.history_days`.
+
+### Thời hạn dấu worker bận (giây)
+
+Dấu tự hết hạn nếu tiến trình kết thúc mà không phát sự kiện hoàn tất.
+
+Số nguyên; từ 30 đến 3600. Mã mục: `report.worker_busy_ttl_seconds`.
+
+### Thời gian giữ mẫu nút (phút)
+
+Mẫu CPU, RAM, đĩa và worker được giữ trong Redis dùng chung.
+
+Số nguyên; từ 180 đến 180. Mã mục: `report.sample_retention_minutes`.
+
+### Mẫu nút tối đa bao nhiêu giây thì được xem là mới
+
+Nút không có mẫu mới sẽ hiển thị no data trong báo cáo.
+
+Số nguyên; từ 60 đến 300. Mã mục: `report.sample_max_age_seconds`.
+
+### Thư mục đo dung lượng đĩa của nút
+
+Đường dẫn nằm trên volume ứng dụng của nút.
+
+Văn bản. Mã mục: `report.node_volume_path`.
+
+### Địa chỉ thống kê trình duyệt (tùy chọn)
+
+Endpoint nội bộ trả số tiến trình Chrome và lượt Playwright đang bận/tổng.
+
+Văn bản. Mã mục: `report.browser_stats_url`.
+
+### Mẫu văn bản báo cáo
+
+Văn bản mẫu tiếng Anh. Có thể dùng các biến {header}, {movies}, {performers}, {crawl}, {sources}, {fleet}, {workers}, {servers}, {services}, {notification_events}, {deploys}, {backup}, {warnings}.
+
+Văn bản. Mã mục: `report.template`.
+
+### Giờ gửi báo cáo hằng ngày
+
+Mỗi ngày gửi một báo cáo dữ liệu 24 giờ theo múi giờ báo cáo hằng ngày.
+
+Văn bản. Mã mục: `report.daily_time`.
+
+### Múi giờ báo cáo hằng ngày
+
+Tên múi giờ IANA dùng để lên lịch báo cáo hằng ngày.
+
+Văn bản. Mã mục: `report.daily_timezone`.
+
+### Bật báo cáo giờ cũ
+
+Chỉ chạy javmeta:hourly-report khi bật và báo cáo định kỳ mới đang tắt.
+
+Bật/tắt. Mã mục: `report.legacy_hourly_enabled`.
 
 ## Kiểm tra sẵn sàng
 
@@ -666,6 +952,56 @@ Số thập phân; từ 0 đến 1. Mã mục: `observability.trace_sample_rate`
 
 Số thập phân; từ 0 đến 1. Mã mục: `observability.sentry_traces_sample_rate`.
 
+### Địa chỉ kiểm tra IP mạng ra
+
+Mỗi dòng là một dịch vụ trả về IPv4 công khai; lần lượt thử theo thứ tự khi node kiểm tra.
+
+Danh sách văn bản. Mã mục: `observability.egress_probe_urls`.
+
+### Chu kỳ kiểm tra IP node (giây)
+
+Worker kiểm tra IP mạng ra theo chu kỳ này bằng timer riêng trên từng node.
+
+Số nguyên; từ 60 đến 86400. Mã mục: `observability.egress_probe_interval_seconds`.
+
+### Chu kỳ kiểm tra IP trình duyệt (giây)
+
+Gửi một yêu cầu nhẹ qua mỗi browser host theo chu kỳ này.
+
+Số nguyên; từ 60 đến 86400. Mã mục: `observability.browser_egress_probe_interval_seconds`.
+
+### Timeout kiểm tra IP mạng ra (giây)
+
+Giới hạn tổng thời gian của mỗi lần kiểm tra IP, tối đa 5 giây.
+
+Số nguyên; từ 1 đến 5. Mã mục: `observability.egress_probe_timeout_seconds`.
+
+### Luồng log khi IP mạng ra thay đổi
+
+Luồng OpenObserve nhận một bản ghi có IP cũ, IP mới, node và thời điểm thay đổi.
+
+Văn bản. Mã mục: `observability.egress_changes_stream`.
+
+### Ghi IP mạng ra vào dữ liệu crawl
+
+Tắt để giữ node nhưng để trống IP mạng ra trong attempts, log và span.
+
+Bật/tắt. Mã mục: `observability.record_egress_ip`.
+
+## Thống kê crawl
+
+### Bật thống kê crawl dài hạn
+
+Lưu số liệu crawl theo giờ và gửi các metric hiệu suất tổng hợp.
+
+Bật/tắt. Mã mục: `stats.enabled`.
+
+### Thời gian lưu thống kê crawl (ngày)
+
+Số ngày giữ số liệu crawl theo giờ trước khi tự dọn.
+
+Số nguyên; từ 1 đến 3650. Mã mục: `stats.retention_days`.
+
 ## Sao lưu
 
 ### Đường dẫn manifest sao lưu
@@ -673,6 +1009,12 @@ Số thập phân; từ 0 đến 1. Mã mục: `observability.sentry_traces_samp
 Tệp trạng thái được lệnh backup cập nhật sau khi hoàn tất.
 
 Văn bản. Mã mục: `backup.manifest_path`.
+
+### Bật giám sát sao lưu
+
+Tắt mặc định. Khi bật, hệ thống kiểm tra tuổi bản sao lưu mỗi phút, gửi cảnh báo nếu quá cũ và tính vào báo cáo sẵn sàng.
+
+Bật/tắt. Mã mục: `backup.monitoring_enabled`.
 
 ## AI (Ollama, embedding)
 
@@ -731,6 +1073,12 @@ TẮT. Theo văn bản quyết định (JOOXCR-230, chờ duyệt) chỉ câu h�
 Bật/tắt. Mã mục: `ai.cloud_enabled`.
 
 ## Thông báo theo dõi (Telegram)
+
+### Múi giờ thông báo và quét thư viện
+
+Múi giờ cho thông báo theo dõi, footer Telegram và lịch quét thư viện.
+
+Văn bản. Mã mục: `follow_notifications.timezone`.
 
 ### Gửi thông báo phim mới của mục đang theo dõi
 
@@ -1054,6 +1402,26 @@ Thông tin bí mật. Mã mục: `ui_security.owner_admin_token`.
 
 Thông tin bí mật. Mã mục: `ui_security.mcp_api_key`.
 
+## Thêm node
+
+### Thời hạn mã thêm node (phút)
+
+Mã dùng một lần để thêm node hết hạn sau số phút này.
+
+Số nguyên; từ 5 đến 240. Mã mục: `nodes.enrollment_ttl_minutes`.
+
+### Kho mã nguồn cho node mới
+
+Địa chỉ Git mà node mới dùng để cài đặt; node phải đọc được kho này.
+
+Văn bản. Mã mục: `nodes.release_repo_url`.
+
+### Nhánh, tag hoặc commit cho node mới
+
+Bản phát hành mà node mới cài đặt; nên trùng bản đang chạy.
+
+Văn bản. Mã mục: `nodes.release_ref`.
+
 ## Sức khỏe khi khởi động
 
 ### Bật cổng kiểm tra khi khởi động
@@ -1127,3 +1495,41 @@ Văn bản. Mã mục: `health.startup.flaresolverr_url`.
 Địa chỉ dịch vụ Playwright phụ; để trống nếu không dùng.
 
 Văn bản. Mã mục: `health.startup.playwright_url`.
+
+## Performer normalization
+
+### Nhóm máu hợp lệ
+
+Các nhóm máu chuẩn mà bộ chuẩn hóa chấp nhận: A, B, O và AB.
+
+Text list. Setting key: `normalization.blood_types`.
+
+### Cỡ cúp hợp lệ
+
+Các cỡ cúp chuẩn mà bộ chuẩn hóa chấp nhận, từ A đến K.
+
+Text list. Setting key: `normalization.cups`.
+
+### Giá trị rác trong hồ sơ
+
+Bản đồ JSON từ trường hồ sơ đến các giá trị rác hoặc giữ chỗ; khi so khớp sẽ bỏ qua hoa thường và khoảng trắng.
+
+JSON object; application-defined structure. Setting key: `normalization.junk_tokens`.
+
+### Khoảng giá trị trường hồ sơ
+
+Giới hạn tối thiểu và tối đa dạng JSON cho số đo theo centimet, ngày sinh và ngày ra mắt; giá trị tối đa của ngày có thể là today.
+
+JSON object; application-defined structure. Setting key: `normalization.field_ranges`.
+
+### Tên chuẩn và bí danh địa danh Nhật Bản
+
+Bản đồ JSON từ tỉnh, thành phố và bí danh Nhật Bản sang tên địa danh chuẩn; có thể thêm hoặc sửa bí danh tại đây.
+
+JSON object; application-defined structure. Setting key: `normalization.location_aliases`.
+
+### Kích thước lô backfill
+
+Số hồ sơ diễn viên xử lý trước mỗi mốc tiếp tục; có thể ghi đè bằng tùy chọn --chunk.
+
+Integer; from 1 to 5000. Setting key: `normalization.backfill_chunk_size`.

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueRepository;
 use App\Events\CrawlIncidentOccurred;
 use App\Models\CrawlQueue;
 use App\Models\CrawlRun;
@@ -28,7 +29,7 @@ final class SeedCommand extends Command
         $limit = max(1, (int) $this->option('limit'));
         $sourceFilter = $this->option('source');
 
-        $sources = Source::query()
+        $sources = app(CrawlQueueRepository::class)->modelQuery(Source::class)
             ->where('enabled', true)
             ->when(is_string($sourceFilter) && $sourceFilter !== '', fn($query) => $query->where('slug', $sourceFilter))
             ->orderBy('priority')
@@ -48,7 +49,7 @@ final class SeedCommand extends Command
         SourceThrottle $throttle,
         ObservabilityEmitter $observability,
     ): void {
-        $run = CrawlRun::query()->create([
+        $run = app(CrawlQueueRepository::class)->modelQuery(CrawlRun::class)->create([
             'source_slug' => $source->slug,
             'started_at' => now(),
             'status' => 'running',
@@ -80,7 +81,7 @@ final class SeedCommand extends Command
         }
 
         foreach ($seeds as [$kind, $url]) {
-            $beforeExists = CrawlQueue::query()->where('source_slug', $source->slug)->where('url', $url)->exists();
+            $beforeExists = app(CrawlQueueRepository::class)->modelQuery(CrawlQueue::class)->where('source_slug', $source->slug)->where('url', $url)->exists();
             $queue->enqueue($url, $source->slug, $kind);
 
             if (! $beforeExists) {

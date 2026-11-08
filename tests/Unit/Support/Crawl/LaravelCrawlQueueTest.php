@@ -23,7 +23,7 @@ final class LaravelCrawlQueueTest extends TestCase
     public function test_all_kinds_map_to_named_queues(): void
     {
         $this->assertSame(
-            ['listing', 'detail', 'performer_listing', 'performer_detail', 'gallery', 'browser_listing', 'browser_detail', 'browser_performer_listing', 'browser_performer_detail', 'browser_gallery'],
+            ['listing', 'detail', 'performer_listing', 'performer_detail', 'gallery', 'browser_listing', 'browser_detail', 'browser_performer_listing', 'browser_performer_detail', 'browser_gallery', 'retry_listing', 'retry_detail', 'retry_performer_listing', 'retry_performer_detail', 'retry_gallery'],
             LaravelCrawlQueue::allNames(),
         );
     }

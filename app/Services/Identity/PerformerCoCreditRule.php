@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Identity;
 
+use App\Repositories\PerformerRepository;
 use App\Models\PerformerSource;
 use Illuminate\Database\Query\Builder;
-use Illuminate\Support\Facades\DB;
 
 /** Exact full-name candidates are blocked by the name index and original source credits. */
 final class PerformerCoCreditRule
@@ -43,10 +43,10 @@ final class PerformerCoCreditRule
     /** @param list<string> $keys @return \Generator<int, array<string, mixed>> */
     private function candidateMatches(PerformerSource $source, array $keys): \Generator
     {
-        $query = PerformerSource::query()->whereNull('removed_at')
+        $query = app(PerformerRepository::class)->modelQuery(PerformerSource::class)->whereNull('removed_at')
             ->where('performer_id', '<>', $source->performer_id)
             ->where('site_slug', '<>', $source->site_slug)
-            ->whereIn('source_performer_id', DB::table('performer_name_keys as k')
+            ->whereIn('source_performer_id', app(PerformerRepository::class)->tableQuery('performer_name_keys as k')
                 ->join('performer_sources as eligible', 'eligible.source_performer_id', '=', 'k.source_performer_id')
                 ->join('movie_performers as c', 'c.performer_id', '=', 'k.source_performer_id')
                 ->join('movie_performers as own', 'own.movie_id', '=', 'c.movie_id')
@@ -87,7 +87,7 @@ final class PerformerCoCreditRule
     /** Shared movies whose cast contains exactly one source record on each side for this name. */
     public function movies(PerformerSource $left, PerformerSource $right, string $key): Builder
     {
-        $query = DB::table('movies as m')
+        $query = app(PerformerRepository::class)->tableQuery('movies as m')
             ->join('movie_performers as l', 'l.movie_id', '=', 'm.id')
             ->join('movie_performers as r', 'r.movie_id', '=', 'm.id')
             ->where('l.performer_id', $left->source_performer_id)
@@ -133,7 +133,7 @@ final class PerformerCoCreditRule
     private function conflict(PerformerSource $left, PerformerSource $right): ?string
     {
         $values = ['birth_date' => [], 'blood_type' => [], 'height_cm' => []];
-        $sources = PerformerSource::query()->whereIn('performer_id', [$left->performer_id, $right->performer_id])
+        $sources = app(PerformerRepository::class)->modelQuery(PerformerSource::class)->whereIn('performer_id', [$left->performer_id, $right->performer_id])
             ->with('sourcePerformer')->lazyById(200);
         foreach ($sources as $source) {
             foreach (array_keys($values) as $field) {
@@ -193,7 +193,7 @@ final class PerformerCoCreditRule
 
     private function hasMovieCredit(PerformerSource $source): bool
     {
-        return DB::table('movie_performers')->where('performer_id', $source->source_performer_id)
+        return app(PerformerRepository::class)->tableQuery('movie_performers')->where('performer_id', $source->source_performer_id)
             ->where('source_slug', $source->site_slug)->exists();
     }
 
@@ -204,7 +204,7 @@ final class PerformerCoCreditRule
      */
     private function hasCrossSiteNameCandidate(PerformerSource $source, array $keys): bool
     {
-        return DB::table('performer_name_keys as k')
+        return app(PerformerRepository::class)->tableQuery('performer_name_keys as k')
             ->join('performer_sources as candidate', 'candidate.source_performer_id', '=', 'k.source_performer_id')
             ->whereIn('k.normalized_name', $keys)
             ->whereNull('candidate.removed_at')

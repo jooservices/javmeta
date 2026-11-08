@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueRepository;
+use DateTimeInterface;
 use App\Events\CrawlSourceUnhealthy;
 use App\Events\WorkerHeartbeatStale;
 use App\Models\Source;
@@ -37,12 +39,12 @@ final class WatchdogCommand extends Command
             ]));
             $this->warn('Worker heartbeat stale.');
         } else {
-            $alerts->resolve('watchdog:worker_stale', 'Worker heartbeat recovered', 'A crawl worker heartbeat is back within the configured window.');
+            $alerts->resolveTemplate('watchdog:worker_stale', 'crawl.heartbeat_recovered');
             $this->info('Worker heartbeat ok.');
         }
 
         $defaultStaleSeconds = (int) config('javmeta_alerts.watchdog.source_stale_seconds', 86400);
-        $enabledSources = Source::query()->where('enabled', true)->get(['slug', 'last_success_at']);
+        $enabledSources = app(CrawlQueueRepository::class)->modelQuery(Source::class)->where('enabled', true)->get(['slug', 'last_success_at']);
         $staleSources = $enabledSources
             ->filter(fn(Source $source): bool => $sourceFreshness->isPastDue(
                 $source->last_success_at,
@@ -53,8 +55,13 @@ final class WatchdogCommand extends Command
 
         foreach ($staleSources as $source) {
             $slug = (string) $source->slug;
+            $threshold = $sourceFreshness->maximumSuccessAgeSeconds($slug, $defaultStaleSeconds);
+            $lastSuccess = $source->getAttribute('last_success_at');
+            $lastSuccess = $lastSuccess instanceof DateTimeInterface ? $lastSuccess : null;
             Event::dispatch(new CrawlSourceUnhealthy($slug, 'source_stale', [
-                'stale_seconds' => $sourceFreshness->maximumSuccessAgeSeconds($slug, $defaultStaleSeconds),
+                'value' => $lastSuccess === null ? -1 : max(0, now()->getTimestamp() - $lastSuccess->getTimestamp()),
+                'threshold' => $threshold,
+                'stale_seconds' => $threshold,
             ]));
             $this->warn("Source stale: {$slug}");
         }
@@ -65,10 +72,9 @@ final class WatchdogCommand extends Command
         $previous = (array) Cache::get(self::STALE_SOURCES_CACHE_KEY, []);
 
         foreach (array_diff($previous, $current) as $slug) {
-            $alerts->resolve(
+            $alerts->resolveTemplate(
                 CrawlSourceUnhealthy::keyFor((string) $slug, 'source_stale'),
-                "Source recovered: {$slug}",
-                'The source succeeded again or is no longer monitored.',
+                'crawl.source_recovered',
                 ['source_slug' => (string) $slug],
             );
         }

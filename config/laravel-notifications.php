@@ -16,8 +16,8 @@ return [
 
     'channels' => [
         'telegram' => [
-            'bot_token' => '',
-            'chat_id' => '',
+            'bot_token' => env('NOTIFICATION_TELEGRAM_BOT_TOKEN', env('TELEGRAM_BOT_TOKEN', '')),
+            'chat_id' => env('NOTIFICATION_TELEGRAM_CHAT_ID', env('TELEGRAM_CHAT_ID', '')),
             'api_base' => 'https://api.telegram.org',
             'timeout' => 5.0,
         ],

@@ -10,7 +10,7 @@ A repeatable fake collection for tests and UAT, made without crawling anything: 
 
 Edge cases inside it: a delisted movie (`SMP-0001`), movies known by two sources (`SMP-0002` to `SMP-0011`), performers with almost no bio (every seventh), non-Latin names and titles, one performer with three aliases (`p0001`), movies without a title, runtime, score or series.
 
-Do not load it into the staging database that holds the real crawl: the sample movies would show up in lists, counts and the hourly report. Use it in tests (the feature tests load it into SQLite) or in the UAT environment.
+Do not load it into the staging database that holds the real crawl: the sample movies would show up in lists, counts and the periodic report. Use it in tests (the feature tests load it into SQLite) or in the UAT environment.
 
 Both commands check the **effective default connection database**, including a database URL override. Outside `testing`, the database must appear in `dataset.allowed_databases` on Settings (config `javmeta_dataset.allowed_databases`, defaults `javmeta_uat`, `javmeta_test`) and `--force` is mandatory. Changing the environment label alone does not authorize a live database.
 

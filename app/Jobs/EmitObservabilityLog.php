@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Repositories\ObservabilityServiceRepository;
 use App\Models\ApiUsageLog;
 use App\Observability\OpenObserveClient;
 use Illuminate\Bus\Queueable;
@@ -32,7 +33,7 @@ final class EmitObservabilityLog implements ShouldQueue
     public function handle(OpenObserveClient $client): void
     {
         if (($this->record['event'] ?? null) === 'api_usage') {
-            ApiUsageLog::query()->create([
+            app(ObservabilityServiceRepository::class)->modelQuery(ApiUsageLog::class)->create([
                 'api_key_id' => isset($this->record['api_key_id']) ? (int) $this->record['api_key_id'] : null,
                 'endpoint' => (string) ($this->record['endpoint'] ?? ''),
                 'method' => (string) ($this->record['method'] ?? ''),

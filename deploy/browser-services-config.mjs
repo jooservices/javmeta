@@ -74,20 +74,36 @@ function isConfig(value) {
     && value.concurrency && value.queues && value.timeouts && value.thresholds && value.retry && value.cleanup;
 }
 
-async function run() {
-  const url = process.env.JAVMETA_CONFIG_API_URL;
-  const apiKey = process.env.JAVMETA_CONFIG_API_KEY;
-  const cacheFile = process.env.JAVMETA_CONFIG_CACHE_FILE || '/var/cache/xcrawler/browser-services.json';
+/** Polls the config API until SIGTERM or SIGINT. The wait between polls ends at once on a signal, so a service stop is not held up for the poll interval. */
+export async function run({ signals = process, env = process.env, refresh = refreshConfig, wait = abortableDelay } = {}) {
+  const url = env.JAVMETA_CONFIG_API_URL;
+  const apiKey = env.JAVMETA_CONFIG_API_KEY;
+  const cacheFile = env.JAVMETA_CONFIG_CACHE_FILE || '/var/cache/xcrawler/browser-services.json';
   let current = await readConfigFile(cacheFile) ?? SAFE_DEFAULTS;
   if (!(await readConfigFile(cacheFile))) await writeConfigFile(cacheFile, current);
-  let stopping = false;
-  process.on('SIGTERM', () => { stopping = true; });
-  process.on('SIGINT', () => { stopping = true; });
-  while (!stopping) {
-    const result = await refreshConfig({ url, apiKey, cacheFile, timeoutMs: current.timeouts?.config_client_ms || 5000 });
-    current = result.data;
-    await new Promise(resolve => setTimeout(resolve, current.poll_interval_seconds * 1000));
+  const stop = new AbortController();
+  const onSignal = () => stop.abort();
+  signals.on('SIGTERM', onSignal);
+  signals.on('SIGINT', onSignal);
+  try {
+    while (!stop.signal.aborted) {
+      const result = await refresh({ url, apiKey, cacheFile, timeoutMs: current.timeouts?.config_client_ms || 5000 });
+      current = result.data;
+      await wait(current.poll_interval_seconds * 1000, stop.signal);
+    }
+  } finally {
+    signals.off('SIGTERM', onSignal);
+    signals.off('SIGINT', onSignal);
   }
+}
+
+function abortableDelay(milliseconds, signal) {
+  return new Promise(resolve => {
+    if (signal.aborted) { resolve(); return; }
+    const timer = setTimeout(done, milliseconds);
+    function done() { clearTimeout(timer); signal.removeEventListener('abort', done); resolve(); }
+    signal.addEventListener('abort', done, { once: true });
+  });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

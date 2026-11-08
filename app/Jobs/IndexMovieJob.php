@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Repositories\MovieRepository;
 use App\Models\Movie;
 use App\Services\Search\ElasticsearchIndexer;
 use Illuminate\Bus\Queueable;
@@ -42,7 +43,7 @@ final class IndexMovieJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $movie = Movie::query()->find($this->movieId);
+        $movie = app(MovieRepository::class)->modelQuery(Movie::class)->find($this->movieId);
         if (! $movie instanceof Movie) {
             return;
         }

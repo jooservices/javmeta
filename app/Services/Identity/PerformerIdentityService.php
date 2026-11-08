@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Identity;
 
+use App\Repositories\PerformerRepository;
 use App\Models\Performer;
 use App\Models\PerformerAlias;
 use App\Models\PerformerIdentityEvent;
@@ -84,12 +85,12 @@ final class PerformerIdentityService
             return $this->runBackfill($dryRun, $onRow, $rule, $limit);
         }
 
-        DB::beginTransaction();
+        app(PerformerRepository::class)->beginTransaction();
         $this->dryRunning = true;
         try {
             return $this->runBackfill($dryRun, $onRow, $rule, $limit);
         } finally {
-            DB::rollBack();
+            app(PerformerRepository::class)->rollBack();
             $this->dryRunning = false;
         }
     }
@@ -113,7 +114,7 @@ final class PerformerIdentityService
             }
             $sourcePerformerId = (int) ($source->source_performer_id ?? $source->performer_id);
             $currentPerformerId = (int) $source->performer_id;
-            if (! Performer::query()->whereKey($currentPerformerId)->whereNull('canonical_performer_id')->exists()) {
+            if (! app(PerformerRepository::class)->modelQuery(Performer::class)->whereKey($currentPerformerId)->whereNull('canonical_performer_id')->exists()) {
                 continue;
             }
 
@@ -219,7 +220,7 @@ final class PerformerIdentityService
                 continue;
             }
 
-            PerformerAlias::query()->firstOrCreate(
+            app(PerformerRepository::class)->modelQuery(PerformerAlias::class)->firstOrCreate(
                 [
                     'performer_id' => $canonicalId,
                     'alias' => trim($previousName),
@@ -235,21 +236,21 @@ final class PerformerIdentityService
     {
         $canonicalId = $this->canonicalId((int) $source->performer_id);
         $sourcePerformerId = (int) ($source->source_performer_id ?? $source->performer_id);
-        DB::table('performer_aliases')->where('source_performer_id', $sourcePerformerId)
+        app(PerformerRepository::class)->tableQuery('performer_aliases')->where('source_performer_id', $sourcePerformerId)
             ->update(['performer_id' => $canonicalId]);
-        DB::table('performer_media')->where('source_performer_id', $sourcePerformerId)
+        app(PerformerRepository::class)->tableQuery('performer_media')->where('source_performer_id', $sourcePerformerId)
             ->update(['performer_id' => $canonicalId]);
     }
 
     public function canonicalId(int $performerId): int
     {
-        $performer = Performer::query()->find($performerId);
+        $performer = app(PerformerRepository::class)->modelQuery(Performer::class)->find($performerId);
         if (! $performer instanceof Performer) {
             return $performerId;
         }
 
         while ($performer->canonical_performer_id !== null) {
-            $next = Performer::query()->find((int) $performer->canonical_performer_id);
+            $next = app(PerformerRepository::class)->modelQuery(Performer::class)->find((int) $performer->canonical_performer_id);
             if (! $next instanceof Performer || (int) $next->id === (int) $performer->id) {
                 break;
             }
@@ -262,7 +263,7 @@ final class PerformerIdentityService
     /** A removed source profile is retained as history and does not remove its canonical performer. */
     public function markSourceRemoved(string $siteSlug, string $externalId): bool
     {
-        $source = PerformerSource::query()
+        $source = app(PerformerRepository::class)->modelQuery(PerformerSource::class)
             ->where('site_slug', $siteSlug)
             ->where('external_id', $externalId)
             ->first();
@@ -280,8 +281,8 @@ final class PerformerIdentityService
 
     public function split(int $mergeEventId): PerformerIdentityEvent
     {
-        $split = DB::transaction(function () use ($mergeEventId): PerformerIdentityEvent {
-            $merge = PerformerIdentityEvent::query()->lockForUpdate()
+        $split = app(PerformerRepository::class)->transaction(function () use ($mergeEventId): PerformerIdentityEvent {
+            $merge = app(PerformerRepository::class)->modelQuery(PerformerIdentityEvent::class)->lockForUpdate()
                 ->whereKey($mergeEventId)
                 ->where('event_type', 'merge')
                 ->whereNull('reversed_at')
@@ -293,7 +294,7 @@ final class PerformerIdentityService
             $details = $this->mergeGuard->mergeDetails($merge);
             // Lock the group in id order (as mergeRoots and undoSplit do) so a concurrent merge or ingest waits
             // and the group is revalidated against the committed state.
-            Performer::query()->whereIn('id', array_unique([
+            app(PerformerRepository::class)->modelQuery(Performer::class)->whereIn('id', array_unique([
                 ...$details['source_performer_ids'],
                 (int) $merge->from_performer_id,
                 (int) $merge->to_performer_id,
@@ -302,7 +303,7 @@ final class PerformerIdentityService
 
             // Links added to the group after the merge snapshot follow the split-off source performers, so
             // select them live instead of using only the recorded ids.
-            DB::table('performer_sources')
+            app(PerformerRepository::class)->tableQuery('performer_sources')
                 ->where('performer_id', $merge->to_performer_id)
                 ->where(static function ($query) use ($details): void {
                     $query->whereIn('id', $details['source_link_ids'])
@@ -311,15 +312,15 @@ final class PerformerIdentityService
                 ->update(['performer_id' => $merge->from_performer_id]);
 
             $sourceIds = $details['source_performer_ids'];
-            Performer::query()->whereIn('id', $sourceIds)->update(['canonical_performer_id' => $merge->from_performer_id]);
-            Performer::query()->whereKey($merge->from_performer_id)->update(['canonical_performer_id' => null]);
+            app(PerformerRepository::class)->modelQuery(Performer::class)->whereIn('id', $sourceIds)->update(['canonical_performer_id' => $merge->from_performer_id]);
+            app(PerformerRepository::class)->modelQuery(Performer::class)->whereKey($merge->from_performer_id)->update(['canonical_performer_id' => null]);
 
             $this->restoreRelationOwners('performer_aliases', $details['alias_owners']);
             $this->restoreRelationOwners('performer_media', $details['media_owners']);
             // Rows added after the merge belong to the split-off root, which the API reads as canonical.
-            DB::table('performer_aliases')->where('performer_id', $merge->to_performer_id)
+            app(PerformerRepository::class)->tableQuery('performer_aliases')->where('performer_id', $merge->to_performer_id)
                 ->whereIn('source_performer_id', $sourceIds)->update(['performer_id' => $merge->from_performer_id]);
-            DB::table('performer_media')->where('performer_id', $merge->to_performer_id)
+            app(PerformerRepository::class)->tableQuery('performer_media')->where('performer_id', $merge->to_performer_id)
                 ->whereIn('source_performer_id', $sourceIds)->update(['performer_id' => $merge->from_performer_id]);
             $this->copyMovieLinks($sourceIds, (int) $merge->from_performer_id, null);
             $this->removeCreatedMovieLinks($merge, $details['created_movie_links'], $sourceIds, (int) $merge->to_performer_id);
@@ -328,7 +329,7 @@ final class PerformerIdentityService
             $merge->reversed_at = now()->toDateTimeString();
             $merge->save();
 
-            return PerformerIdentityEvent::query()->create([
+            return app(PerformerRepository::class)->modelQuery(PerformerIdentityEvent::class)->create([
                 'event_type' => 'split',
                 'from_performer_id' => $merge->to_performer_id,
                 'to_performer_id' => $merge->from_performer_id,
@@ -345,8 +346,8 @@ final class PerformerIdentityService
 
     public function undoSplit(int $splitEventId): PerformerIdentityEvent
     {
-        $undo = DB::transaction(function () use ($splitEventId): PerformerIdentityEvent {
-            $split = PerformerIdentityEvent::query()->lockForUpdate()
+        $undo = app(PerformerRepository::class)->transaction(function () use ($splitEventId): PerformerIdentityEvent {
+            $split = app(PerformerRepository::class)->modelQuery(PerformerIdentityEvent::class)->lockForUpdate()
                 ->whereKey($splitEventId)
                 ->where('event_type', 'split')
                 ->whereNull('reversed_at')
@@ -355,13 +356,13 @@ final class PerformerIdentityService
                 throw new RuntimeException('An active split event was not found.');
             }
 
-            $merge = PerformerIdentityEvent::query()->lockForUpdate()->find((int) $split->related_event_id);
+            $merge = app(PerformerRepository::class)->modelQuery(PerformerIdentityEvent::class)->lockForUpdate()->find((int) $split->related_event_id);
             if (! $merge instanceof PerformerIdentityEvent) {
                 throw new RuntimeException('The split event has no merge event to restore.');
             }
             $details = $this->mergeGuard->mergeDetails($merge);
             // Lock the whole group in id order so a concurrent merge or ingest waits and is revalidated below.
-            Performer::query()->whereIn('id', array_unique([
+            app(PerformerRepository::class)->modelQuery(Performer::class)->whereIn('id', array_unique([
                 ...$details['source_performer_ids'],
                 (int) $merge->from_performer_id,
                 (int) $merge->to_performer_id,
@@ -370,22 +371,22 @@ final class PerformerIdentityService
             $this->coCreditAudit->assertCanReclose($merge);
 
             // Links added to the group after the merge snapshot must follow the group, so select them live.
-            DB::table('performer_sources')
+            app(PerformerRepository::class)->tableQuery('performer_sources')
                 ->where(static function ($query) use ($details): void {
                     $query->whereIn('id', $details['source_link_ids'])
                         ->orWhereIn('source_performer_id', $details['source_performer_ids']);
                 })
                 ->update(['performer_id' => $merge->to_performer_id]);
 
-            Performer::query()->whereIn('id', $details['source_performer_ids'])
+            app(PerformerRepository::class)->modelQuery(Performer::class)->whereIn('id', $details['source_performer_ids'])
                 ->update(['canonical_performer_id' => $merge->to_performer_id]);
-            Performer::query()->whereKey($merge->to_performer_id)->update(['canonical_performer_id' => null]);
+            app(PerformerRepository::class)->modelQuery(Performer::class)->whereKey($merge->to_performer_id)->update(['canonical_performer_id' => null]);
 
             $this->moveRelationOwnersToCanonical('performer_aliases', $details['alias_owners'], (int) $merge->to_performer_id);
             $this->moveRelationOwnersToCanonical('performer_media', $details['media_owners'], (int) $merge->to_performer_id);
-            DB::table('performer_aliases')->whereIn('source_performer_id', $details['source_performer_ids'])
+            app(PerformerRepository::class)->tableQuery('performer_aliases')->whereIn('source_performer_id', $details['source_performer_ids'])
                 ->update(['performer_id' => $merge->to_performer_id]);
-            DB::table('performer_media')->whereIn('source_performer_id', $details['source_performer_ids'])
+            app(PerformerRepository::class)->tableQuery('performer_media')->whereIn('source_performer_id', $details['source_performer_ids'])
                 ->update(['performer_id' => $merge->to_performer_id]);
             $this->copyMovieLinks($details['source_performer_ids'], (int) $merge->to_performer_id, null);
             $this->restoreCreatedMovieLinks($merge, $details['created_movie_links'], (int) $merge->to_performer_id);
@@ -396,7 +397,7 @@ final class PerformerIdentityService
             $merge->reversed_at = null;
             $merge->save();
 
-            return PerformerIdentityEvent::query()->create([
+            return app(PerformerRepository::class)->modelQuery(PerformerIdentityEvent::class)->create([
                 'event_type' => 'undo',
                 'from_performer_id' => $merge->from_performer_id,
                 'to_performer_id' => $merge->to_performer_id,
@@ -448,15 +449,15 @@ final class PerformerIdentityService
         $candidateIds = array_keys($page);
         if ($skipSeenFromOtherSide) {
             // A pair already open as (candidate, source) and not as (source, candidate) was reported from the other side.
-            $forward = DB::table('performer_identity_reviews')->where('source_performer_id', $sourceId)
+            $forward = app(PerformerRepository::class)->tableQuery('performer_identity_reviews')->where('source_performer_id', $sourceId)
                 ->whereIn('candidate_performer_id', $candidateIds)->where('status', 'open')
                 ->pluck('candidate_performer_id')->map(static fn(mixed $id): int => (int) $id)->all();
-            $reverse = DB::table('performer_identity_reviews')->where('candidate_performer_id', $sourceId)
+            $reverse = app(PerformerRepository::class)->tableQuery('performer_identity_reviews')->where('candidate_performer_id', $sourceId)
                 ->whereIn('source_performer_id', $candidateIds)->where('status', 'open')
                 ->pluck('source_performer_id')->map(static fn(mixed $id): int => (int) $id)->all();
             foreach (array_diff($reverse, $forward) as $candidateId) {
                 if (str_starts_with($page[$candidateId]['reason'], 'co_credit_conflicting_')) {
-                    DB::table('performer_identity_reviews')->where('source_performer_id', $candidateId)
+                    app(PerformerRepository::class)->tableQuery('performer_identity_reviews')->where('source_performer_id', $candidateId)
                         ->where('candidate_performer_id', $sourceId)->where('status', 'open')
                         ->update(['reason' => $page[$candidateId]['reason']]);
                     if ($onRecorded !== null) {
@@ -486,12 +487,12 @@ final class PerformerIdentityService
             $rows[] = [...$review, 'status' => 'open', 'created_at' => $now, 'resolved_at' => null];
         }
 
-        DB::table('performer_identity_reviews')->upsert(
+        app(PerformerRepository::class)->tableQuery('performer_identity_reviews')->upsert(
             $rows,
             ['source_performer_id', 'candidate_performer_id', 'status'],
             ['reason', 'similarity', 'resolved_at'],
         );
-        Performer::query()->whereIn('id', [$sourceId, ...$candidateIds])->update(['needs_review' => true]);
+        app(PerformerRepository::class)->modelQuery(Performer::class)->whereIn('id', [$sourceId, ...$candidateIds])->update(['needs_review' => true]);
 
         if ($onRecorded !== null) {
             foreach ($reviews as $review) {
@@ -512,7 +513,7 @@ final class PerformerIdentityService
         $incoming = $this->sourceIdentity($source);
         $candidates = function () use ($source, $incoming, $currentId) {
             foreach ($this->candidateRootIdPages($source, $incoming['names'], $currentId, false) as $chunk) {
-                $roots = Performer::query()->whereNull('canonical_performer_id')->whereIn('id', $chunk)
+                $roots = app(PerformerRepository::class)->modelQuery(Performer::class)->whereNull('canonical_performer_id')->whereIn('id', $chunk)
                     ->orderBy('id')->with(['aliases', 'sources.sourcePerformer.aliases'])->get();
                 foreach ($roots as $root) {
                     yield $this->rootIdentity($root);
@@ -555,7 +556,7 @@ final class PerformerIdentityService
         };
 
         if ($source->cross_link_id !== null && $source->cross_link_id !== '') {
-            $add(DB::table('performer_sources as s')
+            $add(app(PerformerRepository::class)->tableQuery('performer_sources as s')
                 ->join('performers as p', 'p.id', '=', 's.performer_id')
                 ->where('s.cross_link_source', (string) ($source->cross_link_source ?: $source->site_slug))
                 ->where('s.cross_link_id', (string) $source->cross_link_id)
@@ -564,14 +565,14 @@ final class PerformerIdentityService
 
         $keys = $this->normalizedNames($names);
         if ($keys !== []) {
-            $add(DB::table('performer_name_keys as k')
+            $add(app(PerformerRepository::class)->tableQuery('performer_name_keys as k')
                 ->join('performers as p', 'p.id', '=', 'k.source_performer_id')
                 ->whereIn('k.normalized_name', $keys)
                 ->selectRaw('COALESCE(p.canonical_performer_id, p.id) as root_id'));
         }
 
         foreach ($withGrams ? array_chunk($this->nameGrams($names), 400) : [] as $chunk) {
-            $add(DB::table('performer_name_grams as g')
+            $add(app(PerformerRepository::class)->tableQuery('performer_name_grams as g')
                 ->join('performers as p', 'p.id', '=', 'g.source_performer_id')
                 ->whereIn('g.gram', $chunk)
                 ->selectRaw('COALESCE(p.canonical_performer_id, p.id) as root_id'));
@@ -583,7 +584,7 @@ final class PerformerIdentityService
 
         $last = 0;
         while (true) {
-            $page = DB::query()->fromSub($union, 'c')
+            $page = app(PerformerRepository::class)->databaseQuery()->fromSub($union, 'c')
                 ->where('c.root_id', '>', $last)->where('c.root_id', '<>', $currentId)
                 ->distinct()->orderBy('c.root_id')->limit(200)->pluck('c.root_id')
                 ->map(static fn(mixed $id): int => (int) $id)->all();
@@ -638,7 +639,7 @@ final class PerformerIdentityService
         ], static fn(mixed $name): bool => is_string($name) && trim($name) !== '');
         $sourcePerformerId = (int) ($source->source_performer_id ?? $source->performer_id);
         $names = array_merge($names, $this->preloadedAliases[$sourcePerformerId]
-            ?? DB::table('performer_aliases')->where('source_performer_id', $sourcePerformerId)->pluck('alias')->all());
+            ?? app(PerformerRepository::class)->tableQuery('performer_aliases')->where('source_performer_id', $sourcePerformerId)->pluck('alias')->all());
 
         $birthDate = $this->dateString($source->birth_date ?? $performer?->getAttribute('birth_date'));
 
@@ -710,9 +711,9 @@ final class PerformerIdentityService
             return false;
         }
 
-        $details = DB::transaction(function () use ($fromId, $toId, $evaluation): array {
+        $details = app(PerformerRepository::class)->transaction(function () use ($fromId, $toId, $evaluation): array {
             // Lock in ascending id order, the same order undoSplit() uses, so the two cannot deadlock.
-            $locked = Performer::query()->whereIn('id', [$fromId, $toId])->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            $locked = app(PerformerRepository::class)->modelQuery(Performer::class)->whereIn('id', [$fromId, $toId])->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             $from = $locked->get($fromId) ?? throw (new ModelNotFoundException())->setModel(Performer::class, [$fromId]);
             $to = $locked->get($toId) ?? throw (new ModelNotFoundException())->setModel(Performer::class, [$toId]);
             if ($from->canonical_performer_id !== null || $to->canonical_performer_id !== null) {
@@ -720,25 +721,25 @@ final class PerformerIdentityService
             }
 
             if (isset($evaluation['co_credit'])) {
-                $source = PerformerSource::query()->where('source_performer_id', $evaluation['co_credit']['source_id'])->firstOrFail();
+                $source = app(PerformerRepository::class)->modelQuery(PerformerSource::class)->where('source_performer_id', $evaluation['co_credit']['source_id'])->firstOrFail();
                 $checked = $this->coCredit->evaluate($source);
                 if ($checked['decision'] !== 'merge' || $checked['candidate_id'] !== $evaluation['candidate_id']) {
                     return [];
                 }
             }
 
-            $sourceIds = Performer::query()->where('canonical_performer_id', $fromId)->pluck('id')->map(fn(mixed $id): int => (int) $id)->all();
+            $sourceIds = app(PerformerRepository::class)->modelQuery(Performer::class)->where('canonical_performer_id', $fromId)->pluck('id')->map(fn(mixed $id): int => (int) $id)->all();
             $sourceIds[] = $fromId;
             $sourceIds = array_values(array_unique($sourceIds));
-            $sourceLinkIds = PerformerSource::query()->where('performer_id', $fromId)->pluck('id')->map(fn(mixed $id): int => (int) $id)->all();
+            $sourceLinkIds = app(PerformerRepository::class)->modelQuery(PerformerSource::class)->where('performer_id', $fromId)->pluck('id')->map(fn(mixed $id): int => (int) $id)->all();
             $aliasOwners = $this->relationOwners('performer_aliases', $sourceIds);
             $mediaOwners = $this->relationOwners('performer_media', $sourceIds);
 
-            DB::table('performer_sources')->whereIn('id', $sourceLinkIds)->update(['performer_id' => $toId]);
-            Performer::query()->whereIn('id', $sourceIds)->where('id', '<>', $toId)
+            app(PerformerRepository::class)->tableQuery('performer_sources')->whereIn('id', $sourceLinkIds)->update(['performer_id' => $toId]);
+            app(PerformerRepository::class)->modelQuery(Performer::class)->whereIn('id', $sourceIds)->where('id', '<>', $toId)
                 ->update(['canonical_performer_id' => $toId]);
-            DB::table('performer_aliases')->whereIn('id', array_column($aliasOwners, 'id'))->update(['performer_id' => $toId]);
-            DB::table('performer_media')->whereIn('id', array_column($mediaOwners, 'id'))->update(['performer_id' => $toId]);
+            app(PerformerRepository::class)->tableQuery('performer_aliases')->whereIn('id', array_column($aliasOwners, 'id'))->update(['performer_id' => $toId]);
+            app(PerformerRepository::class)->tableQuery('performer_media')->whereIn('id', array_column($mediaOwners, 'id'))->update(['performer_id' => $toId]);
 
             $eventDetails = [
                 'source_performer_ids' => $sourceIds,
@@ -751,7 +752,7 @@ final class PerformerIdentityService
                 'co_credit' => $evaluation['co_credit'] ?? null,
             ];
 
-            $mergeEvent = PerformerIdentityEvent::query()->create([
+            $mergeEvent = app(PerformerRepository::class)->modelQuery(PerformerIdentityEvent::class)->create([
                 'event_type' => 'merge',
                 'from_performer_id' => $fromId,
                 'to_performer_id' => $toId,
@@ -776,7 +777,7 @@ final class PerformerIdentityService
     /** @param list<int> $performerIds @return list<array{id: int, performer_id: int}> */
     private function relationOwners(string $table, array $performerIds): array
     {
-        return DB::table($table)->whereIn('performer_id', $performerIds)->get(['id', 'performer_id'])
+        return app(PerformerRepository::class)->tableQuery($table)->whereIn('performer_id', $performerIds)->get(['id', 'performer_id'])
             ->map(static fn(object $row): array => ['id' => (int) $row->id, 'performer_id' => (int) $row->performer_id])
             ->all();
     }
@@ -793,7 +794,7 @@ final class PerformerIdentityService
         $lastPerformer = 0;
         while (true) {
             // Keyset pages over the composite primary key keep memory and query count bounded per 500 links.
-            $page = DB::table('movie_performers')->whereIn('performer_id', $sourceIds)
+            $page = app(PerformerRepository::class)->tableQuery('movie_performers')->whereIn('performer_id', $sourceIds)
                 ->where(static function ($query) use ($lastMovie, $lastPerformer): void {
                     $query->where('movie_id', '>', $lastMovie)
                         ->orWhere(static fn($same) => $same->where('movie_id', $lastMovie)->where('performer_id', '>', $lastPerformer));
@@ -807,7 +808,7 @@ final class PerformerIdentityService
             $lastMovie = (int) $last->movie_id;
             $lastPerformer = (int) $last->performer_id;
 
-            $existing = array_flip(DB::table('movie_performers')->where('performer_id', $targetId)
+            $existing = array_flip(app(PerformerRepository::class)->tableQuery('movie_performers')->where('performer_id', $targetId)
                 ->whereIn('movie_id', $page->pluck('movie_id')->unique()->all())->pluck('movie_id')
                 ->map(static fn(mixed $id): int => (int) $id)->all());
             $rows = [];
@@ -834,9 +835,9 @@ final class PerformerIdentityService
             }
 
             if ($rows !== []) {
-                DB::table('movie_performers')->insert($rows);
+                app(PerformerRepository::class)->tableQuery('movie_performers')->insert($rows);
                 if ($eventId !== null) {
-                    DB::table('performer_identity_event_movie_links')->insert($recorded);
+                    app(PerformerRepository::class)->tableQuery('performer_identity_event_movie_links')->insert($recorded);
                 }
             }
         }
@@ -856,7 +857,7 @@ final class PerformerIdentityService
 
         $lastId = 0;
         while (true) {
-            $rows = DB::table('performer_identity_event_movie_links')->where('event_id', $merge->id)
+            $rows = app(PerformerRepository::class)->tableQuery('performer_identity_event_movie_links')->where('event_id', $merge->id)
                 ->whereNull('evidence_source_performer_id')
                 ->where('id', '>', $lastId)->orderBy('id')->limit(500)->get();
             if ($rows->isEmpty()) {
@@ -876,7 +877,7 @@ final class PerformerIdentityService
     private function restoreCreatedMovieLinks(PerformerIdentityEvent $merge, array $legacyLinks, int $canonicalId): void
     {
         foreach ($this->createdMovieLinkPages($merge, $legacyLinks) as $page) {
-            DB::table('movie_performers')->insertOrIgnore(array_map(static fn(array $link): array => [
+            app(PerformerRepository::class)->tableQuery('movie_performers')->insertOrIgnore(array_map(static fn(array $link): array => [
                 'movie_id' => $link['movie_id'],
                 'performer_id' => $canonicalId,
                 'source_slug' => $link['source_slug'],
@@ -889,7 +890,7 @@ final class PerformerIdentityService
     private function restoreRelationOwners(string $table, array $owners): void
     {
         foreach ($owners as $owner) {
-            DB::table($table)->where('id', $owner['id'])->update(['performer_id' => $owner['performer_id']]);
+            app(PerformerRepository::class)->tableQuery($table)->where('id', $owner['id'])->update(['performer_id' => $owner['performer_id']]);
         }
     }
 
@@ -897,7 +898,7 @@ final class PerformerIdentityService
     private function moveRelationOwnersToCanonical(string $table, array $owners, int $canonicalId): void
     {
         foreach ($owners as $owner) {
-            DB::table($table)->where('id', $owner['id'])->update(['performer_id' => $canonicalId]);
+            app(PerformerRepository::class)->tableQuery($table)->where('id', $owner['id'])->update(['performer_id' => $canonicalId]);
         }
     }
 
@@ -909,7 +910,7 @@ final class PerformerIdentityService
      */
     private function removeCreatedMovieLinks(PerformerIdentityEvent $merge, array $legacyLinks, array $splitIds, int $canonicalId): void
     {
-        $ownSlug = Performer::query()->whereKey($canonicalId)->value('source_slug');
+        $ownSlug = app(PerformerRepository::class)->modelQuery(Performer::class)->whereKey($canonicalId)->value('source_slug');
 
         foreach ($this->createdMovieLinkPages($merge, $legacyLinks) as $page) {
             $copies = [];
@@ -922,7 +923,7 @@ final class PerformerIdentityService
         // Later crawls of a split source may have written the canonical row too, so walk the split movies as well.
         $lastMovie = 0;
         while (true) {
-            $movieIds = DB::table('movie_performers')->whereIn('performer_id', $splitIds)->where('movie_id', '>', $lastMovie)
+            $movieIds = app(PerformerRepository::class)->tableQuery('movie_performers')->whereIn('performer_id', $splitIds)->where('movie_id', '>', $lastMovie)
                 ->distinct()->orderBy('movie_id')->limit(500)->pluck('movie_id')
                 ->map(static fn(mixed $id): int => (int) $id)->all();
             if ($movieIds === []) {
@@ -941,14 +942,14 @@ final class PerformerIdentityService
      */
     private function removeMovieLinkChunk(array $mergeCopies, array $movieIds, array $splitIds, int $canonicalId, mixed $ownSlug): void
     {
-        $remaining = DB::table('performers')->select('id')->where('canonical_performer_id', $canonicalId)->whereNotIn('id', $splitIds);
-        $stillLinked = array_flip(DB::table('movie_performers')->whereIn('movie_id', $movieIds)
+        $remaining = app(PerformerRepository::class)->tableQuery('performers')->select('id')->where('canonical_performer_id', $canonicalId)->whereNotIn('id', $splitIds);
+        $stillLinked = array_flip(app(PerformerRepository::class)->tableQuery('movie_performers')->whereIn('movie_id', $movieIds)
             ->whereIn('performer_id', $remaining)->pluck('movie_id')
             ->map(static fn(mixed $id): int => (int) $id)->all());
-        $canonicalLinks = DB::table('movie_performers')->where('performer_id', $canonicalId)
+        $canonicalLinks = app(PerformerRepository::class)->tableQuery('movie_performers')->where('performer_id', $canonicalId)
             ->whereIn('movie_id', $movieIds)->get()->keyBy('movie_id');
         $splitWrites = [];
-        foreach (DB::table('movie_performers')->whereIn('performer_id', $splitIds)->whereIn('movie_id', $movieIds)
+        foreach (app(PerformerRepository::class)->tableQuery('movie_performers')->whereIn('performer_id', $splitIds)->whereIn('movie_id', $movieIds)
             ->get(['movie_id', 'source_slug', 'crawled_at']) as $row) {
             $splitWrites[$row->movie_id . '|' . $row->source_slug . '|' . $row->crawled_at] = true;
         }
@@ -971,14 +972,14 @@ final class PerformerIdentityService
         }
 
         if ($delete !== []) {
-            DB::table('movie_performers')->where('performer_id', $canonicalId)->whereIn('movie_id', $delete)->delete();
+            app(PerformerRepository::class)->tableQuery('movie_performers')->where('performer_id', $canonicalId)->whereIn('movie_id', $delete)->delete();
         }
     }
 
     /** Creates the missing source links in batches. */
     private function ensureSourceLinks(): void
     {
-        Performer::query()->whereNotExists(static function ($query): void {
+        app(PerformerRepository::class)->modelQuery(Performer::class)->whereNotExists(static function ($query): void {
             $query->selectRaw('1')->from('performer_sources')
                 ->whereColumn('performer_sources.source_performer_id', 'performers.id');
         })->chunkById(500, function ($performers): void {
@@ -1000,7 +1001,7 @@ final class PerformerIdentityService
                 ];
             }
 
-            DB::table('performer_sources')->insertOrIgnore($rows);
+            app(PerformerRepository::class)->tableQuery('performer_sources')->insertOrIgnore($rows);
         });
     }
 
@@ -1013,7 +1014,7 @@ final class PerformerIdentityService
      */
     private function backfillCandidates(PerformerSource $source, array $incoming, int $currentId): \Generator
     {
-        $roots = Performer::query()->whereNull('canonical_performer_id')->where('id', '<>', $currentId)
+        $roots = app(PerformerRepository::class)->modelQuery(Performer::class)->whereNull('canonical_performer_id')->where('id', '<>', $currentId)
             ->with(['aliases', 'sources.sourcePerformer.aliases']);
         if ((float) config('performer_identity.review_name_similarity', 0.82) < self::MIN_BLOCKED_REVIEW_SIMILARITY) {
             // Below this similarity names can be reviewable without sharing any trigram, so the block cannot
@@ -1057,7 +1058,7 @@ final class PerformerIdentityService
     /** Writes the name keys and trigrams of every stored source performer, one chunk of sources at a time. */
     private function storeNameKeys(): void
     {
-        foreach ($this->sourceBatches(PerformerSource::query()) as $sources) {
+        foreach ($this->sourceBatches(app(PerformerRepository::class)->modelQuery(PerformerSource::class)) as $sources) {
             $keys = [];
             $grams = [];
             foreach ($sources as $source) {
@@ -1078,7 +1079,7 @@ final class PerformerIdentityService
     /** @return \Generator<int, PerformerSource> */
     private function activeSources(): \Generator
     {
-        foreach ($this->sourceBatches(PerformerSource::query()->whereNull('removed_at')) as $sources) {
+        foreach ($this->sourceBatches(app(PerformerRepository::class)->modelQuery(PerformerSource::class)->whereNull('removed_at')) as $sources) {
             yield from $sources;
         }
         $this->preloadedAliases = [];
@@ -1103,7 +1104,7 @@ final class PerformerIdentityService
             $ids = $sources->map(static fn(PerformerSource $source): int => (int) ($source->source_performer_id ?? $source->performer_id))
                 ->unique()->values()->all();
             $this->preloadedAliases = array_fill_keys($ids, []);
-            foreach (DB::table('performer_aliases')->whereIn('source_performer_id', $ids)->get(['source_performer_id', 'alias']) as $row) {
+            foreach (app(PerformerRepository::class)->tableQuery('performer_aliases')->whereIn('source_performer_id', $ids)->get(['source_performer_id', 'alias']) as $row) {
                 $this->preloadedAliases[(int) $row->source_performer_id][] = $row->alias;
             }
             yield $sources;
@@ -1115,7 +1116,7 @@ final class PerformerIdentityService
     private function insertKeyRows(string $table, array $rows): void
     {
         foreach (array_chunk($rows, 400) as $chunk) {
-            DB::table($table)->insertOrIgnore($chunk);
+            app(PerformerRepository::class)->tableQuery($table)->insertOrIgnore($chunk);
         }
     }
 
@@ -1132,7 +1133,7 @@ final class PerformerIdentityService
         $performerIds = array_values(array_unique($performerIds));
         DB::afterCommit(function () use ($performerIds): void {
             foreach ($performerIds as $performerId) {
-                $performer = Performer::query()->whereKey($performerId)
+                $performer = app(PerformerRepository::class)->modelQuery(Performer::class)->whereKey($performerId)
                     ->with(['aliases', 'sources'])
                     ->first();
                 if ($performer instanceof Performer && $performer->canonical_performer_id === null) {

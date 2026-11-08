@@ -44,6 +44,40 @@ final class CrawlerxFetchMethodPlan
         ));
     }
 
+    /** @param array<string, mixed> $profile */
+    public function retryOptionsFor(string $sourceSlug, string $url, int $deadlineSeconds, array $profile): CrawlOptionsDto
+    {
+        $preferred = (array) ($profile['preferred_methods'] ?? []);
+        $hasProxy = is_string($profile['http_proxy_url'] ?? null) && $profile['http_proxy_url'] !== '';
+        if ($preferred === [] && ! $hasProxy) {
+            return $this->optionsFor($sourceSlug, $url, $deadlineSeconds);
+        }
+
+        $manifest = $this->manifests()->get($sourceSlug);
+        if (! $manifest instanceof AdapterManifestDto) {
+            return new CrawlOptionsDto(fetch: new FetchOptionsDto(deadlineSeconds: max(1, $deadlineSeconds)));
+        }
+
+        $normalOptions = $this->optionsFor($sourceSlug, $url, $deadlineSeconds);
+        $chain = $normalOptions->fetch?->chain->methods ?? SiteProfileDto::fromManifest($manifest)->fetchChain;
+        if ($hasProxy && ! in_array(FetchMethod::Http, $chain, true)) {
+            $chain[] = FetchMethod::Http;
+        }
+        $requested = [];
+        foreach ($preferred as $value) {
+            $method = is_string($value) ? FetchMethod::tryFrom($value) : null;
+            if ($method instanceof FetchMethod && in_array($method, $chain, true)) {
+                $requested[] = $method;
+            }
+        }
+        $ordered = [...$requested, ...array_values(array_filter($chain, static fn(FetchMethod $method): bool => ! in_array($method, $requested, true)))];
+
+        return new CrawlOptionsDto(fetch: new FetchOptionsDto(
+            chain: new FetchChainDto($ordered),
+            deadlineSeconds: max(1, $deadlineSeconds),
+        ));
+    }
+
     /** @param list<array<string, mixed>> $attempts */
     public function recordAttempts(string $sourceSlug, string $url, array $attempts): void
     {

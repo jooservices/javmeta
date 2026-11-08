@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Observability;
 
+use App\Services\Observability\NodeEgressProbe;
+use App\Support\NodeIdentity;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -59,6 +61,7 @@ final class OpenObserveClient
         $stream = (string) config('openobserve.stream_logs');
         $payload = [];
         foreach ($records as $record) {
+            $record = $this->withEgressContext($record);
             $payload[] = array_merge(
                 $this->sanitizer->sanitizeContext($record),
                 [
@@ -86,6 +89,36 @@ final class OpenObserveClient
         }
 
         $this->flushLogBuffer($stream);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $records
+     */
+    public function ingestLogsToStream(array $records, string $stream): void
+    {
+        if (! $this->enabled() || $records === []) {
+            return;
+        }
+
+        $payload = [];
+        foreach ($records as $record) {
+            $record = $this->withEgressContext($record);
+            $payload[] = array_merge(
+                $this->sanitizer->sanitizeContext($record),
+                [
+                    '_timestamp' => (int) ((float) ($record['_timestamp'] ?? (microtime(true) * 1_000_000))),
+                    'service' => (string) config('openobserve.service_name'),
+                    'environment' => (string) config('app.env', 'production'),
+                    'role' => (string) (($record['event'] ?? null) === 'api_usage'
+                        ? ($record['role'] ?? config('dependencies.role', 'api'))
+                        : config('dependencies.role', 'api')),
+                ],
+            );
+        }
+
+        foreach (array_chunk($payload, self::LOG_BATCH_SIZE) as $batch) {
+            $this->postJson($this->jsonIngestUrl($stream), $batch, 'application/json');
+        }
     }
 
     public function droppedLogCount(): int
@@ -166,16 +199,16 @@ final class OpenObserveClient
             return;
         }
 
+        $spanAttributes = $this->spanEgressContext($span['attributes'] ?? []);
         $attributes = [];
-        foreach ($this->sanitizer->sanitizeContext($span['attributes'] ?? []) as $key => $value) {
+        foreach ($this->sanitizer->sanitizeContext($spanAttributes) as $key => $value) {
             if ($value === null) {
                 continue;
             }
             $attributes[] = [
                 'key' => (string) $key,
-                'value' => is_bool($value) || is_int($value) || is_float($value)
-                    ? ['stringValue' => (string) $value]
-                    : ['stringValue' => (string) $value],
+                // Every attribute is sent as a string, whatever its type.
+                'value' => ['stringValue' => (string) $value],
             ];
         }
 
@@ -212,6 +245,62 @@ final class OpenObserveClient
         $this->postJson($this->otlpUrl('traces'), $body, 'application/json');
     }
 
+    /** @param array<string, mixed> $record
+     *  @return array<string, mixed>
+     */
+    private function withEgressContext(array $record): array
+    {
+        [$node, $ip, $shared] = $this->egressContext();
+        $record['node'] ??= $shared['node'] ?? $node;
+        if (! array_key_exists('egress_ip', $record)) {
+            $record['egress_ip'] = array_key_exists('egress_ip', $shared) ? $shared['egress_ip'] : $ip;
+        }
+
+        return $record;
+    }
+
+    /** @param array<string, mixed> $attributes
+     *  @return array<string, mixed>
+     */
+    private function spanEgressContext(array $attributes): array
+    {
+        [$node, $ip, $shared] = $this->egressContext();
+        $attributes['node'] ??= $shared['node'] ?? $node;
+        if (! array_key_exists('egress_ip', $attributes)) {
+            $attributes['egress_ip'] = array_key_exists('egress_ip', $shared) ? $shared['egress_ip'] : $ip;
+        }
+        $attributes['egress_ip'] = is_string($attributes['egress_ip']) ? $attributes['egress_ip'] : '';
+
+        return $attributes;
+    }
+
+    /** @return array{0: string, 1: ?string, 2: array<string, mixed>} */
+    private function egressContext(): array
+    {
+        $shared = [];
+        try {
+            $shared = Log::sharedContext();
+        } catch (Throwable) {
+            // Logging context is optional during bootstrap and shutdown.
+        }
+
+        if (isset($shared['node']) && array_key_exists('egress_ip', $shared)) {
+            return [
+                (string) $shared['node'],
+                is_string($shared['egress_ip']) ? $shared['egress_ip'] : null,
+                $shared,
+            ];
+        }
+
+        try {
+            $context = app(NodeEgressProbe::class)->context();
+        } catch (Throwable) {
+            $context = ['node' => NodeIdentity::current(), 'egress_ip' => null];
+        }
+
+        return [(string) $context['node'], $context['egress_ip'], $shared];
+    }
+
     private function shouldSample(): bool
     {
         $rate = (float) config('openobserve.trace_sample_rate', 1.0);
@@ -222,7 +311,7 @@ final class OpenObserveClient
             return false;
         }
 
-        return (mt_rand() / mt_getrandmax()) <= $rate;
+        return random_int(0, 1_000_000) / 1_000_000 <= $rate;
     }
 
     private function jsonIngestUrl(string $stream): string

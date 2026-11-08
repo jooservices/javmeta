@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Health;
 
 use App\Contracts\ReportChannel;
+use App\Repositories\HealthStatusServiceRepository;
 use App\Services\Auth\ApiKeyService;
 use App\Services\Crawl\CrawlStatusService;
 use App\Services\Dependencies\DependencyMonitor;
@@ -25,6 +26,7 @@ final class StagingReadiness
         private readonly CrawlStatusService $crawlStatus,
         private readonly ReportChannel $channel,
         private readonly SourceScheduleFreshness $sourceFreshness,
+        private readonly HealthStatusServiceRepository $repository,
     ) {}
 
     /**
@@ -70,8 +72,9 @@ final class StagingReadiness
     {
         $rows = [];
         $maxAge = (int) config('javmeta_readiness.max_newest_movie_age_minutes', 30);
-        $newest = \App\Models\Movie::query()->max('first_seen_at');
-        $ageMinutes = $newest === null ? null : (int) floor((time() - strtotime((string) $newest)) / 60);
+        $newest = $this->repository->newestMovieAt();
+        $now = now()->getTimestamp();
+        $ageMinutes = $newest === null ? null : (int) floor(($now - strtotime((string) $newest)) / 60);
         $rows[] = $ageMinutes !== null && $ageMinutes <= $maxAge
             ? $this->row('newest_movie', 'pass', "The newest movie was added {$ageMinutes} minutes ago.")
             : $this->row('newest_movie', 'fail', $ageMinutes === null ? 'There are no movies.' : "The newest movie is {$ageMinutes} minutes old (limit {$maxAge}).", 'Check Horizon and the scheduler, then `php artisan crawler:sources`.');
@@ -83,6 +86,7 @@ final class StagingReadiness
 
         $enabled = array_values(array_filter((array) ($status['sources'] ?? []), static fn(array $s): bool => (bool) $s['enabled']));
         $defaultStaleSeconds = (int) config('javmeta_alerts.watchdog.source_stale_seconds', 86400);
+        $now = now()->getTimestamp();
         $dead = [];
         $notYetDue = [];
         foreach ($enabled as $source) {
@@ -91,7 +95,7 @@ final class StagingReadiness
             $lastSuccessTimestamp = $lastSuccessAt === null ? false : strtotime($lastSuccessAt);
             if ($lastSuccessTimestamp === false || $this->sourceFreshness->isPastDue($lastSuccessAt, $slug, $defaultStaleSeconds)) {
                 $dead[] = $slug;
-            } elseif ($lastSuccessTimestamp < time() - $defaultStaleSeconds) {
+            } elseif ($lastSuccessTimestamp < $now - $defaultStaleSeconds) {
                 $notYetDue[] = $slug;
             }
         }
@@ -110,10 +114,15 @@ final class StagingReadiness
     /** @return array{name: string, status: string, message: string, action: ?string} */
     private function backupCheck(): array
     {
+        if (! config('backup.monitoring_enabled')) {
+            return $this->row('backup', 'pass', 'Backup monitoring is off.');
+        }
+
         $file = storage_path('app/private/backups/latest.json');
         $data = is_file($file) ? json_decode((string) file_get_contents($file), true) : null;
         $at = is_array($data) ? ($data['created_at'] ?? $data['finished_at'] ?? $data['generated_at'] ?? null) : null;
-        $ageHours = is_string($at) && strtotime($at) !== false ? (int) floor((time() - strtotime($at)) / 3600) : null;
+        $now = now()->getTimestamp();
+        $ageHours = is_string($at) && strtotime($at) !== false ? (int) floor(($now - strtotime($at)) / 3600) : null;
         $max = (int) config('javmeta_readiness.max_backup_age_hours', 26);
 
         return $ageHours !== null && $ageHours <= $max
@@ -129,7 +138,7 @@ final class StagingReadiness
 
         return $token !== '' && $chat !== ''
             ? $this->row('alert_channel', 'pass', 'The Telegram alert channel is configured.')
-            : $this->row('alert_channel', 'fail', 'The Telegram bot token or chat id is missing.', 'Set the Telegram values in .env (keep its ACL) and restart the units.');
+            : $this->row('alert_channel', 'fail', 'The Telegram bot token or chat id is missing.', 'Set the Telegram values on the Cài đặt page and restart the units.');
     }
 
     /** @return array{name: string, status: string, message: string, action: ?string} */
@@ -154,16 +163,29 @@ final class StagingReadiness
         if ($report['status'] === 'fail' && (! is_array($previous) || ($previous['failing'] ?? []) !== $failing)) {
             $first = array_values(array_filter($report['checks'], static fn(array $c): bool => $c['status'] === 'fail'))[0] ?? null;
             $this->channel->deliver(
-                'Staging readiness',
-                'Staging is NOT ready. Failing: ' . implode(', ', $failing) . '. ' . ($first['message'] ?? '') . ' ' . ($first['action'] ?? ''),
-                ['alert_state' => 'open', 'severity' => 'warning'],
+                '',
+                '',
+                [
+                    'template_key' => 'staging.readiness_blocked',
+                    'alert_state' => 'open',
+                    'severity' => 'warning',
+                    'failing_checks' => implode(', ', $failing),
+                    'first_failure' => (string) ($first['message'] ?? ''),
+                    'next_action' => (string) ($first['action'] ?? ''),
+                ],
             );
         } elseif ($report['status'] === 'pass' && is_array($previous) && ($previous['status'] ?? null) === 'fail') {
             $resolved = (array) ($previous['failing'] ?? []);
             $this->channel->deliver(
-                'Staging readiness recovered',
-                'Staging is READY. Recovered checks: ' . ($resolved === [] ? 'previous failure' : implode(', ', $resolved)) . '.',
-                ['alert_state' => 'resolved', 'severity' => 'info', 'resolved_checks' => count($resolved), 'checked_at' => $report['checked_at']],
+                '',
+                '',
+                [
+                    'template_key' => 'staging.readiness_recovered',
+                    'alert_state' => 'resolved',
+                    'severity' => 'info',
+                    'resolved_checks' => count($resolved),
+                    'checked_at' => $report['checked_at'],
+                ],
             );
         }
     }

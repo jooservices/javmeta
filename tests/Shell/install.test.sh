@@ -108,12 +108,18 @@ stop_line="$(grep -n '/usr/bin/systemctl stop' "$CALLS" | head -1 | cut -d: -f1)
 [[ -n "$refresh_line" && -n "$stop_line" ]] || fail 'deploy omitted systemd unit refresh or quiesce'
 (( startup_line < refresh_line && refresh_line < stop_line )) || fail 'unit refresh must follow staged health and precede unit stops'
 [[ "$(stat -c '%a' "$fixture/node/shared/.env")" == 640 ]] || fail 'unsafe env mode'
+grep -q "^SENTRY_RELEASE=\"$sha\"$" "$fixture/node/shared/.env" || fail 'deployed commit missing from SENTRY_RELEASE'
 ! grep -q '^JAVMETA_UI_LOGIN_REQUIRED=' "$fixture/node/shared/.env" || fail 'database-backed UI login setting leaked into env'
 [[ "$(stat -c '%a' "$fixture/node.credentials")" == 600 ]] || fail 'unsafe credentials mode'
 grep -q 'OWNER_PASSWORD=private-owner-password' "$fixture/node.credentials" || fail 'owner password not captured'
 owner_runs="$(grep -c 'operations:make-super-admin' "$CALLS" || true)"
 grep -q 'artisan es:setup' "$CALLS" || fail 'missing ES setup'
 grep -q 'artisan crawler:sync-sources' "$CALLS" || fail 'missing source sync'
+grep -q 'artisan settings:purge-telegram-credentials' "$CALLS" || fail 'legacy Telegram credentials were not purged'
+migrate_line="$(grep -n 'artisan migrate --force' "$CALLS" | head -1 | cut -d: -f1)"
+import_line="$(grep -n 'artisan settings:import-env' "$CALLS" | head -1 | cut -d: -f1)"
+purge_line="$(grep -n 'artisan settings:purge-telegram-credentials' "$CALLS" | head -1 | cut -d: -f1)"
+(( migrate_line < import_line && import_line < purge_line )) || fail 'legacy Telegram credentials must be purged after settings import'
 grep -q "CRAWLERX_PLAYWRIGHT_SCRIPT=\"$fixture/node/current/vendor/" "$fixture/node/shared/.env" || fail 'Playwright path not under root'
 # Re-runs preserve the generated key and existing configuration.
 cp "$fixture/node/shared/.env" "$fixture/env-before"

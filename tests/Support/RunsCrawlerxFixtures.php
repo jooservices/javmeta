@@ -37,7 +37,9 @@ trait RunsCrawlerxFixtures
         foreach (glob(dirname(__DIR__) . '/Fixtures/crawlerx/*/*.meta.json') ?: [] as $metaPath) {
             /** @var array{source_url: string, target_type: string} $meta */
             $meta = json_decode((string) file_get_contents($metaPath), true, flags: JSON_THROW_ON_ERROR);
-            if ($kind !== null && $meta['target_type'] !== $kind) {
+            if (! in_array($meta['target_type'], self::crawlableFixtureKinds(), true)
+                || str_starts_with(basename($metaPath), 'gallery-')
+                || ($kind !== null && $meta['target_type'] !== $kind)) {
                 continue;
             }
 
@@ -72,7 +74,76 @@ trait RunsCrawlerxFixtures
 
     protected function respondWithFixture(string $url, string $bodyPath): void
     {
-        $this->respondWith($url, TestResponse::make(200, ['Content-Type' => 'text/html; charset=utf-8'], (string) file_get_contents($bodyPath)));
+        $metaPath = $bodyPath . '.meta.json';
+        /** @var array<string, mixed> $meta */
+        $meta = is_file($metaPath)
+            ? json_decode((string) file_get_contents($metaPath), true, flags: JSON_THROW_ON_ERROR)
+            : ['source_url' => $url, 'http_status' => 200];
+        $this->respondWith($this->fixturePattern($url), $this->fixtureResponse($bodyPath, $meta));
+
+        $fixtureDir = dirname($bodyPath);
+        foreach (glob($fixtureDir . '/*.meta.json') ?: [] as $metaPath) {
+            $relatedBodyPath = substr($metaPath, 0, -strlen('.meta.json'));
+            if (! is_file($relatedBodyPath) || $relatedBodyPath === $bodyPath) {
+                continue;
+            }
+
+            /** @var array<string, mixed> $meta */
+            $meta = json_decode((string) file_get_contents($metaPath), true, flags: JSON_THROW_ON_ERROR);
+            $relatedUrl = $meta['source_url'] ?? null;
+            if (is_string($relatedUrl) && $relatedUrl !== '') {
+                $this->respondWith($this->fixturePattern($relatedUrl), $this->fixtureResponse($relatedBodyPath, $meta));
+            }
+        }
+    }
+
+    /** @return list<string> */
+    private static function crawlableFixtureKinds(): array
+    {
+        return [
+            CrawlQueue::KIND_LISTING,
+            CrawlQueue::KIND_DETAIL,
+            CrawlQueue::KIND_PERFORMER_LISTING,
+            CrawlQueue::KIND_PERFORMER_DETAIL,
+            CrawlQueue::KIND_GALLERY,
+        ];
+    }
+
+    /** @param array<string, mixed> $meta */
+    private function fixtureResponse(string $bodyPath, array $meta): ResponseInterface
+    {
+        $body = (string) file_get_contents($bodyPath);
+        $headers = [];
+        foreach ((array) ($meta['response_headers'] ?? []) as $name => $values) {
+            if (is_string($name) && (is_array($values) || is_string($values))) {
+                $headers[$name] = $values;
+            }
+        }
+        $headers['Content-Type'] ??= str_starts_with(ltrim($body), '{') || str_starts_with(ltrim($body), '[')
+            ? 'application/json'
+            : 'text/html; charset=utf-8';
+
+        $status = is_int($meta['http_status'] ?? null) ? $meta['http_status'] : 200;
+
+        return TestResponse::make($status, $headers, $body);
+    }
+
+    private function fixturePattern(string $url): string
+    {
+        $parts = parse_url($url);
+        if (! is_array($parts) || ! is_string($parts['scheme'] ?? null) || ! is_string($parts['host'] ?? null)) {
+            return $url;
+        }
+
+        $query = [];
+        parse_str(is_string($parts['query'] ?? null) ? $parts['query'] : '', $query);
+        if (($parts['host'] ?? null) === 'av-wiki.net' && isset($query['per_page'])) {
+            $query['per_page'] = '*';
+        }
+
+        $pattern = $parts['scheme'] . '://' . $parts['host'] . ($parts['path'] ?? '');
+
+        return $query === [] ? $pattern : $pattern . '?' . http_build_query($query);
     }
 
     /** @return list<string> */

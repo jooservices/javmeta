@@ -255,6 +255,38 @@
           "required": true,
           "default": "api"
         },
+    {
+      "key": "JAVMETA_POSTGRES_ROLE_CONNECTION_LIMIT",
+      "label": "PostgreSQL role connection limit",
+      "secret": false,
+      "required": true,
+      "default": "120",
+      "env": true
+    },
+    {
+      "key": "JAVMETA_POSTGRES_CONNECTION_RESERVE",
+      "label": "PostgreSQL non-worker connection reserve",
+      "secret": false,
+      "required": true,
+      "default": "30",
+      "env": true
+    },
+    {
+      "key": "JAVMETA_POSTGRES_PRIMARY_NODE_COUNT",
+      "label": "Primary Horizon node count",
+      "secret": false,
+      "required": true,
+      "default": "1",
+      "env": true
+    },
+    {
+      "key": "JAVMETA_POSTGRES_WORKER_NODE_COUNT",
+      "label": "Worker Horizon node count",
+      "secret": false,
+      "required": true,
+      "default": "2",
+      "env": true
+    },
         {
           "key": "ACTIVITY_LOG_CONNECTION",
           "label": "ACTIVITY_LOG_CONNECTION",
@@ -871,15 +903,15 @@
           "default": "",
           "required": true,
           "secret": true,
-          "setting": "telegram.bot_token"
+          "env": true
         },
         {
           "key": "TELEGRAM_CHAT_ID",
           "label": "Telegram owner chat ID",
           "default": "",
           "required": true,
-          "secret": false,
-          "setting": "telegram.chat_id"
+          "secret": true,
+          "env": true
         }
       ]
     }

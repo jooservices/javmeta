@@ -46,6 +46,23 @@ final class CatalogEndpointTest extends TestCase
         $this->assertSame([['name' => 'L1', 'movie_count' => 3]], $this->getJson('/api/v1/meta/catalog/labels', $this->headers())->json('data'));
     }
 
+    public function test_catalog_cache_key_is_deterministic_and_differs_for_different_params(): void
+    {
+        \Illuminate\Support\Facades\Cache::flush();
+        Movie::factory()->create(['maker' => 'Alpha']);
+
+        $first = $this->getJson('/api/v1/meta/catalog/makers', $this->headers())->assertOk()->json('data');
+        $key = 'javmeta:catalog:' . hash('sha256', json_encode(['makers', '', 'movie_count', 50, 1, false], JSON_THROW_ON_ERROR));
+        $this->assertSame($first, \Illuminate\Support\Facades\Cache::get($key)['items']);
+        $this->assertSame($first, $this->getJson('/api/v1/meta/catalog/makers', $this->headers())->assertOk()->json('data'));
+
+        $sorted = $this->getJson('/api/v1/meta/catalog/makers?sort=name', $this->headers())->assertOk()->json('data');
+        $sortedKey = 'javmeta:catalog:' . hash('sha256', json_encode(['makers', '', 'name', 50, 1, false], JSON_THROW_ON_ERROR));
+        $this->assertNotSame($key, $sortedKey);
+        $this->assertSame($sorted, \Illuminate\Support\Facades\Cache::get($sortedKey)['items']);
+        $this->assertSame($first, \Illuminate\Support\Facades\Cache::get($key)['items']);
+    }
+
     public function test_pages_split_the_list(): void
     {
         foreach (range(1, 5) as $i) {
@@ -69,5 +86,16 @@ final class CatalogEndpointTest extends TestCase
 
         $this->assertSame([['name' => 'Drama', 'movie_count' => 2]], $this->getJson('/api/v1/meta/catalog/genres', $this->headers())->json('data'));
         $this->assertSame([['name' => '2025', 'movie_count' => 2], ['name' => '2024', 'movie_count' => 1]], $this->getJson('/api/v1/meta/catalog/years', $this->headers())->json('data'));
+    }
+
+    public function test_year_catalog_search_keeps_only_the_typed_year(): void
+    {
+        Movie::factory()->create(['release_date' => '2025-03-01']);
+        Movie::factory()->create(['release_date' => '2024-01-01']);
+
+        $response = $this->getJson('/api/v1/meta/catalog/years?q=2025', $this->headers())->assertOk();
+
+        $this->assertSame([['name' => '2025', 'movie_count' => 1]], $response->json('data'));
+        $this->assertSame(1, $response->json('meta.pagination.total'));
     }
 }

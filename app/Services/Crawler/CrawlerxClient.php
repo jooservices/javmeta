@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Crawler;
 
 use App\Services\Crawl\CrawlerxFetchMethodPlan;
+use App\Models\CrawlQueue;
 use App\Observability\ObservabilityEmitter;
 use JOOservices\CrawlerX\CrawlerX;
 use JOOservices\CrawlerX\Dto\FetchMetaDto;
@@ -80,12 +81,54 @@ class CrawlerxClient
         return $this->fetch($sourceSlug, $url, CrawlType::Gallery);
     }
 
-    private function fetch(string $sourceSlug, string $url, CrawlType $type): CrawlerxFetchResult
+    public function fetchQueueRow(CrawlQueue $row): CrawlerxFetchResult
+    {
+        if ($row->claimed_lane !== 'retry') {
+            return match ($row->kind) {
+                CrawlQueue::KIND_LISTING => $this->fetchListing($row->source_slug, $row->url),
+                CrawlQueue::KIND_DETAIL => $this->fetchDetail($row->source_slug, $row->url),
+                CrawlQueue::KIND_PERFORMER_LISTING => $this->fetchPerformerListing($row->source_slug, $row->url),
+                CrawlQueue::KIND_PERFORMER_DETAIL => $this->fetchPerformerDetail($row->source_slug, $row->url),
+                CrawlQueue::KIND_GALLERY => $this->fetchGallery($row->source_slug, $row->url),
+                default => CrawlerxFetchResult::failure(self::ERROR_PARSE_FAILED, 'Unsupported crawl queue kind.'),
+            };
+        }
+
+        $type = match ($row->kind) {
+            CrawlQueue::KIND_LISTING => CrawlType::Listing,
+            CrawlQueue::KIND_DETAIL => CrawlType::Detail,
+            CrawlQueue::KIND_PERFORMER_LISTING => CrawlType::PerformerListing,
+            CrawlQueue::KIND_PERFORMER_DETAIL => CrawlType::PerformerDetail,
+            CrawlQueue::KIND_GALLERY => CrawlType::Gallery,
+            default => CrawlType::Detail,
+        };
+        $profile = (array) config('javmeta_queues.retry.fetch_profile', []);
+
+        return $this->fetch($row->source_slug, $row->url, $type, $profile);
+    }
+
+    /** @param array<string, mixed> $retryProfile */
+    private function fetch(string $sourceSlug, string $url, CrawlType $type, array $retryProfile = []): CrawlerxFetchResult
     {
         $started = hrtime(true);
-        $result = $this->doFetch($sourceSlug, $url, $type);
+        $useProfile = $retryProfile !== [];
+        if ($useProfile) {
+            $logins = new LaravelConfigLoginCookieProvider(static fn(): SourceLoginCookieStore => app(SourceLoginCookieStore::class));
+            $factory = app(CrawlerxFetchChainFactory::class);
+            \JOOservices\CrawlerX\CrawlerXFactory::useFetchChain($factory->create($logins, profile: $retryProfile));
+        }
+        try {
+            $result = $this->doFetch($sourceSlug, $url, $type, $retryProfile);
+        } finally {
+            if ($useProfile) {
+                $logins = new LaravelConfigLoginCookieProvider(static fn(): SourceLoginCookieStore => app(SourceLoginCookieStore::class));
+                \JOOservices\CrawlerX\CrawlerXFactory::useFetchChain(app(CrawlerxFetchChainFactory::class)->create($logins));
+            }
+        }
         $durationMs = (int) round((hrtime(true) - $started) / 1_000_000);
-        app(CrawlerxFetchMethodPlan::class)->recordAttempts($sourceSlug, $url, $result->attempts);
+        if (! $useProfile) {
+            app(CrawlerxFetchMethodPlan::class)->recordAttempts($sourceSlug, $url, $result->attempts);
+        }
 
         app(ObservabilityEmitter::class)->emitFetch(
             $sourceSlug,
@@ -108,13 +151,14 @@ class CrawlerxClient
         return $result;
     }
 
-    private function doFetch(string $sourceSlug, string $url, CrawlType $type): CrawlerxFetchResult
+    /** @param array<string, mixed> $retryProfile */
+    private function doFetch(string $sourceSlug, string $url, CrawlType $type, array $retryProfile = []): CrawlerxFetchResult
     {
-        $options = app(CrawlerxFetchMethodPlan::class)->optionsFor(
-            $sourceSlug,
-            $url,
-            (int) config('javmeta_queues.worker_timeout', 180) - self::DEADLINE_MARGIN_SECONDS,
-        );
+        $plan = app(CrawlerxFetchMethodPlan::class);
+        $deadline = (int) config('javmeta_queues.worker_timeout', 180) - self::DEADLINE_MARGIN_SECONDS;
+        $options = $retryProfile === []
+            ? $plan->optionsFor($sourceSlug, $url, $deadline)
+            : $plan->retryOptionsFor($sourceSlug, $url, $deadline, $retryProfile);
         $outcome = CrawlerX::url($url)
             ->site($sourceSlug)
             ->type($type)
