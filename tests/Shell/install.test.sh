@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+# All network, package and service commands are stubs; Git uses a local fixture.
+set -euo pipefail
+root="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
+mkdir -p "$root/.tmp"
+fixture="$(mktemp -d "$root/.tmp/install-test.XXXXXX")"
+trap 'result=$?; if (( result )); then cat "$fixture/log" >&2; fi; rm -rf -- "$fixture"' EXIT
+fail() { echo "FAIL: $*" >&2; exit 1; }
+script="$root/deploy/install.sh"
+if bash "$script" --non-interactive > "$fixture/log" 2>&1; then fail 'missing answers accepted'; fi
+grep -q 'REF' "$fixture/log" || fail 'missing REF diagnostic'
+grep -q 'REPO_URL' "$fixture/log" || fail 'missing repository diagnostic'
+mkdir -p "$fixture/bin" "$fixture/repo/storage" "$fixture/repo/ui-tests"
+export CALLS="$fixture/calls"
+cat > "$fixture/bin/stub" <<'STUB'
+#!/usr/bin/env bash
+printf '%s %s\n' "${0##*/}" "$*" >> "$CALLS"
+if [[ "${0##*/}" == php && "$*" == *probe.php* ]]; then
+  if [[ "${FAIL_STEP:-}" == validation ]]; then exit 1; fi
+  if [[ "${FAIL_STEP:-}" == timezone ]]; then echo "Database timezone MUST be UTC"; exit 1; fi
+  if [[ "${FAIL_STEP:-}" == retry && ! -e "$CALLS.retry" ]]; then touch "$CALLS.retry"; exit 1; fi
+fi
+if [[ "${0##*/}" == php && "$*" == *health:startup* ]]; then
+  shared_env=absent
+  [[ ! -e "$PWD/../../shared/.env" ]] || shared_env=present
+  printf 'health-env=%s shared-env=%s command=%s\n' "$(readlink .env)" "$shared_env" "$*" >> "$CALLS"
+  if [[ "${FAIL_STEP:-}" == startup || ( "${FAIL_STEP:-}" == startup-scheduler && "$*" == *'--role=scheduler'* ) ]]; then exit 1; fi
+fi
+if [[ "${0##*/}" == php && "$*" == *random_bytes* ]]; then echo generated-private-key; fi
+if [[ "${0##*/}" == php && ( "$*" == *rawurlencode* || "$*" == *mongo-uri.php* ) ]]; then echo mongodb://fixture.invalid/fixture; fi
+if [[ "${0##*/}" == php && "$*" == *operations:make-super-admin* ]]; then echo private-owner-password; fi
+if [[ "${0##*/}" == id && "$*" == '-un' ]]; then echo fixture-user; exit 0; fi
+if [[ "${0##*/}" == php && "$*" == *staging:readiness* ]]; then echo 'Staging is READY'; fi
+if [[ "${0##*/}" == php && "$*" == *readiness.php* && "${FAIL_STEP:-}" == horizon ]]; then exit 1; fi
+if [[ "${0##*/}" == php && "$*" == *readiness.php* && "$*" == *' 1' && "${FAIL_STEP:-}" == scheduler ]]; then exit 1; fi
+if [[ "${0##*/}" == php && "$*" == *migrate* && "${FAIL_STEP:-}" == migrate ]]; then exit 1; fi
+if [[ "${0##*/}" == php && "$*" == *staging:readiness* && "${FAIL_STEP:-}" == readiness ]]; then exit 1; fi
+if [[ "${0##*/}" == sudo && "${FAIL_STEP:-}" == restart && "$*" == *restart* ]]; then exit 1; fi
+if [[ "${0##*/}" == curl && "${FAIL_STEP:-}" == readiness ]]; then exit 1; fi
+if [[ "${0##*/}" == node && "${FAIL_STEP:-}" == ui ]]; then exit 1; fi
+if [[ "${0##*/}" == php && "${FAIL_STEP:-}" == import && "$*" == *settings:import-env* ]]; then exit 1; fi
+if [[ "${0##*/}" == php && "${FAIL_STEP:-}" == worker-bootstrap && "$*" == *settings:assert-worker-bootstrap* ]]; then exit 1; fi
+if [[ "${0##*/}" == pg_restore ]]; then printf ';     dbname: fixture\n'; fi
+STUB
+chmod +x "$fixture/bin/stub"
+for tool in php composer node sudo pg_restore psql curl id; do ln -s stub "$fixture/bin/$tool"; done
+export PATH="$fixture/bin:$PATH"
+git init -q -b candidate "$fixture/repo"
+git -C "$fixture/repo" config user.name test
+git -C "$fixture/repo" config user.email test@example.test
+touch "$fixture/repo/artisan" "$fixture/repo/storage/.gitkeep" "$fixture/repo/ui-tests/render-smoke.mjs"
+git -C "$fixture/repo" add .
+git -C "$fixture/repo" -c core.hooksPath=/dev/null commit -qm 'test: Fixture'
+git -C "$fixture/repo" tag v-test
+sha="$(git -C "$fixture/repo" rev-parse HEAD)"
+# Populate all required fields; optional integrations remain disabled.
+jq --arg repo "$fixture/repo" --arg target "$fixture/node" --arg user "$(id -un 2>/dev/null || id -u)" --arg php "$fixture/bin/php" '
+  [.options[], .services[].fields[]] | map({key:.key,value:(if .secret then "private-test-value" elif .key == "CREDENTIALS_FILE" then ($target+".credentials") elif .default != "" then .default else "fixture" end)}) | from_entries
+  | .REPO_URL=$repo | .TARGET_DIR=$target | .SERVICE_USER="fixture-user" | .DB_DATABASE="fixture" | .REF="candidate"
+  | .APP_URL="https://fixture.invalid" | .DB_HOST="fixture.invalid" | .MONGO_URI="mongodb://fixture.invalid/fixture" | .PHP_BINARY=$php
+  | .JAVMETA_UI_LOGIN_REQUIRED="false"
+  | .APP_KEY="" | .CI_CHECKS="" | .INSTALL_NODE="0" | .READINESS_TIMEOUT="1" | .BACKUP_FILE=($target+".dump") | .BACKUP_RESTORE_VERIFIED="1"' "$root/deploy/manifest.json" > "$fixture/answers.json"
+chmod 600 "$fixture/answers.json"
+rm -f "$CALLS"
+printf backup > "$fixture/node.dump"
+for ref in candidate v-test "$sha"; do
+  bash "$script" --non-interactive --config "$fixture/answers.json" --ref "$ref" > "$fixture/log" 2>&1
+  grep -q 'DRY RUN' "$fixture/log" || fail 'missing dry run plan'
+  grep -q 'DRY RUN: systemd unit' "$fixture/log" || fail 'dry run omitted the systemd unit diff plan'
+  [[ ! -e "$fixture/node" && ! -e "$CALLS" ]] || fail 'dry run changed state or contacted a service'
+done
+! grep -q 'private-test-value' "$fixture/log" || fail 'secret in output'
+chmod 644 "$fixture/answers.json"
+if bash "$script" --config "$fixture/answers.json" --non-interactive > "$fixture/log" 2>&1; then fail 'public config accepted'; fi
+chmod 600 "$fixture/answers.json"
+if FAIL_STEP=validation bash "$script" --config "$fixture/answers.json" --non-interactive --skip-os-install --apply > "$fixture/log" 2>&1; then fail 'invalid service accepted'; fi
+[[ ! -e "$fixture/node" ]] || fail 'failed validation changed node'
+if FAIL_STEP=timezone bash "$script" --config "$fixture/answers.json" --non-interactive --skip-os-install --apply > "$fixture/log" 2>&1; then fail 'non-UTC database accepted'; fi
+grep -q 'timezone MUST be UTC' "$fixture/log" || fail 'timezone diagnostic missing'
+jq '.INSTALL_NODE="1"' "$fixture/answers.json" > "$fixture/validate.json"
+chmod 600 "$fixture/validate.json"
+FAIL_STEP=retry bash "$script" --config "$fixture/validate.json" --validate-only --apply <<< $'y\n\n\n\n\n\n\n\n' > "$fixture/log" 2>&1
+grep -q 'retry' "$fixture/log" || fail 'validation did not re-prompt'
+! grep -q 'install-node.sh' "$CALLS" || fail 'validate-only ran native installer'
+[[ ! -e "$fixture/node" ]] || fail 'validate-only changed node'
+mkdir -p "$fixture/node/releases/old" "$fixture/node/shared"
+ln -s "$fixture/node/releases/old" "$fixture/node/current"
+for failure in startup ui migrate import restart readiness horizon; do
+  : > "$CALLS"
+  if FAIL_STEP="$failure" bash "$script" --non-interactive --config "$fixture/answers.json" --skip-os-install --apply > "$fixture/log" 2>&1; then fail "ignored $failure"; fi
+  [[ "$(readlink "$fixture/node/current")" == "$fixture/node/releases/old" ]] || fail 'rollback failed'
+  if [[ "$failure" == startup ]]; then
+    grep -q 'health-env=.*\.env-staged-' "$CALLS" || fail 'staged health check did not use the private candidate env'
+    grep -q 'shared-env=absent' "$CALLS" || fail 'candidate env replaced shared env before its health check'
+    if grep -Eq '^sudo .*systemctl stop' "$CALLS"; then fail 'wizard quiesced units before staged startup health passed'; fi
+  fi
+  ! grep -q 'private-test-value' "$fixture/log" || fail 'secret leaked on failure'
+done
+: > "$CALLS"
+rm -- "$fixture/node/current"
+bash "$script" --non-interactive --config "$fixture/answers.json" --skip-os-install --apply > "$fixture/log" 2>&1
+[[ "$(readlink "$fixture/node/current")" != "$fixture/node/releases/old" ]] || fail 'release not activated'
+grep -q 'artisan health:startup --role=web' "$CALLS" || fail 'primary startup health omitted web role'
+grep -q 'artisan health:startup --role=worker' "$CALLS" || fail 'primary startup health omitted worker role'
+startup_line="$(grep -n 'health:startup --role=web' "$CALLS" | head -1 | cut -d: -f1)"
+refresh_line="$(grep -n 'refresh-units.sh' "$CALLS" | head -1 | cut -d: -f1)"
+stop_line="$(grep -n '/usr/bin/systemctl stop' "$CALLS" | head -1 | cut -d: -f1)"
+[[ -n "$refresh_line" && -n "$stop_line" ]] || fail 'deploy omitted systemd unit refresh or quiesce'
+(( startup_line < refresh_line && refresh_line < stop_line )) || fail 'unit refresh must follow staged health and precede unit stops'
+[[ "$(stat -c '%a' "$fixture/node/shared/.env")" == 640 ]] || fail 'unsafe env mode'
+grep -q "^SENTRY_RELEASE=\"$sha\"$" "$fixture/node/shared/.env" || fail 'deployed commit missing from SENTRY_RELEASE'
+! grep -q '^JAVMETA_UI_LOGIN_REQUIRED=' "$fixture/node/shared/.env" || fail 'database-backed UI login setting leaked into env'
+[[ "$(stat -c '%a' "$fixture/node.credentials")" == 600 ]] || fail 'unsafe credentials mode'
+grep -q 'OWNER_PASSWORD=private-owner-password' "$fixture/node.credentials" || fail 'owner password not captured'
+owner_runs="$(grep -c 'operations:make-super-admin' "$CALLS" || true)"
+grep -q 'artisan es:setup' "$CALLS" || fail 'missing ES setup'
+grep -q 'artisan crawler:sync-sources' "$CALLS" || fail 'missing source sync'
+grep -q 'artisan settings:purge-telegram-credentials' "$CALLS" || fail 'legacy Telegram credentials were not purged'
+migrate_line="$(grep -n 'artisan migrate --force' "$CALLS" | head -1 | cut -d: -f1)"
+import_line="$(grep -n 'artisan settings:import-env' "$CALLS" | head -1 | cut -d: -f1)"
+purge_line="$(grep -n 'artisan settings:purge-telegram-credentials' "$CALLS" | head -1 | cut -d: -f1)"
+(( migrate_line < import_line && import_line < purge_line )) || fail 'legacy Telegram credentials must be purged after settings import'
+grep -q "CRAWLERX_PLAYWRIGHT_SCRIPT=\"$fixture/node/current/vendor/" "$fixture/node/shared/.env" || fail 'Playwright path not under root'
+# Re-runs preserve the generated key and existing configuration.
+cp "$fixture/node/shared/.env" "$fixture/env-before"
+cp "$fixture/node.credentials" "$fixture/credentials-before"
+bash "$script" --non-interactive --config "$fixture/answers.json" --skip-os-install --apply > "$fixture/log" 2>&1
+cmp "$fixture/env-before" "$fixture/node/shared/.env" || fail 'rerun changed env'
+cmp "$fixture/credentials-before" "$fixture/node.credentials" || fail 'rerun changed credentials'
+[[ "$(grep -c 'operations:make-super-admin' "$CALLS" || true)" == "$owner_runs" ]] || fail 'rerun rotated the owner password'
+for ref in candidate v-test "$sha"; do
+  bash "$script" --non-interactive --config "$fixture/answers.json" --ref "$ref" --skip-os-install --no-start --apply > "$fixture/log" 2>&1
+  [[ "$(git -C "$fixture/node/current" rev-parse HEAD)" == "$sha" ]] || fail 'wrong selected commit'
+done
+! grep -q '^JAVMETA_SENTRY_DSN=' "$fixture/node/shared/.env" || fail 'disabled Sentry was enabled by an env value'
+grep -q '^MONGO_AUTH_SOURCE="fixture"$' "$fixture/node/shared/.env" || fail 'Mongo auth source did not follow selected database'
+if bash "$script" --non-interactive --config "$fixture/answers.json" --ci-check > "$fixture/log" 2>&1; then fail 'empty explicit CI gate accepted'; fi
+grep -q 'requires CI_CHECKS' "$fixture/log" || fail 'missing CI gate diagnostic'
+if bash "$script" --non-interactive --config "$fixture/answers.json" --no-systemd --apply > "$fixture/log" 2>&1; then fail 'simulated units counted as readiness'; fi
+grep -q 'requires --no-start' "$fixture/log" || fail 'missing unit simulation diagnostic'
+if FAIL_STEP=scheduler bash "$script" --non-interactive --config "$fixture/answers.json" --skip-os-install --start-scheduler --apply > "$fixture/log" 2>&1; then fail 'unhealthy scheduler accepted'; fi
+grep -q 'artisan health:startup --role=scheduler' "$CALLS" || fail 'scheduler startup health was omitted when the scheduler was enabled'
+# The wizard stops before promoting the candidate env when the scheduler-only policy fails.
+env_before_scheduler_health="$(sha256sum "$fixture/node/shared/.env")"
+if FAIL_STEP=startup-scheduler bash "$script" --non-interactive --config "$fixture/answers.json" --skip-os-install --start-scheduler --apply > "$fixture/log" 2>&1; then fail 'failed scheduler health accepted'; fi
+grep -q 'shared-env=present' "$CALLS" || fail 'scheduler health did not preserve the active shared env'
+[[ "$(sha256sum "$fixture/node/shared/.env")" == "$env_before_scheduler_health" ]] || fail 'failed scheduler health changed the active shared env'
+# Default credentials stay with the service-owned release target after sudo handoff.
+jq --arg target "$fixture/default-node" 'del(.CREDENTIALS_FILE) | .TARGET_DIR=$target' "$fixture/answers.json" > "$fixture/default-answers.json"
+chmod 600 "$fixture/default-answers.json"
+bash "$script" --non-interactive --config "$fixture/default-answers.json" --skip-os-install --no-start --apply > "$fixture/log" 2>&1
+[[ "$(stat -c '%a' "$fixture/default-node/shared/XCrawler-credentials.txt")" == 600 ]] || fail 'unsafe default credentials mode'
+grep -q 'OWNER_PASSWORD=private-owner-password' "$fixture/default-node/shared/XCrawler-credentials.txt" || fail 'default credentials file was not written'
+# Example entries are all declared; optional/empty values must be explicit too.
+sed -n 's/^\([A-Z][A-Z0-9_]*\)=.*/\1/p' "$root/deploy/production/env.production.example" | sort -u > "$fixture/example"
+jq -r '.services[].fields[].key' "$root/deploy/manifest.json" | sort -u > "$fixture/manifest"
+[[ -z "$(comm -23 "$fixture/example" "$fixture/manifest")" ]] || fail 'manifest misses example keys'
+if grep -REn --include='*.sh' '^[[:space:]]*[^#[:space:]].*(develop|master|origin/)' "$root/deploy"; then fail 'branch literal in executable logic'; fi
+# A worker must not migrate a database shared with the primary.
+: > "$CALLS"
+bash "$script" --non-interactive --config "$fixture/answers.json" --role worker --skip-os-install --no-systemd --no-start --apply > "$fixture/log" 2>&1
+! grep -Eq 'artisan (migrate|es:setup|settings:import-env|crawler:sync-sources|operations:make-super-admin)' "$CALLS" || fail 'worker ran migrations'
+grep -q 'artisan settings:assert-worker-bootstrap' "$CALLS" || fail 'worker did not verify primary worker settings'
+grep -q 'no migrations' "$fixture/log" || fail 'worker migration skip not disclosed'
+! grep -q 'private-test-value\|private-owner-password' "$fixture/log" || fail 'worker leaked credentials'
+current_before_worker_check="$(readlink "$fixture/node/current")"
+: > "$CALLS"
+if FAIL_STEP=worker-bootstrap bash "$script" --non-interactive --config "$fixture/answers.json" --role worker --skip-os-install --apply > "$fixture/log" 2>&1; then fail 'worker restarted without imported primary settings'; fi
+grep -q 'artisan settings:assert-worker-bootstrap' "$CALLS" || fail 'worker bootstrap gate was not called'
+if grep -q 'systemctl stop' "$CALLS"; then fail 'worker units stopped before bootstrap was verified'; fi
+[[ "$(readlink "$fixture/node/current")" == "$current_before_worker_check" ]] || fail 'worker bootstrap gate switched current release'
+if bash "$script" --non-interactive --config "$fixture/answers.json" --role worker --target "$fixture/fresh-worker" > "$fixture/log" 2>&1; then fail 'new worker accepted without primary APP_KEY'; fi
+grep -q 'copy the primary shared env/key' "$fixture/log" || fail 'missing worker key diagnostic'
+echo 'OK (34 install wizard scenarios)'

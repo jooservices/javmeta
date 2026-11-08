@@ -1,0 +1,10 @@
+{
+  "source_url": "https://www.javbus.com/en/actresses",
+  "final_url": "https://www.javbus.com/en/actresses",
+  "captured_at": "2026-09-09T04:10:04.429Z",
+  "http_status": 200,
+  "content_hash": "eecff6d39f9939ececc94c62da00e2024314384e20bafd5204041d00fbe626b6",
+  "target_type": "performer_listing",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

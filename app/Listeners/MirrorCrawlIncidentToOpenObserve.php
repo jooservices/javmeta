@@ -13,6 +13,6 @@ final class MirrorCrawlIncidentToOpenObserve
 
     public function handle(CrawlIncidentOccurred $event): void
     {
-        $this->observability->emitCrawlEvent($event->sourceSlug, $event->kind, $event->detail);
+        $this->observability->emitCrawlEvent($event->sourceSlug, $event->kind, $event->detail + ['page_url' => $event->url]);
     }
 }

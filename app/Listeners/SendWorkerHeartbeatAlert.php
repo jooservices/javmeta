@@ -13,11 +13,11 @@ final class SendWorkerHeartbeatAlert
 
     public function handle(WorkerHeartbeatStale $event): void
     {
-        $this->alerts->send(
+        $this->alerts->sendTemplate(
             debounceKey: 'watchdog:worker_stale',
-            subject: 'Worker heartbeat stale',
-            body: 'No crawl worker heartbeat within the configured window.',
+            templateKey: 'crawl.heartbeat_stale',
             context: $event->context,
+            debounceSeconds: (int) config('javmeta_alerts.throttle_seconds', 3600),
         );
     }
 }

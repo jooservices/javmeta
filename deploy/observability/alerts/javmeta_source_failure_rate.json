@@ -1,0 +1,24 @@
+{
+  "name": "javmeta_source_failure_rate",
+  "description": "A source recorded more than 20 crawl failures in the previous hour.",
+  "enabled": true,
+  "is_real_time": false,
+  "stream_type": "metrics",
+  "stream_name": "javmeta_crawl_run_failures_1h",
+  "query_condition": {
+    "type": "sql",
+    "sql": "SELECT _timestamp, source_slug, value FROM \"javmeta_crawl_run_failures_1h\" WHERE source_slug IS NOT NULL AND value > 20"
+  },
+  "trigger_condition": {
+    "frequency_type": "minutes",
+    "frequency": 1,
+    "period": 10,
+    "operator": ">",
+    "threshold": 0,
+    "silence": 60
+  },
+  "pending_period_sec": 0,
+  "destinations": [
+    "javmeta_telegram"
+  ]
+}

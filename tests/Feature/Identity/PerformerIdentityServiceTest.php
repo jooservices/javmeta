@@ -1,0 +1,625 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Identity;
+
+use App\Models\Performer;
+use App\Models\PerformerAlias;
+use App\Models\PerformerIdentityEvent;
+use App\Models\PerformerMedia;
+use App\Models\PerformerSource;
+use App\Models\Movie;
+use App\Http\Resources\MovieSummaryResource;
+use App\Repositories\PerformerRepository;
+use App\Data\Crawl\PerformerDraft;
+use App\Services\Persist\PerformerPersister;
+use App\Services\Auth\ApiKeyService;
+use App\Services\Identity\PerformerIdentityService;
+use App\Services\Mcp\McpToolService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
+use Tests\TestCase;
+
+final class PerformerIdentityServiceTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config()->set('elasticsearch.enabled', false);
+    }
+
+    public function test_dry_run_lists_merge_and_leaves_source_records_unmodified(): void
+    {
+        [$first, $second] = $this->samePersonAcrossSources();
+
+        $this->artisan('performers:backfill-identities', ['--dry-run' => true])
+            ->expectsOutputToContain('Would merge source')
+            ->assertSuccessful();
+
+        self::assertNull($second->fresh()->canonical_performer_id);
+        self::assertSame((int) $second->id, (int) $this->sourceFor('source-b', 'person-b')->performer_id);
+        self::assertNull($first->fresh()->canonical_performer_id);
+    }
+
+    public function test_dry_run_backfill_queries_per_source_stay_constant(): void
+    {
+        $countQueries = function (int $performers): int {
+            Performer::query()->delete();
+            foreach (range(1, $performers) as $number) {
+                Performer::factory()->create([
+                    'source_slug' => 'source-a',
+                    'external_id' => 'bulk-' . $performers . '-' . $number,
+                    'name_romaji' => strtr(substr(md5('bulk-' . $number), 0, 14), '0123456789', 'ghijklmnop'),
+                    'name_kanji' => null,
+                    'name_kana' => null,
+                    'birth_date' => '1990-01-01',
+                ]);
+            }
+            $queries = 0;
+            DB::listen(static function () use (&$queries): void {
+                $queries++;
+            });
+            app(PerformerIdentityService::class)->backfill(true);
+
+            return $queries;
+        };
+
+        // Bounded memory means one candidate lookup per source: the cost per source must not grow with the catalog.
+        $perSource = ($countQueries(12) - $countQueries(3)) / 9;
+        self::assertLessThanOrEqual(15, $perSource);
+    }
+
+    public function test_backfill_memory_does_not_retain_the_catalog(): void
+    {
+        $rows = [];
+        foreach (range(1, 400) as $number) {
+            $rows[] = [
+                'source_slug' => 'source-a',
+                'external_id' => 'mem-' . $number,
+                'name_romaji' => strtr(substr(md5('mem-' . $number), 0, 16), '0123456789', 'ghijklmnop'),
+                'name_kanji' => null,
+                'name_kana' => null,
+                'birth_date' => '1990-01-01',
+            ];
+        }
+        foreach ($rows as $row) {
+            Performer::factory()->create($row);
+        }
+        $service = app(PerformerIdentityService::class);
+        $service->backfill(true);
+        gc_collect_cycles();
+        $before = memory_get_peak_usage();
+        $service->backfill(true);
+
+        // A retained snapshot of 400 profiles grows the peak by tens of MB; streaming adds almost nothing.
+        self::assertLessThan(8 * 1024 * 1024, memory_get_peak_usage() - $before);
+    }
+
+    public function test_backfill_with_common_trigram_collisions_streams_candidates_and_report(): void
+    {
+        foreach (range(1, 300) as $number) {
+            Performer::factory()->create([
+                'source_slug' => 'source-a',
+                'external_id' => 'col-' . $number,
+                'name_romaji' => 'yamada ' . strtr(sprintf('%03d', $number), '0123456789', 'abcdefghij'),
+                'name_kanji' => null,
+                'name_kana' => null,
+                'birth_date' => null,
+            ]);
+        }
+        $service = app(PerformerIdentityService::class);
+        gc_collect_cycles();
+        $before = memory_get_peak_usage();
+        $rows = 0;
+        $counts = $service->streamBackfill(true, static function () use (&$rows): void {
+            $rows++;
+        });
+
+        self::assertSame($rows, $counts['merges'] + $counts['reviews']);
+        self::assertGreaterThan(0, $counts['reviews']);
+        self::assertGreaterThan(300, $service->candidateComparisons());
+        self::assertLessThan(512 * 1024 * 1024, memory_get_peak_usage());
+        self::assertLessThan(64 * 1024 * 1024, memory_get_peak_usage() - $before);
+    }
+
+    public function test_backfill_candidate_comparisons_stay_bounded_as_the_catalog_grows(): void
+    {
+        $comparisons = function (int $performers): int {
+            Performer::query()->delete();
+            foreach (range(1, $performers) as $number) {
+                Performer::factory()->create([
+                    'source_slug' => 'source-a',
+                    'external_id' => 'cmp-' . $performers . '-' . $number,
+                    'name_romaji' => strtr(substr(md5('person-' . $number), 0, 12), '0123456789', 'ghijklmnop'),
+                    'name_kanji' => null,
+                    'name_kana' => null,
+                    'birth_date' => '1990-01-01',
+                ]);
+            }
+            $service = app(PerformerIdentityService::class);
+            $service->backfill(true);
+
+            return $service->candidateComparisons();
+        };
+
+        $small = $comparisons(10);
+        $large = $comparisons(60);
+
+        // A full root scan would be n * (n - 1): 90 and 3540 comparisons.
+        self::assertLessThan(60 * 59 / 4, $large);
+        self::assertLessThanOrEqual(10 * 9, $small);
+    }
+
+    public function test_low_review_threshold_still_reports_pairs_sharing_no_trigram(): void
+    {
+        config(['performer_identity.review_name_similarity' => 0.5]);
+        foreach (['abcd' => 'one', 'xbcy' => 'two'] as $name => $id) {
+            Performer::factory()->create([
+                'source_slug' => 'source-a',
+                'external_id' => $id,
+                'name_romaji' => $name,
+                'name_kanji' => null,
+                'name_kana' => null,
+                'birth_date' => null,
+            ]);
+        }
+
+        $result = app(PerformerIdentityService::class)->backfill(true);
+
+        self::assertSame([], $result['merges']);
+        self::assertNotEmpty($result['reviews']);
+    }
+
+    public function test_backfill_creates_missing_source_links_and_is_repeatable(): void
+    {
+        $performer = Performer::factory()->create([
+            'source_slug' => 'source-a',
+            'external_id' => 'person-a',
+            'name_romaji' => 'Aoi Sakura',
+            'birth_date' => '1990-01-01',
+        ]);
+
+        $this->artisan('performers:backfill-identities', ['--dry-run' => true])->assertSuccessful();
+        self::assertDatabaseMissing('performer_sources', ['source_performer_id' => $performer->id]);
+
+        $identity = app(PerformerIdentityService::class);
+        self::assertSame(['merges' => [], 'reviews' => []], $identity->backfill());
+        self::assertDatabaseHas('performer_sources', [
+            'performer_id' => $performer->id,
+            'source_performer_id' => $performer->id,
+            'site_slug' => 'source-a',
+            'name_romaji' => 'Aoi Sakura',
+        ]);
+        self::assertSame('1990-01-01', $this->sourceFor('source-a', 'person-a')->birth_date?->toDateString());
+        self::assertSame(['merges' => [], 'reviews' => []], $identity->backfill());
+        self::assertDatabaseCount('performer_sources', 1);
+    }
+
+    public function test_backfill_is_idempotent_and_split_can_be_undone(): void
+    {
+        [$first, $second] = $this->samePersonAcrossSources();
+        $movie = Movie::factory()->create();
+        $movie->performers()->attach((int) $second->id, ['source_slug' => 'source-b', 'crawled_at' => now()]);
+        $alias = PerformerAlias::query()->create([
+            'performer_id' => $second->id,
+            'source_performer_id' => $second->id,
+            'source_slug' => 'source-b',
+            'alias' => 'Sakura Aoi Stage Name',
+            'kind' => 'source',
+        ]);
+        $media = PerformerMedia::query()->create([
+            'performer_id' => $second->id,
+            'source_performer_id' => $second->id,
+            'kind' => PerformerMedia::KIND_IMAGE,
+            'url' => 'https://source-b.test/person-b.jpg',
+            'meta' => null,
+            'source_slug' => 'source-b',
+            'crawled_at' => now(),
+        ]);
+        $identity = app(PerformerIdentityService::class);
+
+        $firstRun = $identity->backfill();
+        self::assertCount(1, $firstRun['merges']);
+        self::assertSame((int) $first->id, (int) $second->fresh()->canonical_performer_id);
+        self::assertSame((int) $first->id, (int) $this->sourceFor('source-b', 'person-b')->performer_id);
+        self::assertCount(2, $first->fresh()->sources);
+        self::assertSame((int) $first->id, (int) $alias->fresh()->performer_id);
+        self::assertSame((int) $first->id, (int) $media->fresh()->performer_id);
+        self::assertDatabaseHas('movie_performers', ['movie_id' => $movie->id, 'performer_id' => $first->id]);
+
+        self::assertSame([], $identity->backfill()['merges']);
+        $merge = PerformerIdentityEvent::query()->where('event_type', 'merge')->firstOrFail();
+        $split = $identity->split((int) $merge->id);
+        self::assertNull($second->fresh()->canonical_performer_id);
+        self::assertSame((int) $second->id, (int) $this->sourceFor('source-b', 'person-b')->performer_id);
+        self::assertSame((int) $second->id, (int) $alias->fresh()->performer_id);
+        self::assertSame((int) $second->id, (int) $media->fresh()->performer_id);
+        self::assertDatabaseMissing('movie_performers', ['movie_id' => $movie->id, 'performer_id' => $first->id]);
+
+        $identity->undoSplit((int) $split->id);
+        self::assertSame((int) $first->id, (int) $second->fresh()->canonical_performer_id);
+        self::assertSame((int) $first->id, (int) $this->sourceFor('source-b', 'person-b')->performer_id);
+        self::assertSame((int) $first->id, (int) $alias->fresh()->performer_id);
+        self::assertSame((int) $first->id, (int) $media->fresh()->performer_id);
+        self::assertDatabaseHas('movie_performers', ['movie_id' => $movie->id, 'performer_id' => $first->id]);
+    }
+
+    public function test_split_and_undo_page_many_movie_links_with_bounded_queries(): void
+    {
+        [$first, $second] = $this->samePersonAcrossSources();
+        $movieIds = Movie::factory()->count(1100)->create()->pluck('id')->all();
+        $crawledAt = now()->toDateTimeString();
+        foreach (array_chunk($movieIds, 500) as $chunk) {
+            DB::table('movie_performers')->insert(array_map(
+                static fn(int $id): array => ['movie_id' => $id, 'performer_id' => $second->id, 'source_slug' => 'source-b', 'crawled_at' => $crawledAt],
+                $chunk,
+            ));
+        }
+        $identity = app(PerformerIdentityService::class);
+        $identity->backfill();
+        $merge = PerformerIdentityEvent::query()->where('event_type', 'merge')->firstOrFail();
+
+        self::assertArrayNotHasKey('created_movie_links', $merge->details);
+        self::assertSame(1100, DB::table('performer_identity_event_movie_links')->where('event_id', $merge->id)->count());
+        self::assertSame(1100, DB::table('movie_performers')->where('performer_id', $first->id)->count());
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $split = $identity->split((int) $merge->id);
+        $splitQueries = count(DB::getQueryLog());
+        self::assertSame(0, DB::table('movie_performers')->where('performer_id', $first->id)->count());
+        self::assertSame(1100, DB::table('movie_performers')->where('performer_id', $second->id)->count());
+
+        DB::flushQueryLog();
+        $identity->undoSplit((int) $split->id);
+        $undoQueries = count(DB::getQueryLog());
+        DB::disableQueryLog();
+        self::assertSame(1100, DB::table('movie_performers')->where('performer_id', $first->id)->count());
+
+        // Three pages of 500 at most; per-movie queries would exceed this by orders of magnitude.
+        self::assertLessThan(120, $splitQueries);
+        self::assertLessThan(60, $undoQueries);
+    }
+
+    public function test_split_and_undo_still_read_a_legacy_inline_movie_link_snapshot(): void
+    {
+        [$first, $second] = $this->samePersonAcrossSources();
+        $movie = Movie::factory()->create();
+        $movie->performers()->attach((int) $second->id, ['source_slug' => 'source-b', 'crawled_at' => now()]);
+        $identity = app(PerformerIdentityService::class);
+        $identity->backfill();
+        $merge = PerformerIdentityEvent::query()->where('event_type', 'merge')->firstOrFail();
+        $row = DB::table('performer_identity_event_movie_links')->where('event_id', $merge->id)->first();
+        DB::table('performer_identity_event_movie_links')->where('event_id', $merge->id)->delete();
+        $merge->details = [...$merge->details, 'created_movie_links' => [
+            ['movie_id' => (int) $row->movie_id, 'source_slug' => (string) $row->source_slug, 'crawled_at' => (string) $row->crawled_at],
+        ]];
+        $merge->save();
+
+        $split = $identity->split((int) $merge->id);
+        self::assertDatabaseMissing('movie_performers', ['movie_id' => $movie->id, 'performer_id' => $first->id]);
+        $identity->undoSplit((int) $split->id);
+        self::assertDatabaseHas('movie_performers', ['movie_id' => $movie->id, 'performer_id' => $first->id]);
+    }
+
+    public function test_split_moves_source_links_added_after_the_merge_and_before_the_split(): void
+    {
+        [$first, $second] = $this->samePersonAcrossSources();
+        $identity = app(PerformerIdentityService::class);
+        $identity->backfill();
+        $merge = PerformerIdentityEvent::query()->where('event_type', 'merge')->firstOrFail();
+
+        $late = $this->sourceFor('source-b', 'person-b')->replicate();
+        $late->external_id = 'person-b-late';
+        $late->mongo_id = 'source-b:person-b-late';
+        $late->performer_id = $first->id;
+        $late->save();
+
+        $identity->split((int) $merge->id);
+
+        self::assertSame((int) $second->id, (int) $late->fresh()->performer_id);
+        self::assertCount(2, $second->fresh()->sources);
+        self::assertCount(1, $first->fresh()->sources);
+    }
+
+    public function test_split_of_an_already_split_merge_is_refused(): void
+    {
+        $this->samePersonAcrossSources();
+        $identity = app(PerformerIdentityService::class);
+        $identity->backfill();
+        $merge = PerformerIdentityEvent::query()->where('event_type', 'merge')->firstOrFail();
+        $identity->split((int) $merge->id);
+
+        $this->expectExceptionMessage('An active merge event was not found.');
+        $identity->split((int) $merge->id);
+    }
+
+    public function test_backfill_records_many_reviews_in_bounded_statements(): void
+    {
+        for ($i = 0; $i < 12; $i++) {
+            $this->sourcePerformer('source-a', 'same-' . $i, 'Same Name', '198' . ($i % 10) . '-01-0' . (1 + intdiv($i, 10)));
+        }
+        $identity = app(PerformerIdentityService::class);
+        $first = $identity->backfill();
+        $reviews = DB::table('performer_identity_reviews')->count();
+
+        self::assertSame(count($first['reviews']), $reviews);
+        $second = $identity->backfill();
+        self::assertSame($reviews, DB::table('performer_identity_reviews')->count());
+        self::assertSame($first['merges'], $second['merges']);
+    }
+
+    public function test_undo_moves_source_links_added_after_the_merge_snapshot(): void
+    {
+        [$first, $second] = $this->samePersonAcrossSources();
+        $identity = app(PerformerIdentityService::class);
+        $identity->backfill();
+        $merge = PerformerIdentityEvent::query()->where('event_type', 'merge')->firstOrFail();
+        $split = $identity->split((int) $merge->id);
+
+        $late = $this->sourceFor('source-b', 'person-b')->replicate();
+        $late->external_id = 'person-b-late';
+        $late->mongo_id = 'source-b:person-b-late';
+        $late->performer_id = $second->id;
+        $late->save();
+
+        $identity->undoSplit((int) $split->id);
+
+        self::assertSame((int) $first->id, (int) $late->fresh()->performer_id);
+        self::assertCount(3, $first->fresh()->sources);
+    }
+
+    public function test_merge_preserves_same_alias_from_distinct_source_records(): void
+    {
+        $first = $this->sourcePerformer('source-a', 'person-a', 'Aoi Sakura', '1990-01-01');
+        $second = $this->sourcePerformer('source-a', 'person-b', 'Sakura Aoi', '1990-01-01');
+        foreach ([$first, $second] as $performer) {
+            $performer->aliases()->create([
+                'alias' => 'Aoi',
+                'kind' => 'source',
+                'source_slug' => 'source-a',
+                'source_performer_id' => $performer->id,
+            ]);
+            PerformerMedia::query()->create([
+                'performer_id' => $performer->id,
+                'source_performer_id' => $performer->id,
+                'kind' => PerformerMedia::KIND_IMAGE,
+                'url' => 'https://source-a.test/shared-image.jpg',
+                'meta' => null,
+                'source_slug' => 'source-a',
+                'crawled_at' => now(),
+            ]);
+        }
+
+        $result = app(PerformerIdentityService::class)->backfill();
+
+        self::assertCount(1, $result['merges']);
+        self::assertSame(2, $first->fresh()->aliases()->where('alias', 'Aoi')->count());
+        self::assertSame(2, $first->fresh()->media()->where('url', 'https://source-a.test/shared-image.jpg')->count());
+    }
+
+    public function test_same_name_with_conflicting_birth_dates_stays_separate_and_is_reported(): void
+    {
+        $this->travelTo('2026-11-02T12:34:00Z');
+        $first = $this->sourcePerformer('source-a', 'person-a', 'Mika Aoi', '1990-01-01');
+        $second = $this->sourcePerformer('source-b', 'person-b', 'Mika Aoi', '1986-01-01');
+
+        $result = app(PerformerIdentityService::class)->backfill();
+
+        self::assertSame([], $result['merges']);
+        self::assertCount(1, $result['reviews']);
+        self::assertNull($second->fresh()->canonical_performer_id);
+        self::assertTrue((bool) $first->fresh()->needs_review);
+        self::assertTrue((bool) $second->fresh()->needs_review);
+
+        $createdAt = (string) DB::table('performer_identity_reviews')->value('created_at');
+        try {
+            Carbon::setTestNow(Carbon::parse($createdAt)->addDay());
+            app(PerformerIdentityService::class)->backfill();
+        } finally {
+            Carbon::setTestNow();
+        }
+        self::assertSame($createdAt, (string) DB::table('performer_identity_reviews')->value('created_at'));
+
+        $this->artisan('performers:identity-report')->expectsOutputToContain('birth_date_missing_or_conflicting')->assertSuccessful();
+    }
+
+    public function test_retired_and_renamed_sources_merge_by_cross_link_and_keep_both_names(): void
+    {
+        $retired = $this->sourcePerformer('source-a', 'old-person', 'Ami Natsuki', '1990-01-01');
+        $retired->retired_date = '2020-12-31';
+        $retired->save();
+        $renamed = $this->sourcePerformer('source-b', 'new-person', 'Mina Hope', '1990-01-01');
+        foreach ([$retired, $renamed] as $performer) {
+            $source = $this->sourceFor((string) $performer->source_slug, (string) $performer->external_id);
+            $source->fill(['cross_link_source' => 'shared-catalog', 'cross_link_id' => 'performer-42']);
+            $source->save();
+        }
+
+        $result = app(PerformerIdentityService::class)->backfill();
+
+        self::assertCount(1, $result['merges']);
+        self::assertSame((int) $retired->id, (int) $renamed->fresh()->canonical_performer_id);
+        self::assertEqualsCanonicalizing(
+            ['Ami Natsuki', 'Mina Hope'],
+            $retired->fresh()->sources()->pluck('name_romaji')->all(),
+        );
+    }
+
+    public function test_performer_persistence_keeps_missing_source_fields_and_previous_names(): void
+    {
+        $persister = app(PerformerPersister::class);
+        $first = $persister->persistPerformer(new PerformerDraft(
+            sourceSlug: 'source-a',
+            externalId: 'person-a',
+            nameRomaji: 'Ami Natsuki',
+            nameKanji: '夏樹あみ',
+            profileUrl: 'https://source-a.test/person-a',
+            imageUrl: 'https://source-a.test/person-a.jpg',
+            birthDate: '1990-01-01',
+            aliases: ['Ami'],
+            crossLinkSource: 'shared-catalog',
+            crossLinkId: 'person-42',
+        ));
+
+        $updated = $persister->persistPerformer(new PerformerDraft(
+            sourceSlug: 'source-a',
+            externalId: 'person-a',
+            nameRomaji: 'Mina Hope',
+            aliases: ['Mina'],
+        ));
+
+        $source = $this->sourceFor('source-a', 'person-a');
+        self::assertSame((int) $first->id, (int) $updated->id);
+        self::assertSame('Mina Hope', $source->name_romaji);
+        self::assertSame('夏樹あみ', $source->name_kanji);
+        self::assertSame('1990-01-01', $source->birth_date?->toDateString());
+        self::assertSame('shared-catalog', $source->cross_link_source);
+        self::assertSame('person-42', $source->cross_link_id);
+        self::assertTrue($updated->aliases()->where('alias', 'Ami Natsuki')->exists());
+        self::assertTrue($updated->aliases()->where('alias', 'Ami')->exists());
+        self::assertDatabaseHas('performer_media', [
+            'performer_id' => $updated->id,
+            'source_performer_id' => $updated->id,
+            'url' => 'https://source-a.test/person-a.jpg',
+        ]);
+    }
+
+    public function test_source_removal_keeps_the_canonical_record_and_is_visible_over_rest_and_mcp(): void
+    {
+        [$first, $second] = $this->samePersonAcrossSources();
+        $identity = app(PerformerIdentityService::class);
+        $identity->backfill();
+
+        self::assertTrue($identity->markSourceRemoved('source-b', 'person-b'));
+        self::assertSame(1, Performer::query()->whereNull('canonical_performer_id')->count());
+
+        $apiKey = app(ApiKeyService::class)->create('performer-identity')->plaintext;
+        $rest = $this->getJson('/api/v1/performers/' . $first->id, ['X-API-Key' => $apiKey])
+            ->assertOk()->json('data');
+        $mcp = app(McpToolService::class)->call('get_performer', ['id' => (string) $second->id]);
+
+        self::assertCount(2, $rest['sources']);
+        self::assertFalse(collect($rest['sources'])->firstWhere('source_slug', 'source-b')['active']);
+        self::assertSame($rest['sources'], $mcp['sources']);
+        self::assertSame((int) $first->id, (int) $mcp['id']);
+    }
+
+    public function test_movie_api_returns_one_canonical_performer_with_all_source_records(): void
+    {
+        [$first, $second] = $this->samePersonAcrossSources();
+        $movie = Movie::factory()->create();
+        $movie->performers()->attach((int) $first->id, ['source_slug' => 'source-a', 'crawled_at' => now()]);
+        $movie->performers()->attach((int) $second->id, ['source_slug' => 'source-b', 'crawled_at' => now()]);
+
+        app(PerformerIdentityService::class)->backfill();
+
+        $movie->load(['performers.aliases', 'performers.sources']);
+        $result = (new MovieSummaryResource($movie))->toArray(Request::create('/'));
+
+        self::assertCount(1, $result['performers']);
+        self::assertSame((int) $first->id, (int) $result['performers'][0]['id']);
+        self::assertCount(2, $result['performers'][0]['sources']);
+
+        $searchHits = app(PerformerRepository::class)->findByUuidsForDisplay([
+            (string) $second->uuid,
+            (string) $first->uuid,
+        ]);
+        self::assertCount(1, $searchHits);
+        self::assertSame((int) $first->id, (int) $searchHits->first()->id);
+        self::assertCount(2, $searchHits->first()->sources);
+    }
+
+    public function test_split_and_undo_reject_stale_identity_groups(): void
+    {
+        $first = $this->sourcePerformer('source-a', 'person-a', 'Different Name', '1979-01-01');
+        $second = $this->sourcePerformer('source-b', 'person-b', 'Mika Aoi', '1986-01-01');
+        $third = $this->sourcePerformer('source-c', 'person-c', 'Mika Aoi', '1986-01-01');
+        $identity = app(PerformerIdentityService::class);
+
+        self::assertCount(1, $identity->backfill()['merges']);
+        $firstMerge = PerformerIdentityEvent::query()->where('event_type', 'merge')->orderBy('id')->firstOrFail();
+
+        foreach ([$first, $second] as $performer) {
+            $source = $this->sourceFor((string) $performer->source_slug, (string) $performer->external_id);
+            $source->fill(['cross_link_source' => 'shared-catalog', 'cross_link_id' => 'person-42']);
+            $source->save();
+        }
+
+        self::assertCount(1, $identity->backfill()['merges']);
+        $laterMerge = PerformerIdentityEvent::query()->where('event_type', 'merge')->orderByDesc('id')->firstOrFail();
+
+        try {
+            $identity->split((int) $firstMerge->id);
+            self::fail('A prior merge must not be split while its recorded canonical performer is merged again.');
+        } catch (RuntimeException $exception) {
+            self::assertStringContainsString('Split later merge events first', $exception->getMessage());
+        }
+        self::assertSame((int) $first->id, (int) $second->fresh()->canonical_performer_id);
+        self::assertSame((int) $first->id, (int) $third->fresh()->canonical_performer_id);
+
+        $split = $identity->split((int) $laterMerge->id);
+        foreach ([$first, $second] as $performer) {
+            $source = $this->sourceFor((string) $performer->source_slug, (string) $performer->external_id);
+            $source->fill(['cross_link_source' => null, 'cross_link_id' => null]);
+            $source->save();
+        }
+
+        $fourth = $this->sourcePerformer('source-d', 'person-d', 'Mika Aoi', '1986-01-01');
+        self::assertCount(1, $identity->backfill()['merges']);
+        self::assertSame((int) $second->id, (int) $fourth->fresh()->canonical_performer_id);
+
+        try {
+            $identity->undoSplit((int) $split->id);
+            self::fail('Undo must not overwrite a performer group that changed after the split.');
+        } catch (RuntimeException $exception) {
+            self::assertStringContainsString('Restore later identity changes', $exception->getMessage());
+        }
+
+        self::assertSame((int) $second->id, (int) $fourth->fresh()->canonical_performer_id);
+        self::assertSame((int) $second->id, (int) $this->sourceFor('source-d', 'person-d')->performer_id);
+    }
+
+    /** @return array{Performer, Performer} */
+    private function samePersonAcrossSources(): array
+    {
+        return [
+            $this->sourcePerformer('source-a', 'person-a', 'Aoi Sakura', '1990-01-01'),
+            $this->sourcePerformer('source-b', 'person-b', 'Sakura Aoi', '1990-01-01'),
+        ];
+    }
+
+    private function sourcePerformer(string $source, string $externalId, string $name, string $birthDate): Performer
+    {
+        $performer = Performer::factory()->create([
+            'source_slug' => $source,
+            'external_id' => $externalId,
+            'name_romaji' => $name,
+            'birth_date' => $birthDate,
+        ]);
+        PerformerSource::query()->create([
+            'performer_id' => $performer->id,
+            'source_performer_id' => $performer->id,
+            'site_slug' => $source,
+            'mongo_id' => $source . ':' . $externalId,
+            'external_id' => $externalId,
+            'source_url' => 'https://' . $source . '.test/' . $externalId,
+            'name_romaji' => $name,
+            'birth_date' => $birthDate,
+            'crawled_at' => now(),
+        ]);
+
+        return $performer;
+    }
+
+    private function sourceFor(string $source, string $externalId): PerformerSource
+    {
+        return PerformerSource::query()->where('site_slug', $source)->where('external_id', $externalId)->firstOrFail();
+    }
+}

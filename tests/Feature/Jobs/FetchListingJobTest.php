@@ -4,17 +4,24 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Jobs;
 
+use App\Enums\CrawlErrorCode;
 use App\Jobs\FetchListingJob;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
+use App\Models\Movie;
+use App\Models\MovieCode;
+use App\Models\MovieMedia;
 use App\Models\Source;
 use App\Services\Crawler\CrawlerxClient;
 use App\Services\Crawler\CrawlerxFetchResult;
+use App\Services\Persist\GalleryPersister;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use JOOservices\CrawlerX\Dto\CrawlItemResultDto;
 use JOOservices\CrawlerX\Dto\CrawlListResultDto;
 use JOOservices\CrawlerX\Dto\CrawlPaginationDto;
+use JOOservices\CrawlerX\Dto\Entity\GalleryDto;
+use JOOservices\CrawlerX\Dto\Entity\PhotoDto;
 use Tests\Support\FakeCrawlerxClient;
 use Tests\TestCase;
 
@@ -24,6 +31,7 @@ final class FetchListingJobTest extends TestCase
 
     public function test_success_enqueues_detail_and_next_listing_rows_and_marks_done(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
         $source = $this->source('onejav');
         $row = $this->listingRow($source);
 
@@ -49,13 +57,154 @@ final class FetchListingJobTest extends TestCase
         $this->assertDatabaseHas('crawl_queue', ['source_slug' => 'onejav', 'url' => 'https://onejav.com/torrent/abc123', 'kind' => CrawlQueue::KIND_DETAIL]);
         $this->assertDatabaseHas('crawl_queue', ['source_slug' => 'onejav', 'url' => 'https://onejav.com/new?page=2', 'kind' => CrawlQueue::KIND_LISTING]);
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
+        $this->assertSame(
+            now()->addMinutes((int) config('javmeta_sources.defaults.loop.fresh_interval_minutes', 60))->getTimestamp(),
+            $row->fresh()->next_attempt_at?->getTimestamp(),
+        );
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => 'listing_parsed']);
-        $this->assertDatabaseHas('sources', ['slug' => 'onejav', 'circuit_state' => Source::CIRCUIT_CLOSED, 'consecutive_failures' => 0]);
+        $this->assertNotNull(Source::query()->find('onejav')?->last_success_at);
         self::assertNotNull($source->refresh()->last_success_at);
         self::assertLessThan(2.0, (float) $source->refresh()->gap_seconds_current);
     }
 
-    public function test_blocked_failure_records_blocked_event_and_fails_row(): void
+    public function test_recrawled_listing_does_not_requeue_a_known_detail_page(): void
+    {
+        $source = $this->source('onejav');
+        $row = $this->listingRow($source);
+        $detailUrl = 'https://onejav.com/torrent/abc123';
+        $detail = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'url' => $detailUrl,
+            'kind' => CrawlQueue::KIND_DETAIL,
+            'status' => CrawlQueue::STATUS_DONE,
+            'attempts' => 1,
+        ]);
+
+        $this->fakeClient(CrawlerxFetchResult::success(new CrawlListResultDto(
+            url: 'https://onejav.com/new',
+            page: 1,
+            entityType: 'movie',
+            items: [$this->movieItem($detailUrl, 'ABC-123')],
+            pagination: new CrawlPaginationDto(currentPage: 1, lastPage: null, nextPage: null, nextUrl: null, hasNextPage: false),
+        )));
+
+        FetchListingJob::dispatch($row->id);
+
+        self::assertSame(CrawlQueue::STATUS_DONE, $detail->refresh()->status);
+        self::assertSame(1, $detail->attempts);
+        self::assertSame(1, CrawlQueue::query()->where('source_slug', $source->slug)->where('url', $detailUrl)->count());
+    }
+
+    public function test_success_enqueues_items_by_next_crawl_type_hint(): void
+    {
+        $source = $this->source('onejav');
+        $row = $this->listingRow($source);
+
+        $this->fakeClient(CrawlerxFetchResult::success(new CrawlListResultDto(
+            url: 'https://onejav.com/new',
+            page: 1,
+            entityType: 'movie',
+            items: [
+                (new CrawlItemResultDto(
+                    url: 'https://onejav.com/actress/',
+                    entityType: 'performer',
+                    meta: [],
+                    nextCrawlType: 'performer_listing',
+                )),
+                $this->movieItem('https://onejav.com/torrent/ymds282', 'YMDS-282'),
+            ],
+            pagination: new CrawlPaginationDto(currentPage: 1, lastPage: null, nextPage: null, nextUrl: null, hasNextPage: false),
+        )));
+
+        FetchListingJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', ['source_slug' => 'onejav', 'url' => 'https://onejav.com/actress/', 'kind' => CrawlQueue::KIND_PERFORMER_LISTING]);
+        $this->assertDatabaseHas('crawl_queue', ['source_slug' => 'onejav', 'url' => 'https://onejav.com/torrent/ymds282', 'kind' => CrawlQueue::KIND_DETAIL]);
+    }
+
+    public function test_gallery_listing_enqueues_gallery_items_and_next_listing_page(): void
+    {
+        self::assertSame(CrawlQueue::KIND_GALLERY, CrawlQueue::kindForNextCrawlType(null, 'gallery'));
+
+        $source = $this->source('javphotos');
+        $row = $this->listingRow($source);
+
+        $this->fakeClient(CrawlerxFetchResult::success(new CrawlListResultDto(
+            url: 'https://jav.photos/free/',
+            page: 1,
+            entityType: 'gallery',
+            items: [
+                new CrawlItemResultDto(
+                    url: 'https://jav.photos/gallery/ssis-001/',
+                    entityType: 'gallery',
+                    meta: ['gallery' => ['metadata' => ['movie_code' => 'SSIS-001']]],
+                    nextCrawlType: 'gallery',
+                ),
+            ],
+            pagination: new CrawlPaginationDto(currentPage: 1, lastPage: null, nextPage: 2, nextUrl: 'https://jav.photos/free/page/2/', hasNextPage: true),
+        )));
+
+        FetchListingJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', [
+            'source_slug' => 'javphotos',
+            'url' => 'https://jav.photos/gallery/ssis-001/',
+            'kind' => CrawlQueue::KIND_GALLERY,
+            'status' => CrawlQueue::STATUS_PENDING,
+        ]);
+        $this->assertDatabaseHas('crawl_queue', [
+            'source_slug' => 'javphotos',
+            'url' => 'https://jav.photos/free/page/2/',
+            'kind' => CrawlQueue::KIND_LISTING,
+            'status' => CrawlQueue::STATUS_PENDING,
+        ]);
+        $this->assertDatabaseHas('crawl_events', ['source_slug' => 'javphotos', 'kind' => 'gallery_listing_parsed']);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
+    }
+
+    public function test_gallery_persister_attaches_media_using_metadata_movie_code(): void
+    {
+        $movie = Movie::factory()->create([
+            'display_code' => 'SSIS-001',
+            'code_normalized' => 'SSIS001',
+        ]);
+        MovieCode::factory()->create([
+            'movie_id' => $movie->id,
+            'code' => 'SSIS-001',
+            'code_normalized' => 'SSIS001',
+            'kind' => MovieCode::KIND_DVD,
+            'source_slug' => 'javdb',
+        ]);
+
+        app(GalleryPersister::class)->persist(
+            'javphotos',
+            'https://jav.photos/gallery/unhelpful-title/',
+            new GalleryDto(
+                externalId: 'gallery-1',
+                title: 'No usable title code here',
+                performers: [],
+                photos: [
+                    new PhotoDto(
+                        id: '1',
+                        url: 'https://jav.photos/photo/1',
+                        imageUrl: 'https://jav.photos/full/1.jpg',
+                        thumbnailUrl: 'https://jav.photos/thumb/1.jpg',
+                        position: 1,
+                    ),
+                ],
+                metadata: ['movie_code' => 'ssis-1'],
+            ),
+        );
+
+        $this->assertDatabaseHas('movie_media', [
+            'movie_id' => $movie->id,
+            'kind' => MovieMedia::KIND_GALLERY,
+            'url' => 'https://jav.photos/full/1.jpg',
+            'source_slug' => 'javphotos',
+        ]);
+    }
+
+    public function test_blocked_failure_records_blocked_event_and_retries_after_a_delay(): void
     {
         $source = $this->source('onejav');
         $row = $this->listingRow($source);
@@ -65,8 +214,14 @@ final class FetchListingJobTest extends TestCase
         FetchListingJob::dispatch($row->id);
 
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_BLOCKED]);
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'attempts' => 1, 'last_error' => 'Blocked by site.']);
-        $this->assertDatabaseHas('sources', ['slug' => 'onejav', 'consecutive_failures' => 1, 'circuit_state' => Source::CIRCUIT_CLOSED]);
+        $this->assertDatabaseHas('crawl_queue', [
+            'id' => $row->id,
+            'status' => CrawlQueue::STATUS_PENDING,
+            'attempts' => 1,
+            'last_error' => 'Blocked by site.',
+            'error_code' => CrawlErrorCode::Blocked->value,
+        ]);
+        $this->assertDatabaseHas('sources', ['slug' => 'onejav', 'last_error' => 'Blocked by site.']);
         self::assertSame(4.0, (float) $source->refresh()->gap_seconds_current);
     }
 
@@ -80,7 +235,7 @@ final class FetchListingJobTest extends TestCase
         FetchListingJob::dispatch($row->id);
 
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_CHALLENGE]);
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_PENDING, 'error_code' => CrawlErrorCode::Challenge->value]);
     }
 
     public function test_parse_failure_records_parse_drift_event(): void
@@ -93,7 +248,7 @@ final class FetchListingJobTest extends TestCase
         FetchListingJob::dispatch($row->id);
 
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_PARSE_DRIFT]);
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'error_code' => CrawlErrorCode::ParseFailed->value]);
     }
 
     public function test_non_movie_listing_records_parse_drift_and_marks_row_done_without_detail_rows(): void
@@ -122,7 +277,7 @@ final class FetchListingJobTest extends TestCase
             'source_slug' => 'ghost',
             'url' => 'https://ghost.test/new',
             'kind' => CrawlQueue::KIND_LISTING,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
         ]);
 
         $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'));
@@ -130,7 +285,7 @@ final class FetchListingJobTest extends TestCase
         FetchListingJob::dispatch($row->id);
 
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'ghost', 'kind' => CrawlEvent::KIND_PARSE_DRIFT]);
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'error_code' => CrawlErrorCode::UnknownSource->value]);
         $this->assertDatabaseMissing('sources', ['slug' => 'ghost']);
     }
 
@@ -164,7 +319,8 @@ final class FetchListingJobTest extends TestCase
             'source_slug' => $source->slug,
             'url' => 'https://onejav.com/new',
             'kind' => CrawlQueue::KIND_LISTING,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'attempts' => 0,
             'max_attempts' => 3,
         ]);
     }

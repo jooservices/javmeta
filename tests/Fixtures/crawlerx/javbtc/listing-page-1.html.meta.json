@@ -1,0 +1,10 @@
+{
+  "source_url": "https://javbtc.com/",
+  "final_url": "https://javbtc.com/",
+  "captured_at": "2026-09-09T04:14:57.540Z",
+  "http_status": 200,
+  "content_hash": "67d05b127bf31ab2aaf0f94edc0d3b76dc47bb704cdcec81d647686ed6e58bba",
+  "target_type": "listing",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

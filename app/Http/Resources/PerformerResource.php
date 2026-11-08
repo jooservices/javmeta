@@ -5,10 +5,14 @@ declare(strict_types=1);
 namespace App\Http\Resources;
 
 use App\Data\Crawl\PerformerDraft;
+use App\Data\Api\PhotosDto;
+use App\Http\Resources\Concerns\FormatsPhotos;
 use App\Http\Resources\Concerns\FormatsResourceValues;
 use App\Models\Performer;
+use App\Models\PerformerMedia;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Collection;
 
 /**
  * Full performer detail for GET /performers/{id}.
@@ -16,6 +20,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 final class PerformerResource extends JsonResource
 {
     use FormatsResourceValues;
+    use FormatsPhotos;
 
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
@@ -33,11 +38,14 @@ final class PerformerResource extends JsonResource
                     'hip' => null,
                     'cup' => null,
                     'blood_type' => null,
+                    'blood_rh' => null,
                     'bio_text' => null,
                     'debut_date' => null,
+                    'retired_date' => null,
                     'location' => null,
                     'attrs' => [],
                     'linked_title_count' => null,
+                    'photos' => (new PhotosDto())->toArray(),
                 ],
             );
         }
@@ -50,6 +58,11 @@ final class PerformerResource extends JsonResource
                 'name_kanji' => $resource->name_kanji,
                 'name_kana' => $resource->name_kana,
                 'aliases' => $this->whenLoaded('aliases', fn(): array => $resource->aliases->pluck('alias')->all(), []),
+                'sources' => $this->whenLoaded(
+                    'sources',
+                    fn(): array => $resource->sources->map(fn($source): array => (new PerformerSourceResource($source))->toArray($request))->all(),
+                    [],
+                ),
                 'birth_date' => $this->dateString($resource->getAttribute('birth_date')),
                 'height_cm' => $resource->height_cm,
                 'bust' => $resource->bust,
@@ -57,13 +70,20 @@ final class PerformerResource extends JsonResource
                 'hip' => $resource->hip,
                 'cup' => $resource->cup,
                 'blood_type' => $resource->blood_type,
+                'blood_rh' => $resource->blood_rh,
                 'bio_text' => $resource->bio_text,
                 'debut_date' => $this->dateString($resource->getAttribute('debut_date')),
+                'retired_date' => $this->dateString($resource->getAttribute('retired_date')),
                 'location' => $resource->location,
                 'attrs' => $this->attrsArray($resource->getAttribute('attrs')),
                 'linked_title_count' => $this->whenCounted('movies'),
                 'profile_url' => $resource->profile_url,
                 'image_url' => $resource->image_url,
+                'photos' => $this->photos(
+                    $resource->relationLoaded('media') ? $resource->media : new Collection(),
+                    [PerformerMedia::KIND_IMAGE],
+                    PerformerMedia::KIND_GALLERY,
+                )->toArray(),
             ];
         }
 

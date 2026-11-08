@@ -1,0 +1,10 @@
+{
+  "source_url": "https://www.javdatabase.com/idols/",
+  "final_url": "https://www.javdatabase.com/idols/",
+  "captured_at": "2026-09-09T04:10:24.570Z",
+  "http_status": 200,
+  "content_hash": "5eb9d39d1c6134933613251285966f5f996e2195cea4f46d58e5a08d5c8b5c41",
+  "target_type": "performer_listing",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

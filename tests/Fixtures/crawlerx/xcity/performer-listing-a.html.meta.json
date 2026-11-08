@@ -1,0 +1,10 @@
+{
+  "source_url": "https://xxx.xcity.jp/idol/?ini=%E3%81%82&num=100",
+  "final_url": "https://xxx.xcity.jp/idol/?ini=%E3%81%82&num=100",
+  "captured_at": "2026-09-09T04:37:13.165Z",
+  "http_status": 200,
+  "content_hash": "aa46f402527d480148170003c46c66f24b0fb63b4261f8913e15011fa17f9195",
+  "target_type": "performer_listing",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

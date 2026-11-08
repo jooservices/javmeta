@@ -1,0 +1,150 @@
+name: javmeta-production
+
+x-php-service: &php-service
+  image: ${JAVMETA_IMAGE:?JAVMETA_IMAGE must be set}
+  working_dir: /var/www/html
+  env_file:
+    - ${JAVMETA_ENV_FILE:-deploy/production.env}
+  environment:
+    APP_ENV: production
+    APP_DEBUG: "false"
+  user: "10001:10001"
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  volumes:
+    - javmeta-storage:/var/www/html/storage
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+  restart: unless-stopped
+
+services:
+  api:
+    <<: *php-service
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
+    ports:
+      - "${JAVMETA_API_BIND:-127.0.0.1:8080}:8080"
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      CRAWLERX_FLARESOLVERR_REQUIRED: "false"
+      JAVMETA_ROLE: api
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/api/health/live >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    profiles:
+      - control
+
+  scheduler:
+    <<: *php-service
+    command: ["php", "artisan", "schedule:work"]
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      CRAWLERX_FLARESOLVERR_REQUIRED: "false"
+      JAVMETA_ROLE: scheduler
+    profiles:
+      - control
+
+  mcp:
+    <<: *php-service
+    command: ["php", "artisan", "mcp:serve"]
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      CRAWLERX_FLARESOLVERR_REQUIRED: "false"
+      JAVMETA_ROLE: mcp
+    profiles:
+      - control
+
+  embedder:
+    image: ${JAVMETA_EMBEDDER_IMAGE:?JAVMETA_EMBEDDER_IMAGE must be set}
+    ports:
+      - "${JAVMETA_EMBEDDER_BIND:-127.0.0.1:8000}:8000"
+    environment:
+      HF_HOME: /home/embedder/.cache/huggingface
+    user: "10001:10001"
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - embedder-model-cache:/home/embedder/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    restart: unless-stopped
+    profiles:
+      - control
+
+  worker:
+    <<: *php-service
+    command: ["sh", "-ec", "if [ \"$${QUEUE_CONNECTION:-redis}\" = redis ]; then exec php artisan horizon; else exec crawlerx-fetch-ready worker-queues; fi"]
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      CRAWLERX_FLARESOLVERR_REQUIRED: "true"
+      JAVMETA_ROLE: worker
+    depends_on:
+      - flaresolverr
+    shm_size: 1gb
+    healthcheck:
+      test: ["CMD-SHELL", "if [ \"$${QUEUE_CONNECTION:-redis}\" = redis ]; then php artisan horizon:status; else kill -0 1; fi"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    profiles:
+      - crawler
+
+  flaresolverr:
+    image: ${FLARESOLVERR_IMAGE:-ghcr.io/flaresolverr/flaresolverr:v3.4.1}
+    environment:
+      LOG_LEVEL: info
+      HEADLESS: "true"
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    restart: unless-stopped
+    profiles:
+      - crawler
+
+  migrate:
+    <<: *php-service
+    entrypoint: ["php"]
+    command: ["artisan", "migrate", "--force"]
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+    restart: "no"
+    profiles:
+      - migration
+
+volumes:
+  javmeta-storage:
+  embedder-model-cache:

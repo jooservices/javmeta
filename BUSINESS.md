@@ -1,4 +1,4 @@
-# BUSINESS PLAN — "JAV Metadata API" (codename `jvmeta`)
+# BUSINESS PLAN — "JAV Metadata API" (codename `javmeta`)
 
 Status: **Approved** (requirements gate closed, 2026-09-17). Source of truth;
 decision log ở mục 9. Root overview:
@@ -6,7 +6,7 @@ decision log ở mục 9. Root overview:
 
 **Phase:** requirements (BA round) · **Trọng tâm đã chốt: POC trước, thương mại hoá hoãn**
 **Tác giả:** `joo-ba` · bản ghi do `joo-doc-writer` từ nội dung root đã duyệt.
-Tên sản phẩm cuối: TBD bởi owner — dùng codename `jvmeta` (OQ-13).
+Tên sản phẩm cuối: TBD bởi owner — dùng codename `javmeta` (OQ-13).
 
 ---
 
@@ -362,7 +362,7 @@ Endpoint health cho biết hệ thống sống/chết + lần crawl thành công
 | **OQ-10** | Ngôn ngữ của `BUSINESS.md`? | 🟢 | Tài liệu này tiếng Việt (đúng rule chat). **Nếu đổ vào JIRA → bắt buộc tiếng Anh** (rule English-only). Đề xuất `joo-doc-writer` giữ bản tiếng Việt cho owner duyệt, và tạo bản tiếng Anh khi vào JIRA. |
 | **OQ-11** | Kênh cảnh báo owner chọn cho AC-9.2 là gì (email / Telegram / log)? | 🟢 | Chưa hỏi — cần chốt trước khi implement REQ-9. |
 | **OQ-12** | Ngưỡng lạm dụng (AC-7.4) và ngưỡng retry (AC-9.3) đặt bao nhiêu? | 🟢 | Đề xuất để owner cấu hình được, giá trị mặc định chốt ở vòng planning. |
-| **OQ-13** | Tên sản phẩm? | 🟢 | Owner nói TBD — dùng codename `jvmeta`. |
+| **OQ-13** | Tên sản phẩm? | 🟢 | Owner nói TBD — dùng codename `javmeta`. |
 
 ---
 

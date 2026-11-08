@@ -1,0 +1,10 @@
+{
+  "source_url": "https://missav.ws/en/new",
+  "final_url": "https://missav.ws/dm539/en/new",
+  "captured_at": "2026-09-09T04:16:34.788Z",
+  "http_status": 200,
+  "content_hash": "4254299974cf1e4d5ad47c1242e0b3d6d9365672e1d7c999c59910565bfaf069",
+  "target_type": "listing",
+  "fetch_method": "puppeteer",
+  "sanitized": false
+}

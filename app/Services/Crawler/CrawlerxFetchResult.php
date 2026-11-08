@@ -19,7 +19,17 @@ final readonly class CrawlerxFetchResult
         public ?GalleryDto $gallery = null,
         public ?string $errorCode = null,
         public ?string $errorMessage = null,
+        public bool $retryable = false,
+        public ?int $retryAfterSeconds = null,
+        /** @var list<array<string, mixed>> CrawlerX fetch attempts; diagnostic fields are optional on older releases. */
+        public array $attempts = [],
     ) {}
+
+    /** @param list<array<string, mixed>> $attempts */
+    public function withAttempts(array $attempts): self
+    {
+        return new self($this->ok, $this->list, $this->movie, $this->performer, $this->gallery, $this->errorCode, $this->errorMessage, $this->retryable, $this->retryAfterSeconds, $attempts);
+    }
 
     public static function success(CrawlListResultDto $list): self
     {
@@ -41,8 +51,21 @@ final readonly class CrawlerxFetchResult
         return new self(ok: true, gallery: $gallery);
     }
 
-    public static function failure(string $errorCode, string $errorMessage): self
-    {
-        return new self(ok: false, errorCode: $errorCode, errorMessage: $errorMessage);
+    /** @param list<array<string, mixed>> $attempts */
+    public static function failure(
+        string $errorCode,
+        string $errorMessage,
+        bool $retryable = false,
+        ?int $retryAfterSeconds = null,
+        array $attempts = [],
+    ): self {
+        return new self(
+            ok: false,
+            errorCode: $errorCode,
+            errorMessage: $errorMessage,
+            retryable: $retryable,
+            retryAfterSeconds: $retryAfterSeconds,
+            attempts: $attempts,
+        );
     }
 }

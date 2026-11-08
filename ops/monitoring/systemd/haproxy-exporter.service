@@ -1,0 +1,30 @@
+[Unit]
+Description=Prometheus exporter for HAProxy on gatekeeper
+After=network-online.target haproxy.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+Group=haproxy
+ExecStart=/usr/local/bin/haproxy_exporter --haproxy.scrape-uri=unix:/run/haproxy/admin.sock --web.listen-address=192.168.10.4:9101
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+IPAddressAllow=192.168.10.10
+IPAddressDeny=any
+RestrictAddressFamilies=AF_UNIX AF_INET
+
+[Install]
+WantedBy=multi-user.target

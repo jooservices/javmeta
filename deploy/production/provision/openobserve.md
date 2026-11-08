@@ -1,0 +1,9 @@
+# OpenObserve (operator with administrator access)
+
+1. Open the existing OpenObserve UI at `http://192.168.10.18:5080`; sign in as its administrator. Select organization **default** (do not create a different organization).
+2. In **IAM → Users → Add user**, create the dedicated ingestion identity. Supply its private email/password through the operator's secret manager. Assign **Member** on `default` (the built-in role permits ingestion; do not use Root). If the installed edition supports custom roles, grant ingestion to these two streams only and verify it before reducing permissions.
+3. In **Ingestion → Custom → JSON**, select `default`, enter stream `xcrawler_logs`, and ingest `[{"event":"production_provisioning_check","service":"XCrawler"}]`. Repeat for `xcrawler_metrics` with `[{"name":"production_provisioning_check","value":1}]`. Both are log-type JSON streams: the application's metrics sender also uses the JSON ingestion endpoint, not Prometheus remote-write. Existing streams are reused; never delete them on a rerun.
+4. Under **Streams**, confirm both names; under **Logs**, select each and confirm the check event. Repeat ingestion as the dedicated identity to prove permissions, then sign out of the admin session.
+5. Privately fill `OPENOBSERVE_EMAIL` and `OPENOBSERVE_PASSWORD` in `shared/.env`. Endpoint keys are `OPENOBSERVE_URL=http://192.168.10.18:5080`, `OPENOBSERVE_ORG=default`, `OPENOBSERVE_STREAM_LOGS=xcrawler_logs`, `OPENOBSERVE_STREAM_METRICS=xcrawler_metrics`. In Settings, enable `observability.openobserve_enabled`; choose `observability.trace_sample_rate` to suit retention capacity.
+
+Do not paste an administrator credential into application configuration. UI labels vary by installed OpenObserve version; verify the effective organization and ingestion permission, not merely successful user creation. This UI procedure is verified only by reading: this task has no VM access. CI exercises application ingestion separately.

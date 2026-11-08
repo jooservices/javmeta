@@ -5,17 +5,11 @@ declare(strict_types=1);
 namespace App\Repositories;
 
 use App\Models\Movie;
+use DateTimeImmutable;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
-use JOOservices\LaravelRepository\Contracts\RepositoryInterface;
-use JOOservices\LaravelRepository\Repositories\EloquentRepository;
-use JOOservices\LaravelRepository\Traits\HasCrud;
-use JOOservices\LaravelRepository\Traits\HasFilter;
-use JOOservices\LaravelRepository\Traits\HasOrder;
-use JOOservices\LaravelRepository\Traits\HasRead;
-use JOOservices\LaravelRepository\Traits\HasRequestQuery;
 
 /**
  * Movie search (REQ-4, AD-11): filtered, sorted, keyset-paginated reads.
@@ -35,14 +29,8 @@ use JOOservices\LaravelRepository\Traits\HasRequestQuery;
  *   (release_date DESC, id DESC), (updated_at DESC, id DESC) and
  *   (community_score DESC NULLS LAST, id DESC).
  */
-final class MovieRepository extends EloquentRepository implements RepositoryInterface
+final class MovieRepository extends BusinessQueryRepository
 {
-    use HasCrud;
-    use HasFilter;
-    use HasOrder;
-    use HasRead;
-    use HasRequestQuery;
-
     /** @var array<string, string> cursor sort => movies column */
     private const SORT_COLUMNS = [
         'release_date' => 'release_date',
@@ -53,6 +41,117 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
     public function __construct(Movie $model)
     {
         parent::__construct($model);
+    }
+
+    /** @return array{items: list<array{name: string, movie_count: int}>, total: int} */
+    public function movieCatalog(string $kind, string $query, string $sort, int $perPage, int $page): array
+    {
+        $nameColumn = match ($kind) {
+            'genres' => 'COALESCE(genres.label_raw, genres.label_normalized)',
+            'years' => $this->yearExpression(),
+            default => $this->catalogColumn($kind),
+        };
+        $base = match ($kind) {
+            'genres' => DB::table('genres')->join('movie_genres', 'movie_genres.genre_id', '=', 'genres.id')
+                ->selectRaw($nameColumn . ' AS name, COUNT(DISTINCT movie_genres.movie_id) AS movie_count')
+                ->groupByRaw($nameColumn),
+            'years' => DB::table('movies')->whereNotNull('release_date')
+                ->selectRaw($nameColumn . ' AS name, COUNT(*) AS movie_count')
+                ->groupByRaw($nameColumn),
+            default => DB::table('movies')->whereNotNull($nameColumn)->where($nameColumn, '<>', '')
+                ->selectRaw($nameColumn . ' AS name, COUNT(*) AS movie_count')
+                ->groupBy($nameColumn),
+        };
+
+        if ($query !== '') {
+            $pattern = '%' . mb_strtolower(str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $query)) . '%';
+            $kind === 'years'
+                ? $base->whereRaw('CAST(' . $nameColumn . ' AS TEXT) LIKE ?', [$pattern])
+                : $base->whereRaw('LOWER(' . $nameColumn . ') LIKE ?', [$pattern]);
+        }
+
+        $total = (int) DB::query()->fromSub(clone $base, 'c')->count();
+        $order = $sort === 'name' ? ($kind === 'years' ? 'name DESC' : 'name ASC') : 'movie_count DESC, name ASC';
+        $rows = DB::query()->fromSub($base, 'c')->orderByRaw($order)->forPage($page, $perPage)->get(['name', 'movie_count']);
+
+        /** @var list<array{name: string, movie_count: int}> $items */
+        $items = $rows->map(static fn(object $row): array => ['name' => (string) $row->name, 'movie_count' => (int) $row->movie_count])->all();
+
+        return ['items' => $items, 'total' => $total];
+    }
+
+    public function countAll(): int
+    {
+        return $this->newQuery()->count();
+    }
+
+    public function latestReleaseDate(): ?string
+    {
+        $latest = $this->tableQuery('movies')->whereNull('delisted_at')->whereNotNull('release_date')->max('release_date');
+
+        return is_string($latest) ? $latest : null;
+    }
+
+    /**
+     * @return list<array{
+     *     release_date: string,
+     *     display_code: ?string,
+     *     title_en: ?string,
+     *     title_jp: ?string,
+     *     cover_thumb_url: ?string,
+     *     cover_url: ?string,
+     *     maker: ?string
+     * }>
+     */
+    public function releaseCalendarRows(string $month): array
+    {
+        $from = new DateTimeImmutable($month . '-01');
+        $until = $from->modify('+1 month')->format('Y-m-d');
+        $rows = $this->tableQuery('movies')
+            ->where('release_date', '>=', $from->format('Y-m-d'))
+            ->where('release_date', '<', $until)
+            ->whereNull('delisted_at')
+            ->orderBy('release_date')
+            ->orderByDesc('community_score')
+            ->orderBy('id')
+            ->get(['release_date', 'display_code', 'title_en', 'title_jp', 'cover_thumb_url', 'cover_url', 'maker']);
+
+        return $rows->map(static fn(object $row): array => [
+            'release_date' => (string) $row->release_date,
+            'display_code' => $row->display_code === null ? null : (string) $row->display_code,
+            'title_en' => $row->title_en === null ? null : (string) $row->title_en,
+            'title_jp' => $row->title_jp === null ? null : (string) $row->title_jp,
+            'cover_thumb_url' => $row->cover_thumb_url === null ? null : (string) $row->cover_thumb_url,
+            'cover_url' => $row->cover_url === null ? null : (string) $row->cover_url,
+            'maker' => $row->maker === null ? null : (string) $row->maker,
+        ])->all();
+    }
+
+    public function countFirstSeenSince(DateTimeInterface $since): int
+    {
+        return $this->newQuery()->where('first_seen_at', '>=', $since)->count();
+    }
+
+    public function libraryMovieByCode(string $normalizedCode): ?object
+    {
+        return DB::table('movie_codes')
+            ->join('movies', 'movies.id', '=', 'movie_codes.movie_id')
+            ->where('movie_codes.code_normalized', $normalizedCode)
+            ->first(['movies.id', 'movies.display_code']);
+    }
+
+    private function catalogColumn(string $kind): string
+    {
+        return match ($kind) {
+            'makers' => 'maker',
+            'labels' => 'label',
+            default => 'series',
+        };
+    }
+
+    private function yearExpression(): string
+    {
+        return DB::getDriverName() === 'sqlite' ? "CAST(strftime('%Y', release_date) AS INTEGER)" : 'EXTRACT(YEAR FROM release_date)::int';
     }
 
     /**
@@ -76,7 +175,7 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
         // the deterministic fallback so a bare /movies call still sorts well.
         $effectiveSort = $sort === 'relevance' && $q === null ? 'release_date' : $sort;
 
-        $query = $this->newQuery()->with(['codes', 'performers', 'genres', 'media']);
+        $query = $this->newQuery()->with(['codes', 'performers.aliases', 'performers.sources', 'genres', 'media']);
         $this->applyFilters($query, $filters, $q);
         $total = $query->count();
 
@@ -104,7 +203,25 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
     }
 
     /**
+     * Accurate total for a filter set without hydrating items (Postgres path).
+     *
      * @param  array<string, mixed>  $filters
+     */
+    public function countFiltered(array $filters): int
+    {
+        $q = isset($filters['q']) && is_string($filters['q']) ? trim($filters['q']) : null;
+        $q = $q === '' ? null : $q;
+
+        $query = $this->newQuery();
+        $this->applyFilters($query, $filters, $q);
+
+        return $query->count();
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     *
+     * @SuppressWarnings("PHPMD.ExcessiveMethodLength")
      */
     private function applyFilters(Builder $query, array $filters, ?string $q): void
     {
@@ -114,28 +231,72 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
 
         $like = $this->likeOperator();
 
-        $genre = $filters['genre'] ?? null;
-        if (is_string($genre) && $genre !== '') {
-            $pattern = '%' . $genre . '%';
-            $query->whereHas('genres', static function (Builder $genres) use ($like, $pattern): void {
-                $genres->where('label_normalized', $like, $pattern)
-                    ->orWhere('label_raw', $like, $pattern);
+        $genres = self::list($filters['genre'] ?? null);
+        if ($genres !== []) {
+            $all = (string) ($filters['genre_all'] ?? '0') === '1';
+            $one = static function (Builder $query, string $genre) use ($like): void {
+                $pattern = '%' . self::escapeLike($genre) . '%';
+                $query->whereHas('genres', static function (Builder $g) use ($like, $pattern): void {
+                    $g->where('label_normalized', $like, $pattern)->orWhere('label_raw', $like, $pattern);
+                });
+            };
+            if ($all) {
+                foreach ($genres as $genre) {
+                    $one($query, $genre);
+                }
+            } else {
+                $query->where(static function (Builder $any) use ($genres, $one): void {
+                    foreach ($genres as $genre) {
+                        $any->orWhere(static function (Builder $w) use ($one, $genre): void {
+                            $one($w, $genre);
+                        });
+                    }
+                });
+            }
+        }
+
+        $code = $filters['code'] ?? null;
+        if (is_string($code) && $code !== '') {
+            $pattern = '%' . $code . '%';
+            $query->where(static function (Builder $movies) use ($like, $pattern): void {
+                $movies->where('display_code', $like, $pattern)
+                    ->orWhere('code_normalized', $like, $pattern)
+                    ->orWhereHas('codes', static function (Builder $codes) use ($like, $pattern): void {
+                        $codes->where('code', $like, $pattern)
+                            ->orWhere('code_normalized', $like, $pattern);
+                    });
             });
         }
 
         $actress = $filters['actress'] ?? null;
         if (is_string($actress) && $actress !== '') {
-            $pattern = '%' . $actress . '%';
-            $query->whereHas('performers', static function (Builder $performers) use ($like, $pattern): void {
-                $performers->where(static function (Builder $names) use ($like, $pattern): void {
-                    $names->where('name_romaji', $like, $pattern)
-                        ->orWhere('name_kanji', $like, $pattern)
-                        ->orWhere('name_kana', $like, $pattern)
-                        ->orWhereHas('aliases', static function (Builder $aliases) use ($like, $pattern): void {
-                            $aliases->where('alias', $like, $pattern);
-                        });
-                });
-            });
+            $query->whereIn('movies.id', self::movieIdsOfPerformers(self::performerIdsMatching($like, '%' . self::escapeLike($actress) . '%')));
+        }
+
+        // Exact performers (the picker): several ids mean movies they share.
+        foreach (self::ids($filters['actress_id'] ?? null) as $performerId) {
+            $query->whereIn('movies.id', DB::table('movie_performers')->select('movie_id')->where('performer_id', $performerId));
+        }
+
+        $source = $filters['source'] ?? null;
+        if (is_string($source) && $source !== '') {
+            $query->whereIn('movies.id', DB::table('movie_codes')->select('movie_id')->whereIn('source_slug', self::list($source)));
+        }
+        if (is_numeric($filters['score_min'] ?? null)) {
+            $query->where('community_score', '>=', (float) $filters['score_min']);
+        }
+        if (is_numeric($filters['tier_min'] ?? null)) {
+            $query->where('completeness_tier', '>=', (int) $filters['tier_min']);
+        }
+        if (isset($filters['has_cover'])) {
+            (string) $filters['has_cover'] === '1'
+                ? $query->whereNotNull('cover_url')->where('cover_url', '<>', '')
+                : $query->where(static fn(Builder $w) => $w->whereNull('cover_url')->orWhere('cover_url', ''));
+        }
+        foreach (['has_magnet' => DB::table('movie_media')->select('movie_id')->where('kind', 'magnet'), 'has_performers' => DB::table('movie_performers')->select('movie_id')] as $flag => $sub) {
+            if (isset($filters[$flag])) {
+                (string) $filters[$flag] === '1' ? $query->whereIn('movies.id', $sub) : $query->whereNotIn('movies.id', $sub);
+            }
         }
 
         foreach (['maker', 'series', 'label'] as $column) {
@@ -143,6 +304,12 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
             if (is_string($value) && $value !== '') {
                 $query->where($column, $like, '%' . $value . '%');
             }
+        }
+
+        if (isset($filters['on_disk'])) {
+            // A movie is on disk when a library file that is not missing was matched to it.
+            $present = static fn($q) => $q->select('library_files.movie_id')->from('library_files')->whereNull('missing_at')->whereNotNull('movie_id');
+            ((string) $filters['on_disk'] === '1') ? $query->whereIn('movies.id', $present) : $query->whereNotIn('movies.id', $present);
         }
 
         $releasedFrom = $filters['released_from'] ?? null;
@@ -171,12 +338,82 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
         }
     }
 
+    /** @return list<string> comma separated values, trimmed and without blanks */
+    private static function list(mixed $value): array
+    {
+        $parts = is_array($value) ? $value : explode(',', (string) $value);
+
+        return array_values(array_unique(array_filter(array_map(static fn($p): string => trim((string) $p), $parts), static fn(string $p): bool => $p !== '')));
+    }
+
+    /** @return list<int> */
+    private static function ids(mixed $value): array
+    {
+        return array_values(array_unique(array_map('intval', array_filter(self::list($value), 'is_numeric'))));
+    }
+
+    private static function escapeLike(string $text): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $text);
+    }
+
+    /** The performers whose name, kana, kanji, alias or source name contains the text: one indexed branch per column. */
+    private static function performerIdsMatching(string $like, string $pattern): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('performers')->select('id')->where('name_romaji', $like, $pattern)
+            ->union(DB::table('performers')->select('id')->where('name_kanji', $like, $pattern))
+            ->union(DB::table('performers')->select('id')->where('name_kana', $like, $pattern))
+            ->union(DB::table('performer_aliases')->select('performer_id')->where('alias', $like, $pattern))
+            ->union(DB::table('performer_sources')->select('performer_id')->where('name_romaji', $like, $pattern)->orWhere('name_kanji', $like, $pattern)->orWhere('name_kana', $like, $pattern));
+    }
+
+    private static function movieIdsOfPerformers(\Illuminate\Database\Query\Builder $performerIds): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('movie_performers')->select('movie_id')->whereIn('performer_id', $performerIds);
+    }
+
+    /**
+     * Counts inside the current result: what the filtered movies have in common, to narrow the search one click at a time.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>
+     */
+    public function facets(array $filters): array
+    {
+        $q = isset($filters['q']) && is_string($filters['q']) ? trim($filters['q']) : null;
+        $query = $this->newQuery();
+        $this->applyFilters($query, $filters, $q === '' ? null : $q);
+        $ids = $query->toBase()->select('movies.id');
+        $movieRows = static fn() => $filters === [] ? DB::table('movies') : DB::table('movies')->whereIn('id', clone $ids);
+
+        $count = static fn($rows): array => $rows->map(static fn($r): array => ['name' => (string) $r->name, 'count' => (int) $r->c])->all();
+        // Hash distinct movie/label pairs before counting: COUNT(DISTINCT ...) sorts the full joined catalog.
+        $genrePairs = DB::table('movie_genres')->join('genres', 'genres.id', '=', 'movie_genres.genre_id')
+            ->when($filters !== [], static fn($rows) => $rows->whereIn('movie_genres.movie_id', clone $ids))
+            ->selectRaw('COALESCE(genres.label_raw, genres.label_normalized) AS name, movie_genres.movie_id')->distinct();
+        $byColumn = static fn(string $column) => $count($movieRows()->whereNotNull($column)->where($column, '<>', '')->selectRaw($column . ' AS name, COUNT(*) AS c')->groupBy($column)->orderByDesc('c')->orderBy($column)->limit(15)->get());
+        $year = DB::getDriverName() === 'sqlite' ? "CAST(strftime('%Y', release_date) AS INTEGER)" : 'EXTRACT(YEAR FROM release_date)::int';
+
+        return [
+            'total' => (int) $movieRows()->count(),
+            'genres' => $count(DB::query()->fromSub($genrePairs, 'genre_pairs')->selectRaw('name, COUNT(*) AS c')->groupBy('name')->orderByDesc('c')->limit(20)->get()),
+            'makers' => $byColumn('maker'),
+            'series' => $byColumn('series'),
+            'labels' => $byColumn('label'),
+            'years' => $count($movieRows()->whereNotNull('release_date')->selectRaw($year . ' AS name, COUNT(*) AS c')->groupByRaw($year)->orderByDesc('name')->limit(15)->get()),
+            'sources' => $count(DB::table('movie_codes')->when($filters !== [], static fn($rows) => $rows->whereIn('movie_id', clone $ids))->selectRaw('source_slug AS name, COUNT(DISTINCT movie_id) AS c')->groupBy('source_slug')->orderByDesc('c')->limit(15)->get()),
+            'performers' => DB::table('movie_performers')->join('performers', 'performers.id', '=', 'movie_performers.performer_id')->when($filters !== [], static fn($rows) => $rows->whereIn('movie_performers.movie_id', clone $ids))->whereNull('performers.canonical_performer_id')
+                ->selectRaw("performers.id, COALESCE(performers.name_romaji, performers.name_kanji, performers.name_kana) AS name, COUNT(DISTINCT movie_performers.movie_id) AS c")->groupBy('performers.id', 'performers.name_romaji', 'performers.name_kanji', 'performers.name_kana')->orderByDesc('c')->limit(12)->get()
+                ->map(static fn($r): array => ['id' => (int) $r->id, 'name' => (string) $r->name, 'count' => (int) $r->c])->all(),
+        ];
+    }
+
     private function applyTextSearch(Builder $query, string $q): void
     {
         $like = $this->likeOperator();
         $pattern = '%' . $q . '%';
 
-        $query->where(static function (Builder $text) use ($q, $like, $pattern): void {
+        $matching = DB::table('movies')->select('id')->where(static function ($text) use ($q, $pattern): void {
             if (DB::getDriverName() === 'pgsql') {
                 // Title/code via generated tsvector; performers are not in that
                 // column, so OR the same name/alias match used by `actress=`.
@@ -187,18 +424,10 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
                     ->orWhere('display_code', 'like', $pattern)
                     ->orWhere('code_normalized', 'like', $pattern);
             }
-
-            $text->orWhereHas('performers', static function (Builder $performers) use ($like, $pattern): void {
-                $performers->where(static function (Builder $names) use ($like, $pattern): void {
-                    $names->where('name_romaji', $like, $pattern)
-                        ->orWhere('name_kanji', $like, $pattern)
-                        ->orWhere('name_kana', $like, $pattern)
-                        ->orWhereHas('aliases', static function (Builder $aliases) use ($like, $pattern): void {
-                            $aliases->where('alias', $like, $pattern);
-                        });
-                });
-            });
         });
+        // A UNION lets the full-text and performer branches use their indexes independently.
+        $matching->union(self::movieIdsOfPerformers(self::performerIdsMatching($like, $pattern)));
+        $query->whereIn('movies.id', $matching);
     }
 
     private function applySort(Builder $query, string $sort, ?string $q): void
@@ -256,7 +485,7 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
             return;
         }
 
-        if (DB::getDriverName() === 'pgsql') {
+        if ($sort === 'release_date' && DB::getDriverName() === 'pgsql') {
             // PostgreSQL orders NULLs first on plain DESC (matches its index).
             $this->applyNullsFirstCursor($query, $column, $lastSort, $lastId);
 

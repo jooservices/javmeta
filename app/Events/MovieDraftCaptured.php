@@ -16,5 +16,5 @@ final class MovieDraftCaptured
 {
     use Dispatchable;
 
-    public function __construct(public readonly MovieDraft $draft) {}
+    public function __construct(public readonly MovieDraft $draft, public readonly bool $isRecrawl = false) {}
 }

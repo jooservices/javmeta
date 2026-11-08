@@ -131,7 +131,7 @@ final class MovieLookupControllerTest extends TestCase
             'title_jp',
             'title_en',
             'description',
-            'performers' => [['uuid', 'id', 'name_romaji', 'name_kanji', 'name_kana', 'aliases', 'image_url', 'profile_url']],
+            'performers' => [['uuid', 'id', 'name_romaji', 'name_kanji', 'name_kana', 'aliases', 'sources', 'image_url', 'profile_url']],
             'directors',
             'cover_url',
             'cover_thumb_url',
@@ -280,6 +280,7 @@ final class MovieLookupControllerTest extends TestCase
             'movie_id' => $movie->id,
             'kind' => MovieMedia::KIND_GALLERY,
             'url' => fake()->url(),
+            'meta' => ['thumbnail_url' => fake()->imageUrl()],
             'source_slug' => 'javdb',
         ]);
         MovieMedia::factory()->create([

@@ -1,0 +1,107 @@
+# CI
+
+GitHub Actions on GitHub-hosted runners. CI only: nothing is deployed and no
+image is pushed. Deploy stays manual (`deploy/*.sh`).
+
+## Workflows
+
+| Workflow | Trigger | Jobs |
+|---|---|---|
+| `ci.yml` | push / PR to `develop`, manual | **Lint and test**: composer validate, `composer lint`, `composer test:coverage`, `composer coverage:check` (≥ 90%), coverage artifact · **Integration**: `docker/ci/integration` against real Postgres, Mongo, Elasticsearch and OpenObserve · **Secrets scan**: gitleaks with `.gitleaks.toml` · **Build app image**: `Dockerfile.production`, no push |
+| `embedder-image.yml` | changes under `embedder/` | build `embedder/Dockerfile.production`, no push |
+| `workflow-audit.yml` | changes under `.github/`, weekly | actionlint (pinned image), zizmor (action uploads SARIF to code scanning) |
+| `commitlint.yml` | pull requests | Conventional Commits, sentence-case subject (same rule as `captainhook.json`) |
+
+All actions are pinned by commit SHA.
+
+## Reproduce locally (same image as CI)
+
+The gate runs inside `docker/ci/Dockerfile` (PHP 8.5, ext-mongodb, intl,
+pcntl, pdo_pgsql, pcov, Composer). The host PHP is not used, so host
+extension versions do not matter.
+
+```bash
+docker/ci/run composer install --no-interaction --prefer-dist
+docker/ci/run composer validate --strict
+docker/ci/run composer lint
+docker/ci/run composer test:coverage
+docker/ci/run composer coverage:check
+docker build --file Dockerfile.production .
+```
+
+Workflow checks:
+
+```bash
+docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest
+docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/zizmorcore/zizmor:latest --offline .github/workflows
+```
+
+Tests use sqlite in-memory and an array cache (`phpunit.xml`), so no Postgres,
+Redis or Mongo service is needed.
+
+## Test stability gate calibration
+
+The "Lint and test" job runs the full suite three times and compares each run with a baseline kept in
+`.github/workflows/ci.yml` (`baseline_seconds`, `warning_seconds` = baseline + 30%, `maximum_seconds` = 2x baseline;
+a run above the maximum fails the job, a run above the warning value only warns). The gate exists to catch a 2x slowdown, not to
+chase runner noise.
+
+Current calibration (2026-11-02): baseline 150 s, warning 195 s, maximum 300 s. The previous baseline (95 s, maximum 190 s)
+dated from a much smaller suite. With 1,265 to 1,357 tests every run on GitHub-hosted runners took 190 to 235 s (PRs 181 to 185 and develop,
+2026-11-01 and 2026-11-02; no individual test was slow), so correct pull requests failed at random and needed several reruns.
+
+Recalibrate in a dedicated pull request when the number of tests changes by more than 20% or when the median of five consecutive
+runs on develop moves by more than 20%. Record the measured runs in the pull request. Never raise the maximum to hide a regression
+that a single new test or change caused; find the slow test first.
+
+## Test layers
+
+| Layer | Where | What it proves |
+|---|---|---|
+| Unit / Feature | `tests/Unit`, `tests/Feature` | javmeta logic on sqlite in-memory; crawlerx replaced by `FakeCrawlerxClient` |
+| crawlerx contract | `tests/Feature/Contract` | the **real** crawlerx stack parses every live-captured fixture (`tests/Fixtures/crawlerx`) and the javmeta jobs store the result; generated failures (404, 410, 429, 5xx, network, empty, Cloudflare challenge, drifted page) end in the expected row state. Only the HTTP transport is faked (`ClientBuilder::fake()`) |
+| Integration | `tests/Integration` (`phpunit.integration.xml`) | real **Postgres** (all migrations apply, roll back, re-apply), **Mongo** archive, **Elasticsearch** documents and **OpenObserve** ingestion. Every movie and performer fixture goes through crawlerx → job → Postgres (`movies`/`movie_sources`, `performers`/`performer_sources` with the Mongo id) → Mongo → ES; a recrawl does not duplicate the movie, source link, archive or ES document (observations stay append-only by design); a crawl's `crawl_fetch` record is queryable in OpenObserve. Only the embedder is faked |
+
+The failure expectations pin the crawlerx 1.2 contract (every fetch failure
+is `blocked` or `challenge`, no retry). They change on purpose when javmeta
+moves to crawlerx 1.3.
+
+After upgrading crawlerx, refresh the fixtures and rerun the suite:
+
+```bash
+docker/ci/run php tools/sync-crawlerx-fixtures.php
+docker/ci/run composer test
+```
+
+Run the integration suite (starts the services in Docker, tmpfs storage,
+removes them afterwards):
+
+```bash
+docker/ci/integration                      # or: make test-integration
+docker/ci/integration --filter Performer   # extra PHPUnit arguments
+```
+
+The CI services use the same versions as the Workspaces shared Docker (PostgreSQL 18.6,
+MongoDB 9.0.4, Elasticsearch 9.5.5, OpenObserve 1.0.4, Redis 8.2.10).
+
+## Local development and QA (Workspaces shared services)
+
+On a developer machine nothing is built or started per run. `docker/ci/run` is a `docker exec` into the
+single long-lived PHP 8.5 runtime (`scripts/docker/runtime php`); on GitHub Actions (or with
+`JAVMETA_CI_DOCKER=1`) it still builds and runs the isolated `javmeta-ci` image. Backing services are the
+shared ones, with the project databases created by `provision-project` (one root account, no project users):
+
+```bash
+scripts/docker/shared provision-project javmeta --postgres --mongodb --redis --db <id>   # once; <id> = 1-12 lowercase letters/digits
+docker/ci/integration-shared                          # whole suite on javmeta_test
+JAVMETA_MODE=wt:<id> docker/ci/integration-shared    # on this worktree's database javmeta_wt<id>
+docker/ci/integration-shared --filter Performer       # extra PHPUnit arguments
+```
+
+`docker/dev/shared-run --mode test|wt:<id> -- <command>` generates the environment with
+`scripts/docker/shared env-project javmeta` (which runs `check-project` and refuses another project's
+database), derives the Elasticsearch indexes, OpenObserve stream and Redis prefix from the same name, and
+executes the command in the runtime. No credential is written to a tracked file, printed or left on disk.
+Live mode is never accepted. The Mongo outage scenario stays CI-only because it stops the service.
+Elasticsearch 9 leaves `dense_vector` fields out of `_source`; tests that read vectors back pass
+`_source_exclude_vectors=false`.

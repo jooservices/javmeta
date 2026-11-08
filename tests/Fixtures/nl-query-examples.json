@@ -1,0 +1,343 @@
+[
+  {
+    "q": "Sample Maker 03 movie released in 2024",
+    "expected": {
+      "maker": "Sample Maker 03",
+      "released_from": "2024-01-01",
+      "released_to": "2024-12-31"
+    },
+    "language": "en"
+  },
+  {
+    "q": "Sample Maker 05 films from 2021 to 2023",
+    "expected": {
+      "maker": "Sample Maker 05",
+      "released_from": "2021-01-01",
+      "released_to": "2023-12-31"
+    },
+    "language": "en"
+  },
+  {
+    "q": "Sample Genre 05 movies after 2020",
+    "expected": {
+      "genre": "Sample Genre 05",
+      "released_from": "2020-01-01"
+    },
+    "language": "en"
+  },
+  {
+    "q": "Sample Series 02 movie",
+    "expected": {
+      "series": "Sample Series 02"
+    },
+    "language": "en"
+  },
+  {
+    "q": "Actress Mio Sato 1 from Sample Maker 03",
+    "expected": {
+      "actress": "Mio Sato 1",
+      "maker": "Sample Maker 03"
+    },
+    "language": "en"
+  },
+  {
+    "q": "blood type O, living in Tokyo, age 25-35",
+    "expected": {
+      "blood_type": "O",
+      "location": "Tokyo",
+      "age_min": 25,
+      "age_max": 35
+    },
+    "language": "en"
+  },
+  {
+    "q": "actress with blood type AB from Osaka",
+    "expected": {
+      "blood_type": "AB",
+      "location": "Osaka"
+    },
+    "language": "en"
+  },
+  {
+    "q": "age 30-40 cup D living in Kyoto",
+    "expected": {
+      "age_min": 30,
+      "age_max": 40,
+      "cup": "D",
+      "location": "Kyoto"
+    },
+    "language": "en"
+  },
+  {
+    "q": "height 160-170 cm with cup G",
+    "expected": {
+      "height_min": 160,
+      "height_max": 170,
+      "cup": "G"
+    },
+    "language": "en"
+  },
+  {
+    "q": "Sample Genre 05 released in 2024, night scene",
+    "expected": {
+      "genre": "Sample Genre 05",
+      "released_from": "2024-01-01",
+      "released_to": "2024-12-31"
+    },
+    "language": "en"
+  },
+  {
+    "q": "Sample Series 02 by Sample Maker 05",
+    "expected": {
+      "series": "Sample Series 02",
+      "maker": "Sample Maker 05"
+    },
+    "language": "en"
+  },
+  {
+    "q": "actress Mio Sato 1, blood type B",
+    "expected": {
+      "actress": "Mio Sato 1",
+      "blood_type": "B"
+    },
+    "language": "en"
+  },
+  {
+    "q": "cup C, height 155-165 cm, based in Osaka",
+    "expected": {
+      "cup": "C",
+      "height_min": 155,
+      "height_max": 165,
+      "location": "Osaka"
+    },
+    "language": "en"
+  },
+  {
+    "q": "phim Sample Maker 03 phát hành năm 2024",
+    "expected": {
+      "maker": "Sample Maker 03",
+      "released_from": "2024-01-01",
+      "released_to": "2024-12-31"
+    },
+    "language": "en"
+  },
+  {
+    "q": "Sample Maker 05 phim từ 2021 đến 2023",
+    "expected": {
+      "maker": "Sample Maker 05",
+      "released_from": "2021-01-01",
+      "released_to": "2023-12-31"
+    },
+    "language": "vi"
+  },
+  {
+    "q": "phim thể loại Sample Genre 05 sau 2020",
+    "expected": {
+      "genre": "Sample Genre 05",
+      "released_from": "2020-01-01"
+    },
+    "language": "vi"
+  },
+  {
+    "q": "Sample Series 02 phim",
+    "expected": {
+      "series": "Sample Series 02"
+    },
+    "language": "vi"
+  },
+  {
+    "q": "diễn viên Mio Sato 1 của Sample Maker 03",
+    "expected": {
+      "actress": "Mio Sato 1",
+      "maker": "Sample Maker 03"
+    },
+    "language": "vi"
+  },
+  {
+    "q": "nhóm máu O, sống ở Tokyo, tuổi từ 25 đến 35",
+    "expected": {
+      "blood_type": "O",
+      "location": "Tokyo",
+      "age_min": 25,
+      "age_max": 35
+    },
+    "language": "vi"
+  },
+  {
+    "q": "diễn viên nhóm máu AB ở Osaka",
+    "expected": {
+      "blood_type": "AB",
+      "location": "Osaka"
+    },
+    "language": "vi"
+  },
+  {
+    "q": "tuổi 30-40, cup D, ở Kyoto",
+    "expected": {
+      "age_min": 30,
+      "age_max": 40,
+      "cup": "D",
+      "location": "Kyoto"
+    },
+    "language": "vi"
+  },
+  {
+    "q": "cao 160-170 cm cup G",
+    "expected": {
+      "height_min": 160,
+      "height_max": 170,
+      "cup": "G"
+    },
+    "language": "vi"
+  },
+  {
+    "q": "Sample Maker 03 phim dài hơn 100 phút",
+    "expected": {
+      "maker": "Sample Maker 03",
+      "runtime_min": 100
+    },
+    "language": "vi"
+  },
+  {
+    "q": "Sample Genre 05 năm 2024",
+    "expected": {
+      "genre": "Sample Genre 05",
+      "released_from": "2024-01-01",
+      "released_to": "2024-12-31"
+    },
+    "language": "vi"
+  },
+  {
+    "q": "Sample Series 02 của Sample Maker 05",
+    "expected": {
+      "series": "Sample Series 02",
+      "maker": "Sample Maker 05"
+    },
+    "language": "vi"
+  },
+  {
+    "q": "Mio Sato 1 nhóm máu B",
+    "expected": {
+      "actress": "Mio Sato 1",
+      "blood_type": "B"
+    },
+    "language": "vi"
+  },
+  {
+    "q": "cup D cao 160-170 cm ở Fukuoka",
+    "expected": {
+      "cup": "D",
+      "height_min": 160,
+      "height_max": 170,
+      "location": "Fukuoka"
+    },
+    "language": "vi"
+  },
+  {
+    "q": "Sample Maker 03 の 2024年公開作品",
+    "expected": {
+      "maker": "Sample Maker 03",
+      "released_from": "2024-01-01",
+      "released_to": "2024-12-31"
+    },
+    "language": "ja"
+  },
+  {
+    "q": "Sample Maker 05 の 2021-2023年の映画",
+    "expected": {
+      "maker": "Sample Maker 05",
+      "released_from": "2021-01-01",
+      "released_to": "2023-12-31"
+    },
+    "language": "ja"
+  },
+  {
+    "q": "Sample Genre 05 の映画 2020年以降",
+    "expected": {
+      "genre": "Sample Genre 05",
+      "released_from": "2020-01-01"
+    },
+    "language": "ja"
+  },
+  {
+    "q": "Sample Series 02 の映画",
+    "expected": {
+      "series": "Sample Series 02"
+    },
+    "language": "ja"
+  },
+  {
+    "q": "Mio Sato 1 と Sample Maker 03",
+    "expected": {
+      "actress": "Mio Sato 1",
+      "maker": "Sample Maker 03"
+    },
+    "language": "ja"
+  },
+  {
+    "q": "血液型O型でTokyoに住む女優",
+    "expected": {
+      "blood_type": "O",
+      "location": "Tokyo"
+    },
+    "language": "ja"
+  },
+  {
+    "q": "血液型AB型 Osakaの女優",
+    "expected": {
+      "blood_type": "AB"
+    },
+    "language": "ja"
+  },
+  {
+    "q": "年齢30-40歳 Cup D Kyoto在住",
+    "expected": {
+      "age_min": 30,
+      "age_max": 40,
+      "cup": "D",
+      "location": "Kyoto"
+    },
+    "language": "ja"
+  },
+  {
+    "q": "身長160-170cm カップG",
+    "expected": {
+      "height_min": 160,
+      "height_max": 170,
+      "cup": "G"
+    },
+    "language": "ja"
+  },
+  {
+    "q": "Sample Genre 05 2024年の映画",
+    "expected": {
+      "genre": "Sample Genre 05",
+      "released_from": "2024-01-01",
+      "released_to": "2024-12-31"
+    },
+    "language": "ja"
+  },
+  {
+    "q": "Sample Series 02 Sample Maker 05",
+    "expected": {
+      "series": "Sample Series 02",
+      "maker": "Sample Maker 05"
+    },
+    "language": "ja"
+  },
+  {
+    "q": "Mio Sato 1 血液型B型",
+    "expected": {
+      "actress": "Mio Sato 1",
+      "blood_type": "B"
+    },
+    "language": "ja"
+  },
+  {
+    "q": "Sample Maker 03 の出演作品",
+    "expected": {
+      "maker": "Sample Maker 03"
+    },
+    "language": "ja"
+  }
+]

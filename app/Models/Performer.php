@@ -6,11 +6,13 @@ namespace App\Models;
 
 use Database\Factories\PerformerFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/** @property-read Collection<int, PerformerSource> $sources */
 class Performer extends Model
 {
     /** @use HasFactory<PerformerFactory> */
@@ -24,9 +26,10 @@ class Performer extends Model
     /** @var list<string> */
     protected $fillable = [
         'uuid', 'source_slug', 'external_id', 'name_romaji', 'name_kanji', 'name_kana',
-        'birth_date', 'height_cm', 'bust', 'waist', 'hip', 'cup', 'blood_type', 'bio_text',
-        'debut_date', 'location', 'profile_url', 'image_url', 'attrs', 'needs_review',
+        'birth_date', 'height_cm', 'bust', 'waist', 'hip', 'cup', 'blood_type', 'blood_rh', 'bio_text',
+        'debut_date', 'retired_date', 'location', 'profile_url', 'image_url', 'attrs', 'needs_review',
         'first_seen_at', 'updated_at', 'crawled_at',
+        'canonical_performer_id',
     ];
 
     /** @return list<string> */
@@ -56,10 +59,22 @@ class Performer extends Model
         return $this->hasMany(PerformerAlias::class);
     }
 
+    /** @return HasMany<PerformerMedia, $this> */
+    public function media(): HasMany
+    {
+        return $this->hasMany(PerformerMedia::class);
+    }
+
     /** @return HasMany<PerformerSource, $this> */
     public function sources(): HasMany
     {
         return $this->hasMany(PerformerSource::class);
+    }
+
+    /** @return HasMany<PerformerIdentityEvent, $this> */
+    public function identityEvents(): HasMany
+    {
+        return $this->hasMany(PerformerIdentityEvent::class, 'to_performer_id');
     }
 
     /** @return BelongsToMany<Movie, $this> */
@@ -74,6 +89,7 @@ class Performer extends Model
         return [
             'birth_date' => 'date',
             'debut_date' => 'date',
+            'retired_date' => 'date',
             'height_cm' => 'integer',
             'bust' => 'integer',
             'waist' => 'integer',
@@ -83,6 +99,7 @@ class Performer extends Model
             'first_seen_at' => 'datetime',
             'updated_at' => 'datetime',
             'crawled_at' => 'datetime',
+            'canonical_performer_id' => 'integer',
         ];
     }
 }

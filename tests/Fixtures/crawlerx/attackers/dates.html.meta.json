@@ -1,0 +1,10 @@
+{
+  "source_url": "https://attackers.net/works/date",
+  "final_url": "https://attackers.net/works/date",
+  "captured_at": "2026-11-03T06:07:57.582079+00:00",
+  "http_status": 200,
+  "content_hash": "7436ec524e7f8adecc50f909bd45fd60ca0888a359d9076b5b26af969de02870",
+  "target_type": "listing",
+  "fetch_method": "http",
+  "sanitized": false
+}

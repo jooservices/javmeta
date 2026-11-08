@@ -32,6 +32,9 @@ final readonly class PerformerDraft
         public ?string $debutDate = null,
         public ?string $location = null,
         public array $attrs = [],
+        public ?string $crossLinkSource = null,
+        public ?string $crossLinkId = null,
+        public ?string $bloodRh = null,
     ) {
         if (trim($this->sourceSlug) === '') {
             throw new InvalidArgumentException('Performer source slug cannot be empty.');
@@ -72,6 +75,9 @@ final readonly class PerformerDraft
         ?string $debutDate = null,
         ?string $location = null,
         array $attrs = [],
+        ?string $crossLinkSource = null,
+        ?string $crossLinkId = null,
+        ?string $bloodRh = null,
     ): self {
         return new self(
             $sourceSlug,
@@ -93,6 +99,9 @@ final readonly class PerformerDraft
             $debutDate,
             $location,
             $attrs,
+            $crossLinkSource,
+            $crossLinkId,
+            $bloodRh,
         );
     }
 }

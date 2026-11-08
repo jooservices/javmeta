@@ -1,0 +1,10 @@
+{
+  "source_url": "https://en.heyzo.com/moviepages/3927/index.html",
+  "final_url": "https://en.heyzo.com/moviepages/3927/index.html",
+  "captured_at": "2026-09-09T04:08:50.166Z",
+  "http_status": 200,
+  "content_hash": "f2de1fdf602e596d63863440a7c23250c13b9e962850a622217e596b82bd53b1",
+  "target_type": "detail",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

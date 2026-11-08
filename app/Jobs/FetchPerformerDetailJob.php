@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Repositories\CrawlQueueRepository;
+use App\Enums\CrawlErrorCode;
 use App\Jobs\Concerns\HandlesCrawlQueueRow;
 use App\Jobs\Middleware\TraceCrawlJob;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Services\Crawl\PerformerDraftSink;
-use App\Services\Crawl\SourceCircuitBreaker;
+use App\Services\Crawl\FetchAttemptRecorder;
+use App\Services\Crawl\SourceActivityRecorder;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawler\CrawlerxClient;
 use App\Services\Normalize\PerformerNormalizer;
@@ -34,6 +37,7 @@ final class FetchPerformerDetailJob implements ShouldQueue
     public function __construct(
         public readonly int $crawlQueueId,
         public readonly ?string $traceparent = null,
+        public readonly ?string $claimToken = null,
     ) {
         $this->onQueue(LaravelCrawlQueue::forPerformerDetail());
     }
@@ -47,25 +51,26 @@ final class FetchPerformerDetailJob implements ShouldQueue
     public function handle(
         CrawlerxClient $client,
         PerformerNormalizer $normalizer,
-        SourceCircuitBreaker $breaker,
+        SourceActivityRecorder $activity,
         SourceThrottle $throttle,
     ): void {
-        $row = $this->queueRow($this->crawlQueueId);
+        $row = $this->queueRow($this->crawlQueueId, CrawlQueue::KIND_PERFORMER_DETAIL);
         if (! $row instanceof CrawlQueue || $row->kind !== CrawlQueue::KIND_PERFORMER_DETAIL) {
             return;
         }
 
-        $source = Source::query()->find($row->source_slug);
+        $source = app(CrawlQueueRepository::class)->modelQuery(Source::class)->find($row->source_slug);
         if (! $source instanceof Source) {
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => 'unknown_source']);
-            $this->markFailed($row, 'Unknown source slug.');
+            $this->markFailed($row, CrawlErrorCode::UnknownSource, 'Unknown source slug.');
 
             return;
         }
 
-        $result = $client->fetchPerformerDetail($row->source_slug, $row->url);
+        $result = $client->fetchQueueRow($row);
+        app(FetchAttemptRecorder::class)->record($row, $result);
         if (! $result->ok || $result->performer === null) {
-            $this->onCrawlFailure($row, $source, $result, $breaker, $throttle);
+            $this->onCrawlFailure($row, $source, $result, $activity, $throttle);
 
             return;
         }
@@ -73,8 +78,8 @@ final class FetchPerformerDetailJob implements ShouldQueue
         $draft = $normalizer->normalize($result->performer, $row->source_slug, $row->url);
         if ($draft === null) {
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => 'performer_normalize_failed']);
-            $this->markFailed($row, 'Performer normalization failed.');
-            $breaker->recordFailure($source, 'Performer normalization failed.');
+            $this->markFailed($row, CrawlErrorCode::NormalizationFailed, 'Performer normalization failed.');
+            $activity->recordFailure($source, 'Performer normalization failed.');
             $throttle->onFailure($source);
 
             return;
@@ -85,7 +90,7 @@ final class FetchPerformerDetailJob implements ShouldQueue
             $sink->accept($draft);
         }
 
-        $breaker->recordSuccess($source);
+        $activity->recordSuccess($source);
         $throttle->onSuccess($source);
         $this->markDone($row);
     }

@@ -1,0 +1,84 @@
+name: javmeta-monitoring
+
+services:
+  node-exporter-local:
+    image: prom/node-exporter:v1.9.1
+    command:
+      - --path.rootfs=/host
+      - --collector.pressure
+    volumes:
+      - /:/host:ro
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+    networks:
+      - monitoring
+
+  openobserve:
+    image: openobserve/openobserve:v0.92.0
+    environment:
+      ZO_DATA_DIR: /data
+      ZO_LOCAL_MODE: "true"
+      ZO_TELEMETRY: "false"
+      ZO_ROOT_USER_EMAIL: local-observe@example.invalid
+      ZO_ROOT_USER_PASSWORD: local-Observe-2026!
+    ports:
+      - "${OBS_HOST_PORT:-5080}:5080"
+    volumes:
+      - openobserve-data:/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1G
+    networks:
+      - monitoring
+
+  prometheus:
+    environment:
+      OBS_URL: http://openobserve:5080
+      OBS_ORG: default
+      OBS_USERNAME: local-observe@example.invalid
+      OBS_PASSWORD: local-Observe-2026!
+      JAVMETA_NODE_NAME: verify-node
+      JAVMETA_NODE_ROLE: control
+
+configs:
+  prometheus-config:
+    content: |
+      global:
+        scrape_interval: 15s
+        external_labels:
+          node: "verify-node"
+          role: "control"
+
+      scrape_configs:
+        - job_name: node-exporter
+          static_configs:
+            - targets: ["node-exporter-local:9100"]
+        - job_name: cadvisor
+          static_configs:
+            - targets: ["cadvisor:8080"]
+
+      remote_write:
+        - url: "http://openobserve:5080/api/default/prometheus/api/v1/write"
+          basic_auth:
+            username: "local-observe@example.invalid"
+            password: "local-Observe-2026!"
+
+volumes:
+  openobserve-data:

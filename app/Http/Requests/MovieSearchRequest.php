@@ -21,6 +21,7 @@ final class MovieSearchRequest extends FormRequest
     {
         return [
             'q' => ['sometimes', 'string', 'min:2'],
+            'code' => ['sometimes', 'string', 'min:2'],
             'genre' => ['sometimes', 'string'],
             'actress' => ['sometimes', 'string'],
             'maker' => ['sometimes', 'string'],
@@ -31,9 +32,19 @@ final class MovieSearchRequest extends FormRequest
             'runtime_min' => ['sometimes', 'integer'],
             'runtime_max' => ['sometimes', 'integer'],
             'censored' => ['sometimes', 'in:0,1,censored,uncensored'],
+            'on_disk' => ['sometimes', 'in:0,1'],
+            'actress_id' => ['sometimes', 'string', 'regex:/^\d+(,\d+)*$/'],
+            'genre_all' => ['sometimes', 'in:0,1'],
+            'source' => ['sometimes', 'string', 'max:200'],
+            'score_min' => ['sometimes', 'numeric', 'min:0', 'max:10'],
+            'tier_min' => ['sometimes', 'integer', 'min:0', 'max:3'],
+            'has_cover' => ['sometimes', 'in:0,1'],
+            'has_magnet' => ['sometimes', 'in:0,1'],
+            'has_performers' => ['sometimes', 'in:0,1'],
             'sort' => ['sometimes', 'in:relevance,release_date,update_date,rating'],
             'cursor' => ['sometimes', 'string'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'semantic' => ['sometimes', 'in:0,1,true,false'],
         ];
     }
 
@@ -54,6 +65,20 @@ final class MovieSearchRequest extends FormRequest
             // AC-4.5: a term made only of symbols is not searchable.
             if (is_string($q) && $q !== '' && preg_match('/[\p{L}\p{N}]/u', $q) !== 1) {
                 $validator->errors()->add('q', 'The q parameter must contain at least one letter or digit.');
+            }
+
+            if ($this->boolean('semantic')) {
+                if (! is_string($q) || $q === '') {
+                    $validator->errors()->add('q', 'The q parameter is required for semantic search.');
+                }
+
+                if ($this->hasAny([
+                    'code', 'genre', 'actress', 'maker', 'series', 'label',
+                    'released_from', 'released_to', 'runtime_min', 'runtime_max',
+                    'censored', 'on_disk', 'actress_id', 'genre_all', 'source', 'score_min', 'tier_min', 'has_cover', 'has_magnet', 'has_performers', 'sort', 'cursor',
+                ])) {
+                    $validator->errors()->add('semantic', 'Semantic search supports only q and per_page.');
+                }
             }
 
             $from = $this->input('released_from');
@@ -90,7 +115,7 @@ final class MovieSearchRequest extends FormRequest
     public function filters(): array
     {
         $filters = $this->validated();
-        unset($filters['sort'], $filters['cursor'], $filters['per_page']);
+        unset($filters['sort'], $filters['cursor'], $filters['per_page'], $filters['semantic']);
 
         if (array_key_exists('censored', $filters)) {
             $filters['censored'] = in_array($filters['censored'], [1, '1', 'censored'], true)

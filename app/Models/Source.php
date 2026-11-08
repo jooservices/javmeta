@@ -13,9 +13,6 @@ class Source extends Model
     /** @use HasFactory<SourceFactory> */
     use HasFactory;
 
-    public const CIRCUIT_CLOSED = 'closed';
-    public const CIRCUIT_OPEN = 'open';
-    public const CIRCUIT_HALF_OPEN = 'half_open';
 
     protected $table = 'sources';
     protected $primaryKey = 'slug';
@@ -23,11 +20,11 @@ class Source extends Model
     public $incrementing = false;
     public $timestamps = false;
     /** @var list<string> */
-    protected $fillable = ['slug', 'name', 'base_url', 'enabled', 'priority', 'needs_proxy', 'gap_seconds_default', 'gap_seconds_min', 'gap_seconds_max', 'gap_seconds_current', 'consecutive_failures', 'circuit_state', 'circuit_opened_at', 'last_success_at', 'last_error_at', 'last_error', 'soft404_markers'];
+    protected $fillable = ['slug', 'name', 'base_url', 'enabled', 'priority', 'needs_proxy', 'gap_seconds_default', 'gap_seconds_min', 'gap_seconds_max', 'gap_seconds_current', 'last_success_at', 'last_error_at', 'last_error'];
 
     /** @return array<string, string> */
     protected function casts(): array
     {
-        return ['enabled' => 'boolean', 'priority' => 'integer', 'needs_proxy' => 'boolean', 'gap_seconds_default' => 'decimal:2', 'gap_seconds_min' => 'decimal:2', 'gap_seconds_max' => 'decimal:2', 'gap_seconds_current' => 'decimal:2', 'consecutive_failures' => 'integer', 'circuit_opened_at' => 'datetime', 'last_success_at' => 'datetime', 'last_error_at' => 'datetime', 'soft404_markers' => 'array'];
+        return ['enabled' => 'boolean', 'priority' => 'integer', 'needs_proxy' => 'boolean', 'gap_seconds_default' => 'decimal:2', 'gap_seconds_min' => 'decimal:2', 'gap_seconds_max' => 'decimal:2', 'gap_seconds_current' => 'decimal:2', 'last_success_at' => 'datetime', 'last_error_at' => 'datetime'];
     }
 }

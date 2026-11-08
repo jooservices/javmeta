@@ -21,9 +21,11 @@ final class CursorCodec
     /** @var list<string> */
     public const SORTS = ['relevance', 'release_date', 'update_date', 'rating'];
 
-    public function encode(string $sort, int|float|string|null $lastSort, int $lastId): string
+    /** @param list<string>|null $allowedSorts */
+    public function encode(string $sort, int|float|string|null $lastSort, int $lastId, ?array $allowedSorts = null): string
     {
-        if (! in_array($sort, self::SORTS, true)) {
+        $allowedSorts ??= self::SORTS;
+        if (! in_array($sort, $allowedSorts, true)) {
             throw new InvalidFilterException('Unsupported cursor sort.');
         }
 
@@ -43,8 +45,10 @@ final class CursorCodec
     /**
      * @return array{sort: string, last_sort: int|float|string|null, last_id: int}
      */
-    public function decode(string $cursor): array
+    /** @param list<string>|null $allowedSorts */
+    public function decode(string $cursor, ?array $allowedSorts = null): array
     {
+        $allowedSorts ??= self::SORTS;
         $parts = explode('.', $cursor, 2);
 
         if (count($parts) !== 2 || $parts[0] === '' || $parts[1] === '') {
@@ -71,7 +75,7 @@ final class CursorCodec
         $lastId = $decoded['last_id'] ?? null;
         $lastSort = $decoded['last_sort'] ?? null;
 
-        if (! is_string($sort) || ! in_array($sort, self::SORTS, true)) {
+        if (! is_string($sort) || ! in_array($sort, $allowedSorts, true)) {
             throw new InvalidFilterException('Cursor carries an unsupported sort.');
         }
 

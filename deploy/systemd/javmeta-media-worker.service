@@ -1,0 +1,13 @@
+[Unit]
+Description=JavMeta local media worker in the shared media runtime
+After=network-online.target docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Workspaces/JOOservices/projects/javmeta
+ExecStart=%h/Workspaces/scripts/docker/runtime media python tools/media-worker/worker.py
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=default.target

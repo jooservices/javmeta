@@ -11,6 +11,7 @@ final readonly class NormalizedCode
     private function __construct(
         private string $prefix,
         private string $suffix,
+        private ?string $scoped = null,
     ) {}
 
     public static function from(string $raw): self
@@ -19,6 +20,11 @@ final readonly class NormalizedCode
 
         if ($candidate === '') {
             throw new InvalidArgumentException('Code cannot be empty.');
+        }
+
+        // Reserved namespaces keep source-only identities separate from DVD codes.
+        if (preg_match('/^(?:TOKYOHOT-SLUG-[A-Z0-9]+(?:_[A-Z0-9]+)+|(?:JAVBTC|FFJAV|TOKYOHOT|141JAV)-DERIVED-[A-F0-9]{64})$/D', $candidate) === 1) {
+            return new self('', '', $candidate);
         }
 
         $matches = [];
@@ -44,11 +50,11 @@ final readonly class NormalizedCode
 
     public function value(): string
     {
-        return $this->prefix . $this->suffix;
+        return $this->scoped ?? $this->prefix . $this->suffix;
     }
 
     public function display(): string
     {
-        return $this->prefix . '-' . $this->suffix;
+        return $this->scoped ?? $this->prefix . '-' . $this->suffix;
     }
 }

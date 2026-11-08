@@ -55,6 +55,41 @@ final class MoviePersisterTest extends TestCase
         $this->assertDatabaseHas('movie_observations', ['field' => 'title_jp', 'value' => 'Via Sink']);
     }
 
+    public function test_successful_recrawls_without_new_fields_stop_at_the_configured_maximum(): void
+    {
+        config()->set('javmeta_sources.defaults.recrawl.max_rounds', 3);
+        $persister = $this->persister();
+        $draft = $this->draft(['code' => 'SSIS-001']);
+        $movie = $persister->persist($draft);
+
+        foreach ([1, 2, 3] as $round) {
+            $movie = $persister->persist($draft, isRecrawl: true);
+
+            $this->assertSame($round, $movie->recrawl_attempts);
+        }
+
+        $this->assertSame(Movie::RECRAWL_STATUS_COMPLETE_AS_POSSIBLE, $movie->recrawl_status);
+    }
+
+    public function test_gaining_a_new_field_resets_the_recrawl_count_and_stopped_status(): void
+    {
+        $persister = $this->persister();
+        $draft = $this->draft(['code' => 'SSIS-001', 'title_jp' => 'Japanese Title']);
+        $movie = $persister->persist($draft);
+        $movie->forceFill([
+            'recrawl_attempts' => 2,
+            'recrawl_status' => Movie::RECRAWL_STATUS_COMPLETE_AS_POSSIBLE,
+        ])->save();
+
+        $movie = $persister->persist(
+            $this->draft(['code' => 'SSIS-001', 'title_jp' => 'Japanese Title', 'title_en' => 'English Title']),
+            isRecrawl: true,
+        );
+
+        $this->assertSame(0, $movie->recrawl_attempts);
+        $this->assertNull($movie->recrawl_status);
+    }
+
     public function test_re_persist_is_append_only_and_never_updates_old_observations(): void
     {
         $first = $this->persister()->persist($this->draft(['code' => 'SSIS-001', 'title_jp' => 'First Title']));
@@ -240,6 +275,41 @@ final class MoviePersisterTest extends TestCase
         $this->assertDatabaseHas('performers', ['source_slug' => 'onejav', 'external_id' => 'p1']);
     }
 
+    public function test_re_persist_same_movie_and_performer_does_not_throw(): void
+    {
+        $base = [
+            'code' => 'SSIS-001',
+            'performers' => [PerformerDraft::from('javdb', 'p1', 'Same Name')],
+        ];
+
+        $movie = $this->persister()->persist($this->draft($base));
+        $this->persister()->persist($this->draft($base + [
+            'crawled_at' => CarbonImmutable::parse('2026-09-18 10:30:00'),
+        ]));
+
+        $this->assertSame(1, Performer::query()->count());
+        $this->assertSame(1, MoviePerformer::query()->count());
+        $this->assertDatabaseHas('movie_performers', ['movie_id' => $movie->id]);
+        $this->assertSame('2026-09-18 10:30:00', MoviePerformer::query()->firstOrFail()->crawled_at?->format('Y-m-d H:i:s'));
+    }
+
+    public function test_re_persist_same_movie_and_genre_does_not_throw(): void
+    {
+        $base = [
+            'code' => 'SSIS-001',
+            'genres' => ['Drama'],
+        ];
+
+        $movie = $this->persister()->persist($this->draft($base));
+        $this->persister()->persist($this->draft($base + [
+            'crawled_at' => CarbonImmutable::parse('2026-09-18 10:30:00'),
+        ]));
+
+        $this->assertSame(1, Genre::query()->count());
+        $this->assertSame(1, MovieGenre::query()->count());
+        $this->assertDatabaseHas('movie_genres', ['movie_id' => $movie->id]);
+    }
+
     public function test_performer_aliases_are_created(): void
     {
         $movie = $this->persister()->persist($this->draft([
@@ -369,8 +439,6 @@ final class MoviePersisterTest extends TestCase
         $source->refresh();
         $this->assertLessThan(20.0, (float) $source->gap_seconds_current);
         $this->assertNotNull($source->last_success_at);
-        $this->assertSame(Source::CIRCUIT_CLOSED, $source->circuit_state);
-        $this->assertSame(0, $source->consecutive_failures);
     }
 
     public function test_variants_from_two_sources_resolve_to_one_movie_row(): void

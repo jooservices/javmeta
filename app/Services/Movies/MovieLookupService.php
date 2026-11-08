@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Movies;
 
+use App\Repositories\MovieRepository;
 use App\Models\Movie;
 use App\Models\MovieCode;
 use App\Support\Code\NormalizedCode;
@@ -40,7 +41,7 @@ final class MovieLookupService
             return null;
         }
 
-        $movieId = MovieCode::query()
+        $movieId = app(MovieRepository::class)->modelQuery(MovieCode::class)
             ->where('code_normalized', $normalized->value())
             ->value('movie_id');
 
@@ -73,7 +74,7 @@ final class MovieLookupService
             return [];
         }
 
-        $movieIds = MovieCode::query()
+        $movieIds = app(MovieRepository::class)->modelQuery(MovieCode::class)
             ->whereIn('code_normalized', array_values($normalized))
             ->pluck('movie_id')
             ->unique()
@@ -102,6 +103,6 @@ final class MovieLookupService
     /** @return Builder<Movie> */
     private function queryWithDisplayRelations(): Builder
     {
-        return Movie::query()->with(['codes', 'performers', 'genres', 'media', 'credits']);
+        return app(MovieRepository::class)->modelQuery(Movie::class)->with(['codes', 'performers.aliases', 'performers.sources', 'genres', 'media', 'credits']);
     }
 }

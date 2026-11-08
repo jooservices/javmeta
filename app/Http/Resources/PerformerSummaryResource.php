@@ -43,6 +43,11 @@ final class PerformerSummaryResource extends JsonResource
                 'name_kanji' => $resource->name_kanji,
                 'name_kana' => $resource->name_kana,
                 'aliases' => $this->whenLoaded('aliases', fn(): array => $resource->aliases->pluck('alias')->all(), []),
+                'sources' => $this->whenLoaded(
+                    'sources',
+                    fn(): array => $resource->sources->map(fn($source): array => (new PerformerSourceResource($source))->toArray($request))->all(),
+                    [],
+                ),
                 'image_url' => $resource->image_url,
                 'profile_url' => $resource->profile_url,
             ];

@@ -1,0 +1,10 @@
+{
+  "source_url": "https://en.1pondo.tv/dyn/phpauto/movie_lists/list_newest_0.json",
+  "final_url": "https://en.1pondo.tv/dyn/phpauto/movie_lists/list_newest_0.json",
+  "captured_at": "2026-09-09T04:32:23.633Z",
+  "http_status": 200,
+  "content_hash": "749aeb91ac8cedd39796d0847f86408228d66f26a826f771fe5fc099ca69e5bc",
+  "target_type": "listing",
+  "fetch_method": "http",
+  "sanitized": false
+}

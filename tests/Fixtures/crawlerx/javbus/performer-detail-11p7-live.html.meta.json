@@ -1,0 +1,10 @@
+{
+  "source_url": "https://www.javbus.com/en/star/11p7",
+  "final_url": "https://www.javbus.com/en/star/11p7",
+  "captured_at": "2026-09-09T04:10:14.166Z",
+  "http_status": 200,
+  "content_hash": "cd003d6344e9aec050f57206c66c0c781435a49808dfba493c001ba6ee678083",
+  "target_type": "performer_detail",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

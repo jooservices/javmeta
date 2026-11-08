@@ -6,61 +6,214 @@ namespace App\Services\Normalize;
 
 use App\Data\Crawl\PerformerDraft;
 use JOOservices\CrawlerX\Dto\Entity\PerformerDto;
-use Throwable;
 
 /**
  * Maps crawlerx PerformerDto (+ raw metadata) onto PerformerDraft for profile crawl.
  */
 final class PerformerNormalizer
 {
+    private readonly PerformerAttributeNormalizer $attributes;
+
+    public function __construct(?PerformerAttributeNormalizer $attributes = null)
+    {
+        $this->attributes = $attributes ?? new PerformerAttributeNormalizer();
+    }
+
     public function normalize(PerformerDto $performer, string $sourceSlug, string $url): ?PerformerDraft
     {
-        $externalId = $performer->externalId ?? $performer->name;
+        $externalId = $this->cleanText($performer->externalId ?? $performer->name);
         if ($externalId === null || trim($externalId) === '') {
             return null;
         }
 
+        $externalId = trim($externalId);
         $meta = $performer->metadata;
-        $size = $this->parseSize($performer->sizeRaw ?? (is_string($meta['size_raw'] ?? null) ? $meta['size_raw'] : null));
+        $sizeRaw = $this->cleanText($performer->sizeRaw ?? (is_string($meta['size_raw'] ?? null) ? $meta['size_raw'] : null));
+        $measurements = $this->measurements($this->parseSize($sizeRaw), $meta);
+        $blood = $this->attributes->bloodType($meta['blood_type'] ?? null, $sourceSlug);
+        $tags = $this->cleanStringList($performer->tags);
         $bio = $this->bioText($performer, $meta);
         $attrs = array_filter([
-            'tags' => $performer->tags !== [] ? $performer->tags : null,
-            'zodiac_sign' => is_string($meta['zodiac_sign'] ?? null) ? $meta['zodiac_sign'] : null,
-            'age' => is_string($meta['age'] ?? null) ? $meta['age'] : null,
-            'shoe_size_raw' => is_string($meta['shoe_size_raw'] ?? null) ? $meta['shoe_size_raw'] : null,
-            'hair_length' => is_string($meta['hair_length'] ?? null) ? $meta['hair_length'] : null,
-            'hair_color' => is_string($meta['hair_color'] ?? null) ? $meta['hair_color'] : null,
-            'favorite_count_raw' => is_string($meta['favorite_count_raw'] ?? null) ? $meta['favorite_count_raw'] : null,
+            'tags' => $tags !== [] ? $tags : null,
+            'zodiac_sign' => $this->cleanText(is_string($meta['zodiac_sign'] ?? null) ? $meta['zodiac_sign'] : null),
+            'age' => is_int($meta['age'] ?? null) ? (string) $meta['age'] : (is_string($meta['age'] ?? null) ? $this->cleanText($meta['age']) : null),
+            'extra' => $this->extraMetadata($meta),
+            'shoe_size_raw' => $this->cleanText(is_string($meta['shoe_size_raw'] ?? null) ? $meta['shoe_size_raw'] : null),
+            'hair_length' => $this->cleanText(is_string($meta['hair_length'] ?? null) ? $meta['hair_length'] : null),
+            'hair_color' => $this->cleanText(is_string($meta['hair_color'] ?? null) ? $meta['hair_color'] : null),
+            'favorite_count_raw' => $this->cleanText(is_string($meta['favorite_count_raw'] ?? null) ? $meta['favorite_count_raw'] : null),
         ], static fn(mixed $v): bool => $v !== null);
 
-        $aliases = array_values(array_unique(array_filter(
-            $performer->aliases,
-            static fn(string $alias): bool => trim($alias) !== '',
-        )));
+        $aliases = $this->cleanStringList($performer->aliases);
 
-        $nameKana = is_string($meta['name_kana'] ?? null) ? trim($meta['name_kana']) : null;
+        $nameKana = $this->cleanText(is_string($meta['name_kana'] ?? null) ? $meta['name_kana'] : null);
+        $nameKana = $nameKana === null ? null : trim($nameKana);
+        $crossLink = is_array($meta['cross_link'] ?? null) ? $meta['cross_link'] : [];
+        $crossLinkId = $this->firstStringValue([$meta['cross_link_id'] ?? null, $meta['crosslink_id'] ?? null, $crossLink['id'] ?? null]);
+        $crossLinkSource = $crossLinkId === null
+            ? null
+            : ($this->firstStringValue([$meta['cross_link_source'] ?? null, $crossLink['source'] ?? null]) ?? $sourceSlug);
 
         return new PerformerDraft(
             sourceSlug: $sourceSlug,
             externalId: trim($externalId),
-            nameRomaji: $performer->name ?? (is_string($meta['name_romaji'] ?? null) ? $meta['name_romaji'] : null),
-            nameKanji: $performer->nameJapanese,
+            nameRomaji: $this->cleanText($performer->name ?? (is_string($meta['name_romaji'] ?? null) ? $meta['name_romaji'] : null)),
+            nameKanji: $this->cleanText($performer->nameJapanese),
             nameKana: $nameKana !== '' ? $nameKana : null,
             aliases: $aliases,
-            profileUrl: $performer->url ?? $url,
-            imageUrl: $performer->profileImageUrl,
-            birthDate: $this->dateYmd($performer->birthDateRaw ?? (is_string($meta['birth_date_raw'] ?? null) ? $meta['birth_date_raw'] : null)),
-            heightCm: $this->heightCm($performer->heightRaw ?? (is_string($meta['height_raw'] ?? null) ? $meta['height_raw'] : null)),
-            bust: $size['bust'],
-            waist: $size['waist'],
-            hip: $size['hip'],
-            cup: $size['cup'] ?? (is_string($meta['cup'] ?? null) ? $meta['cup'] : null),
-            bloodType: is_string($meta['blood_type'] ?? null) ? $meta['blood_type'] : null,
+            profileUrl: $this->cleanText($performer->url ?? $url),
+            imageUrl: $this->cleanText($performer->profileImageUrl),
+            birthDate: $this->attributes->date('birth_date', $this->cleanText($performer->birthDateRaw ?? (is_string($meta['birth_date_raw'] ?? null) ? $meta['birth_date_raw'] : null)), $sourceSlug),
+            heightCm: $this->attributes->measurement('height_cm', $this->cleanText($performer->heightRaw ?? (is_string($meta['height_raw'] ?? null) ? $meta['height_raw'] : null)), $sourceSlug),
+            bust: $this->attributes->measurement('bust', $measurements['bust'], $sourceSlug),
+            waist: $this->attributes->measurement('waist', $measurements['waist'], $sourceSlug),
+            hip: $this->attributes->measurement('hip', $measurements['hip'], $sourceSlug),
+            cup: $this->attributes->cup($measurements['cup'], $sourceSlug),
+            bloodType: $blood['value'],
             bioText: $bio,
-            debutDate: $this->dateYmd(is_string($meta['debut_date_raw'] ?? null) ? $meta['debut_date_raw'] : null),
-            location: is_string($meta['birthplace'] ?? null) ? $meta['birthplace'] : null,
+            debutDate: $this->attributes->date('debut_date', $this->cleanText(is_string($meta['debut_date_raw'] ?? null) ? $meta['debut_date_raw'] : null), $sourceSlug),
+            location: $this->attributes->location($meta['birthplace'] ?? $meta['location'] ?? $meta['location_raw'] ?? null, $sourceSlug),
             attrs: $attrs,
+            crossLinkSource: $crossLinkSource,
+            crossLinkId: $crossLinkId,
+            bloodRh: $this->attributes->bloodRh($meta['blood_rh'] ?? $meta['rh'] ?? null, $sourceSlug) ?? $blood['rh'],
         );
+    }
+
+    /**
+     * Replace malformed UTF-8 from crawler responses and remove NUL bytes before text reaches PostgreSQL.
+     */
+    private function cleanText(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return str_replace("\0", '', mb_scrub($value, 'UTF-8'));
+    }
+
+    /** @param list<mixed> $values @return list<string> */
+    private function cleanStringList(array $values): array
+    {
+        $clean = [];
+        foreach ($values as $value) {
+            if (! is_string($value)) {
+                continue;
+            }
+
+            $value = $this->cleanText($value);
+            if ($value === null || trim($value) === '') {
+                continue;
+            }
+
+            $clean[] = $value;
+        }
+
+        return array_values(array_unique($clean));
+    }
+
+    /** @param list<mixed> $values */
+    private function firstStringValue(array $values): ?string
+    {
+        foreach ($values as $value) {
+            $string = $this->stringValue($value);
+            if ($string !== null) {
+                return $string;
+            }
+        }
+
+        return null;
+    }
+
+    private function stringValue(mixed $value): ?string
+    {
+        if (! is_string($value) && ! is_int($value)) {
+            return null;
+        }
+
+        $value = $this->cleanText((string) $value);
+        $value = $value === null ? null : trim($value);
+
+        return $value === '' ? null : $value;
+    }
+
+    /** Metadata keys already stored in columns or only noise; everything else is kept in attrs.extra. */
+    private const COLUMN_OR_NOISE_KEYS = [
+        'external_url', 'raw_profile', 'fields', 'name_kana', 'name_romaji', 'birth_date_raw', 'height_raw', 'size_raw',
+        'bust_raw', 'waist_raw', 'hip_raw', 'cup_size', 'cup', 'bust', 'waist', 'hips', 'blood_type', 'blood_rh', 'rh', 'birthplace', 'location', 'location_raw',
+        'debut_date_raw', 'zodiac_sign', 'age', 'shoe_size_raw', 'hair_length', 'hair_color', 'favorite_count_raw',
+    ];
+
+    /** Longest list kept per extra key, so one crowded profile cannot bloat the row. */
+    private const EXTRA_LIST_LIMIT = 200;
+
+    /**
+     * The CrawlerX profile fields that have no column (hobby, agency, sns, rating, filmography, related and similar
+     * performers, ranking...) are kept as they came, under their own key.
+     *
+     * @param  array<string, mixed>  $meta
+     * @return array<string, mixed>|null
+     */
+    private function extraMetadata(array $meta): ?array
+    {
+        $extra = [];
+        foreach ($meta as $key => $value) {
+            if (in_array($key, self::COLUMN_OR_NOISE_KEYS, true) || $value === null || $value === '' || $value === []) {
+                continue;
+            }
+
+            $value = is_array($value) && array_is_list($value) ? array_slice($value, 0, self::EXTRA_LIST_LIMIT) : $value;
+            $extra[$key] = $this->cleanValue($value);
+        }
+
+        return $extra === [] ? null : $extra;
+    }
+
+    private function cleanValue(mixed $value): mixed
+    {
+        if (is_string($value)) {
+            return $this->cleanText($value);
+        }
+
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        $clean = [];
+        foreach ($value as $key => $item) {
+            $key = is_string($key) ? $this->cleanText($key) : $key;
+            if ($key !== null) {
+                $clean[$key] = $this->cleanValue($item);
+            }
+        }
+
+        return $clean;
+    }
+
+    /**
+     * @param array{bust: mixed, waist: mixed, hip: mixed, cup: mixed} $size
+     * @param array<string, mixed> $meta
+     *
+     * @return array{bust: mixed, waist: mixed, hip: mixed, cup: mixed}
+     */
+    private function measurements(array $size, array $meta): array
+    {
+        return [
+            'bust' => $size['bust'] ?? $this->measurementRaw($meta['bust_raw'] ?? null),
+            'waist' => $size['waist'] ?? $this->measurementRaw($meta['waist_raw'] ?? null),
+            'hip' => $size['hip'] ?? $this->measurementRaw($meta['hip_raw'] ?? null),
+            'cup' => $size['cup'] ?? $this->cupRaw($meta['cup_size'] ?? null) ?? $this->cupRaw($meta['cup'] ?? null),
+        ];
+    }
+
+    private function measurementRaw(mixed $raw): mixed
+    {
+        return is_string($raw) ? $this->cleanText($raw) : $raw;
+    }
+
+    private function cupRaw(mixed $raw): mixed
+    {
+        return is_string($raw) ? $this->cleanText($raw) : $raw;
     }
 
     /** @param array<string, mixed> $meta */
@@ -68,36 +221,27 @@ final class PerformerNormalizer
     {
         if ($performer->rawProfile !== []) {
             $text = $performer->rawProfile['text'] ?? null;
-            if (is_string($text) && trim($text) !== '') {
-                return trim($text);
+            if (is_string($text)) {
+                $text = $this->cleanText($text);
+                if ($text !== null && trim($text) !== '') {
+                    return trim($text);
+                }
             }
         }
 
         $raw = $meta['raw_profile'] ?? null;
-        if (is_string($raw) && trim($raw) !== '') {
-            return trim($raw);
-        }
-
-        return null;
-    }
-
-    private function heightCm(?string $raw): ?int
-    {
-        if ($raw === null || trim($raw) === '') {
-            return null;
-        }
-
-        if (preg_match('/(\d{2,3})/', $raw, $m) === 1) {
-            $cm = (int) $m[1];
-
-            return $cm >= 100 && $cm <= 250 ? $cm : null;
+        if (is_string($raw)) {
+            $raw = $this->cleanText($raw);
+            if ($raw !== null && trim($raw) !== '') {
+                return trim($raw);
+            }
         }
 
         return null;
     }
 
     /**
-     * @return array{bust: ?int, waist: ?int, hip: ?int, cup: ?string}
+     * @return array{bust: mixed, waist: mixed, hip: mixed, cup: mixed}
      */
     private function parseSize(?string $raw): array
     {
@@ -107,8 +251,18 @@ final class PerformerNormalizer
         }
 
         $cup = null;
-        if (preg_match('/\(([A-Za-z0-9]+)\)/', $raw, $cupMatch) === 1) {
-            $cup = strtoupper($cupMatch[1]);
+        if (preg_match('/\(([^)]+)\)/u', $raw, $cupMatch) === 1) {
+            $cup = trim($cupMatch[1]);
+        }
+
+        // "T161 B83(D) W58 H94": the labeled B/W/H numbers, never the height that comes first.
+        if (preg_match('/B\s*(\d{2,3}).*?W\s*(\d{2,3}).*?H\s*(\d{2,3})/i', $raw, $labeled) === 1) {
+            return [
+                'bust' => (int) $labeled[1],
+                'waist' => (int) $labeled[2],
+                'hip' => (int) $labeled[3],
+                'cup' => $cup,
+            ];
         }
 
         if (preg_match('/(\d{2,3}).*?(\d{2,3}).*?(\d{2,3})/', $raw, $m) === 1) {
@@ -121,22 +275,5 @@ final class PerformerNormalizer
         }
 
         return ['bust' => null, 'waist' => null, 'hip' => null, 'cup' => $cup];
-    }
-
-    private function dateYmd(?string $raw): ?string
-    {
-        if ($raw === null || trim($raw) === '') {
-            return null;
-        }
-
-        try {
-            return \Carbon\CarbonImmutable::parse(trim($raw))->format('Y-m-d');
-        } catch (Throwable) {
-            if (preg_match('/(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/', $raw, $m) === 1) {
-                return sprintf('%04d-%02d-%02d', (int) $m[1], (int) $m[2], (int) $m[3]);
-            }
-
-            return null;
-        }
     }
 }

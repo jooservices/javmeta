@@ -4,96 +4,135 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Crawl;
 
-use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\CrawlRun;
 use App\Models\Source;
+use App\Console\Commands\CrawlTickCommand;
+use Closure;
+use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Symfony\Component\Console\Application as SymfonyApplication;
+use Symfony\Component\Console\Command\Command as SymfonyCommand;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\Console\Output\OutputInterface;
 use Tests\TestCase;
 
 final class CrawlTickCommandTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_tick_syncs_configured_sources_and_enqueues_listing_urls(): void
+    public function test_tick_delegates_in_order_and_forwards_only_seed_options(): void
     {
-        $this->artisan('crawl:tick', ['--source' => 'javdb', '--limit' => 1])->assertSuccessful();
+        $calls = [];
+        $application = new SymfonyApplication();
+        $recordCommand = static fn(string $name, Closure $handler): SymfonyCommand => new class ($name, $handler) extends SymfonyCommand {
+            /** @var Closure(InputInterface): int */
+            private Closure $handler;
 
-        $this->assertDatabaseHas('sources', [
-            'slug' => 'javdb',
-            'base_url' => 'https://javdb.com',
-            'enabled' => true,
-            'priority' => 10,
-            'needs_proxy' => false,
-        ]);
-        $this->assertDatabaseHas('crawl_queue', [
-            'source_slug' => 'javdb',
-            'url' => 'https://javdb.com/',
-            'kind' => CrawlQueue::KIND_LISTING,
-            'status' => CrawlQueue::STATUS_PENDING,
-        ]);
-        $this->assertSame(1, CrawlRun::query()->where('source_slug', 'javdb')->count());
-        $this->assertSame(1, CrawlEvent::query()->where('source_slug', 'javdb')->where('kind', 'queue_tick')->count());
+            /** @param Closure(InputInterface): int $handler */
+            public function __construct(string $name, Closure $handler)
+            {
+                $this->handler = $handler;
+                parent::__construct($name);
+
+                if ($name === 'crawler:seed') {
+                    $this->addOption('source', null, InputOption::VALUE_OPTIONAL);
+                    $this->addOption('limit', null, InputOption::VALUE_OPTIONAL, '', '50');
+                }
+            }
+
+            protected function execute(InputInterface $input, OutputInterface $output): int
+            {
+                return ($this->handler)($input);
+            }
+        };
+
+        $application->addCommand($recordCommand('crawler:sync-sources', function (InputInterface $input) use (&$calls): int {
+            $calls[] = ['command' => 'crawler:sync-sources'];
+
+            return SymfonyCommand::SUCCESS;
+        }));
+        $application->addCommand($recordCommand('crawler:reclaim', function (InputInterface $input) use (&$calls): int {
+            $calls[] = ['command' => 'crawler:reclaim'];
+
+            return SymfonyCommand::SUCCESS;
+        }));
+        $application->addCommand($recordCommand('crawler:seed', function (InputInterface $input) use (&$calls): int {
+            $calls[] = [
+                'command' => 'crawler:seed',
+                'source' => $input->getOption('source'),
+                'limit' => $input->getOption('limit'),
+            ];
+
+            return SymfonyCommand::SUCCESS;
+        }));
+
+        $sourceSlug = fake()->slug(2);
+        $command = new CrawlTickCommand();
+        $command->setLaravel(app());
+        $command->setApplication($application);
+        $output = new BufferedOutput();
+        $exitCode = $command->run(new ArrayInput(['--source' => $sourceSlug, '--limit' => '1'], $command->getDefinition()), $output);
+
+        $this->assertSame(SymfonyCommand::SUCCESS, $exitCode);
+        $this->assertStringContainsString('deprecated', $output->fetch());
+        $this->assertSame([
+            ['command' => 'crawler:sync-sources'],
+            ['command' => 'crawler:reclaim'],
+            ['command' => 'crawler:seed', 'source' => $sourceSlug, 'limit' => '1'],
+        ], $calls);
     }
 
-    public function test_open_circuit_source_does_not_block_other_sources(): void
+    public function test_tick_with_real_commands_preserves_the_combined_database_effects(): void
     {
-        Source::factory()->create([
-            'slug' => 'javdb',
-            'circuit_state' => Source::CIRCUIT_OPEN,
-            'circuit_opened_at' => now(),
+        $this->travelTo('2026-11-02T12:34:00Z');
+
+        $sourceSlug = fake()->unique()->slug(2);
+        $otherSourceSlug = fake()->unique()->slug(2);
+        $seedUrls = [fake()->unique()->url(), fake()->unique()->url()];
+        $otherSeedUrl = fake()->unique()->url();
+
+        config()->set('javmeta_sources.sources', [
+            $sourceSlug => [
+                'name' => fake()->company(),
+                'base_url' => fake()->url(),
+                'priority' => 10,
+                'movie_listing_urls' => $seedUrls,
+            ],
+            $otherSourceSlug => [
+                'name' => fake()->company(),
+                'base_url' => fake()->url(),
+                'priority' => 20,
+                'movie_listing_urls' => [$otherSeedUrl],
+            ],
         ]);
 
-        $this->artisan('crawl:tick', ['--limit' => 1])->assertSuccessful();
-
-        $this->assertDatabaseMissing('crawl_queue', ['source_slug' => 'javdb']);
-        $this->assertDatabaseHas('crawl_queue', ['source_slug' => 'javdatabase']);
-    }
-
-    public function test_tick_deduplicates_listing_urls_across_runs(): void
-    {
-        $this->artisan('crawl:tick', ['--source' => 'javdb', '--limit' => 1])->assertSuccessful();
-        $this->artisan('crawl:tick', ['--source' => 'javdb', '--limit' => 1])->assertSuccessful();
-
-        $this->assertSame(1, CrawlQueue::query()->where('source_slug', 'javdb')->where('url', 'https://javdb.com/')->count());
-    }
-
-    public function test_tick_enqueues_performer_listing_for_warashi(): void
-    {
-        $this->artisan('crawl:tick', ['--source' => 'warashi', '--limit' => 1])->assertSuccessful();
-
-        $this->assertDatabaseHas('crawl_queue', [
-            'source_slug' => 'warashi',
-            'url' => 'https://warashi-asian-pornstars.fr/en/s-2-2/female-pornstars/toutes/all/page/1',
-            'kind' => CrawlQueue::KIND_PERFORMER_LISTING,
-            'status' => CrawlQueue::STATUS_PENDING,
+        $staleQueueRow = CrawlQueue::factory()->create([
+            'source_slug' => $otherSourceSlug,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'attempts' => 0,
+            'max_attempts' => 3,
+            'claimed_at' => now()->subSeconds(18_001),
+            'locked_by' => fake()->uuid(),
         ]);
-    }
 
-    public function test_tick_enqueues_gallery_for_eporner(): void
-    {
-        $this->artisan('crawl:tick', ['--source' => 'eporner', '--limit' => 1])->assertSuccessful();
+        $registeredNames = array_keys(array_filter(
+            app(Kernel::class)->all(),
+            static fn(SymfonyCommand $command): bool => $command instanceof CrawlTickCommand,
+        ));
+        $this->assertCount(1, $registeredNames);
 
-        $this->assertDatabaseHas('crawl_queue', [
-            'source_slug' => 'eporner',
-            'kind' => CrawlQueue::KIND_GALLERY,
-            'status' => CrawlQueue::STATUS_PENDING,
-        ]);
-    }
+        $this->artisan($registeredNames[0], ['--source' => $sourceSlug, '--limit' => 1])
+            ->expectsOutputToContain('deprecated')
+            ->assertSuccessful();
 
-    public function test_tick_splits_xcity_movie_and_performer_seeds(): void
-    {
-        $this->artisan('crawl:tick', ['--source' => 'xcity', '--limit' => 2])->assertSuccessful();
-
-        $this->assertDatabaseHas('crawl_queue', [
-            'source_slug' => 'xcity',
-            'url' => 'https://xxx.xcity.jp/avod/list/?style=simple',
-            'kind' => CrawlQueue::KIND_LISTING,
-        ]);
-        $this->assertDatabaseHas('crawl_queue', [
-            'source_slug' => 'xcity',
-            'url' => 'https://xxx.xcity.jp/idol/',
-            'kind' => CrawlQueue::KIND_PERFORMER_LISTING,
-        ]);
+        $this->assertSame(2, Source::query()->count());
+        $this->assertSame(1, CrawlQueue::query()->where('source_slug', $sourceSlug)->count());
+        $this->assertSame(1, CrawlRun::query()->where('source_slug', $sourceSlug)->count());
+        $this->assertSame(CrawlQueue::STATUS_PENDING, $staleQueueRow->refresh()->status);
+        $this->assertDatabaseMissing('crawl_queue', ['source_slug' => $otherSourceSlug, 'url' => $otherSeedUrl]);
     }
 }

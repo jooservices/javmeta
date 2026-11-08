@@ -22,8 +22,8 @@ final class TelegramAlertNotifierTest extends TestCase
     public function test_skips_when_env_missing(): void
     {
         config([
-            'jvmeta_alerts.telegram.bot_token' => '',
-            'jvmeta_alerts.telegram.chat_id' => '',
+            'javmeta_alerts.telegram.bot_token' => '',
+            'javmeta_alerts.telegram.chat_id' => '',
             'laravel-notifications.channels.telegram.bot_token' => '',
             'laravel-notifications.channels.telegram.chat_id' => '',
         ]);
@@ -33,16 +33,16 @@ final class TelegramAlertNotifierTest extends TestCase
 
         self::assertSame([], ClientBuilder::recorded());
         Log::shouldHaveReceived('warning')->withArgs(static function (string $message): bool {
-            return $message === 'jvmeta.telegram_skipped';
+            return $message === 'javmeta.telegram_skipped';
         });
     }
 
     public function test_posts_telegram_message_when_configured(): void
     {
         config([
-            'jvmeta_alerts.telegram.bot_token' => 'tok',
-            'jvmeta_alerts.telegram.chat_id' => '42',
-            'jvmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
+            'javmeta_alerts.telegram.bot_token' => 'tok',
+            'javmeta_alerts.telegram.chat_id' => '42',
+            'javmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
             'laravel-notifications.channels.telegram.bot_token' => 'tok',
             'laravel-notifications.channels.telegram.chat_id' => '42',
             'laravel-notifications.channels.telegram.api_base' => 'https://api.telegram.org',
@@ -68,17 +68,121 @@ final class TelegramAlertNotifierTest extends TestCase
         self::assertCount(1, $recorded);
         self::assertStringContainsString('/bottok/sendMessage', (string) $recorded[0]->request->getUri());
         $body = (string) $recorded[0]->request->getBody();
-        self::assertStringContainsString('Circuit open', $body);
+        self::assertStringContainsString('[XCrawler][WARNING] Circuit open', $body);
         self::assertStringContainsString('source_slug: javdb', $body);
         self::assertStringContainsString('"chat_id":"42"', $body);
+    }
+
+    public function test_rejects_a_successful_http_response_when_telegram_reports_failure(): void
+    {
+        config([
+            'javmeta_alerts.telegram.bot_token' => 'tok',
+            'javmeta_alerts.telegram.chat_id' => '42',
+            'javmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
+            'laravel-notifications.channels.telegram.bot_token' => 'tok',
+            'laravel-notifications.channels.telegram.chat_id' => '42',
+            'laravel-notifications.channels.telegram.api_base' => 'https://api.telegram.org',
+        ]);
+        ClientBuilder::fake()->respond('POST', '*', (new TestResponseSequence())->push(TestResponse::json(['ok' => false], 200)));
+        $client = ClientBuilder::create()->withBaseUri('https://api.telegram.org/')->build();
+
+        self::assertFalse((new TelegramAlertNotifier($client))->notify('Subject', 'Body'));
+    }
+
+    public function test_periodic_report_keeps_its_existing_prefix(): void
+    {
+        config([
+            'javmeta_alerts.telegram.bot_token' => 'tok',
+            'javmeta_alerts.telegram.chat_id' => '42',
+            'javmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
+            'laravel-notifications.channels.telegram.bot_token' => 'tok',
+            'laravel-notifications.channels.telegram.chat_id' => '42',
+            'laravel-notifications.channels.telegram.api_base' => 'https://api.telegram.org',
+        ]);
+        ClientBuilder::fake()->respond('POST', '*', (new TestResponseSequence())->push(TestResponse::json(['ok' => true])));
+        $client = ClientBuilder::create()->withBaseUri('https://api.telegram.org/')->build();
+
+        (new TelegramAlertNotifier($client))->deliver('📊 [XCrawler] Report', 'Window data', ['plain_report' => true]);
+
+        $payload = json_decode((string) ClientBuilder::recorded()[0]->request->getBody(), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame("📊 [XCrawler] Report\nWindow data", $payload['text'] ?? null);
+        self::assertStringNotContainsString('[XCrawler] 📊', (string) ($payload['text'] ?? ''));
+    }
+
+    /**
+     * A recovery keeps its resolved state and informational severity in the Telegram subject.
+     */
+    public function test_level_follows_the_severity_and_plain_messages_have_no_level(): void
+    {
+        $cases = [
+            [['alert_state' => 'open', 'severity' => 'notice'], '[XCrawler][NOTICE] Circuit open'],
+            [['alert_state' => 'open', 'severity' => 'critical'], '[XCrawler][CRITICAL] Circuit open'],
+            [['alert_state' => 'open', 'severity' => 'info'], '[XCrawler][INFO] Circuit open'],
+            [['alert_state' => 'open', 'severity' => 'unknown'], '[XCrawler][WARNING] Circuit open'],
+            [[], '[XCrawler][WARNING] Circuit open'],
+        ];
+
+        foreach ($cases as [$context, $expected]) {
+            config([
+                'javmeta_alerts.telegram.bot_token' => 'tok',
+                'javmeta_alerts.telegram.chat_id' => '42',
+                'javmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
+                'laravel-notifications.channels.telegram.bot_token' => 'tok',
+                'laravel-notifications.channels.telegram.chat_id' => '42',
+                'laravel-notifications.channels.telegram.api_base' => 'https://api.telegram.org',
+            ]);
+            ClientBuilder::fake()->respond('POST', '*', (new TestResponseSequence())->push(TestResponse::json(['ok' => true])));
+            $client = ClientBuilder::create()->withBaseUri('https://api.telegram.org/')->build();
+
+            (new TelegramAlertNotifier($client))->notify('Circuit open', 'javdb failed', $context);
+
+            $recorded = ClientBuilder::recorded();
+            $body = (string) end($recorded)->request->getBody();
+            self::assertStringContainsString($expected, $body);
+            self::assertStringNotContainsString('[ALERT]', $body);
+            self::assertStringNotContainsString('OPEN', explode(' Circuit open', $body)[0]);
+            self::assertStringNotContainsString('javmeta:', $body);
+        }
+    }
+
+    public function test_preserves_resolved_state_when_posting_a_recovery(): void
+    {
+        config([
+            'javmeta_alerts.telegram.bot_token' => 'tok',
+            'javmeta_alerts.telegram.chat_id' => '42',
+            'javmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
+            'laravel-notifications.channels.telegram.bot_token' => 'tok',
+            'laravel-notifications.channels.telegram.chat_id' => '42',
+            'laravel-notifications.channels.telegram.api_base' => 'https://api.telegram.org',
+        ]);
+
+        ClientBuilder::fake()->respond(
+            'POST',
+            '*',
+            (new TestResponseSequence())->push(TestResponse::json(['ok' => true])),
+        );
+
+        $client = ClientBuilder::create()
+            ->withBaseUri('https://api.telegram.org/')
+            ->build();
+
+        (new TelegramAlertNotifier($client))->notify(
+            'Source recovered',
+            'The source is healthy again.',
+            ['alert_state' => 'resolved', 'severity' => 'info'],
+        );
+
+        $recorded = ClientBuilder::recorded();
+        self::assertCount(1, $recorded);
+        self::assertStringContainsString('[XCrawler][RESOLVED] Source recovered', (string) $recorded[0]->request->getBody());
     }
 
     public function test_posts_telegram_message_when_bot_token_contains_colon(): void
     {
         config([
-            'jvmeta_alerts.telegram.bot_token' => '123456:ABC-DEF',
-            'jvmeta_alerts.telegram.chat_id' => '42',
-            'jvmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
+            'javmeta_alerts.telegram.bot_token' => '123456:ABC-DEF',
+            'javmeta_alerts.telegram.chat_id' => '42',
+            'javmeta_alerts.telegram.api_base' => 'https://api.telegram.org',
             'laravel-notifications.channels.telegram.bot_token' => '123456:ABC-DEF',
             'laravel-notifications.channels.telegram.chat_id' => '42',
             'laravel-notifications.channels.telegram.api_base' => 'https://api.telegram.org',

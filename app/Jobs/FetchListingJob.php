@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Repositories\CrawlQueueRepository;
+use App\Enums\CrawlErrorCode;
 use App\Jobs\Concerns\HandlesCrawlQueueRow;
 use App\Jobs\Middleware\TraceCrawlJob;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Services\Crawl\CrawlQueueService;
-use App\Services\Crawl\SourceCircuitBreaker;
+use App\Services\Crawl\FetchAttemptRecorder;
+use App\Services\Crawl\SourceActivityRecorder;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawler\CrawlerxClient;
 use App\Support\Crawl\LaravelCrawlQueue;
@@ -33,6 +36,7 @@ final class FetchListingJob implements ShouldQueue
     public function __construct(
         public readonly int $crawlQueueId,
         public readonly ?string $traceparent = null,
+        public readonly ?string $claimToken = null,
     ) {
         $this->onQueue(LaravelCrawlQueue::forListing());
     }
@@ -43,34 +47,35 @@ final class FetchListingJob implements ShouldQueue
         return [TraceCrawlJob::class];
     }
 
-    public function handle(CrawlerxClient $client, CrawlQueueService $queue, SourceCircuitBreaker $breaker, SourceThrottle $throttle): void
+    public function handle(CrawlerxClient $client, CrawlQueueService $queue, SourceActivityRecorder $activity, SourceThrottle $throttle): void
     {
-        $row = $this->queueRow($this->crawlQueueId);
+        $row = $this->queueRow($this->crawlQueueId, CrawlQueue::KIND_LISTING);
         if (! $row instanceof CrawlQueue || $row->kind !== CrawlQueue::KIND_LISTING) {
             return;
         }
 
-        $source = Source::query()->find($row->source_slug);
+        $source = app(CrawlQueueRepository::class)->modelQuery(Source::class)->find($row->source_slug);
         if (! $source instanceof Source) {
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => 'unknown_source']);
-            $this->markFailed($row, 'Unknown source slug.');
+            $this->markFailed($row, CrawlErrorCode::UnknownSource, 'Unknown source slug.');
 
             return;
         }
 
-        $result = $client->fetchListing($row->source_slug, $row->url);
+        $result = $client->fetchQueueRow($row);
+        app(FetchAttemptRecorder::class)->record($row, $result);
         if (! $result->ok || $result->list === null) {
-            $this->onCrawlFailure($row, $source, $result, $breaker, $throttle);
+            $this->onCrawlFailure($row, $source, $result, $activity, $throttle);
 
             return;
         }
 
         $list = $result->list;
 
-        if ($list->entityType === 'movie') {
+        if (in_array($list->entityType, ['movie', 'gallery'], true)) {
             $enqueued = 0;
             foreach ($list->items as $item) {
-                $queue->enqueue($item->url, $row->source_slug, CrawlQueue::KIND_DETAIL);
+                $queue->enqueue($item->url, $row->source_slug, CrawlQueue::kindForNextCrawlType($item->nextCrawlType, $list->entityType));
                 $enqueued++;
             }
 
@@ -78,7 +83,7 @@ final class FetchListingJob implements ShouldQueue
                 $queue->enqueue($list->pagination->nextUrl, $row->source_slug, CrawlQueue::KIND_LISTING);
             }
 
-            $this->recordEvent($row->source_slug, 'listing_parsed', $row->url, [
+            $this->recordEvent($row->source_slug, $list->entityType === 'gallery' ? 'gallery_listing_parsed' : 'listing_parsed', $row->url, [
                 'items' => count($list->items),
                 'enqueued' => $enqueued,
             ]);
@@ -89,7 +94,7 @@ final class FetchListingJob implements ShouldQueue
             ]);
         }
 
-        $breaker->recordSuccess($source);
+        $activity->recordSuccess($source);
         $throttle->onSuccess($source);
         $this->markDone($row);
     }

@@ -1,4 +1,10 @@
-FROM php:8.5-cli-bookworm
+# syntax=docker/dockerfile:1
+
+FROM node:24.21.0-bookworm-slim AS node-runtime
+
+FROM php:8.5.11-cli-bookworm
+
+ARG SENTRY_RELEASE=unknown
 
 WORKDIR /var/www/html
 
@@ -32,24 +38,43 @@ RUN apt-get update \
         xvfb \
         xauth \
         zip \
-    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && pecl install mongodb \
+    && { for attempt in 1 2 3; do pecl install mongodb-2.5.5 && break; [ "$attempt" -lt 3 ] || exit 1; sleep 5; done; } \
     && docker-php-ext-enable mongodb \
-    && docker-php-ext-install intl pcntl pdo_pgsql \
+    && docker-php-ext-install intl pcntl pdo_pgsql pdo_mysql \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+RUN { for attempt in 1 2 3; do \
+        curl --fail --location --show-error --retry 2 --retry-all-errors \
+            "https://github.com/phpredis/phpredis/archive/df4fab2de7fc327c54c94a13af2b9542e4fbd720.tar.gz" \
+            --output /tmp/phpredis-6.3.0.tar.gz \
+            && break; \
+        [ "$attempt" -lt 3 ] || exit 1; sleep 5; \
+    done; } \
+    && mkdir -p /tmp/phpredis \
+    && tar -xzf /tmp/phpredis-6.3.0.tar.gz --strip-components=1 -C /tmp/phpredis \
+    && cd /tmp/phpredis \
+    && phpize \
+    && ./configure \
+    && make -j"$(nproc)" \
+    && make install \
+    && docker-php-ext-enable redis \
+    && php -r 'exit(phpversion("redis") === "6.3.0" ? 0 : 1);' \
+    && rm -rf /tmp/phpredis /tmp/phpredis-6.3.0.tar.gz
+
+COPY --from=node-runtime /usr/local/ /usr/local/
+COPY --from=composer:2.10.3 /usr/bin/composer /usr/bin/composer
 
 COPY docker/crawlerx-fetch-ready.sh /usr/local/bin/crawlerx-fetch-ready
 COPY docker/worker-queues.sh /usr/local/bin/worker-queues
-RUN chmod +x /usr/local/bin/crawlerx-fetch-ready /usr/local/bin/worker-queues
+COPY docker/ready-check.sh /usr/local/bin/ready-check
+RUN chmod +x /usr/local/bin/crawlerx-fetch-ready /usr/local/bin/worker-queues /usr/local/bin/ready-check
 
-ENV CRAWLERX_ROOT=/var/www/crawlerx \
+ENV CRAWLERX_ROOT=/var/www/html/vendor/jooservices/crawlerx \
+    SENTRY_RELEASE=${SENTRY_RELEASE} \
     CRAWLERX_NODE=node \
-    CRAWLERX_PLAYWRIGHT_SCRIPT=/var/www/crawlerx/scripts/playwright-fetch.mjs \
-    CRAWLERX_PUPPETEER_SCRIPT=/var/www/crawlerx/scripts/puppeteer-stealth-fetch.mjs \
-    CRAWLERX_FLARESOLVERR_URL=http://flaresolverr:8191/v1 \
+    CRAWLERX_PLAYWRIGHT_SCRIPT=/var/www/html/vendor/jooservices/crawlerx/scripts/playwright-fetch.mjs \
+    CRAWLERX_PUPPETEER_SCRIPT=/var/www/html/vendor/jooservices/crawlerx/scripts/puppeteer-stealth-fetch.mjs \
+    FLARESOLVERR_URL=http://flaresolverr:8191/v1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]

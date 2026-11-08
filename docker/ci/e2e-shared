@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Run the E2E journeys against the Workspaces SHARED services in the shared PHP runtime.
+#   docker/ci/e2e-shared                            # javmeta_test
+#   JAVMETA_MODE=wt:<id> docker/ci/e2e-shared       # a worktree database
+#
+# Indexes, Redis prefix, cache prefix and the OpenObserve stream carry a per-run tag; the stream is
+# deleted afterwards. Databases are verified with check-project first. The run must finish in 480 s.
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+mkdir -p "$root/.tmp"
+coverage="$root/.tmp/e2e-coverage.xml"
+
+SECONDS=0
+JAVMETA_E2E_COVERAGE_FILE="$coverage" "$root/docker/dev/shared-run" --mode "${JAVMETA_MODE:-test}" --e2e -- \
+  bash -lc 'set -euo pipefail; if [[ ! -d vendor ]]; then composer install --no-interaction --prefer-dist --no-progress; fi; php artisan config:clear --ansi; php artisan migrate --force --ansi; composer test:e2e'
+elapsed="$SECONDS"
+if (( elapsed > 480 )); then
+  echo "JAVMETA E2E run took ${elapsed}s; it must finish in less than 480s." >&2
+  exit 1
+fi
+printf 'JAVMETA E2E completed in %ss (limit: 480s). Coverage: %s\n' "$elapsed" "$coverage"

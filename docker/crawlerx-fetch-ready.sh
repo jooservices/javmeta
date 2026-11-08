@@ -2,7 +2,7 @@
 # Ensure crawlerx Node deps + Chromium exist (volume-mounted package).
 set -euo pipefail
 
-CRAWLERX_ROOT="${CRAWLERX_ROOT:-/var/www/crawlerx}"
+CRAWLERX_ROOT="${CRAWLERX_ROOT:-/var/www/html/vendor/jooservices/crawlerx}"
 BROWSER_PATH="${PLAYWRIGHT_BROWSERS_PATH:-/ms-playwright}"
 
 if [[ ! -d "${CRAWLERX_ROOT}" ]]; then

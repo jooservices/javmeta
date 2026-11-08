@@ -16,15 +16,14 @@ final class SendMissedLookupAlert
 
     public function handle(ConsumerMissedLookup $event): void
     {
-        $ttl = (int) config('jvmeta_alerts.miss_debounce_seconds', 3600);
+        $ttl = (int) config('javmeta_alerts.miss_debounce_seconds', 3600);
 
-        $this->alerts->send(
+        $this->alerts->sendTemplate(
             debounceKey: "miss:{$event->entity}:" . strtolower($event->query),
-            subject: "Consumer miss: {$event->entity}",
-            body: 'Requested ' . $event->entity . ' not in DB — fetch ASAP.',
+            templateKey: 'catalog.lookup_missing',
             context: array_merge([
-                'entity' => $event->entity,
-                'query' => $event->query,
+                'entity_type' => $event->entity,
+                'entity_key' => $event->query,
             ], $event->context),
             debounceSeconds: $ttl,
         );

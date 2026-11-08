@@ -1,0 +1,10 @@
+{
+  "source_url": "https://www.minnano-av.com/actress_list.php",
+  "final_url": "https://www.minnano-av.com/actress_list.php",
+  "captured_at": "2026-09-09T04:15:40.086Z",
+  "http_status": 200,
+  "content_hash": "29f87590e433978ade2f721678325da3b1d28e60a2f3713b7747c7722ec7c7ed",
+  "target_type": "performer_listing",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

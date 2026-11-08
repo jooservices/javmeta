@@ -1,0 +1,39 @@
+# Builds the embedder image only when the embedder changes (the image is large).
+name: Embedder image
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - 'embedder/**'
+      - '.github/workflows/embedder-image.yml'
+  pull_request:
+    branches: [develop]
+    paths:
+      - 'embedder/**'
+      - '.github/workflows/embedder-image.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: embedder-image-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build embedder image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build embedder/Dockerfile.production (no push)
+        run: docker build --tag javmeta-embedder:ci --file embedder/Dockerfile.production embedder
+
+      - name: Report image size
+        run: docker image inspect javmeta-embedder:ci --format '{{.Size}}' | numfmt --to=iec

@@ -1,0 +1,10 @@
+{
+  "source_url": "https://www.javbus.com/en/",
+  "final_url": "https://www.javbus.com/en",
+  "captured_at": "2026-09-09T04:09:44.931Z",
+  "http_status": 200,
+  "content_hash": "a8a90ab1f6d275e3ef601eeb382af5940b2586bdff4be30e3f4043f46029dc10",
+  "target_type": "listing",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

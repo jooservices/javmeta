@@ -1,0 +1,10 @@
+{
+  "source_url": "https://en.jable.tv/new-release/",
+  "final_url": "https://en.jable.tv/new-release/",
+  "captured_at": "2026-09-09T04:08:59.946Z",
+  "http_status": 200,
+  "content_hash": "36a90ae85fb33624a6cd13e27d63dfbedc5dbbab6815c15d321b236e255561bc",
+  "target_type": "listing",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

@@ -1,0 +1,35 @@
+FROM python:3.12.15-slim-bookworm
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    HF_HOME=/home/embedder/.cache/huggingface
+
+RUN python -m pip install \
+        --no-cache-dir \
+        --disable-pip-version-check \
+        --index-url https://download.pytorch.org/whl/cpu \
+        torch==2.14.1+cpu
+
+COPY requirements.production.txt .
+
+RUN python -m pip install \
+        --no-cache-dir \
+        --disable-pip-version-check \
+        --no-compile \
+        -r requirements.production.txt
+
+COPY app.py .
+
+RUN groupadd --system --gid 10001 embedder \
+    && useradd --system --uid 10001 --gid 10001 \
+        --create-home --home-dir /home/embedder embedder \
+    && mkdir -p /home/embedder/.cache/huggingface \
+    && chown -R embedder:embedder /app /home/embedder
+
+USER embedder
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

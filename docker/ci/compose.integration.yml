@@ -1,0 +1,144 @@
+# Real backing services (Postgres, Mongo, Elasticsearch, OpenObserve) for the Integration suite (same images as docker-compose.yml).
+# Data lives in tmpfs: every run starts empty. Run through docker/ci/integration.
+name: javmeta-integration
+
+services:
+  postgres:
+    image: postgres:18.6-trixie
+    environment:
+      POSTGRES_DB: jvmeta_it
+      POSTGRES_USER: jvmeta
+      POSTGRES_PASSWORD: jvmeta
+    tmpfs:
+      # PostgreSQL 18+ images keep PGDATA below /var/lib/postgresql/<major>/docker; mounting the old /data path fails.
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jvmeta -d jvmeta_it"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  mongo:
+    image: mongodb/mongodb-community-server:9.0.4-ubi9-slim
+    environment:
+      XCRAWLER_MONGO_PASSWORD: "${JAVMETA_CI_XCRAWLER_MONGO_PASSWORD:-}"
+    volumes:
+      - ../../deploy/production/provision/mongodb.js:/tmp/xcrawler-mongodb.js:ro
+    tmpfs:
+      # The community-server image runs mongod as uid 1000; a root-owned tmpfs makes it exit with code 100.
+      - /data/db:uid=1000,gid=1000,mode=0755
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: redis:8.2.10-bookworm
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.5
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "${JAVMETA_CI_ES_SECURITY:-false}"
+      xpack.security.http.ssl.enabled: "false"
+      ELASTIC_PASSWORD: "${JAVMETA_CI_ES_PASSWORD:-}"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    tmpfs:
+      - /usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "printf 'user = \"elastic:%s\"\\n' \"$$ELASTIC_PASSWORD\" | curl --config - -fsS http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 40
+
+  openobserve:
+    image: openobserve/openobserve:v1.0.4
+    environment:
+      ZO_DATA_DIR: /data
+      ZO_LOCAL_MODE: "true"
+      ZO_TELEMETRY: "false"
+      ZO_ROOT_USER_EMAIL: root@javmeta.test
+      ZO_ROOT_USER_PASSWORD: Integration#123
+      # Flush and refresh quickly so OpenObserve-backed integration tests stay bounded.
+      ZO_MAX_FILE_RETENTION_TIME: "2"
+      ZO_FILE_PUSH_INTERVAL: "1"
+      ZO_CALCULATE_STATS_INTERVAL: "2"
+    tmpfs:
+      - /data
+    # Distroless image (no shell): the tests wait for /healthz instead.
+
+  gate:
+    image: ${JAVMETA_CI_IMAGE:-javmeta-ci:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    user: "${JAVMETA_CI_UID:-1000}:${JAVMETA_CI_GID:-1000}"
+    working_dir: /app
+    volumes:
+      - ../..:/app
+      - javmeta-ci-composer-cache:/tmp/composer-cache
+      - "${JAVMETA_INTEGRATION_SIGNAL_DIR:-/tmp/javmeta-integration-signal}:/tmp/javmeta-integration-signal"
+    environment:
+      HOME: /tmp
+      APP_KEY: "${JAVMETA_CI_APP_KEY:-}"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_CONNECTION: pgsql
+      DB_DATABASE: jvmeta_it
+      DB_URL: ""
+      DB_USERNAME: jvmeta
+      DB_PASSWORD: jvmeta
+      JAVMETA_ALLOW_SAMPLE_SECRETS: "true"
+      JAVMETA_E2E_POSTGRES_DATABASE: jvmeta_it
+      MONGO_HOST: mongo
+      MONGO_URI: ""
+      MONGODB_URI: ""
+      MONGODB_DATABASE: javmeta_it_archive
+      MONGO_PORT: "27017"
+      MONGO_DATABASE: javmeta_it_archive
+      ELASTICSEARCH_HOST: http://elasticsearch:9200
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: "${JAVMETA_CI_ES_PASSWORD:-}"
+      JAVMETA_PRODUCTION_PROVISIONING: "${JAVMETA_PRODUCTION_PROVISIONING:-0}"
+      ELASTICSEARCH_MOVIES_INDEX: javmeta_it_movies
+      ELASTICSEARCH_PERFORMERS_INDEX: javmeta_it_performers
+      EMBEDDER_URL: http://127.0.0.1:1
+      OPENOBSERVE_URL: http://openobserve:5080
+      OPENOBSERVE_EMAIL: root@javmeta.test
+      OPENOBSERVE_PASSWORD: Integration#123
+      OPENOBSERVE_ENABLED: "true"
+      OPENOBSERVE_ORG: default
+      OPENOBSERVE_STREAM_LOGS: javmeta_it_logs
+      OPENOBSERVE_STREAM_METRICS: javmeta_it_metrics
+      REDIS_HOST: redis
+      REDIS_USERNAME: ""
+      REDIS_PASSWORD: ""
+      REDIS_DB: "0"
+      REDIS_CACHE_DB: "1"
+      REDIS_PORT: "6379"
+      REDIS_PREFIX: "javmeta_it:"
+      CACHE_STORE: database
+      CACHE_PREFIX: javmeta_it_e2e_
+      QUEUE_CONNECTION: sync
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      openobserve:
+        condition: service_started
+
+volumes:
+  javmeta-ci-composer-cache:
+    external: true
+    name: ${JAVMETA_CI_COMPOSER_CACHE_VOLUME:-javmeta-ci-composer-cache}

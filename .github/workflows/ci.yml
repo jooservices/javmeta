@@ -1,0 +1,230 @@
+# Quality gate for jooservices/javmeta — GitHub-hosted runners only.
+# Runs the same commands as the local gate through docker/ci/run.
+name: CI
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Lint and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build CI image
+        run: docker build --tag javmeta-ci:local --file docker/ci/Dockerfile docker/ci
+
+      - name: Cache Composer vendor
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: vendor-cache
+        with:
+          path: vendor
+          key: composer-vendor-${{ hashFiles('composer.json', 'composer.lock', 'docker/ci/Dockerfile') }}
+
+      - name: Install dependencies
+        if: steps.vendor-cache.outputs.cache-hit != 'true'
+        env:
+          JAVMETA_CI_SKIP_BUILD: '1'
+        run: docker/ci/run composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Composer validate
+        env:
+          JAVMETA_CI_SKIP_BUILD: '1'
+        run: docker/ci/run composer validate --strict
+
+      - name: Lint (Pint, PHPCS, PHPMD, PHPStan, PHP-CS-Fixer)
+        env:
+          JAVMETA_CI_SKIP_BUILD: '1'
+        run: docker/ci/run composer lint
+
+      - name: Test with coverage
+        env:
+          JAVMETA_CI_SKIP_BUILD: '1'
+        run: docker/ci/run composer test:coverage
+
+      - name: Generate coverage report for the PR
+        env:
+          JAVMETA_CI_SKIP_BUILD: '1'
+        run: docker/ci/run composer coverage:report
+
+      - name: Coverage check (minimum 90%)
+        env:
+          JAVMETA_CI_SKIP_BUILD: '1'
+        run: docker/ci/run composer coverage:check
+
+      - name: Test stability (three runs, warn above 30%, fail above 2x baseline)
+        env:
+          JAVMETA_CI_SKIP_BUILD: '1'
+        run: |
+          set -euo pipefail
+          # GitHub-hosted runner jitter makes a 30% cutoff noisy; warn in that
+          # band and fail only when a run exceeds 2x the stable baseline.
+          baseline_seconds=200.00
+          warning_seconds=260.00
+          maximum_seconds=400.00
+
+          for run in 1 2 3; do
+            printf 'Composer test stability run %s/3\n' "${run}"
+            set +e
+            output="$(docker/ci/run composer test 2>&1)"
+            test_status=$?
+            set -e
+            printf '%s\n' "${output}"
+            if [[ "${test_status}" -ne 0 ]]; then
+              printf 'Composer test stability run %s failed with exit code %s.\n' \
+                "${run}" "${test_status}" >&2
+              exit "${test_status}"
+            fi
+
+            # PHPUnit 12 colours its summary in CI; strip ANSI escapes before parsing.
+            plain_output="$(printf '%s\n' "${output}" | sed -E $'s/\x1b\\[[0-9;]*[A-Za-z]//g')"
+            duration_line="$(printf '%s\n' "${plain_output}" | grep -E '^[[:space:]]*Duration: [0-9]+([.][0-9]+)?s$' | tail -n 1)"
+            if [[ -z "${duration_line}" ]]; then
+              echo "Could not read composer test duration from output." >&2
+              exit 1
+            fi
+
+            duration="${duration_line#*: }"
+            duration="${duration%s}"
+            if awk -v actual="${duration}" -v limit="${maximum_seconds}" 'BEGIN { exit(actual > limit ? 0 : 1) }'; then
+              printf 'Composer test run %s took %ss; exceeds hard limit %ss (baseline %ss).\n' \
+                "${run}" "${duration}" "${maximum_seconds}" "${baseline_seconds}" >&2
+              exit 1
+            fi
+
+            if awk -v actual="${duration}" -v limit="${warning_seconds}" 'BEGIN { exit(actual >= limit ? 0 : 1) }'; then
+              printf '::warning::Composer test run %s took %ss; warning threshold %ss, hard failure above %ss (baseline %ss).\n' \
+                "${run}" "${duration}" "${warning_seconds}" "${maximum_seconds}" "${baseline_seconds}"
+            fi
+          done
+
+      - name: Upload coverage report
+        if: always() && hashFiles('build/coverage.xml') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: |
+            build/coverage.xml
+            build/coverage/uncovered-files.md
+          retention-days: 14
+
+  integration:
+    name: Integration (Postgres, Mongo, Elasticsearch, OpenObserve)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build CI image
+        run: docker build --tag javmeta-ci:local --file docker/ci/Dockerfile docker/ci
+
+      - name: Cache Composer vendor
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: vendor-cache
+        with:
+          path: vendor
+          key: composer-vendor-${{ hashFiles('composer.json', 'composer.lock', 'docker/ci/Dockerfile') }}
+
+      - name: Install dependencies
+        if: steps.vendor-cache.outputs.cache-hit != 'true'
+        env:
+          JAVMETA_CI_SKIP_BUILD: '1'
+        run: docker/ci/run composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Run integration suite
+        env:
+          JAVMETA_CI_SKIP_BUILD: '1'
+        run: docker/ci/integration
+
+  e2e:
+    name: E2E journeys (isolated services)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build CI image
+        run: docker build --tag javmeta-ci:local --file docker/ci/Dockerfile docker/ci
+
+      - name: Cache Composer vendor
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: vendor-cache
+        with:
+          path: vendor
+          key: composer-vendor-${{ hashFiles('composer.json', 'composer.lock', 'docker/ci/Dockerfile') }}
+
+      - name: Install dependencies
+        if: steps.vendor-cache.outputs.cache-hit != 'true'
+        env:
+          JAVMETA_CI_SKIP_BUILD: '1'
+        run: docker/ci/run composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Run E2E journeys and coverage gate
+        env:
+          JAVMETA_CI_SKIP_BUILD: '1'
+        run: docker/ci/e2e
+
+      - name: Upload E2E coverage report
+        if: always() && hashFiles('.tmp/e2e-coverage.xml') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-coverage
+          path: .tmp/e2e-coverage.xml
+          retention-days: 14
+
+  secrets:
+    name: Secrets scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Gitleaks
+        run: |
+          docker run --rm \
+            --volume "${GITHUB_WORKSPACE}:/repo:ro" \
+            --workdir /repo \
+            ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:b109bc5f8f76a38196a3e413704fc5b9e3c32360bce4e4b603bd6f45b3721dbb \
+            detect --source . --redact --config=.gitleaks.toml --exit-code 1
+
+  app-image:
+    name: Build app image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build Dockerfile.production (no push)
+        run: docker build --build-arg "SENTRY_RELEASE=$(git rev-parse --short HEAD)" --tag javmeta:ci --file Dockerfile.production .
+
+      - name: Report image size
+        run: docker image inspect javmeta:ci --format '{{.Size}}' | numfmt --to=iec

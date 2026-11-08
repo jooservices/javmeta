@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Jobs;
 
+use App\Enums\CrawlErrorCode;
 use App\Jobs\FetchDetailJob;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Models\Movie;
+use App\Services\Crawl\CrawlQueueService;
 use App\Services\Crawl\MovieDraftSink;
 use App\Services\Crawler\CrawlerxClient;
 use App\Services\Crawler\CrawlerxFetchResult;
@@ -22,10 +24,22 @@ final class FetchDetailJobTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->travelTo('2026-11-02T12:34:00Z');
+    }
+
     public function test_success_delivers_draft_to_sink_and_marks_row_done(): void
     {
         $source = $this->source('onejav');
         $row = $this->detailRow($source);
+        $row->forceFill([
+            'error_code' => CrawlErrorCode::Network->value,
+            'last_error' => 'Previous attempt failed.',
+            'last_failed_at' => now()->subMinute(),
+        ])->save();
         $sink = new FakeMovieDraftSink();
         $this->app->instance(MovieDraftSink::class, $sink);
 
@@ -44,9 +58,104 @@ final class FetchDetailJobTest extends TestCase
         self::assertNotNull($draft->crawledAt);
 
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
-        $this->assertDatabaseHas('sources', ['slug' => 'onejav', 'circuit_state' => Source::CIRCUIT_CLOSED, 'consecutive_failures' => 0]);
+        self::assertSame(1, $row->refresh()->attempts);
+        self::assertNull($row->refresh()->error_code);
+        self::assertNull($row->last_error);
+        self::assertNull($row->last_failed_at);
+        $this->assertNotNull(Source::query()->find('onejav')?->last_success_at);
         self::assertNotNull($source->refresh()->last_success_at);
         $this->assertSame(0, Movie::query()->count());
+    }
+
+    public function test_retry_lane_success_increments_the_round_and_egress_counter(): void
+    {
+        $source = $this->source('onejav');
+        $row = $this->detailRow($source);
+        $row->forceFill(['claimed_lane' => 'retry', 'retry_round' => 2])->save();
+        config(['javmeta_queues.retry.fetch_profile' => ['egress_label' => 'clean-egress']]);
+        $this->app->instance(MovieDraftSink::class, new FakeMovieDraftSink());
+        $this->fakeClient(CrawlerxFetchResult::movie($this->movie()));
+
+        FetchDetailJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_retry_metrics', [
+            'source_slug' => $source->slug,
+            'round' => 2,
+            'outcome' => 'success',
+            'egress_label' => 'clean-egress',
+            'value' => 1,
+        ]);
+    }
+
+    public function test_retry_success_is_not_counted_when_marking_the_queue_row_done_fails(): void
+    {
+        $source = $this->source('onejav');
+        $row = $this->detailRow($source);
+        $row->forceFill(['claimed_lane' => 'retry', 'retry_round' => 1])->save();
+        $this->app->instance(MovieDraftSink::class, new FakeMovieDraftSink());
+        $this->fakeClient(CrawlerxFetchResult::movie($this->movie()));
+        CrawlQueue::saving(static function (CrawlQueue $savedRow): void {
+            if ($savedRow->status === CrawlQueue::STATUS_DONE && $savedRow->claimed_lane === 'retry') {
+                throw new \RuntimeException('Queue row could not be marked done.');
+            }
+        });
+
+        try {
+            FetchDetailJob::dispatch($row->id);
+        } catch (\RuntimeException) {
+            // The simulated persistence failure is the condition under test.
+        }
+
+        $this->assertDatabaseMissing('crawl_retry_metrics', [
+            'source_slug' => $source->slug,
+            'round' => 1,
+            'outcome' => 'success',
+        ]);
+    }
+
+    public function test_a_job_from_an_older_feed_is_skipped_after_the_row_was_claimed_again(): void
+    {
+        $source = $this->source('onejav');
+        $row = $this->detailRow($source);
+        $row->forceFill(['locked_by' => 'host:newer-feed'])->save();
+        $sink = new FakeMovieDraftSink();
+        $this->app->instance(MovieDraftSink::class, $sink);
+        $this->fakeClient(CrawlerxFetchResult::movie($this->movie()));
+
+        FetchDetailJob::dispatch($row->id, null, 'host:older-feed');
+
+        self::assertSame([], $sink->drafts);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_CLAIMED, 'locked_by' => 'host:newer-feed']);
+    }
+
+    public function test_the_job_of_the_current_feed_runs_and_restarts_the_claim_clock(): void
+    {
+        $source = $this->source('onejav');
+        $row = $this->detailRow($source);
+        $row->forceFill(['locked_by' => 'host:feed', 'claimed_at' => now()->subMinutes(30)])->save();
+        $sink = new FakeMovieDraftSink();
+        $this->app->instance(MovieDraftSink::class, $sink);
+        $this->fakeClient(CrawlerxFetchResult::movie($this->movie()));
+
+        FetchDetailJob::dispatch($row->id, null, 'host:feed');
+
+        self::assertCount(1, $sink->drafts);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
+    }
+
+    public function test_success_passes_the_recrawl_marker_to_the_sink_and_clears_it_from_the_row(): void
+    {
+        $source = $this->source('onejav');
+        $row = $this->detailRow($source);
+        $row->forceFill(['is_recrawl' => true])->save();
+        $sink = new FakeMovieDraftSink();
+        $this->app->instance(MovieDraftSink::class, $sink);
+        $this->fakeClient(CrawlerxFetchResult::movie($this->movie()));
+
+        FetchDetailJob::dispatch($row->id);
+
+        self::assertSame([true], $sink->recrawlFlags);
+        $this->assertFalse($row->refresh()->is_recrawl);
     }
 
     public function test_success_persists_movie_through_container_bound_sink(): void
@@ -68,7 +177,7 @@ final class FetchDetailJobTest extends TestCase
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
     }
 
-    public function test_crawl_failure_never_creates_movie_and_fails_row(): void
+    public function test_crawl_failure_never_creates_movie_and_retries_a_block_after_a_delay(): void
     {
         $source = $this->source('onejav');
         $row = $this->detailRow($source);
@@ -82,8 +191,15 @@ final class FetchDetailJobTest extends TestCase
         self::assertSame([], $sink->drafts);
         $this->assertSame(0, Movie::query()->count());
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_BLOCKED]);
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'attempts' => 1]);
-        $this->assertDatabaseHas('sources', ['slug' => 'onejav', 'consecutive_failures' => 1]);
+        $this->assertDatabaseHas('crawl_queue', [
+            'id' => $row->id,
+            'status' => CrawlQueue::STATUS_PENDING,
+            'attempts' => 1,
+            'error_code' => CrawlErrorCode::Blocked->value,
+            'last_error' => 'Blocked by site.',
+        ]);
+        self::assertSame(now()->addSeconds(60)->getTimestamp(), $row->refresh()->next_attempt_at?->getTimestamp());
+        $this->assertNotNull(Source::query()->find('onejav')?->last_error_at);
     }
 
     public function test_normalization_failure_records_parse_drift_and_never_delivers_draft(): void
@@ -93,7 +209,7 @@ final class FetchDetailJobTest extends TestCase
             'source_slug' => $source->slug,
             'url' => 'https://onejav.com/torrent/no-extractable-code',
             'kind' => CrawlQueue::KIND_DETAIL,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
             'max_attempts' => 3,
         ]);
         $sink = new FakeMovieDraftSink();
@@ -107,8 +223,37 @@ final class FetchDetailJobTest extends TestCase
         self::assertSame([], $sink->drafts);
         $this->assertSame(0, Movie::query()->count());
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_PARSE_DRIFT]);
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
-        $this->assertDatabaseHas('sources', ['slug' => 'onejav', 'consecutive_failures' => 1]);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'error_code' => CrawlErrorCode::NormalizationFailed->value]);
+        $this->assertNotNull(Source::query()->find('onejav')?->last_error_at);
+    }
+
+    public function test_javbtc_without_a_product_code_or_detail_path_is_terminal_parse_failed(): void
+    {
+        $source = $this->source('javbtc');
+        $row = $this->detailRow($source);
+        $row->forceFill(['url' => 'https://javbtc.com/'])->save();
+        $sink = new FakeMovieDraftSink();
+        $this->app->instance(MovieDraftSink::class, $sink);
+        $client = $this->fakeClient(CrawlerxFetchResult::movie(new MovieDto(
+            externalId: 'no-code-detail',
+            title: 'A detail page without a product code',
+        )));
+
+        FetchDetailJob::dispatch($row->id);
+
+        self::assertSame([], $sink->drafts);
+        self::assertSame(0, Movie::query()->count());
+        self::assertSame(1, $client->calls);
+        $this->assertDatabaseHas('crawl_queue', [
+            'id' => $row->id,
+            'status' => CrawlQueue::STATUS_FAILED,
+            'attempts' => 1,
+            'next_attempt_at' => null,
+            'error_code' => CrawlErrorCode::ParseFailed->value,
+            'last_error' => 'JavBTC detail page has no recognizable product code.',
+        ]);
+        $this->assertDatabaseHas('crawl_events', ['source_slug' => 'javbtc', 'kind' => CrawlEvent::KIND_PARSE_DRIFT]);
+        self::assertNull(app(CrawlQueueService::class)->claimNext('javbtc-no-code-retry-check', CrawlQueue::KIND_DETAIL));
     }
 
     public function test_missing_normalizer_fails_row_with_parse_drift(): void
@@ -118,7 +263,7 @@ final class FetchDetailJobTest extends TestCase
             'source_slug' => 'mystery',
             'url' => 'https://mystery.test/v/1',
             'kind' => CrawlQueue::KIND_DETAIL,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
             'max_attempts' => 3,
         ]);
 
@@ -127,8 +272,8 @@ final class FetchDetailJobTest extends TestCase
         FetchDetailJob::dispatch($row->id);
 
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'mystery', 'kind' => CrawlEvent::KIND_PARSE_DRIFT]);
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
-        $this->assertDatabaseHas('sources', ['slug' => 'mystery', 'consecutive_failures' => 1]);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'error_code' => CrawlErrorCode::NormalizerMissing->value]);
+        $this->assertNotNull(Source::query()->find('mystery')?->last_error_at);
     }
 
     public function test_unknown_source_slug_fails_row_without_throttle_or_circuit_touch(): void
@@ -137,7 +282,7 @@ final class FetchDetailJobTest extends TestCase
             'source_slug' => 'ghost',
             'url' => 'https://ghost.test/v/1',
             'kind' => CrawlQueue::KIND_DETAIL,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
         ]);
 
         $this->fakeClient(CrawlerxFetchResult::movie($this->movie()));
@@ -145,15 +290,112 @@ final class FetchDetailJobTest extends TestCase
         FetchDetailJob::dispatch($row->id);
 
         $this->assertDatabaseHas('crawl_events', ['source_slug' => 'ghost', 'kind' => CrawlEvent::KIND_PARSE_DRIFT]);
-        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'error_code' => CrawlErrorCode::UnknownSource->value]);
         $this->assertDatabaseMissing('sources', ['slug' => 'ghost']);
+    }
+
+    public function test_rate_limited_with_retry_after_reschedules_the_row(): void
+    {
+        $row = $this->detailRow($this->source('onejav'));
+        $message = fake()->sentence();
+
+        $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_RATE_LIMITED, $message, retryable: true, retryAfterSeconds: 60));
+
+        FetchDetailJob::dispatch($row->id);
+
+        $row->refresh();
+        self::assertSame(CrawlQueue::STATUS_PENDING, $row->status);
+        self::assertSame(1, $row->attempts);
+        self::assertSame($message, $row->last_error);
+        self::assertSame(CrawlErrorCode::RateLimited->value, $row->error_code);
+        self::assertNotNull($row->last_failed_at);
+        self::assertNull($row->claimed_at);
+        self::assertSame(now()->addSeconds(60)->getTimestamp(), $row->next_attempt_at?->getTimestamp());
+        $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_BLOCKED]);
+    }
+
+    public function test_retryable_failure_without_hint_uses_backoff_by_attempt(): void
+    {
+        $row = $this->detailRow($this->source('onejav'));
+        $row->forceFill(['attempts' => 1])->save();
+
+        $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_NETWORK, fake()->sentence(), retryable: true));
+
+        FetchDetailJob::dispatch($row->id);
+
+        $row->refresh();
+        self::assertSame(CrawlQueue::STATUS_PENDING, $row->status);
+        self::assertSame(2, $row->attempts);
+        self::assertSame(CrawlErrorCode::Network->value, $row->error_code);
+        self::assertSame(now()->addSeconds(300)->getTimestamp(), $row->next_attempt_at?->getTimestamp());
+    }
+
+    public function test_retryable_failure_at_max_attempts_moves_to_retry_pending(): void
+    {
+        $row = $this->detailRow($this->source('onejav'));
+        $row->forceFill(['attempts' => 2])->save();
+
+        $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_NETWORK, fake()->sentence(), retryable: true));
+
+        FetchDetailJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_RETRY_PENDING, 'attempts' => 0, 'retry_round' => 1, 'error_code' => CrawlErrorCode::Network->value]);
+    }
+
+    public function test_not_found_fails_the_row_without_retry(): void
+    {
+        $row = $this->detailRow($this->source('onejav'));
+
+        $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_NOT_FOUND, fake()->sentence()));
+
+        FetchDetailJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'attempts' => 1, 'next_attempt_at' => null, 'error_code' => CrawlErrorCode::NotFound->value]);
+        $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_SOFT404]);
+    }
+
+    public function test_ssrf_blocked_fails_the_row_with_a_blocked_event(): void
+    {
+        $row = $this->detailRow($this->source('onejav'));
+
+        $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_SSRF_BLOCKED, fake()->sentence()));
+
+        FetchDetailJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED, 'error_code' => CrawlErrorCode::SsrfBlocked->value]);
+        $event = CrawlEvent::query()->where('source_slug', 'onejav')->sole();
+        self::assertSame(CrawlEvent::KIND_BLOCKED, $event->kind);
+        self::assertSame(CrawlerxClient::ERROR_SSRF_BLOCKED, $event->detail['error_code'] ?? null);
+    }
+
+    public function test_auth_required_records_an_auth_event(): void
+    {
+        $row = $this->detailRow($this->source('onejav'));
+
+        $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_AUTH_REQUIRED, fake()->sentence()));
+
+        FetchDetailJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_FAILED]);
+        $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_AUTH]);
+    }
+
+    public function test_unknown_error_code_is_parse_drift(): void
+    {
+        $row = $this->detailRow($this->source('onejav'));
+
+        $this->fakeClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_UNKNOWN, fake()->sentence()));
+
+        FetchDetailJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_events', ['source_slug' => 'onejav', 'kind' => CrawlEvent::KIND_PARSE_DRIFT]);
     }
 
     private function source(string $slug): Source
     {
         return Source::factory()->create([
             'slug' => $slug,
-            'base_url' => 'https://onejav.com',
+            'base_url' => $slug === 'javbtc' ? config('javmeta_sources.sources.javbtc.base_url') : 'https://onejav.com',
             'gap_seconds_default' => 2.0,
             'gap_seconds_min' => 0.5,
             'gap_seconds_max' => 15.0,
@@ -167,7 +409,8 @@ final class FetchDetailJobTest extends TestCase
             'source_slug' => $source->slug,
             'url' => 'https://onejav.com/torrent/ymds282',
             'kind' => CrawlQueue::KIND_DETAIL,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'attempts' => 0,
             'max_attempts' => 3,
         ]);
     }
@@ -187,11 +430,11 @@ final class FetchDetailJobTest extends TestCase
         );
     }
 
-    private function fakeClient(CrawlerxFetchResult $detail): void
+    private function fakeClient(CrawlerxFetchResult $detail): FakeCrawlerxClient
     {
-        $this->app->instance(
-            CrawlerxClient::class,
-            new FakeCrawlerxClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'), $detail),
-        );
+        $client = new FakeCrawlerxClient(CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'), $detail);
+        $this->app->instance(CrawlerxClient::class, $client);
+
+        return $client;
     }
 }

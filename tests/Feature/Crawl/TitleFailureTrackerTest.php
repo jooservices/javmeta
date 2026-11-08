@@ -49,9 +49,6 @@ final class TitleFailureTrackerTest extends TestCase
             'gap_seconds_min' => 20,
             'gap_seconds_max' => 60,
             'gap_seconds_current' => 20,
-            'consecutive_failures' => 0,
-            'circuit_state' => Source::CIRCUIT_CLOSED,
-            'soft404_markers' => ['not found'],
         ]);
 
         app(TitleFailureTracker::class)->recordFailure(
@@ -70,7 +67,7 @@ final class TitleFailureTrackerTest extends TestCase
     public function test_consecutive_failures_flag_needs_review(): void
     {
         Event::fake([CrawlSourceUnhealthy::class]);
-        config(['jvmeta_alerts.title_failure_threshold' => 2]);
+        config(['javmeta_alerts.title_failure_threshold' => 2]);
 
         $movie = Movie::factory()->create([
             'display_code' => 'SSIS-002',

@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Run a command with the repository's PHP toolchain.
+#   docker/ci/run composer lint
+#
+# On a developer machine (Workspaces checkout): runs in the ONE shared long-lived PHP 8.5 runtime
+# (scripts/docker/runtime php, a docker exec). No container, image or mount is created per run.
+# On GitHub Actions (or JAVMETA_CI_DOCKER=1): builds and runs the isolated CI image as before.
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+if [[ "${GITHUB_ACTIONS:-}" != "true" && "${JAVMETA_CI_DOCKER:-0}" != "1" ]]; then
+  dir="$root"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -x "$dir/scripts/docker/runtime" ]]; then
+      cd "$root"
+      # The shared runtime ships pcov disabled; enable it for this process only (coverage gate).
+      export PHP_INI_SCAN_DIR="/usr/local/etc/php/conf.d:${root}/docker/dev/php.d"
+      export RUNTIME_PASS_ENV="${RUNTIME_PASS_ENV:-} PHP_INI_SCAN_DIR"
+      exec "$dir/scripts/docker/runtime" php "$@"
+    fi
+    dir="$(dirname "$dir")"
+  done
+  echo "Workspaces shared runtime not found above $root; set JAVMETA_CI_DOCKER=1 to use the CI image." >&2
+  exit 2
+fi
+
+image="${JAVMETA_CI_IMAGE:-javmeta-ci:local}"
+if [[ "${JAVMETA_CI_SKIP_BUILD:-0}" != "1" ]]; then
+  docker build --quiet --tag "${image}" --file "${root}/docker/ci/Dockerfile" "${root}/docker/ci" >/dev/null
+fi
+
+volumes=(--volume "${root}:/app")
+# In a git worktree the common git dir lives outside the repository root; mount it
+# at the same absolute path so git (and CaptainHook's commit-msg) can resolve it.
+git_common_dir="$(git -C "${root}" rev-parse --git-common-dir 2>/dev/null || true)"
+if [[ -n "${git_common_dir}" ]]; then
+  if [[ "${git_common_dir}" != /* ]]; then
+    git_common_dir="$(cd "${root}/${git_common_dir}" && pwd)"
+  fi
+  if [[ "${git_common_dir}" != "${root}" && "${git_common_dir}" != "${root}/"* ]]; then
+    volumes+=(--volume "${git_common_dir}:${git_common_dir}:rw")
+  fi
+fi
+
+exec docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  --env HOME=/tmp \
+  "${volumes[@]}" \
+  --volume "${JAVMETA_CI_COMPOSER_CACHE:-javmeta-ci-composer-cache}:/tmp/composer-cache" \
+  --workdir /app \
+  "${image}" "$@"

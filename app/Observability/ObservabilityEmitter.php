@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace App\Observability;
 
+use App\Jobs\EmitObservabilityLog;
+use Illuminate\Support\Facades\Log;
+use Throwable;
+
 /**
- * Sync fail-open ingest to OpenObserve (no queue — workers do not drain `default`).
+ * Fail-open telemetry emission to OpenObserve.
  */
 final class ObservabilityEmitter
 {
@@ -23,7 +27,7 @@ final class ObservabilityEmitter
             'event' => 'crawl_event',
             'source_slug' => $sourceSlug,
             'kind' => $kind,
-            'detail' => $this->sanitizer->sanitizeCrawlDetail($detail),
+            'detail' => $this->sanitizer->sanitizeCrawlDetail($this->cleanPageUrl($detail)),
         ]);
     }
 
@@ -32,10 +36,21 @@ final class ObservabilityEmitter
      */
     public function emitApiUsage(array $fields): void
     {
-        $this->emit([
-            'event' => 'api_usage',
-            ...$this->sanitizer->sanitizeContext($fields),
-        ]);
+        try {
+            EmitObservabilityLog::dispatch($this->timestampedRecord([
+                'event' => 'api_usage',
+                ...$fields,
+                'role' => (string) config('dependencies.role', 'api'),
+            ]));
+        } catch (Throwable $exception) {
+            try {
+                Log::channel('single')->warning('API usage job dispatch failed.', [
+                    'exception' => $exception::class,
+                ]);
+            } catch (Throwable) {
+                // API termination must remain fail-open even if logging is unavailable.
+            }
+        }
     }
 
     /**
@@ -50,23 +65,21 @@ final class ObservabilityEmitter
         ]);
     }
 
-    public function emitCircuitTransition(string $sourceSlug, string $from, string $to, int $consecutiveFailures = 0): void
+    /**
+     * @param  list<array<string, mixed>>  $attempts  crawlerx fetch attempts (method, elapsed_ms, status, challenge, ok)
+     * @param  array{url?: ?string, error_message?: ?string, retryable?: bool, retry_after_seconds?: ?int, queue_row_id?: ?int, crawlerx_version?: ?string}  $context
+     */
+    public function emitFetch(string $sourceSlug, string $crawlType, bool $ok, int $durationMs, ?string $errorCode = null, array $attempts = [], array $context = []): void
     {
-        if ($from === $to) {
-            return;
+        $last = $attempts === [] ? [] : $attempts[array_key_last($attempts)];
+        $winning = null;
+        foreach ($attempts as $attempt) {
+            if ((bool) ($attempt['ok'] ?? false)) {
+                $winning = $attempt;
+            }
         }
+        $used = $winning ?? $last;
 
-        $this->emit([
-            'event' => 'circuit_transition',
-            'source_slug' => $sourceSlug,
-            'from' => $from,
-            'to' => $to,
-            'consecutive_failures' => $consecutiveFailures,
-        ]);
-    }
-
-    public function emitFetch(string $sourceSlug, string $crawlType, bool $ok, int $durationMs, ?string $errorCode = null): void
-    {
         $this->emit([
             'event' => 'crawl_fetch',
             'source_slug' => $sourceSlug,
@@ -74,6 +87,22 @@ final class ObservabilityEmitter
             'ok' => $ok,
             'duration_ms' => $durationMs,
             'error_code' => $errorCode,
+            'page_url' => $this->sanitizer->sanitizeUrl($context['url'] ?? null),
+            'error_message' => $this->sanitizer->sanitizeText($context['error_message'] ?? null),
+            'retryable' => (bool) ($context['retryable'] ?? false),
+            'retry_after_seconds' => $context['retry_after_seconds'] ?? null,
+            'http_status' => is_int($used['status'] ?? null) ? $used['status'] : null,
+            'method' => is_string($used['method'] ?? null) ? $used['method'] : null,
+            'queue_row_id' => $context['queue_row_id'] ?? null,
+            'crawlerx_version' => $context['crawlerx_version'] ?? null,
+            'attempt_count' => count($attempts),
+            'attempts' => array_map(static fn(array $attempt): array => [
+                'method' => is_string($attempt['method'] ?? null) ? $attempt['method'] : null,
+                'elapsed_ms' => is_int($attempt['elapsed_ms'] ?? null) ? $attempt['elapsed_ms'] : null,
+                'status' => is_int($attempt['status'] ?? null) ? $attempt['status'] : null,
+                'challenge' => (bool) ($attempt['challenge'] ?? false),
+                'ok' => (bool) ($attempt['ok'] ?? false),
+            ], $attempts),
         ]);
     }
 
@@ -86,6 +115,29 @@ final class ObservabilityEmitter
             'ok' => $ok,
             'duration_ms' => $durationMs,
         ]);
+    }
+
+    public function emitEgressChange(
+        string $node,
+        ?string $oldIp,
+        ?string $newIp,
+        ?string $changedAt,
+        ?string $host = null,
+        string $egressKind = 'node',
+    ): void {
+        $record = $this->timestampedRecord([
+            'event' => 'egress_ip_changed',
+            'node' => $node,
+            'host' => $host,
+            'egress_kind' => $egressKind,
+            'old_ip' => $oldIp,
+            'new_ip' => $newIp,
+            'changed_at' => $changedAt,
+        ]);
+        $this->client->ingestLogsToStream(
+            [$record],
+            (string) config('javmeta_observability.egress_changes_stream', 'xcrawler_logs'),
+        );
     }
 
     /**
@@ -105,9 +157,34 @@ final class ObservabilityEmitter
      */
     private function emit(array $record): void
     {
-        $this->client->ingestLogs([[
+        $this->client->ingestLogs([$this->timestampedRecord($record)]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
+     * @return array<string, mixed>
+     */
+    private function timestampedRecord(array $record): array
+    {
+        return [
             '_timestamp' => (int) (microtime(true) * 1_000_000),
             ...$this->sanitizer->sanitizeContext($record),
-        ]]);
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $detail
+     * @return array<string, mixed>
+     */
+    private function cleanPageUrl(array $detail): array
+    {
+        if (array_key_exists('page_url', $detail)) {
+            $detail['page_url'] = is_string($detail['page_url']) ? $this->sanitizer->sanitizeUrl($detail['page_url']) : null;
+        }
+        if (isset($detail['error_message']) && is_string($detail['error_message'])) {
+            $detail['error_message'] = $this->sanitizer->sanitizeText($detail['error_message']);
+        }
+
+        return $detail;
     }
 }

@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\Services\Search;
 
 use App\Models\Performer;
+use App\Models\PerformerSource;
 use App\Models\Movie;
 use App\Observability\ObservabilityEmitter;
+use App\Services\Embedding\EmbedderClient;
+use App\Services\Normalize\PerformerAttributeNormalizer;
 use DateTimeInterface;
-use Illuminate\Support\Facades\Http;
 use Throwable;
 
 /**
@@ -16,11 +18,25 @@ use Throwable;
  */
 final class ElasticsearchIndexer
 {
-    public function indexMovie(Movie $movie): void
-    {
-        $movie->loadMissing(['genres', 'performers']);
+    private readonly PerformerAttributeNormalizer $attributeNormalizer;
 
-        $this->put((string) config('elasticsearch.movies_index'), (string) $movie->uuid, [
+    public function __construct(
+        private readonly EmbedderClient $embedder,
+        private readonly ElasticsearchHttpClient $elasticsearch,
+        ?PerformerAttributeNormalizer $attributeNormalizer = null,
+    ) {
+        $this->attributeNormalizer = $attributeNormalizer ?? new PerformerAttributeNormalizer();
+    }
+
+    public function indexMovie(Movie $movie, bool $requireVector = false): bool
+    {
+        if (! (bool) config('elasticsearch.enabled', true)) {
+            return false;
+        }
+
+        $movie->loadMissing(['genres', 'performers.sources']);
+
+        $document = [
             'movie_id' => $movie->id,
             'uuid' => $movie->uuid,
             'code' => $movie->display_code,
@@ -32,36 +48,156 @@ final class ElasticsearchIndexer
             'label' => $movie->label,
             'series' => $movie->series,
             'genres' => $movie->genres->pluck('label_normalized')->filter()->values()->all(),
-            'performer_names' => $movie->performers
-                ->map(static fn(Performer $p): string => (string) ($p->name_romaji ?? $p->name_kanji ?? ''))
-                ->filter()
-                ->values()
-                ->all(),
+            'performer_names' => $movie->performers->flatMap(static function (Performer $performer): array {
+                $sourceNames = $performer->sources->flatMap(static fn($source): array => [
+                    $source->name_romaji,
+                    $source->name_kanji,
+                    $source->name_kana,
+                ])->all();
+
+                return array_values(array_filter([
+                    $performer->name_romaji,
+                    $performer->name_kanji,
+                    $performer->name_kana,
+                    ...$sourceNames,
+                ], static fn(mixed $name): bool => is_string($name) && $name !== ''));
+            })->unique()->values()->all(),
             'release_date' => $this->dateString($movie->getAttribute('release_date')),
             'runtime_minutes' => $movie->runtime_minutes,
             'censored' => $movie->censored,
             'community_score' => $movie->community_score !== null ? (float) $movie->community_score : null,
             'updated_at' => $this->dateTimeString($movie->getAttribute('updated_at')),
             'crawled_at' => $this->dateTimeString($movie->getAttribute('crawled_at')),
-        ]);
+        ];
+
+        $embedText = implode(' ', array_filter([
+            (string) $movie->title_en,
+            (string) $movie->title_jp,
+            implode(', ', $document['genres']),
+            (string) $movie->maker,
+            (string) $movie->series,
+            (string) $movie->description,
+        ]));
+        $vector = $this->embedder->embedOne($embedText);
+        if ($vector !== null) {
+            $document['embedding_movie'] = $vector;
+        } elseif ($requireVector) {
+            return false;
+        }
+
+        return $this->put((string) config('elasticsearch.movies_index'), (string) $movie->uuid, $document);
     }
 
-    public function indexPerformer(Performer $performer): void
+    public function indexPerformer(Performer $performer, bool $requireVector = false): bool
     {
-        $performer->loadMissing('aliases');
+        if (! (bool) config('elasticsearch.enabled', true)) {
+            return false;
+        }
 
-        $this->put((string) config('elasticsearch.performers_index'), (string) $performer->uuid, [
+        $performer->loadMissing(['aliases', 'sources']);
+
+        $aliases = $performer->aliases->pluck('alias')->filter()->values()->all();
+        $sources = $performer->sources->map(fn(PerformerSource $source): array => [
+            'source_slug' => (string) $source->site_slug,
+            'external_id' => $source->external_id,
+            'source_url' => $source->source_url,
+            'name_romaji' => $source->name_romaji,
+            'name_kanji' => $source->name_kanji,
+            'name_kana' => $source->name_kana,
+            'birth_date' => $this->attributeNormalizer->date(
+                'birth_date',
+                $source->getAttribute('birth_date'),
+                (string) $source->site_slug,
+                false,
+            ),
+            'active' => $source->removed_at === null,
+        ])->values()->all();
+        $sourceNames = array_values(array_unique(array_filter(array_merge(
+            array_column($sources, 'name_romaji'),
+            array_column($sources, 'name_kanji'),
+            array_column($sources, 'name_kana'),
+        ), static fn(mixed $name): bool => is_string($name) && $name !== '')));
+        $profile = $this->attributeNormalizer->normalizeStoredAttributes([
+            'birth_date' => $performer->getAttribute('birth_date'),
+            'height_cm' => $performer->getAttribute('height_cm'),
+            'bust' => $performer->getAttribute('bust'),
+            'waist' => $performer->getAttribute('waist'),
+            'hip' => $performer->getAttribute('hip'),
+            'cup' => $performer->getAttribute('cup'),
+            'blood_type' => $performer->getAttribute('blood_type'),
+            'blood_rh' => $performer->getAttribute('blood_rh'),
+            'debut_date' => $performer->getAttribute('debut_date'),
+            'location' => $performer->getAttribute('location'),
+        ], (string) $performer->getAttribute('source_slug'), false);
+        $document = [
             'performer_id' => $performer->id,
             'uuid' => $performer->uuid,
             'name_romaji' => $performer->name_romaji,
             'name_kanji' => $performer->name_kanji,
             'name_kana' => $performer->name_kana,
-            'aliases' => $performer->aliases->pluck('alias')->filter()->values()->all(),
-            'birth_date' => $this->dateString($performer->getAttribute('birth_date')),
-            'cup' => $performer->cup,
-            'location' => $performer->location,
+            'aliases' => $aliases,
+            'sources' => $sources,
+            'performer_names' => array_values(array_unique(array_filter(array_merge([
+                $performer->name_romaji,
+                $performer->name_kanji,
+                $performer->name_kana,
+            ], $sourceNames, $aliases), static fn(mixed $name): bool => is_string($name) && $name !== ''))),
+            'birth_date' => $profile['birth_date'],
+            'bio_text' => $performer->bio_text,
+            'height_cm' => $profile['height_cm'],
+            'bust' => $profile['bust'],
+            'waist' => $profile['waist'],
+            'hip' => $profile['hip'],
+            'cup' => $profile['cup'],
+            'blood_type' => $profile['blood_type'],
+            'blood_rh' => $profile['blood_rh'],
+            'debut_date' => $profile['debut_date'],
+            'location' => $profile['location'],
             'updated_at' => $this->dateTimeString($performer->getAttribute('updated_at')),
-        ]);
+        ];
+
+        $embedText = implode(' ', array_filter([
+            (string) $performer->name_romaji,
+            (string) $performer->name_kanji,
+            (string) $performer->name_kana,
+            implode(' ', $sourceNames),
+            implode(', ', $aliases),
+            (string) $performer->bio_text,
+            $profile['birth_date'],
+            $profile['debut_date'],
+            (string) $profile['location'],
+            (string) $profile['cup'],
+            (string) $profile['blood_type'],
+            (string) $profile['blood_rh'],
+        ]));
+        $vector = $this->embedder->embedOne($embedText);
+        if ($vector !== null) {
+            $document['embedding_performer'] = $vector;
+        } elseif ($requireVector) {
+            return false;
+        }
+
+        return $this->put((string) config('elasticsearch.performers_index'), (string) $performer->uuid, $document);
+    }
+
+    public function forgetPerformer(Performer $performer): bool
+    {
+        if (! (bool) config('elasticsearch.enabled', true)) {
+            return false;
+        }
+
+        try {
+            $response = $this->elasticsearch->delete(
+                'delete',
+                '/' . (string) config('elasticsearch.performers_index') . '/_doc/' . $performer->uuid,
+                10,
+                [404],
+            );
+
+            return $response->successful() || $response->status() === 404;
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**
@@ -70,10 +206,9 @@ final class ElasticsearchIndexer
     public function searchMovieUuids(string $query, int $size = 20): array
     {
         $index = (string) config('elasticsearch.movies_index');
-        $host = rtrim((string) config('elasticsearch.host'), '/');
 
         try {
-            $response = Http::timeout(5)->post("{$host}/{$index}/_search", [
+            $response = $this->elasticsearch->post('search', "/{$index}/_search", [
                 'size' => $size,
                 'query' => [
                     'multi_match' => [
@@ -113,20 +248,116 @@ final class ElasticsearchIndexer
         }
     }
 
-    /** @param array<string, mixed> $body */
-    private function put(string $index, string $id, array $body): void
+    /**
+     * Semantic (kNN) search over movie title/description embeddings.
+     *
+     * @return list<string> uuids
+     */
+    public function semanticMovieUuids(string $query, int $size = 20): array
     {
-        $host = rtrim((string) config('elasticsearch.host'), '/');
+        return $this->semanticUuids(
+            (string) config('elasticsearch.movies_index'),
+            'embedding_movie',
+            $query,
+            $size,
+        );
+    }
+
+    /** @return array{movies: list<string>, performers: list<string>} */
+    public function semanticCatalogUuids(string $query, int $size, bool $includePerformers): array
+    {
+        $empty = ['movies' => [], 'performers' => []];
+        $vector = $this->embedder->embedOne($query, true);
+        if ($vector === null || app(SearchBudget::class)->expired()) {
+            return $empty;
+        }
+        $requests = [];
+        foreach ($includePerformers ? ['movies', 'performers'] : ['movies'] as $entity) {
+            $index = (string) config('elasticsearch.' . $entity . '_index');
+            $requests[$entity] = ['path' => "/{$index}/_search", 'body' => [
+                'size' => $size,
+                'knn' => ['field' => $entity === 'movies' ? 'embedding_movie' : 'embedding_performer', 'query_vector' => $vector, 'k' => $size, 'num_candidates' => max($size * 10, 100)],
+            ]];
+        }
+        foreach ($this->elasticsearch->postPool($requests) as $entity => $response) {
+            foreach ($response->json('hits.hits') ?? [] as $hit) {
+                $uuid = $hit['_source']['uuid'] ?? $hit['_id'] ?? null;
+                if (is_string($uuid) && $uuid !== '') {
+                    $empty[$entity][] = $uuid;
+                }
+            }
+        }
+
+        return $empty;
+    }
+
+    /**
+     * @return list<string> uuids
+     */
+    public function semanticPerformerUuids(string $query, int $size = 20): array
+    {
+        return $this->semanticUuids(
+            (string) config('elasticsearch.performers_index'),
+            'embedding_performer',
+            $query,
+            $size,
+        );
+    }
+
+    /**
+     * @return list<string> uuids
+     */
+    private function semanticUuids(string $index, string $embeddingField, string $query, int $size): array
+    {
+        $vector = $this->embedder->embedOne($query, true);
+        if ($vector === null) {
+            return [];
+        }
+
+        try {
+            $response = $this->elasticsearch->post('search', "/{$index}/_search", [
+                'size' => $size,
+                'knn' => [
+                    'field' => $embeddingField,
+                    'query_vector' => $vector,
+                    'k' => $size,
+                    'num_candidates' => max($size * 10, 100),
+                ],
+            ]);
+
+            if (! $response->successful()) {
+                return [];
+            }
+
+            $uuids = [];
+            foreach ($response->json('hits.hits') ?? [] as $hit) {
+                $uuid = $hit['_source']['uuid'] ?? $hit['_id'] ?? null;
+                if (is_string($uuid) && $uuid !== '') {
+                    $uuids[] = $uuid;
+                }
+            }
+
+            return $uuids;
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /** @param array<string, mixed> $body */
+    private function put(string $index, string $id, array $body): bool
+    {
         $started = hrtime(true);
 
         try {
-            $response = Http::timeout(5)->put("{$host}/{$index}/_doc/{$id}", $body);
+            $response = $this->elasticsearch->put('index', "/{$index}/_doc/{$id}", $body);
             app(ObservabilityEmitter::class)->emitDependency(
                 'elasticsearch',
                 'index',
                 $response->successful(),
                 (int) round((hrtime(true) - $started) / 1_000_000),
             );
+
+            return $response->successful();
         } catch (Throwable) {
             app(ObservabilityEmitter::class)->emitDependency(
                 'elasticsearch',
@@ -134,6 +365,8 @@ final class ElasticsearchIndexer
                 false,
                 (int) round((hrtime(true) - $started) / 1_000_000),
             );
+
+            return false;
         }
     }
 

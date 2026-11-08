@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use Illuminate\Support\Str;
 use Pdo\Mysql;
 
 return [
@@ -99,6 +98,7 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'options' => extension_loaded('pdo_pgsql') ? [PDO::ATTR_TIMEOUT => 2] : [],
         ],
 
         'sqlsrv' => [
@@ -118,12 +118,13 @@ return [
 
         'mongodb' => [
             'driver' => 'mongodb',
-            'dsn' => env('MONGO_URI') ?: sprintf(
+            'dsn' => env('MONGODB_URI') ?: env('MONGO_URI') ?: sprintf(
                 'mongodb://%s:%s',
                 env('MONGO_HOST', 'mongo'),
                 env('MONGO_PORT', '27017'),
             ),
-            'database' => env('MONGO_DATABASE', 'jvmeta_archive'),
+            'database' => env('MONGODB_DATABASE', env('MONGO_DATABASE', 'javmeta_archive')),
+            'options' => ['serverSelectionTimeoutMS' => 2000, 'socketTimeoutMS' => 2000],
         ],
 
     ],
@@ -161,7 +162,7 @@ return [
 
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
-            'prefix' => env('REDIS_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')) . '-database-'),
+            'prefix' => env('REDIS_PREFIX', 'javmeta:'),
             'persistent' => env('REDIS_PERSISTENT', false),
         ],
 
@@ -172,6 +173,8 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_DB', '0'),
+            'timeout' => 2,
+            'read_timeout' => 2,
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
@@ -185,6 +188,8 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_CACHE_DB', '1'),
+            'timeout' => 2,
+            'read_timeout' => 2,
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),

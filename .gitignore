@@ -23,3 +23,12 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+__pycache__/
+*.pyc
+/build
+/.php-cs-fixer.cache
+/.tmp/
+
+# Operator answers contain installation credentials.
+/deploy/answers*.json
+/ui-tests/qa/node_modules

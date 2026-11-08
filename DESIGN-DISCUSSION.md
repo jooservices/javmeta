@@ -1,4 +1,4 @@
-# DESIGN DISCUSSION / HANDOVER — jvmeta primary DB, merge, field catalog, WIP
+# DESIGN DISCUSSION / HANDOVER — javmeta primary DB, merge, field catalog, WIP
 
 Status: **Working notes for the next agent** (not an approved gate doc).  
 Date captured: **2026-09-18**.  
@@ -9,9 +9,9 @@ Do **not** delete this file. Owner asked to preserve the full discussion so anot
 
 | Doc | Path | Gate |
 |---|---|---|
-| BUSINESS | `projects/jvmeta/BUSINESS.md` | Requirements Approved 2026-09-17 |
-| ARCHITECTURE | `projects/jvmeta/ARCHITECTURE.md` | Architecture Approved 2026-09-17 |
-| IMPLEMENTATION | `projects/jvmeta/IMPLEMENTATION.md` | Planning Approved 2026-09-17 |
+| BUSINESS | `projects/javmeta/BUSINESS.md` | Requirements Approved 2026-09-17 |
+| ARCHITECTURE | `projects/javmeta/ARCHITECTURE.md` | Architecture Approved 2026-09-17 |
+| IMPLEMENTATION | `projects/javmeta/IMPLEMENTATION.md` | Planning Approved 2026-09-17 |
 | Overview mirrors | `docs/01-projects/jvmeta/{BUSINESS,ARCHITECTURE}.md` | pointers only |
 
 **This file** records owner pushback + design discussion that **may supersede parts of ADR** (especially field richness + canonical bio + simpler ops mental model). Next AI must get owner confirmation before rewriting BUSINESS/ARCHITECTURE.
@@ -66,7 +66,7 @@ Phần “não” thật sự cần làm đúng:
 ### Gap so với ý owner
 
 - **MCP:** chưa có trong ADR/IMPLEMENTATION.  
-- **Field movie/bio:** schema/draft mỏng hơn catalog hữu ích; crawlerx có field mà jvmeta đang drop.  
+- **Field movie/bio:** schema/draft mỏng hơn catalog hữu ích; crawlerx có field mà javmeta đang drop.  
 - **Bio cross-site:** ADR Wave 1 = 1 người / source; owner muốn **1 người = 1 row**.
 
 **Verdict:** kiến trúc hàng đợi không sai; thiếu chủ yếu ở **field catalog + bio identity + MCP**, cộng lớp đo lường/go-no-go làm plan trông phức tạp.
@@ -127,7 +127,7 @@ Không “đập hết 16 bảng” chỉ vì sunk cost — nhưng **được ph
 Ranh giới:
 
 - `crawlerx` = fetch/parse only.  
-- jvmeta = queue, throttle, normalize, identity, merge, persist, API/MCP.
+- javmeta = queue, throttle, normalize, identity, merge, persist, API/MCP.
 
 ---
 
@@ -230,7 +230,7 @@ Nguyên tắc owner: **crawlerx là nguồn tốt; field hữu ích lấy từ b
 | code / dvd id / normalized | ✅ | |
 | content_id | ❌ | FANZA/DMM sau |
 | title_jp / title_en | ✅ | |
-| **description** | ❌ (crawlerx có, jvmeta drop) | **thêm** |
+| **description** | ❌ (crawlerx có, javmeta drop) | **thêm** |
 | release_date | ✅ cột (sample có thể null do map) | fix normalize |
 | runtime_minutes (length) | ✅ | |
 | maker / label / series | ✅ | |
@@ -271,7 +271,7 @@ location/prefecture, debut/joined, retired, blood_type, hobby/skill, tags…
 ### 7.5 Phân loại “thiếu” (để khỏi nhầm schema)
 
 - **A.** Có nhưng nằm quan hệ (cover/gallery) → denormalize / expose API.  
-- **B.** Crawlerx có, jvmeta drop (description, birth, height, size, bio).  
+- **B.** Crawlerx có, javmeta drop (description, birth, height, size, bio).  
 - **C.** Có cột nhưng data null (release/runtime map).  
 - **D.** Wishlist cần nguồn giàu hơn (FANZA/idol DB).  
 - **E.** Đổi identity bio (canonical).
@@ -354,7 +354,7 @@ Thứ tự đề xuất:
 6. Owner chọn: **giữ 16 bảng** (lúc đó) — chỉ làm rõ ERD/merge.  
 7. Owner phản biện: **why not full refactor?** — thiếu nhiều field (desc, release, length, cover, gallery, thumbs; bio birthday, H/C, location, joined/retired…).  
 8. Owner: chốt **field list trước**, rồi mới chọn mức refactor; nguồn = crawlerx tốt nhưng lấy thêm từ đâu cũng được nếu hữu ích.  
-9. Root: inventory + gap matrix (crawlerx có / jvmeta drop) + hướng A/B + canonical bio.  
+9. Root: inventory + gap matrix (crawlerx có / javmeta drop) + hướng A/B + canonical bio.  
 10. Plan mode abandoned trên UI — owner nói **không xóa plan**, ghi hết knowledge để AI khác hoàn thiện → **file này**.
 
 ---
@@ -363,16 +363,16 @@ Thứ tự đề xuất:
 
 ### Docs
 
-- `projects/jvmeta/BUSINESS.md`
-- `projects/jvmeta/ARCHITECTURE.md`
-- `projects/jvmeta/IMPLEMENTATION.md`
-- `projects/jvmeta/DESIGN-DISCUSSION.md` ← **this file**
+- `projects/javmeta/BUSINESS.md`
+- `projects/javmeta/ARCHITECTURE.md`
+- `projects/javmeta/IMPLEMENTATION.md`
+- `projects/javmeta/DESIGN-DISCUSSION.md` ← **this file**
 - `docs/01-projects/jvmeta/` (short pointers)
 
 ### Schema / models
 
 - Migration: `projects/jvmeta/database/migrations/2026_09_18_000001_create_jvmeta_schema.php`
-- Models: `projects/jvmeta/app/Models/{Movie,MovieCode,MovieMedia,MovieObservation,Performer,PerformerAlias,MoviePerformer,CrawlQueue,Source,…}.php`
+- Models: `projects/javmeta/app/Models/{Movie,MovieCode,MovieMedia,MovieObservation,Performer,PerformerAlias,MoviePerformer,CrawlQueue,Source,…}.php`
 
 ### Crawl → merge → persist
 
@@ -456,7 +456,7 @@ From public docs/quickstart samples (not scraped live with a key):
 
 **Filters on /query:** genre, actress, maker, series, director, label, actor, censored, runtimeMin/Max, releaseAfter/Before, availability.
 
-Use as **wishlist reference**, not as license to copy their schema blindly. jvmeta differentiator (per BUSINESS): largest coverage + freshness; Wave 1 without FANZA yet.
+Use as **wishlist reference**, not as license to copy their schema blindly. javmeta differentiator (per BUSINESS): largest coverage + freshness; Wave 1 without FANZA yet.
 
 ---
 

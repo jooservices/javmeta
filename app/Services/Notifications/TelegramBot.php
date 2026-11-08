@@ -1,0 +1,335 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Notifications;
+
+use App\Exceptions\InvalidFilterException;
+use App\Data\Suggest\SuggestQuery;
+use App\Repositories\TelegramBotServiceRepository;
+use App\Services\Crawl\CrawlStatusService;
+use App\Services\Downloads\DownloadService;
+use App\Services\Settings\SettingsService;
+use App\Services\Suggest\SuggestService;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use RuntimeException;
+use Throwable;
+
+/**
+ * The owner's Telegram bot: ask for movies and performers, read the status, follow and list follows. It reads updates with
+ * short polling (every minute from the scheduler), so no inbound port is opened, and it answers only the owner's chat id.
+ * Feature switches are database settings; the bot token and chat id come from runtime secrets.
+ */
+final class TelegramBot
+{
+    public function __construct(
+        private readonly SettingsService $settings,
+        private readonly CrawlStatusService $status,
+        private readonly DownloadService $downloads,
+        private readonly TelegramBotServiceRepository $repository,
+    ) {}
+
+    /** @return array{handled: int, ignored: int, skipped: string|null} */
+    public function poll(): array
+    {
+        if (! (bool) $this->settings->get('telegram.bot_enabled')) {
+            return ['handled' => 0, 'ignored' => 0, 'skipped' => 'disabled'];
+        }
+        $token = $this->telegramToken();
+        if ($token === '' || $this->telegramChatId() === '') {
+            return ['handled' => 0, 'ignored' => 0, 'skipped' => 'telegram is not configured'];
+        }
+
+        $offset = $this->repository->offset();
+        try {
+            $response = Http::timeout(max(1, (int) $this->settings->get('telegram.timeout')) + 5)->get($this->url($token, 'getUpdates'), ['offset' => $offset + 1, 'timeout' => 0, 'allowed_updates' => json_encode(['message', 'callback_query'])]);
+        } catch (Throwable) {
+            return ['handled' => 0, 'ignored' => 0, 'skipped' => 'telegram unreachable'];
+        }
+        if (! $response->successful()) {
+            return ['handled' => 0, 'ignored' => 0, 'skipped' => 'telegram refused'];
+        }
+
+        $handled = $ignored = 0;
+        foreach ((array) $response->json('result', []) as $update) {
+            $id = (int) ($update['update_id'] ?? 0);
+            if ($id <= $offset) {
+                continue;
+            }
+            try {
+                if ($this->handle((array) $update)) {
+                    $handled++;
+                } else {
+                    $ignored++;
+                }
+            } catch (InvalidFilterException) {
+                // Invalid input is permanent; never let it poison subsequent updates.
+                Log::warning('javmeta.telegram_invalid_update', ['update_id' => $id]);
+                $ignored++;
+            } catch (Throwable $error) {
+                // Transport and unexpected failures are retried; exception messages may contain the token.
+                Log::warning('javmeta.telegram_update_failed', ['update_id' => $id, 'exception' => $error::class]);
+
+                return ['handled' => $handled, 'ignored' => $ignored, 'skipped' => 'telegram update failed'];
+            }
+            $this->repository->saveOffset($id);
+            $offset = $id;
+        }
+
+        return ['handled' => $handled, 'ignored' => $ignored, 'skipped' => null];
+    }
+
+    /** Answer one update; false when it is not from the owner's chat or has no text. */
+    public function handle(array $update): bool
+    {
+        if (isset($update['callback_query'])) {
+            return $this->callback((array) $update['callback_query']);
+        }
+        $message = (array) ($update['message'] ?? []);
+        $chat = (string) ($message['chat']['id'] ?? '');
+        $text = trim((string) ($message['text'] ?? ''));
+        if ($text === '' || ! $this->authorized((array) ($message['chat'] ?? []), (array) ($message['from'] ?? []))) {
+            return false;
+        }
+
+        [$reply, $buttons] = $this->answer($text);
+        $this->send($chat, $reply, $buttons);
+
+        return true;
+    }
+
+    /** The Download button of a notification: "dl:CODE". Only the owner's chat counts. */
+    private function callback(array $query): bool
+    {
+        $chat = (string) ($query['message']['chat']['id'] ?? '');
+        $data = (string) ($query['data'] ?? '');
+        if (! $this->authorized((array) ($query['message']['chat'] ?? []), (array) ($query['from'] ?? [])) || ! str_starts_with($data, 'dl:')) {
+            return false;
+        }
+        $reply = $this->download(substr($data, 3));
+        try {
+            Http::timeout(max(1, (int) $this->settings->get('telegram.timeout')))->asJson()->post($this->url($this->telegramToken(), 'answerCallbackQuery'), ['callback_query_id' => (string) ($query['id'] ?? ''), 'text' => $reply]);
+        } catch (Throwable) {
+            // The text answer below still reaches the owner.
+        }
+        $this->send($chat, $reply, []);
+
+        return true;
+    }
+
+    /** @param array<string, mixed> $chat
+     * @param array<string, mixed> $sender
+     */
+    private function authorized(array $chat, array $sender): bool
+    {
+        $chatId = (string) ($chat['id'] ?? '');
+        if ($chatId === '' || $chatId !== $this->telegramChatId()) {
+            return false;
+        }
+        // Positive chat IDs identify private chats when an older update omits type.
+        if (($chat['type'] ?? null) === 'private' || (! isset($chat['type']) && (int) $chatId > 0)) {
+            return true;
+        }
+        $owner = $this->settings->get('telegram.owner_user_id');
+
+        return $owner !== null && (string) $owner === (string) ($sender['id'] ?? '');
+    }
+
+    private function download(string $code): string
+    {
+        if (mb_strlen($code) > 100) {
+            return 'Mã phim quá dài, tối đa 100 ký tự.';
+        }
+        if (! $this->downloads->enabled()) {
+            return 'Tải về đang tắt trong Cài đặt.';
+        }
+        try {
+            $added = $this->downloads->add(trim($code));
+
+            return 'Đã thêm ' . $added['movie_code'] . ' vào danh sách tải.';
+        } catch (\RuntimeException $e) {
+            return $e->getMessage();
+        }
+    }
+
+    private function downloadsText(): string
+    {
+        if (! $this->downloads->enabled()) {
+            return 'Tải về đang tắt trong Cài đặt.';
+        }
+        try {
+            $items = $this->downloads->list();
+        } catch (\RuntimeException $e) {
+            return $e->getMessage();
+        }
+
+        return $items === [] ? 'Chưa có mục nào đang tải.' : implode("\n", array_map(static fn(array $t): string => ($t['movie_code'] ?? $t['name']) . ' · ' . $t['progress'] . '% · ' . $t['state'], array_slice($items, 0, 15)));
+    }
+
+    /** @return array{0: string, 1: list<array{text: string, url: string}>} */
+    private function answer(string $text): array
+    {
+        $parts = preg_split('/\s+/', $text, 2) ?: [$text];
+        $command = strtolower(preg_replace('/@.*$/', '', $parts[0]) ?? '');
+        $argument = trim($parts[1] ?? '');
+
+        $input = str_starts_with($text, '/') ? $argument : $text;
+        if (mb_strlen($input) > 100) {
+            return [$command === '/search' || ! str_starts_with($text, '/')
+                ? 'Câu hỏi quá dài, tối đa 100 ký tự.' : 'Tham số quá dài, tối đa 100 ký tự.', []];
+        }
+
+        return match ($command) {
+            '/start', '/help' => [$this->help(), []],
+            '/status' => [$this->statusText(), []],
+            '/download' => [$this->download($argument), []],
+            '/downloads' => [$this->downloadsText(), []],
+            '/movie' => $this->movie($argument),
+            '/follow', '/unfollow' => [$this->follow($command === '/follow', $argument), []],
+            '/follows' => [$this->follows(), []],
+            '/search' => $this->search($argument),
+            default => str_starts_with($text, '/') ? ["Lệnh không có. Gõ /help.", []] : $this->search($text),
+        };
+    }
+
+    private function help(): string
+    {
+        return "Gõ tên diễn viên, mã phim, thể loại hoặc từ khoá để tìm.\n/search <từ khoá>\n/movie <mã phim>\n/status – số liệu hiện tại\n/download <mã phim> – tải về (khi bật)\n/downloads – các mục đang tải\n/follow maker|series|performer <tên> – theo dõi\n/unfollow maker|series|performer <tên>\n/follows – danh sách đang theo dõi";
+    }
+
+    private function statusText(): string
+    {
+        $c = $this->status->counts();
+        $q = (array) ($this->status->status()['queue']['by_status'] ?? []);
+
+        return sprintf("Phim: %s\nDiễn viên: %s\nHàng đợi: %s chờ, %s lỗi", number_format($c['movies']), number_format($c['performers']), number_format((int) ($q['pending'] ?? 0)), number_format((int) ($q['failed'] ?? 0)));
+    }
+
+    /** @return array{0: string, 1: list<array{text: string, url: string}>} */
+    private function search(string $q): array
+    {
+        if (mb_strlen($q) < 2) {
+            return ['Gõ ít nhất 2 ký tự để tìm.', []];
+        }
+        $limit = max(1, min(10, (int) $this->settings->get('telegram.bot_max_results')));
+        $data = app(SuggestService::class)->suggest(SuggestQuery::from($q, $limit))->toArray();
+
+        $lines = [];
+        $buttons = [];
+        foreach ($data['movies'] as $m) {
+            $lines[] = '🎬 ' . $m['code'] . ' · ' . ($m['title'] ?? '') . (($m['maker'] ?? null) ? ' (' . $m['maker'] . ')' : '');
+            if (count($buttons) < 3) {
+                $buttons[] = ['text' => $m['code'], 'url' => $this->appUrl('/movie/' . rawurlencode($m['code']))];
+            }
+        }
+        foreach ($data['performers'] as $p) {
+            $lines[] = '👤 ' . ($p['name'] ?? '#' . $p['id']);
+        }
+        foreach (['genres' => '🏷', 'makers' => '🏢', 'series' => '📁'] as $key => $icon) {
+            foreach ($data[$key] as $x) {
+                $lines[] = $icon . ' ' . $x['name'] . ' (' . $x['movie_count'] . ' phim)';
+            }
+        }
+
+        return [$lines === [] ? 'Không có kết quả cho “' . $q . '”.' : implode("\n", $lines), $buttons];
+    }
+
+    /** @return array{0: string, 1: list<array{text: string, url: string}>} */
+    private function movie(string $code): array
+    {
+        if ($code === '') {
+            return ['Gõ /movie <mã phim>, ví dụ /movie SSIS-001.', []];
+        }
+        $row = $this->repository->movie($code);
+        if ($row === null) {
+            return ['Chưa có phim ' . $code . '.', []];
+        }
+        $text = $row['display_code'] . ' · ' . ($row['title_en'] ?? $row['title_jp'] ?? '') . "\nPhát hành: " . ($row['release_date'] ? substr((string) $row['release_date'], 0, 10) : 'chưa rõ')
+            . "\nMaker: " . ($row['maker'] ?? 'chưa rõ') . ($row['series'] ? "\nSeries: " . $row['series'] : '') . ($row['runtime_minutes'] ? "\nThời lượng: {$row['runtime_minutes']} phút" : '') . ($row['community_score'] !== null ? "\nĐiểm: {$row['community_score']}" : '');
+
+        return [$text, [['text' => 'Mở', 'url' => $this->appUrl('/movie/' . rawurlencode((string) $row['display_code']))]]];
+    }
+
+    private function follow(bool $on, string $argument): string
+    {
+        $parts = preg_split('/\s+/', $argument, 2) ?: [];
+        $subject = strtolower($parts[0] ?? '');
+        $name = trim($parts[1] ?? '');
+        if (! in_array($subject, ['maker', 'series', 'performer'], true) || $name === '') {
+            return 'Cú pháp: /' . ($on ? 'follow' : 'unfollow') . ' maker|series|performer <tên>.';
+        }
+        $owner = $this->repository->ownerId();
+        if ($owner === null) {
+            return 'Chưa có tài khoản chủ sở hữu.';
+        }
+        $key = $name;
+        if ($subject === 'performer') {
+            $id = $this->repository->performerId($name);
+            if ($id === null) {
+                return 'Không tìm thấy diễn viên “' . $name . '”.';
+            }
+            $key = (string) $id;
+        }
+        $row = ['user_id' => $owner, 'kind' => 'follow', 'subject' => $subject, 'key' => $key];
+        if ($on) {
+            $this->repository->addFollow($row);
+        } else {
+            $this->repository->removeFollow($row);
+        }
+
+        return ($on ? 'Đang theo dõi ' : 'Đã bỏ theo dõi ') . $subject . ' ' . $name . '.';
+    }
+
+    private function follows(): string
+    {
+        $owner = $this->repository->ownerId();
+        $rows = $this->repository->follows($owner);
+        if ($rows === []) {
+            return 'Chưa theo dõi gì. Dùng /follow.';
+        }
+        $performerIds = array_values(array_map(static fn(array $row): int => (int) $row['key'], array_filter($rows, static fn(array $row): bool => $row['subject'] === 'performer')));
+        $names = $this->repository->performerNames($performerIds);
+
+        return implode("\n", array_map(static fn(array $row): string => $row['subject'] . ' · ' . ($row['subject'] === 'performer' ? ($names[(int) $row['key']] ?? '#' . $row['key']) : $row['key']), $rows));
+    }
+
+    private function appUrl(string $path): string
+    {
+        return rtrim((string) config('app.url'), '/') . '/app#' . $path;
+    }
+
+    private function url(string $token, string $method): string
+    {
+        $base = rtrim((string) $this->settings->get('telegram.api_base'), '/') ?: 'https://api.telegram.org';
+
+        return "{$base}/bot{$token}/{$method}";
+    }
+
+    private function telegramToken(): string
+    {
+        $token = config('laravel-notifications.channels.telegram.bot_token', '');
+
+        return is_string($token) ? $token : '';
+    }
+
+    private function telegramChatId(): string
+    {
+        $chatId = config('laravel-notifications.channels.telegram.chat_id', '');
+
+        return is_string($chatId) ? $chatId : '';
+    }
+
+    /** @param list<array{text: string, url: string}> $buttons */
+    private function send(string $chat, string $text, array $buttons): void
+    {
+        $payload = ['chat_id' => $chat, 'text' => mb_substr($text, 0, 4000)];
+        if ($buttons !== []) {
+            $payload['reply_markup'] = ['inline_keyboard' => [$buttons]];
+        }
+        $response = Http::timeout(max(1, (int) $this->settings->get('telegram.timeout')))->asJson()->post($this->url($this->telegramToken(), 'sendMessage'), $payload);
+        if (! $response->successful() || $response->json('ok') !== true) {
+            throw new RuntimeException('Telegram send failed.');
+        }
+    }
+}

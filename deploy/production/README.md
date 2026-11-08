@@ -1,0 +1,183 @@
+# Native install and deploy wizard
+
+Run `deploy/production.sh` or `deploy/install.sh` on the selected Ubuntu
+24.04+ node. Both prompt for missing answers by default. Dry-run is the
+default: no network calls, files, packages or units change until `--apply`.
+`deploy/staging.sh` is the unattended wrapper. No branch, repository or target
+is implied by any entry point.
+
+## Inputs
+
+Defaults are declared in [../manifest.json](../manifest.json). Priority is CLI,
+private answers JSON, environment, interactive input over defaults. `--ref` is
+required (branch, tag or full SHA). The private config must be an owned regular
+0600 file, never committed. `--non-interactive` lists every missing required
+answer. Secrets use hidden prompts, the private config or environment; never
+argv. `--set KEY=VALUE` rejects secret fields.
+
+```bash
+bash deploy/install.sh --help
+bash deploy/production.sh                                       # interactive preview
+bash deploy/production.sh --apply                               # interactive install
+bash deploy/install.sh --config /private/node.json --non-interactive        # preview
+bash deploy/install.sh --config /private/node.json --non-interactive --apply # install
+bash deploy/production.sh --config /private/node.json --ref "$REF" --apply
+bash deploy/staging.sh staging --config /private/node.json --ref "$REF" --apply
+```
+
+The config is a flat JSON object of strings. Supply `REPO_URL`, `REF`,
+`TARGET_DIR`, `SERVICE_USER`, `NODE_ROLE`, `OWNER_EMAIL`, plus required service
+fields from the manifest. `UNIT_PREFIX`, `FPM_UNIT`, `NGINX_UNIT`, node name and
+release root are operator inputs. The private credentials file defaults to
+`<TARGET_DIR>/shared/<APP_NAME>-credentials.txt`; set `CREDENTIALS_FILE` to
+the operator’s `~/<APP_NAME>-credentials.txt` (an absolute writable private path) when desired.
+
+Existing shared env keys are preserved. Explicit changes require per-key
+confirmation, or `--replace-existing` unattended. APP_KEY is generated once.
+The env is 0640, owned by the service user. Do not share the credentials file:
+on first install it contains the collected credentials and generated owner
+password, mode 0600. The owner command output is captured privately and
+shredded, never logged. Later releases preserve the existing owner account and
+password instead of rotating them.
+
+## Services and validation
+
+| Service | Check |
+| --- | --- |
+| PostgreSQL | PDO authentication, `psql SHOW timezone`, require UTC/Etc/UTC |
+| MongoDB | PHP driver ping; build URI with percent-encoded user/password and authSource |
+| Redis | ACL AUTH, SET/GET in the prefix, denial outside it |
+| Elasticsearch | HTTP(S) and API-key (TLS verified for HTTPS) `_security/_authenticate`; optional CA file |
+| OpenObserve | Authenticated test ingest into the selected org/log stream |
+| FlareSolverr | HTTP sessions list, require `status=ok` |
+| Playwright | HTTP health endpoint |
+| Embedder, Ollama | Optional HTTP health/API check |
+| Sentry | Optional DSN and authenticated client report |
+
+Interactive failures show a redacted reason and re-ask; unattended failures
+abort before clone. A non-UTC PostgreSQL session blocks deployment: UTC strings
+otherwise break stale-claim reclaim. The wizard offers a separate admin prompt
+to `ALTER DATABASE ... SET timezone TO 'UTC'`, then reconnects to verify. Admin
+credentials live only in a subshell and are never written to env/config/logs.
+`DB_SSLMODE` defaults to `require`. The Elasticsearch CA can be installed into
+OS trust with `INSTALL_CA=1`; this requires sudo and cannot be combined with
+`--skip-os-install`.
+
+`CRAWLERX_PLAYWRIGHT_SCRIPT` is always resolved under
+`<TARGET_DIR>/current/vendor/jooservices/crawlerx/scripts/playwright-fetch.mjs`.
+Never use a Docker image path for a native node. Worker counts are read from the
+database settings registry; legacy worker-count env lines are retained only
+long enough for `settings:import-env` to migrate their current effective values.
+
+## Installer and release sequence
+
+The existing idempotent `node/install-node.sh` checks Ubuntu, installs the
+manifest-selected prerequisites and renders templates. It creates storage,
+service account and embedder venv; validates nginx (primary only), sudoers and
+Composer checksum. It never starts application units. Bootstrap Bash/sudo/jq
+before invoking the wizard. `--skip-os-install` skips OS/package changes.
+
+The release engine locks the target, checks that env has not changed during
+input, checks a fresh custom-format PostgreSQL backup and restore attestation,
+clones/fetches the exact selected ref, and checks out a detached commit into
+`releases/<UTC timestamp>-<sha7>-<process id>`. Optional exact-commit CI check
+names come from `CI_CHECKS`; enable with `--ci-check 'Job A,Job B'` and
+`CI_REPOSITORY`. `--skip-ci-check` skips this optional gate.
+
+It then links shared env/storage, runs Composer `--no-dev
+--classmap-authoritative` and UI render smoke, then checks `health:startup` on
+the staged release before stopping any existing role units. After that gate
+passes, it quiesces role units, migrates forward, initializes registered
+database settings through SettingsService, imports env settings, runs
+`es:setup` **before crawl**, syncs sources, creates the owner on first install,
+clears config/routes/views without flushing Redis, and swaps `current`
+atomically. A failed primary check leaves the running units and current release
+untouched. Initial settings include
+`domains.ui_host`,
+`domains.command_center_host`, `search.movies_index`, `search.performers_index`,
+`search.embedder_url`, `ai.ollama_url`, `media.api_url` and
+`observability.openobserve_enabled`; saved UI choices remain authoritative.
+
+`--skip-backup-check` explicitly bypasses the backup gate with a loud warning.
+It does not make migrations reversible. Preserve PostgreSQL and Mongo backups
+and review forward compatibility before each release.
+
+Matching units are enabled/restarted, including the per-node Horizon reconcile
+timer and worker node-sample timer; the primary scheduler samples its own node.
+Scheduler starts last **only** when `--start-scheduler` is supplied.
+`--no-start` installs without unit actions or
+claiming process readiness; `--no-systemd` prints actions without calling
+systemctl. Horizon, scheduler and embedder units run the startup health check
+in `ExecStartPre` and restart on failure. Normal starts wait with a bounded
+timeout for application readiness.
+Every step reports duration and verification; raw command output is suppressed
+to avoid leaking secrets. Failure restores the old symlink/env and restarts old
+units; first-install failure stops role units. Database migrations/settings are
+not rolled back automatically. Failed releases remain for private inspection.
+The Horizon and scheduler units use `Restart=on-failure`, so clean exits from
+`horizon:terminate` or `schedule:work` do not restart them automatically; use
+`systemctl restart <unit-prefix>-horizon` or
+`systemctl restart <unit-prefix>-scheduler` for maintenance reloads.
+
+The installed per-node `*-horizon-reconcile.service` runs
+`node:egress-probe` in `ExecStartPost` after worker reconciliation. The same
+unit template is synchronized for primary and worker roles, so every Horizon
+node refreshes its own cached WAN IP without starting another scheduler. The
+probe is application telemetry; the optional node_exporter textfile probe is
+independent.
+
+## Adding a worker node
+
+Use a new target/service account/node name with `--role worker`. Horizon, the
+Horizon reconcile timer, node-sample timer, embedder and node exporter are enabled. Nginx and
+scheduler remain installed but disabled and blocked by a systemd condition
+drop-in. Workers never run migrations or shared setup and never rotate the
+owner; copy the primary shared env to `<TARGET_DIR>/shared/.env` before adding
+the worker, or supply its existing APP_KEY and matching service answers. A
+worker refuses a missing APP_KEY. Point
+`media.api_url` at the primary API. Shared service answers must select the same
+application databases/indexes but the appropriate scoped Redis prefix.
+
+Only **one scheduler** may run across the fleet. The periodic report also uses
+`onOneServer` and a per-slot cache lock. Stop the old scheduler before
+deliberately starting the new one with `--start-scheduler` on a primary node.
+The PostgreSQL application role's connection limit defaults to **120** through
+`JAVMETA_POSTGRES_ROLE_CONNECTION_LIMIT`; the shared `max_connections` remains
+**150**. The application reserves 30 role slots for non-Horizon clients, so
+configured Horizon demand is capped at 90 by default. Keep the role limit and
+primary/worker node counts aligned with the live deployment. See
+[`docs/03-operations/postgres-connections.md`](../../docs/03-operations/postgres-connections.md)
+for the calculation and metrics. Browser capacity on vm-tools is **global**,
+not per worker; adding nodes does not add browser capacity.
+
+## Local verification
+
+Run shell regressions and the disposable local install twice. Never point this
+proof at production. Use the existing shared runtime/services, `--skip-os-install
+--no-systemd --no-start`, a local file repository and a local commit SHA.
+External browser service reachability and full started-process readiness require
+separate operator verification when those services are available.
+
+### WSL verification evidence (2026-11-01)
+
+The wizard completed a real first install (13s) and repeat install (11s) in a
+throwaway `wizard279_wt279` namespace on the shared local services, using HTTP
+Elasticsearch with a namespace-only API key and prefix-restricted Redis ACL.
+Both runs used `--skip-os-install --no-systemd --no-start --skip-backup-check`.
+Composer, migrations, settings import, ES setup and owner creation completed.
+The repeat preserved env and owner credentials byte-for-byte; credentials were
+0600 and neither run printed secrets. Browser checks were read-only health/session
+checks; no crawl, production access, OS installation or process start was tested.
+
+Host inputs accept exact DNS names (including localhost); wildcard and underscore
+catch-all names are rejected before rendering. Mongo authSource defaults to the
+selected database, and supplied URI TLS/replica-set options survive credential
+encoding. Redis/cache/Horizon defaults match the bundled lowercase `xcrawler:`
+ACL; custom namespaces must supply their matching prefixes.
+
+`--ci-check` requires nonempty check names and repository, including after sudo
+handoff. `--validate-only --apply` performs probes without OS installation or unit
+configuration. `--no-systemd --apply` requires `--no-start`, so simulated unit
+status cannot count as readiness. Started deployments verify active units,
+Horizon supervisors and (only when explicitly started) scheduler heartbeat,
+without requiring crawl data or backup history from a fresh installation.

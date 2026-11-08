@@ -18,19 +18,19 @@ use Throwable;
 /**
  * Maps crawlerx MovieDto typed fields plus a configurable metadata{} key map
  * onto a MovieDraft. The key map is per-source configurable through
- * `jvmeta_sources.sources.<slug>.normalize` and defaults to a union of the
+ * `javmeta_sources.sources.<slug>.normalize` and defaults to a union of the
  * key shapes observed across the frozen Wave 1 adapters.
  */
 class DefaultSourceNormalizer implements SourceNormalizer
 {
     public function supports(string $slug): bool
     {
-        return is_array(config("jvmeta_sources.sources.{$slug}"));
+        return is_array(config("javmeta_sources.sources.{$slug}"));
     }
 
     public function normalizeMovie(MovieDto $movie, array $metadata, string $slug, string $sourceUrl, CarbonImmutable $crawledAt): MovieDraft
     {
-        $code = SiteCodeCanonicalizer::resolve($slug, $this->codeCandidates($movie, $metadata, $sourceUrl));
+        $code = SiteCodeCanonicalizer::resolve($slug, $this->codeCandidates($movie, $metadata, $sourceUrl, $slug), $sourceUrl);
         $title = $this->titleFrom($movie, $metadata);
 
         if ($code === null || $title === null) {
@@ -41,6 +41,8 @@ class DefaultSourceNormalizer implements SourceNormalizer
                 $title === null ? 'missing' : 'present',
             ));
         }
+
+        $titles = $this->titlesFrom($title, $metadata, $slug);
 
         $performers = [];
         foreach ($movie->performers as $performer) {
@@ -57,8 +59,8 @@ class DefaultSourceNormalizer implements SourceNormalizer
                 sourceSlug: $slug,
                 sourceUrl: $sourceUrl,
                 code: $code,
-                titleJp: $this->titleLocale($slug) === 'jp' ? $title : null,
-                titleEn: $this->titleLocale($slug) === 'en' ? $title : null,
+                titleJp: $titles['jp'],
+                titleEn: $titles['en'],
                 description: (is_string($movie->description) && trim($movie->description) !== ''
                     ? trim($movie->description)
                     : $this->firstString($metadata, $this->keyMap($slug)['description'] ?? ['description', 'Description', 'あらすじ', '紹介'])),
@@ -86,15 +88,55 @@ class DefaultSourceNormalizer implements SourceNormalizer
     }
 
     /**
+     * The page title lands in the locale the source serves. When CrawlerX also
+     * returns both languages (`titles` {ja,en}) or the original-language title
+     * (`original_title`), the other column is filled too.
+     *
+     * @param  array<string, mixed>  $metadata
+     * @return array{jp: ?string, en: ?string}
+     */
+    protected function titlesFrom(string $title, array $metadata, string $slug): array
+    {
+        $titles = ['jp' => null, 'en' => null];
+        $locale = $this->titleLocale($slug);
+        if ($locale === 'auto') {
+            $locale = preg_match('/[\x{3040}-\x{30ff}\x{3400}-\x{9fff}]/u', $title) === 1 ? 'jp' : 'en';
+        }
+        $titles[$locale === 'en' ? 'en' : 'jp'] = $title;
+
+        $both = $metadata['titles'] ?? null;
+        if (is_array($both)) {
+            foreach (['ja' => 'jp', 'en' => 'en'] as $from => $to) {
+                if (is_string($both[$from] ?? null) && trim($both[$from]) !== '') {
+                    $titles[$to] = trim($both[$from]);
+                }
+            }
+        }
+
+        $original = $metadata['original_title'] ?? null;
+        if ($titles['jp'] === null && is_string($original) && trim($original) !== '') {
+            $titles['jp'] = trim($original);
+        }
+
+        return $titles;
+    }
+
+    /**
      * Ordered candidates: typed code, metadata labels, title, external id, URL.
      *
      * @param  array<string, mixed>  $metadata
      * @return list<string|null>
      */
-    protected function codeCandidates(MovieDto $movie, array $metadata, string $sourceUrl): array
+    protected function codeCandidates(MovieDto $movie, array $metadata, string $sourceUrl, string $slug): array
     {
+        $pathIdentity = in_array($slug, ['javbtc', 'ffjav', 'tokyohot', '141jav'], true);
+        $codeUrl = $pathIdentity ? (string) parse_url($sourceUrl, PHP_URL_PATH) : $sourceUrl;
+        // These adapters can infer their typed code from the entire URL. Rebuild
+        // it from page fields and the path when tracking data could contaminate it.
+        $ignoreTyped = $pathIdentity && (parse_url($sourceUrl, PHP_URL_QUERY) !== null || parse_url($sourceUrl, PHP_URL_FRAGMENT) !== null);
+
         return [
-            $movie->code,
+            $ignoreTyped ? null : $movie->code,
             $this->firstString($metadata, [
                 'code',
                 'product_code',
@@ -112,8 +154,8 @@ class DefaultSourceNormalizer implements SourceNormalizer
             $movie->title,
             $this->firstString($metadata, ['title']),
             $movie->externalId,
-            $this->queryParam($sourceUrl, 'id'),
-            $sourceUrl,
+            $this->queryParam($codeUrl, 'id'),
+            $codeUrl,
             $this->urlBasename($sourceUrl),
         ];
     }
@@ -162,11 +204,11 @@ class DefaultSourceNormalizer implements SourceNormalizer
 
     protected function titleLocale(string $slug): string
     {
-        $locale = config("jvmeta_sources.sources.{$slug}.normalize.title_locale");
+        $locale = config("javmeta_sources.sources.{$slug}.normalize.title_locale");
 
         return is_string($locale) && $locale !== ''
             ? $locale
-            : (string) config('jvmeta_sources.normalize.title_locale', 'jp');
+            : (string) config('javmeta_sources.defaults.normalize.title_locale', 'jp');
     }
 
     /**
@@ -174,10 +216,10 @@ class DefaultSourceNormalizer implements SourceNormalizer
      */
     protected function keyMap(string $slug): array
     {
-        $default = config('jvmeta_sources.normalize.key_map');
+        $default = config('javmeta_sources.defaults.normalize.key_map');
         $map = is_array($default) ? $default : [];
 
-        $override = config("jvmeta_sources.sources.{$slug}.normalize.key_map");
+        $override = config("javmeta_sources.sources.{$slug}.normalize.key_map");
         if (is_array($override)) {
             $map = array_merge($map, $override);
         }
@@ -235,7 +277,12 @@ class DefaultSourceNormalizer implements SourceNormalizer
                 $entries[] = $entry;
             }
             if ($entries !== []) {
-                return $entries;
+                $unique = [];
+                foreach ($entries as $entry) {
+                    $unique[$entry['url']] ??= $entry;
+                }
+
+                return array_values($unique);
             }
         }
 
@@ -303,6 +350,9 @@ class DefaultSourceNormalizer implements SourceNormalizer
     }
 
     /**
+     * CrawlerX returns `rating` as {score, scale, votes}; a bare number is
+     * taken as already on the 0-10 scale. The stored score is always 0-10.
+     *
      * @param  array<string, mixed>  $metadata
      */
     protected function scoreFrom(array $metadata, string $slug): ?float
@@ -310,15 +360,37 @@ class DefaultSourceNormalizer implements SourceNormalizer
         $keys = $this->keyMap($slug)['score'] ?? ['rating', 'Rating', 'score', '評価'];
         foreach ($keys as $key) {
             $value = $metadata[$key] ?? null;
-            if (is_int($value) || is_float($value)) {
-                return (float) $value;
+            if (is_array($value)) {
+                $score = $value['score'] ?? null;
+                $scale = $value['scale'] ?? null;
+                if (! is_numeric($score)) {
+                    continue;
+                }
+
+                $scale = is_numeric($scale) && (float) $scale > 0 ? (float) $scale : 10.0;
+
+                $normalized = $this->clampScore((float) $score / $scale * 10.0);
+                if ($normalized !== null) {
+                    return $normalized;
+                }
+
+                continue;
             }
-            if (is_string($value) && is_numeric($value)) {
-                return (float) $value;
+
+            if (is_int($value) || is_float($value) || (is_string($value) && is_numeric($value))) {
+                $normalized = $this->clampScore((float) $value);
+                if ($normalized !== null) {
+                    return $normalized;
+                }
             }
         }
 
         return null;
+    }
+
+    private function clampScore(float $score): ?float
+    {
+        return $score < 0.0 || $score > 10.0 ? null : round($score, 2);
     }
 
     /**

@@ -1,6 +1,5 @@
 x-app-volumes: &app-volumes
   - .:/var/www/html
-  - ../crawlerx:/var/www/crawlerx
   - ../client:/var/www/client:ro
   - ../dto:/var/www/dto:ro
   - ../exceptions:/var/www/exceptions:ro
@@ -9,156 +8,152 @@ x-app-volumes: &app-volumes
   - playwright-browsers:/ms-playwright
 
 x-app-environment: &app-environment
-  DB_HOST: postgres
-  MONGO_HOST: mongo
-  ELASTICSEARCH_HOST: http://elasticsearch:9200
-  CRAWLERX_ROOT: /var/www/crawlerx
+  DB_CONNECTION: ${DB_CONNECTION:-pgsql}
+  DB_HOST: ${DB_HOST:-postgres}
+  DB_PORT: ${DB_PORT:-5432}
+  DB_DATABASE: ${DB_DATABASE:-jvmeta}
+  DB_USERNAME: ${DB_USERNAME:-jvmeta}
+  DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+  DB_SSLMODE: ${DB_SSLMODE:-prefer}
+  MONGO_URI: ${MONGO_URI:-}
+  MONGO_HOST: ${MONGO_HOST:-mongo}
+  MONGO_PORT: ${MONGO_PORT:-27017}
+  MONGO_DATABASE: ${MONGO_DATABASE:-javmeta_archive}
+  ACTIVITY_LOG_CONNECTION: ${ACTIVITY_LOG_CONNECTION:-mongodb}
+  ACTIVITY_LOG_COLLECTION: ${ACTIVITY_LOG_COLLECTION:-activity_logs}
+  ELASTICSEARCH_HOST: ${ELASTICSEARCH_HOST:-http://elasticsearch:9200}
+  ELASTICSEARCH_MOVIES_INDEX: ${ELASTICSEARCH_MOVIES_INDEX:-javmeta_movies}
+  ELASTICSEARCH_PERFORMERS_INDEX: ${ELASTICSEARCH_PERFORMERS_INDEX:-javmeta_performers}
+  EMBEDDER_URL: ${EMBEDDER_URL:-http://embedder:8000}
+  EMBEDDER_DIM: ${EMBEDDER_DIM:-384}
+  CRAWLERX_ROOT: /var/www/html/vendor/jooservices/crawlerx
   CRAWLERX_NODE: node
-  CRAWLERX_PLAYWRIGHT_SCRIPT: /var/www/crawlerx/scripts/playwright-fetch.mjs
-  CRAWLERX_PUPPETEER_SCRIPT: /var/www/crawlerx/scripts/puppeteer-stealth-fetch.mjs
-  CRAWLERX_FLARESOLVERR_URL: http://flaresolverr:8191/v1
+  CRAWLERX_PLAYWRIGHT_SCRIPT: /var/www/html/vendor/jooservices/crawlerx/scripts/playwright-fetch.mjs
+  CRAWLERX_PUPPETEER_SCRIPT: /var/www/html/vendor/jooservices/crawlerx/scripts/puppeteer-stealth-fetch.mjs
+  FLARESOLVERR_URL: ${FLARESOLVERR_URL:-${CRAWLERX_FLARESOLVERR_URL:-http://flaresolverr:8191/v1}}
+  PLAYWRIGHT_URL: ${PLAYWRIGHT_URL:-}
   PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
-  JVMETA_FETCH_PROFILE: browser_likely
-  JVMETA_WORKERS_PER_QUEUE: "1"
-  JVMETA_QUEUE_NAMES: listing,detail,performer_listing,performer_detail,gallery
-  OPENOBSERVE_URL: http://openobserve:5080
-  OPENOBSERVE_ORG: default
-  OPENOBSERVE_STREAM_LOGS: jvmeta_logs
-  OPENOBSERVE_STREAM_METRICS: jvmeta_metrics
+  QUEUE_CONNECTION: ${QUEUE_CONNECTION:-redis}
+  REDIS_HOST: ${REDIS_HOST:-host.docker.internal}
+  REDIS_PORT: ${REDIS_PORT:-16382}
+  JAVMETA_WORKERS_PER_QUEUE: ${JAVMETA_WORKERS_PER_QUEUE:-1}
+  JAVMETA_QUEUE_NAMES: ${JAVMETA_QUEUE_NAMES:-listing,detail,performer_listing,performer_detail,gallery,search,observability}
+  OPENOBSERVE_ENABLED: ${OPENOBSERVE_ENABLED:-true}
+  OPENOBSERVE_URL: ${OPENOBSERVE_URL:-http://openobserve:5080}
+  OPENOBSERVE_ORG: ${OPENOBSERVE_ORG:-default}
+  OPENOBSERVE_STREAM_LOGS: ${OPENOBSERVE_STREAM_LOGS:-javmeta_logs}
+  OPENOBSERVE_STREAM_METRICS: ${OPENOBSERVE_STREAM_METRICS:-javmeta_metrics}
 
 x-worker: &worker
-  image: jooservices/jvmeta:php85
+  image: jooservices/javmeta:php85
   working_dir: /var/www/html
-  entrypoint: ["crawlerx-fetch-ready"]
-  command: ["worker-queues"]
+  command: ["sh", "-ec", "if [ \"$${QUEUE_CONNECTION:-redis}\" = redis ]; then exec php artisan horizon; else exec crawlerx-fetch-ready worker-queues; fi"]
   env_file:
     - .env
   environment:
     <<: *app-environment
   volumes: *app-volumes
-  depends_on:
-    postgres:
-      condition: service_healthy
-    mongo:
-      condition: service_healthy
-    elasticsearch:
-      condition: service_healthy
-    flaresolverr:
-      condition: service_started
-    openobserve:
-      condition: service_started
   restart: unless-stopped
+  healthcheck:
+    test: ["CMD-SHELL", "if [ \"$${QUEUE_CONNECTION:-redis}\" = redis ]; then php artisan horizon:status; else kill -0 1; fi"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 30s
+  profiles:
+    - app
 
 services:
   api:
     build:
       context: .
-    image: jooservices/jvmeta:php85
+      args:
+        SENTRY_RELEASE: ${SENTRY_RELEASE:-unknown}
+    image: jooservices/javmeta:php85
     working_dir: /var/www/html
-    command: php artisan serve --host=0.0.0.0 --port=8080
+    command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
     env_file:
       - .env
     environment:
       <<: *app-environment
-    volumes:
-      - .:/var/www/html
-      - ../crawlerx:/var/www/crawlerx:ro
-      - ../client:/var/www/client:ro
-      - ../dto:/var/www/dto:ro
-      - ../exceptions:/var/www/exceptions:ro
-      - ../laravel-controller:/var/www/laravel-controller:ro
-      - ../laravel-repository:/var/www/laravel-repository:ro
+      JAVMETA_ROLE: api
+    volumes: *app-volumes
     ports:
       - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      mongo:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
-      openobserve:
-        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/api/health/live >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    profiles:
+      - app
 
-  # Instance 1 — 5 queues × 1 worker
   worker:
     <<: *worker
-    hostname: jvmeta-worker-1
+    environment:
+      <<: *app-environment
+      JAVMETA_ROLE: worker
 
-  # Instance 2 — same queue set (shared pool)
-  worker-2:
-    <<: *worker
-    hostname: jvmeta-worker-2
+  embedder:
+    build:
+      context: ./embedder
+    image: jooservices/javmeta-embedder:latest
+    ports:
+      - "${EMBEDDER_HOST_PORT:-8000}:8000"
+    restart: unless-stopped
+    profiles:
+      - embed
 
   scheduler:
-    image: jooservices/jvmeta:php85
+    image: jooservices/javmeta:php85
     working_dir: /var/www/html
-    command: php artisan schedule:work
+    command: ["php", "artisan", "schedule:work"]
     env_file:
       - .env
     environment:
       <<: *app-environment
-    volumes:
-      - .:/var/www/html
-      - ../crawlerx:/var/www/crawlerx:ro
-      - ../client:/var/www/client:ro
-      - ../dto:/var/www/dto:ro
-      - ../exceptions:/var/www/exceptions:ro
-      - ../laravel-controller:/var/www/laravel-controller:ro
-      - ../laravel-repository:/var/www/laravel-repository:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-      mongo:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
-      openobserve:
-        condition: service_started
+      JAVMETA_ROLE: scheduler
+    volumes: *app-volumes
+    restart: unless-stopped
+    profiles:
+      - control
 
   mcp:
-    image: jooservices/jvmeta:php85
+    image: jooservices/javmeta:php85
     working_dir: /var/www/html
-    command: php artisan mcp:serve
+    command: ["php", "artisan", "mcp:serve"]
     env_file:
       - .env
     environment:
       <<: *app-environment
-    volumes:
-      - .:/var/www/html
-      - ../crawlerx:/var/www/crawlerx:ro
-      - ../client:/var/www/client:ro
-      - ../dto:/var/www/dto:ro
-      - ../exceptions:/var/www/exceptions:ro
-      - ../laravel-controller:/var/www/laravel-controller:ro
-      - ../laravel-repository:/var/www/laravel-repository:ro
+      JAVMETA_ROLE: mcp
+    volumes: *app-volumes
     stdin_open: true
     tty: true
+    restart: unless-stopped
     profiles:
+      - control
       - mcp
-    depends_on:
-      postgres:
-        condition: service_healthy
-      mongo:
-        condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
 
   postgres:
     image: postgres:17
     environment:
-      POSTGRES_DB: jvmeta
-      POSTGRES_USER: jvmeta
-      POSTGRES_PASSWORD: jvmeta
+      POSTGRES_DB: ${DB_DATABASE:-jvmeta}
+      POSTGRES_USER: ${DB_USERNAME:-jvmeta}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U jvmeta -d jvmeta"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-jvmeta} -d ${DB_DATABASE:-jvmeta}"]
       interval: 10s
       timeout: 5s
       retries: 5
     ports:
-      - "5432:5432"
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - ./data/postgres/pgdata:/var/lib/postgresql/data
+    profiles:
+      - data
 
   mongo:
     image: mongo:7
@@ -168,9 +163,11 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "27017:27017"
+      - "${MONGO_HOST_PORT:-27017}:27017"
     volumes:
-      - ./data/mongo/db:/data/db
+      - mongo-db-data:/data/db
+    profiles:
+      - data
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
@@ -186,9 +183,11 @@ services:
       retries: 20
       start_period: 60s
     ports:
-      - "9200:9200"
+      - "${ELASTICSEARCH_HOST_PORT:-9200}:9200"
     volumes:
       - ./data/elasticsearch/data:/usr/share/elasticsearch/data
+    profiles:
+      - data
 
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:v3.4.1
@@ -198,6 +197,8 @@ services:
     ports:
       - "8191:8191"
     restart: unless-stopped
+    profiles:
+      - flare
 
   openobserve:
     image: openobserve/openobserve:v0.92.0
@@ -205,19 +206,16 @@ services:
       ZO_DATA_DIR: /data
       ZO_LOCAL_MODE: "true"
       ZO_TELEMETRY: "false"
-      ZO_ROOT_USER_EMAIL: ${ZO_ROOT_USER_EMAIL:-root@jvmeta.local}
-      ZO_ROOT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:-Complexpass#123}
+      ZO_ROOT_USER_EMAIL: ${ZO_ROOT_USER_EMAIL:-root@javmeta.local}
+      ZO_ROOT_USER_PASSWORD: ${ZO_ROOT_USER_PASSWORD:?Set ZO_ROOT_USER_PASSWORD in .env}
     ports:
       - "5080:5080"
     volumes:
       - ./data/openobserve:/data
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5080/healthz >/dev/null 2>&1 || curl -fsS http://127.0.0.1:5080/healthz >/dev/null || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
     restart: unless-stopped
+    profiles:
+      - openobserve
 
 volumes:
   playwright-browsers:
+  mongo-db-data:

@@ -1,0 +1,10 @@
+{
+  "source_url": "https://avfan.com/en/movies/ewTlM3Fj",
+  "final_url": "https://avfan.com/en/movies/ewTlM3Fj",
+  "captured_at": "2026-09-09T04:05:50.706Z",
+  "http_status": 200,
+  "content_hash": "ebc1a02ab32c042a54e55ec1502b60fa5c2132d656d28c35c0b77f3d8b61f35a",
+  "target_type": "detail",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

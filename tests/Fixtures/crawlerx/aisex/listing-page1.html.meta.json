@@ -1,0 +1,10 @@
+{
+  "source_url": "https://www.aisex.jp/actress/",
+  "final_url": "https://www.aisex.jp/actress/",
+  "captured_at": "2026-10-03T14:41:45.115Z",
+  "http_status": 200,
+  "content_hash": "618828ed9722201582a5b01941a7d7009d9ddd8bad9fea8c48656263c69fc77d",
+  "target_type": "performer_listing",
+  "fetch_method": "playwright",
+  "sanitized": true
+}

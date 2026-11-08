@@ -57,4 +57,28 @@ final class TelemetrySanitizerTest extends TestCase
             'entity_type' => 'movie',
         ], $clean);
     }
+
+    public function test_sanitize_url_keeps_scheme_host_and_path_only(): void
+    {
+        $sanitizer = new TelemetrySanitizer();
+
+        $this->assertSame('https://example.test/v/abc', $sanitizer->sanitizeUrl('https://user:pass@example.test/v/abc?token=secret&x=1#frag'));
+        $this->assertNull($sanitizer->sanitizeUrl(null));
+        $this->assertNull($sanitizer->sanitizeUrl('  '));
+        $this->assertSame('/relative/path', $sanitizer->sanitizeUrl('/relative/path?a=b'));
+        $this->assertLessThanOrEqual(300, mb_strlen((string) $sanitizer->sanitizeUrl('https://example.test/' . str_repeat('a', 500))));
+    }
+
+    public function test_sanitize_text_masks_secrets_and_cuts_the_length(): void
+    {
+        $sanitizer = new TelemetrySanitizer();
+
+        $text = (string) $sanitizer->sanitizeText('Failed: Authorization: Bearer abc123 and password=hunter2 at https://x.test/?token=zzz&a=1');
+        $this->assertStringNotContainsString('abc123', $text);
+        $this->assertStringNotContainsString('hunter2', $text);
+        $this->assertStringNotContainsString('zzz', $text);
+        $this->assertStringContainsString('[redacted]', $text);
+        $this->assertSame(10, mb_strlen((string) $sanitizer->sanitizeText(str_repeat('x', 50), 10)));
+        $this->assertNull($sanitizer->sanitizeText(''));
+    }
 }

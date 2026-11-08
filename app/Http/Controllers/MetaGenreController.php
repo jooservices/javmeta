@@ -6,7 +6,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Genre;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
 use JOOservices\LaravelController\Http\Controllers\BaseApiController;
 
 final class MetaGenreController extends BaseApiController
@@ -19,8 +18,9 @@ final class MetaGenreController extends BaseApiController
     public function index(): JsonResponse
     {
         $labels = Genre::query()
+            ->selectRaw('COALESCE(label_raw, label_normalized) AS label')
             ->distinct()
-            ->pluck(DB::raw('COALESCE(label_raw, label_normalized)'))
+            ->pluck('label')
             ->sort()
             ->values()
             ->all();

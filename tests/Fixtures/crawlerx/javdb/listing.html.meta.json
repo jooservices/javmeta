@@ -1,0 +1,10 @@
+{
+  "source_url": "https://javdb.com/",
+  "final_url": "https://javdb.com/",
+  "captured_at": "2026-09-09T04:11:07.173Z",
+  "http_status": 200,
+  "content_hash": "bc73641698198f49da883d25dbb7dd49cd7821b9490e50e6615020fdb5c4c4b9",
+  "target_type": "listing",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

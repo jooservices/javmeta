@@ -1,0 +1,5 @@
+# Player validation
+
+Machine: Workstation (WSL). PHP Media + Downloads suite: 23 tests / 138 assertions PASS before the additional VTT MIME assertion. Includes owner-only access, disabled files, wrong-file refusal, signed video and subtitle links, tamper refusal, 206 byte ranges with Content-Range, output-root serving, missing subtitles/files and scene markers. Native VTT response is explicitly text/vtt. Player query uses the new library_files(code, missing_at) index and scene/subtitle FK indexes; it does not touch movie/performer tables.
+
+UI render smoke now covers player at width 375, escaped filenames/descriptions, video/track markup, EN/VI selection, seek clamping and off/missing/offline states. These are render/behavior tests, not a real browser playback claim. Remote Dev VM browser E2E cannot run in this session: no browser MCP is available, default SSH fails on system configuration ownership, and /home/joos/.ssh/config (including dev alias) is absent. No SSH/OS settings were changed. QA must run actual browser/codec verification on its authorized Dev VM connection. No deployment or merge.

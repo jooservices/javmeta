@@ -1,0 +1,12 @@
+{{- define "telegram.message" -}}
+{{- range .Alerts -}}
+{{ if eq .Status "resolved" }}✅ RESOLVED · {{ .Labels.alertname }}{{ else if eq .Labels.severity "critical" }}🚨 CRITICAL · {{ .Labels.alertname }}{{ else if eq .Labels.severity "warning" }}⚠️ WARNING · {{ .Labels.alertname }}{{ else }}ℹ️ INFO · {{ .Labels.alertname }}{{ end }}
+Host: {{ if .Labels.vm_name }}{{ .Labels.vm_name }}{{ else }}{{ .Labels.instance }}{{ end }}
+Value: {{ .Annotations.value }}
+Impact: {{ if .Annotations.impact }}{{ .Annotations.impact }}{{ else if .Annotations.description }}{{ .Annotations.description }}{{ else }}See the runbook for impact.{{ end }}
+Action: {{ if .Annotations.action }}{{ .Annotations.action }}{{ else }}Follow the runbook steps.{{ end }}
+Since ICT: {{ tz "Asia/Bangkok" .StartsAt | date "2006-01-02 15:04:05 MST" }}
+{{ if eq .Status "resolved" }}Lasted: {{ humanizeDuration (.EndsAt.Sub .StartsAt) }}
+{{ end }}Runbook: {{ if .Annotations.runbook }}{{ .Annotations.runbook }}{{ else }}https://wiki.jooservices.local/runbooks/monitoring{{ end }}
+{{ end }}
+{{- end }}

@@ -61,6 +61,7 @@ final class MovieResourceDataTest extends TestCase
             'magnets',
             'hls_stream_urls',
             'gallery',
+            'photos',
             'crawled_at',
             'delisted_at',
             'needs_review',

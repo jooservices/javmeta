@@ -1,0 +1,31 @@
+[Unit]
+Description=XCrawler horizon
+StartLimitIntervalSec=0
+StartLimitBurst=5
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=@TARGET_DIR@/current/artisan
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+Group=@SERVICE_USER@
+WorkingDirectory=@TARGET_DIR@/current
+TimeoutStartSec=660
+Environment=HOME=@TARGET_DIR@/shared
+Environment=HF_HUB_DISABLE_TELEMETRY=1
+ExecStartPre=@PHP_BINARY@ artisan health:startup --role=worker
+ExecStart=@PHP_BINARY@ artisan horizon
+Restart=on-failure
+RestartSec=15s
+TimeoutStopSec=240
+KillSignal=SIGTERM
+KillMode=mixed
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=@TARGET_DIR@/shared/storage
+
+[Install]
+WantedBy=multi-user.target

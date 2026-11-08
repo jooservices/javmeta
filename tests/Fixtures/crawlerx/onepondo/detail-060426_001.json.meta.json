@@ -1,0 +1,10 @@
+{
+  "source_url": "https://en.1pondo.tv/dyn/phpauto/movie_details/movie_id/060426_001.json",
+  "final_url": "https://en.1pondo.tv/dyn/phpauto/movie_details/movie_id/060426_001.json",
+  "captured_at": "2026-09-09T04:32:28.869Z",
+  "http_status": 200,
+  "content_hash": "c6239984f4fc15345e0d41ff8077402d88b394d8f7175de12009d6cc51db52b6",
+  "target_type": "detail",
+  "fetch_method": "http",
+  "sanitized": false
+}

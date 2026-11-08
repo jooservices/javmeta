@@ -16,6 +16,8 @@ class PerformerSource extends Model
     /** @var list<string> */
     protected $fillable = [
         'performer_id', 'site_slug', 'mongo_id', 'external_id', 'source_url', 'crawled_at',
+        'source_performer_id', 'name_romaji', 'name_kanji', 'name_kana', 'birth_date',
+        'cross_link_source', 'cross_link_id', 'removed_at',
     ];
 
     /** @return BelongsTo<Performer, $this> */
@@ -24,9 +26,15 @@ class PerformerSource extends Model
         return $this->belongsTo(Performer::class);
     }
 
+    /** @return BelongsTo<Performer, $this> */
+    public function sourcePerformer(): BelongsTo
+    {
+        return $this->belongsTo(Performer::class, 'source_performer_id');
+    }
+
     /** @return array<string, string> */
     protected function casts(): array
     {
-        return ['crawled_at' => 'datetime'];
+        return ['crawled_at' => 'datetime', 'birth_date' => 'date', 'removed_at' => 'datetime'];
     }
 }

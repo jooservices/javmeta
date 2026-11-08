@@ -3,8 +3,106 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Operations\DashboardController;
+use App\Http\Controllers\Operations\LoginController;
+use App\Http\Controllers\Ui\UiAdminController;
+use App\Http\Controllers\Ui\UiApiController;
+use App\Http\Controllers\FileController;
+use App\Http\Controllers\Nodes\NodeEnrollmentController;
+use App\Http\Controllers\Observability\PostgresConnectionMetricsController;
+use App\Http\Controllers\Operations\NodeController;
+use App\Http\Controllers\Ui\UiDownloadsController;
+use App\Http\Controllers\Ui\UiLibraryController;
+use App\Http\Controllers\Ui\UiNotificationTemplateController;
+use App\Http\Controllers\Ui\UiMarksController;
+use App\Http\Controllers\Ui\UiSettingsController;
+use App\Http\Controllers\Ui\UiReportController;
+use App\Http\Controllers\Ui\UiShellController;
+use App\Http\Middleware\EnsureUiOwnerOrGuest;
+use App\Http\Middleware\EnsureSuperAdministrator;
+use App\Http\Middleware\ThrottleGuestUiApi;
+use Illuminate\Session\Middleware\StartSession;
+use Illuminate\View\Middleware\ShareErrorsFromSession;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 
-Route::get('/', static fn(): array => [
-    'name' => config('app.name'),
-    'status' => 'ok',
-]);
+Route::get('/metrics', PostgresConnectionMetricsController::class)
+    ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class])
+    ->name('metrics');
+
+Route::get('/', static fn() => redirect()->route('ui.index'));
+
+Route::get('/files/download', [FileController::class, 'download'])
+    ->middleware(['auth', EnsureSuperAdministrator::class, 'signed'])
+    ->name('files.download');
+
+Route::get('/login', [LoginController::class, 'show'])->name('login');
+Route::post('/login', [LoginController::class, 'store'])->middleware('throttle:6,1');
+Route::post('/logout', [LoginController::class, 'destroy'])->middleware('auth')->name('logout');
+
+Route::get('/app', UiShellController::class)
+    ->middleware(EnsureUiOwnerOrGuest::class)
+    ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class])
+    ->name('ui.index');
+
+Route::get('/ui-api/{path}', UiApiController::class)
+    ->where('path', '.*')
+    ->middleware([EnsureUiOwnerOrGuest::class, ThrottleGuestUiApi::class])
+    ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class])
+    ->name('ui.api');
+
+Route::match(['POST', 'PUT', 'PATCH', 'DELETE'], '/ui-api/{path}', UiApiController::class)
+    ->where('path', '.*')
+    ->middleware([EnsureUiOwnerOrGuest::class, ThrottleGuestUiApi::class])
+    ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class])
+    ->name('ui.api.write');
+
+Route::get('/node/join.sh', [NodeEnrollmentController::class, 'script'])->name('nodes.join-script');
+Route::post('/node/enroll', [NodeEnrollmentController::class, 'redeem'])->middleware('throttle:6,1')->name('nodes.enroll');
+
+Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static function (): void {
+    Route::get('/ops/nodes', [NodeController::class, 'index'])->name('operations.nodes.index');
+    Route::post('/ops/nodes', [NodeController::class, 'store'])->name('operations.nodes.store');
+    Route::get('/ops', [DashboardController::class, 'index'])->name('operations.index');
+    Route::get('/ops/data', [DashboardController::class, 'data'])->name('operations.data');
+
+    Route::get('/ui-admin/keys', [UiAdminController::class, 'keys']);
+    Route::post('/ui-admin/keys', [UiAdminController::class, 'createKey']);
+    Route::get('/ui-admin/keys/{id}/usage', [UiAdminController::class, 'usage'])->whereNumber('id');
+    Route::delete('/ui-admin/keys/{id}', [UiAdminController::class, 'revoke'])->whereNumber('id');
+    Route::get('/ui-admin/report/periodic', [UiReportController::class, 'show']);
+    Route::get('/ui-admin/report/daily', [UiReportController::class, 'showDaily']);
+    Route::post('/ui-admin/report/periodic/send-now', [UiReportController::class, 'sendNow']);
+    Route::get('/ui-admin/report/{type}', [UiAdminController::class, 'report']);
+    Route::get('/ui-me/marks', [UiMarksController::class, 'index']);
+    Route::post('/ui-me/marks', [UiMarksController::class, 'toggle']);
+    Route::get('/ui-me/movies/{kind}', [UiMarksController::class, 'movies']);
+    Route::get('/ui-me/feed', [UiMarksController::class, 'feed']);
+    Route::post('/ui-me/feed/seen', [UiMarksController::class, 'feedSeen']);
+    Route::get('/ui-me/downloads/status', [UiDownloadsController::class, 'status']);
+    Route::get('/ui-me/downloads', [UiDownloadsController::class, 'index']);
+    Route::post('/ui-me/downloads', [UiDownloadsController::class, 'store']);
+    Route::post('/ui-me/downloads/{hash}/pause', [UiDownloadsController::class, 'pause'])->where('hash', '[A-Za-z0-9]+');
+    Route::post('/ui-me/downloads/{hash}/resume', [UiDownloadsController::class, 'resume'])->where('hash', '[A-Za-z0-9]+');
+    Route::delete('/ui-me/downloads/{hash}', [UiDownloadsController::class, 'destroy'])->where('hash', '[A-Za-z0-9]+');
+    Route::get('/ui-me/downloads/{hash}/links', [UiDownloadsController::class, 'links'])->where('hash', '[A-Za-z0-9]+');
+    Route::get('/ui-me/player/{code}', [\App\Http\Controllers\Ui\UiPlayerController::class, 'show']);
+    Route::get('/ui-me/media', [\App\Http\Controllers\Ui\UiMediaController::class, 'index']);
+    Route::get('/ui-me/media/files', [\App\Http\Controllers\Ui\UiMediaController::class, 'files']);
+    Route::post('/ui-me/media/capture', [\App\Http\Controllers\Ui\UiMediaController::class, 'capture']);
+    Route::post('/ui-me/media', [\App\Http\Controllers\Ui\UiMediaController::class, 'store']);
+    Route::post('/ui-me/media/{id}/retry', [\App\Http\Controllers\Ui\UiMediaController::class, 'retry'])->whereNumber('id');
+    Route::get('/ui-me/library', [UiLibraryController::class, 'summary']);
+    Route::get('/ui-me/library/codes', [UiLibraryController::class, 'codes']);
+    Route::get('/ui-me/library/on-disk', [UiLibraryController::class, 'onDisk']);
+    Route::get('/ui-me/library/unmatched', [UiLibraryController::class, 'unmatched']);
+    Route::get('/ui-admin/settings', [UiSettingsController::class, 'index']);
+    Route::put('/ui-admin/settings', [UiSettingsController::class, 'update']);
+    Route::get('/ui-admin/notifications', [UiNotificationTemplateController::class, 'index']);
+    Route::get('/ui-admin/notifications/{key}', [UiNotificationTemplateController::class, 'show'])->where('key', '[a-z0-9_.]+');
+    Route::put('/ui-admin/notifications/{key}', [UiNotificationTemplateController::class, 'update'])->where('key', '[a-z0-9_.]+');
+    Route::post('/ui-admin/notifications/{key}/preview', [UiNotificationTemplateController::class, 'preview'])->where('key', '[a-z0-9_.]+');
+    Route::post('/ui-admin/notifications/{key}/test', [UiNotificationTemplateController::class, 'testSend'])->where('key', '[a-z0-9_.]+');
+    Route::post('/ui-admin/notifications/{key}/reset', [UiNotificationTemplateController::class, 'reset'])->where('key', '[a-z0-9_.]+');
+    Route::get('/ui-admin/notifications/{key}/revisions', [UiNotificationTemplateController::class, 'revisions'])->where('key', '[a-z0-9_.]+');
+    Route::post('/ui-admin/notifications/{key}/revisions/{revision}/restore', [UiNotificationTemplateController::class, 'restore'])->where(['key' => '[a-z0-9_.]+', 'revision' => '[0-9]+']);
+});

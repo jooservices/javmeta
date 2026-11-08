@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Repositories\CrawlQueueRepository;
+use App\Enums\CrawlErrorCode;
 use App\Data\Crawl\MovieDraft;
 use App\Events\MovieDraftCaptured;
 use App\Jobs\Concerns\HandlesCrawlQueueRow;
@@ -11,10 +13,13 @@ use App\Jobs\Middleware\TraceCrawlJob;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
 use App\Models\Source;
-use App\Services\Crawl\SourceCircuitBreaker;
+use App\Services\Crawl\SourceActivityRecorder;
+use App\Services\Crawl\CrawlQueueService;
+use App\Services\Crawl\FetchAttemptRecorder;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawl\MovieDraftSink;
 use App\Services\Crawler\CrawlerxClient;
+use App\Services\Normalize\JavbtcCodeMissingException;
 use App\Services\Normalize\NormalizationFailedException;
 use App\Services\Normalize\SourceNormalizerRegistry;
 use App\Support\Crawl\LaravelCrawlQueue;
@@ -38,6 +43,7 @@ final class FetchDetailJob implements ShouldQueue
     public function __construct(
         public readonly int $crawlQueueId,
         public readonly ?string $traceparent = null,
+        public readonly ?string $claimToken = null,
     ) {
         $this->onQueue(LaravelCrawlQueue::forDetail());
     }
@@ -51,25 +57,26 @@ final class FetchDetailJob implements ShouldQueue
     public function handle(
         CrawlerxClient $client,
         SourceNormalizerRegistry $registry,
-        SourceCircuitBreaker $breaker,
+        SourceActivityRecorder $activity,
         SourceThrottle $throttle,
     ): void {
-        $row = $this->queueRow($this->crawlQueueId);
+        $row = $this->queueRow($this->crawlQueueId, CrawlQueue::KIND_DETAIL);
         if (! $row instanceof CrawlQueue || $row->kind !== CrawlQueue::KIND_DETAIL) {
             return;
         }
 
-        $source = Source::query()->find($row->source_slug);
+        $source = app(CrawlQueueRepository::class)->modelQuery(Source::class)->find($row->source_slug);
         if (! $source instanceof Source) {
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => 'unknown_source']);
-            $this->markFailed($row, 'Unknown source slug.');
+            $this->markFailed($row, CrawlErrorCode::UnknownSource, 'Unknown source slug.');
 
             return;
         }
 
-        $result = $client->fetchDetail($row->source_slug, $row->url);
+        $result = $client->fetchQueueRow($row);
+        app(FetchAttemptRecorder::class)->record($row, $result);
         if (! $result->ok || $result->movie === null) {
-            $this->onCrawlFailure($row, $source, $result, $breaker, $throttle);
+            $this->onCrawlFailure($row, $source, $result, $activity, $throttle);
 
             return;
         }
@@ -77,8 +84,8 @@ final class FetchDetailJob implements ShouldQueue
         $normalizer = $registry->forSlug($row->source_slug);
         if ($normalizer === null) {
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => 'no_normalizer']);
-            $this->markFailed($row, 'No normalizer for source slug.');
-            $breaker->recordFailure($source, 'No normalizer for source slug.');
+            $this->markFailed($row, CrawlErrorCode::NormalizerMissing, 'No normalizer for source slug.');
+            $activity->recordFailure($source, 'No normalizer for source slug.');
             $throttle->onFailure($source);
 
             return;
@@ -92,32 +99,41 @@ final class FetchDetailJob implements ShouldQueue
                 $row->url,
                 CarbonImmutable::now(),
             );
+        } catch (JavbtcCodeMissingException $exception) {
+            $message = CrawlQueueService::sanitizeErrorMessage($exception->getMessage());
+            $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => $message]);
+            $this->markFailed($row, CrawlErrorCode::ParseFailed, $message);
+            $activity->recordFailure($source, $message);
+            $throttle->onFailure($source);
+
+            return;
         } catch (NormalizationFailedException $exception) {
-            $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => $exception->getMessage()]);
-            $this->markFailed($row, $exception->getMessage());
-            $breaker->recordFailure($source, $exception->getMessage());
+            $message = CrawlQueueService::sanitizeErrorMessage($exception->getMessage());
+            $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => $message]);
+            $this->markFailed($row, CrawlErrorCode::NormalizationFailed, $message);
+            $activity->recordFailure($source, $message);
             $throttle->onFailure($source);
 
             return;
         }
 
-        $this->deliverDraft($draft);
+        $this->deliverDraft($draft, $row->is_recrawl);
 
-        $breaker->recordSuccess($source);
+        $activity->recordSuccess($source);
         $throttle->onSuccess($source);
         $this->onCrawlSuccess($row);
         $this->markDone($row);
     }
 
-    private function deliverDraft(MovieDraft $draft): void
+    private function deliverDraft(MovieDraft $draft, bool $isRecrawl): void
     {
         $sink = app()->bound(MovieDraftSink::class) ? app(MovieDraftSink::class) : null;
         if ($sink instanceof MovieDraftSink) {
-            $sink->accept($draft);
+            $sink->accept($draft, $isRecrawl);
 
             return;
         }
 
-        MovieDraftCaptured::dispatch($draft);
+        MovieDraftCaptured::dispatch($draft, $isRecrawl);
     }
 }

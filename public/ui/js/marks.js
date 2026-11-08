@@ -1,0 +1,64 @@
+import { esc, toast } from './util.js';
+import { admin, send } from './api.js';
+
+/* the owner's favourites, watch-later, seen and follows, kept on the server */
+let cache = null;
+
+export async function myMarks(force = false) {
+  if (document.body.dataset.guestMode === 'true') return new Set();
+  if (!cache || force) {
+    try { cache = new Set(((await admin('/ui-me/marks')).data || []).map(m => [m.kind, m.subject, m.key].join('\u0001'))); } catch { cache = new Set(); }
+  }
+  return cache;
+}
+
+let diskAt = 0;
+/* refresh the set of on-disk codes (at most once a minute) */
+export async function loadDisk(disk) {
+  if (document.body.dataset.guestMode === 'true') {
+    disk.codes = new Set();
+    return;
+  }
+  if (Date.now() - diskAt < 60000) return;
+  diskAt = Date.now();
+  try { disk.codes = new Set((await admin('/ui-me/library/codes')).data || []); } catch { /* the badge is optional */ }
+}
+
+let dlAt = 0, dlStatus = { enabled: false, files_enabled: false };
+/* are downloads switched on (checked at most once a minute) */
+export async function downloadsStatus() {
+  if (document.body.dataset.guestMode === 'true') return dlStatus;
+  if (Date.now() - dlAt > 60000) {
+    dlAt = Date.now();
+    try { dlStatus = (await admin('/ui-me/downloads/status')).data; } catch { /* keep the last answer */ }
+  }
+  return dlStatus;
+}
+
+export const markBtn = (set, kind, subject, key, on, off, extra = '') => {
+  if (document.body.dataset.guestMode === 'true') return '';
+  const is = set.has([kind, subject, key].join('\u0001'));
+  return `<button class="btn sm ${is ? 'pri' : ''} ${extra}" data-mark data-kind="${esc(kind)}" data-subject="${esc(subject)}" data-key="${esc(key)}" data-on-label="${esc(on)}" data-off-label="${esc(off)}" aria-pressed="${is}">${esc(is ? on : off)}</button>`;
+};
+
+const MARK_TOAST = {
+  favourite: ['Đã thêm vào yêu thích', 'Đã bỏ yêu thích'],
+  watch_later: ['Đã thêm vào xem sau', 'Đã bỏ khỏi xem sau'],
+  seen: ['Đã đánh dấu đã xem', 'Đã bỏ đánh dấu đã xem'],
+  follow: ['Đã theo dõi', 'Đã bỏ theo dõi'],
+};
+
+export async function toggleMark(btn) {
+  const was = btn.getAttribute('aria-pressed') === 'true';
+  btn.disabled = true;
+  try {
+    await send('POST', '/ui-me/marks', { kind: btn.dataset.kind, subject: btn.dataset.subject, key: btn.dataset.key, on: !was });
+    const now = !was;
+    btn.setAttribute('aria-pressed', String(now));
+    btn.classList.toggle('pri', now);
+    btn.textContent = now ? btn.dataset.onLabel : btn.dataset.offLabel;
+    await myMarks(true);
+    const pair = MARK_TOAST[btn.dataset.kind] || [btn.dataset.onLabel, 'Đã cập nhật'];
+    toast(now ? pair[0] : pair[1]);
+  } catch (e) { btn.title = e.message; toast(e.message); } finally { btn.disabled = false; }
+}

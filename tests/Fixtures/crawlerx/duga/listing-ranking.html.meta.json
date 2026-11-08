@@ -1,0 +1,10 @@
+{
+  "source_url": "https://duga.jp/ranking/",
+  "final_url": "https://duga.jp/ranking/",
+  "captured_at": "2026-10-18T19:48:56.000Z",
+  "http_status": 200,
+  "content_hash": "37eef3ef10ff4b8ec95df9de0afde80a3ff5d58047c4ae390adc4418d863a493",
+  "target_type": "listing",
+  "fetch_method": "http",
+  "sanitized": false
+}

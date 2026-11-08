@@ -1,0 +1,10 @@
+{
+  "source_url": "https://xxx.xcity.jp/avod/detail/?id=186022",
+  "final_url": "https://xxx.xcity.jp/avod/detail/?id=186022",
+  "captured_at": "2026-09-09T04:19:24.823Z",
+  "http_status": 200,
+  "content_hash": "c6eb7441fad078031fec1ee8635712739c5a8e3350097139df5dae6a29af6805",
+  "target_type": "detail",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

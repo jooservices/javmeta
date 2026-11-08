@@ -1,0 +1,93 @@
+# Settings (database is authoritative)
+
+Most XCrawler feature switches and operational limits is stored in the `settings` group of the `jooservices/laravel-config` database store and edited on **Cài đặt** (`/app#/settings`) or with `PUT /ui-admin/settings`. Defaults live in `config/javmeta_*.php`; the PostgreSQL connection-budget bootstrap values are the only application runtime limit read directly from env. The only env values used by config files are enumerated in [`config/bootstrap_env_allowlist.php`](../../config/bootstrap_env_allowlist.php); `EnvironmentBootstrapAllowlistTest` fails if a config file reads any other key. That allowlist is for Laravel/framework and infrastructure bootstrap (database/cache/queue transports, external-service URLs or credentials, `APP_KEY`, `APP_URL`, node identity, and the PostgreSQL connection budget); `JAVMETA_ALLOW_SAMPLE_SECRETS` is a CI-only switch for disposable integration credentials and is not enabled in deploy templates. The only direct `JAVMETA_*` config reads left are `JAVMETA_ALLOW_SAMPLE_SECRETS`, `JAVMETA_NODE_NAME`, `JAVMETA_NODE_ROLE`, `JAVMETA_POSTGRES_CONNECTION_RESERVE`, `JAVMETA_POSTGRES_PRIMARY_NODE_COUNT`, `JAVMETA_POSTGRES_ROLE_CONNECTION_LIMIT`, `JAVMETA_POSTGRES_WORKER_NODE_COUNT`, `JAVMETA_ROLE`, and `JAVMETA_SENTRY_DSN`; all but the CI-only switch are host identity, PostgreSQL budget, or Sentry bootstrap. All other legacy feature variables are mapped below for import only.
+
+- **Registry and UI:** `config/javmeta_settings.php` defines each default config mapping, type, numeric range or JSON shape, Vietnamese label/description, group and application delay. Worker settings are grouped as Hàng đợi, Worker, Trình duyệt, Dọn dẹp and Thời gian chờ. JSON worker overrides accept known Horizon queue names and counts from 1–32; node overrides accept `main`, `worker`, or `role@hostname` with `default`, `direct`, `browser`, `retry`, and per-queue maps. Retry delays, attempts, workers, feed budget, pacing and fetch profile are database settings; profile endpoints reject embedded credentials and publish only their non-secret egress label.
+- **Source pacing:** `crawl.source_gap_overrides` is an empty-by-default JSON map from configured or persisted source slugs to `min`, `default` and `max` seconds (0.25–600, with `min <= default <= max`). It appears on Cài đặt → Vòng lặp crawl and is validated before saving (up to 50 sources and 10,000 JSON characters). `crawler:sync-sources` applies overrides without changing source switches; the feeder and worker start gate use the effective gap. No override keeps each source definition and current adaptive behavior. Run `php artisan crawler:source-gap [slug] [--json]` to inspect definition, override, effective and adaptive values; `crawler:feed-diagnostics` also shows current effective gap and override status.
+- **Apply timing:** saved values apply at app boot, before each queue job, and before each console command. The settings page displays `áp dụng sau tối đa N giây`. `queue.feed_interval_seconds` accepts 5, 10, 15, 30 or 60 seconds; the scheduler polls it every 5 seconds, so changes apply without restarting the scheduler. Horizon worker-count changes are reconciled on each node by `horizon:reconcile-workers`; the install wizard enables a systemd timer on main and worker nodes. A count-only change is sent to the running Horizon supervisor with its in-process scale command, so it does not restart Horizon or require a deploy. Each node keeps at least one worker per queue, applies stable jitter, and waits for the fleet lock before scaling. An invalid stored worker value or unavailable settings store makes reconciliation leave the current Horizon layout untouched; the invalid setting is logged. Scale-down sends SIGTERM to excess workers so a running job can finish; `worker.stop_grace_seconds` must be at least `queue.worker_timeout`. The fleet lock remains held through that grace window before another node scales. Each node enforces a minimum 10-minute cooldown. Non-count layout changes that Horizon cannot apply safely in place are logged and reported as requiring a manual Horizon restart. The loop records `workers_reconfigured`, and `obs:publish-metrics` publishes observed counts as `javmeta_horizon_workers{queue,node}`.
+- **PostgreSQL worker budget:** `JAVMETA_POSTGRES_ROLE_CONNECTION_LIMIT`, `JAVMETA_POSTGRES_CONNECTION_RESERVE`, `JAVMETA_POSTGRES_PRIMARY_NODE_COUNT`, and `JAVMETA_POSTGRES_WORKER_NODE_COUNT` define the fleet worker ceiling. With role limit 120 and reserve 30, Horizon demand cannot exceed 90 PostgreSQL slots across the primary and worker nodes. Saved worker settings that exceed the budget fall back to code defaults at boot; the reconcile loop refuses over-budget scaling. The 75% role-limit warning threshold is configured in `config/javmeta_alerts.php`. See [PostgreSQL connection budget](postgres-connections.md) for process counts, metric names and measured evidence.
+- **Migration:** first run `php artisan settings:import-env --dry-run`. It lists each missing setting, the current effective legacy env value or code default, and the source; secret values are always `[redacted]`. Then run `php artisan settings:import-env` to write the same values once. Existing saved settings are never overwritten, empty secrets are skipped, and partial writes are rolled back if an import fails. Worker and queue environment values such as `JAVMETA_WORKERS_PER_QUEUE`, `JAVMETA_BROWSER_WORKERS_PER_QUEUE`, `JAVMETA_QUEUE_NAMES`, `JAVMETA_QUEUE_TIMEOUT`, `JAVMETA_QUEUE_TRIES`, `JAVMETA_QUEUE_MAX_TIME`, `JAVMETA_QUEUE_MAX_JOBS`, `JAVMETA_QUEUE_SLEEP`, `JAVMETA_QUEUE_STOP_GRACE`, `JAVMETA_QUEUE_DEPTH_LIMIT`, `JAVMETA_PER_SOURCE_INFLIGHT`, `JAVMETA_FEED_POOL_LIMIT`, `JAVMETA_PACING_HORIZON_SECONDS`, `JAVMETA_GAP_BLOCKED_MAX_SECONDS`, `JAVMETA_OBSERVABILITY_SAMPLE_PERCENT`, `JAVMETA_OBSERVABILITY_QUEUE_DEPTH_LIMIT`, and the `*_QUEUE_RETRY_AFTER` keys are import-only bootstrap defaults; runtime reads use the database or code defaults. The same one-time migration applies to other registered legacy keys, including `JAVMETA_BLOCK_DELAYS`, `JAVMETA_FRESH_INTERVAL_MINUTES`, `JAVMETA_LOOP_PAUSE_SECONDS`, `JAVMETA_RECRAWL_*`, `JAVMETA_ALERT_*`, `JAVMETA_WATCHDOG_*`, `JAVMETA_READINESS_*`, `JAVMETA_BACKUP_*`, `JAVMETA_REPORT_*`, `JAVMETA_SEARCH_ENABLED`, `JAVMETA_EMBEDDER_ENABLED`, `JAVMETA_UI_LOGIN_REQUIRED`, `JAVMETA_OWNER_ADMIN_TOKEN`, `JAVMETA_MCP_API_KEY`, `JAVMETA_SENTRY_TRACES_SAMPLE_RATE`, `CRAWLERX_BROWSER_*`, `CRAWLERX_FLARESOLVERR_MAX_TIMEOUT_MS`, `CRAWLERX_FLARESOLVERR_URL`, `FLARESOLVERR_MAX_TIMEOUT_MS`, `FLARESOLVERR_URL`, `PLAYWRIGHT_URL`, `OPENOBSERVE_ENABLED`, `OPENOBSERVE_ORG`, `OPENOBSERVE_SERVICE_NAME`, `OPENOBSERVE_STREAM_LOGS`, `OPENOBSERVE_STREAM_METRICS`, `OPENOBSERVE_TIMEOUT`, `OPENOBSERVE_TRACE_SAMPLE_RATE`, `EMBEDDER_URL`, `EMBEDDER_DIM`, `ELASTICSEARCH_MOVIES_INDEX`, `ELASTICSEARCH_PERFORMERS_INDEX`, `NOTIFICATION_TELEGRAM_API_BASE`, `NOTIFICATION_TELEGRAM_TIMEOUT`, `TELEGRAM_API_BASE`, and `TELEGRAM_TIMEOUT`. Telegram bot tokens and chat IDs are runtime secrets, not importable settings. Import skips and reports values containing release-pinned paths such as `/releases/<timestamp>`, `/current/`, `/release-*`, or `/builds/<id>`; it never stores those values. After verifying database settings, run `php artisan settings:env-cleanup --dry-run` on each node to list registered legacy environment keys whose settings are present in the database. The command is read-only and never edits an env file; remove listed lines manually only after verifying the database value. Keep infrastructure bootstrap values, Sentry DSN and node identity in env.
+Import worker environment defaults on the primary before adding or restarting worker
+nodes. The worker installer checks that the required valid database settings exist
+and fails before stopping worker units when the primary import has not completed.
+
+- **Secrets and audit:** secret settings stored in the database are encrypted at rest, write-only in the UI and redacted from `setting_changed`. Telegram bot tokens and chat IDs stay in runtime secrets and are never imported into the database or exposed in Settings. The deployment installer purges legacy stored Telegram credentials after promoting the runtime environment; for a manual upgrade, run `php artisan settings:purge-telegram-credentials` after provisioning those secrets. Every successful edit emits the ops event `setting_changed` with the key, user and non-secret old/new value.
+- **Validation and API:** invalid values return 422 per setting. Client deadlines must exceed their service deadlines: fetch worker timeout > fetch service timeout, Redis `retry_after` > worker timeout, browser gateway wait > Playwright/FlareSolverr service timeout, and gateway client timeout > gateway wait.
+
+`GET /api/v1/config/browser-services` requires an API key with the `config` scope and returns the effective browser concurrency, queue sizes, timeouts, thresholds, retry values, cleanup ages, poll interval and `version`. It sends an ETag; clients poll every `poll_interval_seconds` (30 seconds by default) with `If-None-Match`, treat 304 as unchanged, and keep their last good response after network or server errors. The vm-tools cache refresher at `deploy/browser-services-config.mjs` writes JSON atomically, keeps its last good values, and creates safe defaults only before the first good response. Provide `JAVMETA_CONFIG_API_URL`, `JAVMETA_CONFIG_API_KEY` (a key with the `config` scope), and optionally `JAVMETA_CONFIG_CACHE_FILE` to its systemd environment. The remote browser gateway must poll this endpoint and apply the same contract; its implementation lives outside this repository and must be updated alongside deployment.
+
+New features (Telegram follow notifications and bot behavior, the library scanner) read their tunable configuration only from here. Telegram credentials are the exception: the bot token and recipient chat ID are supplied through runtime secrets.
+
+## User and developer references
+
+[Cài đặt user instructions](../user-guide/settings.md) explain saving and troubleshooting. [The complete reference](../user-guide/settings-reference.md) is generated from the definition labels/descriptions by `tools/docs/settings-reference.php`; `SettingsReferenceTest` fails on drift. The [developer checklist](../developer-guide/extending.md) covers validation, defaults, mapped config keys and secret handling; [testing](../developer-guide/testing.md) contains the exercised regeneration command. The generator never reads stored values.
+
+## Performance warming
+
+`perf.warm_enabled` (default `true`, group Tìm kiếm) controls the scheduled `perf:warm` command. It appears automatically on Cài đặt and is applied from the database to `javmeta_perf.warm_enabled`. Turning it off stops proactive refreshes; request-driven caches still work. No environment variable is needed. See [performance](performance.md) for TTLs, subminute scheduling and verification limits.
+
+## Crawl dispatch alerts
+
+`alerts.dispatch_age_max_seconds` (default 60) controls the scheduled crawl
+safety rule when due work has not been dispatched. The existing
+`alerts.crawl_dispatch_warning_seconds` (default 60) and
+`alerts.crawl_dispatch_critical_seconds` (default 180) control warning and
+critical OpenObserve metric states; the critical age must be greater than or
+equal to the warning age. All are database settings. `alerts:evaluate` checks
+dispatch age every minute; `obs:publish-metrics` continues to publish the
+existing age and threshold-derived states. Idle queues do not alert.
+
+The same Cài đặt → Cảnh báo group contains the safety evaluator interval (60
+seconds), rolling window (15 minutes), success threshold (85%), blocked ratio
+limit (10%), PostgreSQL connection limit (45), per-source due backlog floor
+(10), minimum sample (100), cooldown (30 minutes), channel list, recovery
+switch and history retention (90 days). Sources are considered hot when
+enabled and successful or attempted in the evaluation window. A low-backlog
+alert includes zero due rows. These values apply without a restart; see
+[notifications](notifications.md).
+
+Notification policy is managed on Cài đặt → **Thông báo**. Each registered
+notification has editable enabled state, tier (`critical`, `warning`, `notice`,
+or `info`), cooldown minutes, escalation minutes, periodic/daily report
+inclusion, and resolved-message behavior. Policy edits, resets, and restores
+are revisioned. `notifications.quiet_mode` defaults off; when enabled, only
+critical notifications and security events are sent immediately. Daily reports
+run at `report.daily_time` (`08:00`) in `report.daily_timezone`
+(`America/Mexico_City`). `report.legacy_hourly_enabled` defaults off and the
+legacy hourly job is scheduled only when the periodic report is disabled.
+These values take effect through the database settings service without a
+restart. See [notification policy and reports](notifications.md).
+
+## Hybrid search HTTP budget
+
+`search.budget_ms` (default 300, range 25–1500, group Tìm kiếm) maps to `javmeta_search.budget_ms` through the database settings service. It limits optional HTTP work within one hybrid search. SQL and response serialization can exceed that budget. A timeout falls back to keyword results; the existing response keys remain unchanged. No environment variable is needed. See [performance](performance.md) for measurements and acceptance limits.
+
+Media processing settings (`media.*`) are defined in `config/javmeta_media.php` and registered in `config/javmeta_settings.php`. They are database/UI settings, never environment variables. See [media.md](media.md) for queue limits and bootstrap credentials.
+
+Performer normalization settings (`normalization.*`) edit the blood-type and cup allow-lists, per-field placeholder tokens, measurement/date ranges, Japanese prefecture/city aliases, and the backfill chunk size. Defaults are in `config/javmeta_normalization.php` and the official municipality alias map in `config/javmeta_japan_locations.php`, generated from the public [e-Stat area-code list](https://www.e-stat.go.jp/municipalities/cities/areacode) (accessed 2026-11-03); settings apply through the database store. To preview cleanup, run `php artisan performers:backfill-normalization`; use `--apply` to rewrite rows in ID chunks and queue Elasticsearch reindexing. The command uses the database chunk-size setting unless `--chunk` overrides it. Save the printed `--after` ID to resume an interrupted chunked run. See [telemetry](telemetry.md#performer-normalization-jooxcr-341) for rejection counts.
+
+Startup health settings (`health.startup.*`) are in **Sức khỏe khi khởi động**. They control the gate switch, probe timeout, retry wait/backoff, web snapshot TTL, primary Elasticsearch roles, command allow/deny patterns and optional browser gateway URLs. PostgreSQL, Redis and MongoDB remain required primaries even if removed from a saved role list; if MongoDB cannot be read, code defaults keep the gate enabled with those three services as primaries. See [startup health](startup-health.md) for the fallback and entry-point behavior.
+
+Stream capture settings (`capture.*`) default in `config/javmeta_capture.php`. Capture is off until the owner enables it on the Settings page; duration, output size, manifest count/size and HTTP timeout limits are editable there. Enabling capture never disables the DRM/content policy checks.
+
+## Outbound base URLs and Telegram groups
+
+All service URL settings (`media.api_url`, `search.embedder_url`, `ai.ollama_url`, `downloads.qbittorrent_url`, `telegram.api_base`, `alerts.webhook_url`) require a host and an HTTP(S) scheme. Telegram requires HTTPS; HTTP is allowed only for the exact hosts `localhost` and `127.0.0.1` for local tests. Base URLs reject userinfo, query strings and fragments, including empty `?` or `#`. Empty URLs may disable optional integrations. Keep Telegram credentials in runtime secrets. Private network qBittorrent addresses remain supported.
+
+A previously saved invalid URL is ignored during application boot and direct settings reads. A valid config default applies (otherwise the address stays empty), and the Settings page displays a warning without returning the unsafe value; save a valid address to clear it. URL credentials, queries and fragments are stripped from `setting_changed` events and URL text in local/remote logs.
+
+`telegram.owner_user_id` is a positive integer, empty by default. For group/supergroup chats both the runtime-secret chat ID and the sender's user ID must match; an unset owner refuses all group commands and download callbacks. Callback authorization uses `callback_query.from.id`, not the sender of the bot's original message. Private chats retain chat-ID authorization and do not require this setting. Bot tokens and chat IDs are never Settings values.
+
+`observability.fetch_attempts_retention_days` defaults to 14 in
+`config/javmeta_observability.php` and maps to
+`javmeta_observability.fetch_attempts_retention_days`. The daily
+`crawler:prune-fetch-attempts` command applies the current database value.
+See [fetch diagnostics](telemetry.md#fetch-attempts).
+
+`stats.enabled` and `stats.retention_days` control durable hourly crawl
+statistics. They default to enabled and 365 days in `config/javmeta_stats.php`
+and appear automatically under **Thống kê crawl** on Cài đặt. The hourly
+`crawler:stats-rollup` command enforces this retention. See
+[long-term crawl statistics](telemetry.md#long-term-crawl-statistics-jooxcr-305).
+
+Crawl lanes are controlled by `crawl.lanes_enabled`, `crawl.lane_browser_percent`, `crawl.lane_min_attempts`, `crawl.lane_direct_pins`, `crawl.lane_browser_pins` and `queue.browser_depth_limit`. See [queue.md](queue.md) for classification, precedence and fleet rollout. Horizon worker counts are read from the database at boot and reconciled automatically by each node.

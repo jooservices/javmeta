@@ -1,0 +1,10 @@
+{
+  "source_url": "https://my.tokyo-hot.com/index",
+  "final_url": "https://my.tokyo-hot.com/index",
+  "captured_at": "2026-10-18T20:30:02.000Z",
+  "http_status": 200,
+  "content_hash": "2c4872f5daf8da817b9011e74f39c436509ce8a6b3fec6567db445ccae912b12",
+  "target_type": "listing",
+  "fetch_method": "http",
+  "sanitized": false
+}

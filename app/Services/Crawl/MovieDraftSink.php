@@ -14,5 +14,5 @@ use App\Data\Crawl\MovieDraft;
  */
 interface MovieDraftSink
 {
-    public function accept(MovieDraft $draft): void;
+    public function accept(MovieDraft $draft, bool $isRecrawl = false): void;
 }

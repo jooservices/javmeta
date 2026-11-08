@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
-use App\Providers\AppServiceProvider;
-
 return [
-    AppServiceProvider::class,
+    App\Providers\AppServiceProvider::class,
+    App\Providers\CrawlerxServiceProvider::class,
+    App\Providers\DependencyServiceProvider::class,
+    App\Providers\HorizonServiceProvider::class,
+    App\Providers\SettingsServiceProvider::class,
 ];

@@ -1,0 +1,10 @@
+{
+  "source_url": "https://en.caribbeancom.com/eng/index2.htm",
+  "final_url": "https://en.caribbeancom.com/eng/index2.htm",
+  "captured_at": "2026-09-09T04:06:01.514Z",
+  "http_status": 200,
+  "content_hash": "9533234d375989e5b4b68a4c48ff79ce8c17d9f88f3e993aac4593791464ed03",
+  "target_type": "listing",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

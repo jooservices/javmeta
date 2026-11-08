@@ -55,6 +55,7 @@ return [
     */
 
     'url' => env('APP_URL', 'http://localhost'),
+    'smoke_url' => env('APP_URL', 'http://localhost'),
 
     /*
     |--------------------------------------------------------------------------

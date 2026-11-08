@@ -1,0 +1,34 @@
+# OpenObserve maintenance
+
+See [telemetry](telemetry.md) for ingestion and [monitoring](monitoring.md) for dashboards.
+
+## Removing legacy streams
+
+**`jvmeta_` (legacy) and `javmeta_` (live) differ by one letter. Deletion is irreversible. Never substitute the live prefix. `xcrawler_` is also live and protected.** Only the tech lead executes this runbook on production; developers use randomly named throwaway streams in the shared local Docker service.
+
+`observability:prune-legacy-streams` defaults to a dry run. It reads the existing OpenObserve connection and organization from the application's applied settings/configuration (`openobserve.*`); it does not accept an alternate server or credentials on its command line. Check the deployed application's target through the approved operational inventory before execution. Do not print credentials or raw destination, alert, template, settings or user responses.
+
+1. Arrange a maintenance window. Confirm no producer, retention job or operator will change the candidate streams or references during this operation. Stream deletion has no atomic compare-and-delete API; repeated checks reduce the race window but cannot lock out external writers. Disable any remaining legacy writers before proceeding.
+2. Run the exact read-only discovery command from the deployed application:
+
+   ```bash
+   php artisan observability:prune-legacy-streams --prefix=jvmeta_ --type=metrics --type=logs --min-idle-days=14 --dry-run
+   ```
+
+3. Review the organization, **every** candidate name/type/count, newest write in UTC and size. Confirm zero `javmeta_*` and zero `xcrawler_*` candidates. Review every protected stream and its count. All dashboard, function, pipeline, alert and destination reference checks must pass. Any unknown/unavailable check blocks the operation. Record the printed `Manifest SHA256` in the approved change record. The hash binds the configured endpoint fingerprint, organization, exact sorted identities, counts, time bounds and storage sizes. Search aggregates must agree with stream metadata, including buffered documents; wait for ingestion/statistics to settle if they differ.
+4. Choose a **new, nonexistent** directory under an existing parent on durable storage with space for the entire export. The command creates it privately (0700, files 0600). The filesystem must support `fsync` for files and directories. Do not reuse an existing directory or place backups in a public web directory. Treat exports as confidential application data. Retain the backup according to the approved backup policy.
+5. Replace the placeholders below with the reviewed hash and the approved backup path. This is the first destructive step:
+
+   ```bash
+   php artisan observability:prune-legacy-streams --prefix=jvmeta_ --type=metrics --type=logs --min-idle-days=14 --export-dir=/approved/private/backups/legacy-streams-UNIQUE --confirm=REVIEWED_SHA256 --force
+   ```
+
+   Do not combine `--force` with `--dry-run`. A real run repeats discovery, idle and reference checks and refuses a mismatching hash. Before deleting anything, it exports every candidate through typed search requests into gzip NDJSON using nonoverlapping time slices, rereads each export to verify its document count against `doc_num`, and writes `manifest.json` with identities, counts, file byte sizes and SHA256 checksums. Dense slices split recursively; a single microsecond with at least 1000 documents is refused rather than truncated. Partial searches, changed candidates, failed writes or count mismatches stop deletion.
+
+6. Before any DELETE, every backup file, the manifest, export directory and its parent are synced to storage; any sync failure stops the run. Protected counts are checked against the initial inventory after export as well. Watch the canary deletion first. The command deletes one stream at a time with `delete_all=false` (no cascading reference deletion), verifies its absence, and checks that all protected stream counts remain unchanged or grow after **every** deletion. It repeats candidate/search/reference checks before each DELETE. DELETE is never retried. Every API call logs only method, path and status at info level with bounded connection/request timeouts; response bodies and credentials are suppressed. An audit-write failure stops further requests; an already accepted DELETE remains in the failure report.
+7. Review the final report: deleted identities, exported paths/checksums and protected counts before/after. Independently verify the backup checksums against `manifest.json`, inspect the gzip NDJSON counts, confirm the legacy streams are absent, and verify live metric/log ingestion through the existing monitoring dashboards. Record the report and backup location in the change record without exported records or secrets.
+8. Rerun the dry run from step 2. It reports `Nothing to do` with a failure exit status because empty candidate lists are deliberately refused; it issues no DELETE. This is the expected idempotent result. If a partial failure occurred, inspect `Already deleted` and preserve the backup directory. Resolve the cause, obtain a new dry-run hash for the remaining streams and use a **new** directory. Never reuse the old confirmation or blindly retry a DELETE whose outcome is unknown.
+
+Safety invariants are intentionally fixed: a prefix must match `^[a-z0-9]+_$`; selected names must exactly match that prefix followed by `[a-z0-9_]+`; only `metrics` and `logs` are accepted; more than 200 candidates is refused. The hard-coded live namespaces, configured log/metric destinations and metric emitter namespace are always protected. Both prefix directions are checked against protected namespaces. The minimum idle age defaults to 14 days; every forced run requires at least 1 day. Integration tests may use `--min-idle-days=0` only when the application environment is `testing` and the in-memory test config `observability.prune_allow_zero_idle_days_for_testing` is explicitly true. Production always rejects zero-day forced runs.
+
+Reference endpoints were verified against the shared local OpenObserve v1.0.4 and the [versioned UI services](https://github.com/openobserve/openobserve/tree/v1.0.4/web/src/services): `/api/{org}/dashboards?title=` plus each dashboard detail, `/api/{org}/functions`, `/api/{org}/pipelines`, `/api/v2/{org}/alerts` plus each alert detail, and `/api/{org}/alerts/destinations`. The old `/api/{org}/alerts` list path is not used. The explicit empty dashboard title selects **all folders**; omitting it silently checks only the default folder on this version ([server query semantics](https://github.com/openobserve/openobserve/blob/v1.0.4/src/api/management/src/models/dashboards.rs)). Lists have no pagination limits or restrictive filters; unexpected or explicitly incomplete collections fail closed. Destination data stays in memory for reference matching; only matching stream names leave that boundary.

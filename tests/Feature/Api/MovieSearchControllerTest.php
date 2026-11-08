@@ -13,6 +13,7 @@ use App\Models\MoviePerformer;
 use App\Services\Auth\ApiKeyService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\DependencyMonitorTestHelper;
 use Tests\TestCase;
 
 final class MovieSearchControllerTest extends TestCase
@@ -28,6 +29,7 @@ final class MovieSearchControllerTest extends TestCase
         parent::setUp();
 
         $this->apiKey = app(ApiKeyService::class)->create(fake()->words(2, true))->plaintext;
+        DependencyMonitorTestHelper::bind();
     }
 
     public function test_movies_require_api_key(): void
@@ -58,6 +60,70 @@ final class MovieSearchControllerTest extends TestCase
         $byCode->assertOk()
             ->assertJsonPath('meta.pagination.total', 1)
             ->assertJsonPath('data.0.code', 'SSIS-777');
+    }
+
+    public function test_semantic_mode_uses_semantic_search_and_requires_a_query(): void
+    {
+        $movie = Movie::factory()->create(['title_en' => 'Quiet Harbor']);
+
+        $this->getJson('/api/v1/movies?q=quiet%20harbor&semantic=true', [
+            'X-API-Key' => $this->apiKey,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.0.title_en', 'Quiet Harbor')
+            ->assertJsonPath('meta.pagination.sort', 'relevance')
+            ->assertJsonPath('meta.pagination.next_cursor', null);
+
+        $this->getJson('/api/v1/movies?q=quiet%20harbor&semantic=false', [
+            'X-API-Key' => $this->apiKey,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.0.title_en', 'Quiet Harbor');
+
+        $this->getJson('/api/v1/movies?semantic=true', [
+            'X-API-Key' => $this->apiKey,
+        ])
+            ->assertBadRequest()
+            ->assertJsonPath('type', 'invalid_filter');
+
+        $this->getJson('/api/v1/movies?q=quiet&semantic=true&genre=drama', [
+            'X-API-Key' => $this->apiKey,
+        ])
+            ->assertBadRequest()
+            ->assertJsonPath('type', 'invalid_filter');
+    }
+
+    public function test_disabled_search_returns_database_results_when_elasticsearch_is_unavailable(): void
+    {
+        $movie = Movie::factory()->create(['title_en' => 'Quiet Harbor']);
+        config()->set('elasticsearch.enabled', false);
+        DependencyMonitorTestHelper::bind(['elasticsearch' => false]);
+
+        $this->getJson('/api/v1/movies?q=quiet%20harbor', [
+            'X-API-Key' => $this->apiKey,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.0.title_en', $movie->title_en);
+    }
+
+    public function test_code_filter_matches_display_and_normalized_code(): void
+    {
+        $movie = Movie::factory()->create([
+            'display_code' => 'SSIS-888',
+            'code_normalized' => 'SSIS888',
+        ]);
+        Movie::factory()->create([
+            'display_code' => 'ABP-888',
+            'code_normalized' => 'ABP888',
+        ]);
+
+        $response = $this->getJson('/api/v1/movies?code=SSIS888', [
+            'X-API-Key' => $this->apiKey,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('meta.pagination.total', 1)
+            ->assertJsonPath('data.0.code', $movie->display_code);
     }
 
     public function test_actress_search_matches_romaji_kanji_and_alias_ac41(): void
@@ -184,7 +250,8 @@ final class MovieSearchControllerTest extends TestCase
     public function test_cursor_pagination_no_duplicates_no_skips_ac43(): void
     {
         $movies = Movie::factory()->count(7)->create();
-        $codes = $movies->sortByDesc('release_date')->pluck('display_code')->all();
+        // Same order as the keyset: release_date DESC, then id DESC for movies that share a date.
+        $codes = $movies->sort(static fn($x, $y): int => [(string) $y->release_date, $y->id] <=> [(string) $x->release_date, $x->id])->pluck('display_code')->all();
 
         $pageCodes = [];
         $cursor = null;
@@ -296,7 +363,7 @@ final class MovieSearchControllerTest extends TestCase
             ->assertJsonPath('meta.pagination.sort', 'release_date');
 
         $codes = collect($response->json('data'))->pluck('code')->all();
-        $expected = $movies->sortByDesc('release_date')->pluck('display_code')->all();
+        $expected = $movies->sort(static fn($x, $y): int => [(string) $y->release_date, $y->id] <=> [(string) $x->release_date, $x->id])->pluck('display_code')->all();
         $this->assertSame($expected, $codes);
     }
 
@@ -417,7 +484,8 @@ final class MovieSearchControllerTest extends TestCase
         }
     }
 
-    public function test_search_p95_smoke_at_5k_scale(): void
+    // The CI stability job owns elapsed-time budgets; this test checks result correctness at scale.
+    public function test_search_returns_expected_results_at_5k_scale(): void
     {
         $movies = Movie::factory()->count(self::SEED_COUNT)->create();
         $target = $movies->first();
@@ -429,25 +497,16 @@ final class MovieSearchControllerTest extends TestCase
             'source_slug' => 'javdb',
         ]);
 
-        $start = hrtime(true);
         $filtered = $this->getJson('/api/v1/movies?q=nebulazero&genre=drama&sort=release_date&per_page=5', ['X-API-Key' => $this->apiKey]);
-        $filteredMs = (int) round((hrtime(true) - $start) / 1_000_000);
 
         $filtered->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.code', $target->display_code);
 
-        $start = hrtime(true);
         $broad = $this->getJson('/api/v1/movies?sort=release_date&per_page=20', ['X-API-Key' => $this->apiKey]);
-        $broadMs = (int) round((hrtime(true) - $start) / 1_000_000);
 
         $broad->assertOk()
             ->assertJsonCount(20, 'data')
             ->assertJsonPath('meta.pagination.total', self::SEED_COUNT);
-
-        // NFR search p95 <= 1.5s at POC scale; a generous bound absorbs CI
-        // variance while still catching pathological query patterns.
-        $this->assertLessThan(5000, $filteredMs);
-        $this->assertLessThan(5000, $broadMs);
     }
 }

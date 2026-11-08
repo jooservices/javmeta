@@ -1,4 +1,4 @@
-# IMPLEMENTATION — jvmeta POC
+# IMPLEMENTATION — javmeta POC
 
 Status: **Approved** (planning gate closed, 2026-09-17). Working file — ticket
 state is updated by the root only. Source of truth. Requirements:
@@ -14,9 +14,9 @@ state is updated by the root only. Source of truth. Requirements:
 
 - **Model:** `joo-dev_<n> · openai/gpt-5.5` · **Status default:** backlog
 - **No commit / push / PR.** Root or utility roles handle git after gates.
-- Quality gate every task: `make lint` · `make test` · `make analyse`
+- Quality gate every task: `make lint` · `make test`
 - Docker/infra tasks: `make build` · `docker compose config`
-- DB tasks: `make migrate-fresh` · `make test`
+- DB tasks: `make migrate MODE=fresh` · `make test`
 - PHP files: `declare(strict_types=1);`, Pint (per preset), tests use
   Faker/factories, PHPUnit class names `{Subject}Test`, English Conventional
   Commits (root handles).
@@ -36,7 +36,7 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
 - **Description:** Verify real crawlerx adapters before any crawl implementation.
   Classify each candidate adapter as `working` / `walled` / `broken`; Wave 1
   may use only `working`. **Must run first (critical path).**
-- **Write scope:** none in `projects/jvmeta`; read/run only in `projects/crawlerx`.
+- **Write scope:** none in `projects/javmeta`; read/run only in `projects/crawlerx`.
 - **Steps:** from `projects/crawlerx`, run `make live-check SITE=<slug>` for:
   javdb, javdatabase, javlibrary, missav, fc2, onejav, javbtc, 141jav, ffjav,
   avfan, jable, xcity, warashi, minnanoav, onepondo, caribbeancom, heyzo,
@@ -62,7 +62,7 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
 
 - **Traceability:** AD-1, AD-2, AD-5, AD-17 → `tests/Feature/Health/BasicAppBootTest.php`
 - **Assigned to:** joo-dev_2 · **Status:** done (verified 2026-09-17)
-- **Write scope:** `projects/jvmeta/**` except `BUSINESS.md`, `ARCHITECTURE.md`; no writes to sibling repos.
+- **Write scope:** `projects/javmeta/**` except `BUSINESS.md`, `ARCHITECTURE.md`; no writes to sibling repos.
 - **Steps:** scaffold Laravel (prefer latest stable supporting PHP 8.5; if neither
   12/13 resolves, stop and ask). Add composer.json, artisan, bootstrap, app/config/
   database/routes/tests, Dockerfile, docker-compose.yml, .dockerignore, .env.example,
@@ -71,10 +71,10 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
   `jooservices/laravel-controller ^4`, `jooservices/laravel-repository ^4`,
   `jooservices/crawlerx` path `../crawlerx` (if path versioning blocks, stop and ask).
   Docker: `php:8.5-cli-bookworm`, `postgres:17`, optional profile `fetch`
-  (node Playwright + FlareSolverr). `.env.example` keys: APP_*, DB_* (pgsql/jvmeta),
+  (node Playwright + FlareSolverr). `.env.example` keys: APP_*, DB_* (pgsql/javmeta),
   QUEUE_CONNECTION=database, CACHE_STORE=database,
   NOTIFICATION_TELEGRAM_BOT_TOKEN/CHAT_ID (TELEGRAM_* legacy fallback),
-  JVMETA_OWNER_ADMIN_TOKEN — no real secrets. README `Status: POC — branch model may be bypassed`.
+  JAVMETA_OWNER_ADMIN_TOKEN — no real secrets. README `Status: POC — branch model may be bypassed`.
   `git init` only if not already a repo; no commit.
 - **Do NOT:** create GitHub repo/remotes; overwrite BUSINESS.md/ARCHITECTURE.md; put real `.env` secrets in repo.
 - **Verification:** `make build` && `make install` && `docker compose config` && `make test`.
@@ -82,7 +82,7 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
   package cannot be installed; existing files would be overwritten.
 - **DoD:** app boots in Docker; .env.example has no secrets; POC marker present; hooks install command exists.
 - **Progress / handover:**
-  - Completed: 2026-09-17 — Laravel 12 scaffold (resolves on PHP 8.5), Dockerfile + Compose (api/worker/scheduler/postgres + fetch/flaresolverr profile), .env.example (no secrets), Makefile (lint/test/analyse/migrate-fresh/up/down/worker/scheduler/crawl-tick), Pint + Larastan, boot test green (1 passed/3 assertions), local git init no commit. `jooservices/crawlerx` via path repo. DB queue/cache (no Redis).
+  - Completed: 2026-09-17 — Laravel 12 scaffold (resolves on PHP 8.5), Dockerfile + Compose (api/worker/scheduler/postgres + fetch/flaresolverr profile), .env.example (no secrets), Makefile (lint/test/migrate/up/down/scheduler/crawl), Pint + Larastan, boot test green (1 passed/3 assertions), local git init no commit. `jooservices/crawlerx` via path repo. DB queue/cache (no Redis).
   - Next step: JV-W0-003 (migrations)
   - Blocked: —
   - On disk: —
@@ -110,12 +110,12 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
   (source_slug, external_id); genres only label_normalized, no canonical map;
   nullable fields for unknown data, never `''`.
 - **Do NOT:** implement crawl/API logic; add fuzzy merge schema; add billing tables.
-- **Verification:** `make migrate-fresh` && `make test -- --filter=SchemaTest`.
+- **Verification:** `make migrate MODE=fresh` && `make test -- --filter=SchemaTest`.
 - **Ask for help when:** PG generated tsvector conflicts with Laravel migration;
   required indexes cannot be created in test DB; a table from ADR is missing/ambiguous.
 - **DoD:** all ADR tables exist; unique/index constraints exist; tests verify no media byte/blob columns.
 - **Progress / handover:**
-  - Completed: 2026-09-17 — 16 ADR tables migrations (Postgres 17, pg_trgm enabled), generated tsvector + GIN on movies, Eloquent models + constants + relationships, Faker factories, SchemaTest. `make migrate-fresh` ✅ · `make test` 5 passed (183 assertions) · `make lint` ✅ · `make analyse` [OK]. NOTE for review: test suite uses SQLite fallback for speed — PG-specific features (tsvector/trgm/generated col) verified via `make migrate-fresh` only; consider a PG test env for schema fidelity.
+  - Completed: 2026-09-17 — 16 ADR tables migrations (Postgres 17, pg_trgm enabled), generated tsvector + GIN on movies, Eloquent models + constants + relationships, Faker factories, SchemaTest. `make migrate MODE=fresh` ✅ · `make test` 5 passed (183 assertions) · `make lint` ✅. NOTE for review: test suite uses SQLite fallback for speed — PG-specific features (tsvector/trgm/generated col) verified via `make migrate MODE=fresh` only; consider a PG test env for schema fidelity.
   - Next step: JV-W0-004 (DTO/VO/envelope)
   - Blocked: —
   - On disk: —
@@ -143,7 +143,7 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
   conflicts with crawlerx MovieDto; a new field not in ADR is needed.
 - **DoD:** VO tests cover valid/malformed/prefix-collision/whitespace-lowercase; DTOs immutable/readonly.
 - **Progress / handover:**
-  - Completed: 2026-09-17 — NormalizedCode VO, MovieDraft/PerformerDraft/MovieResourceData readonly DTOs, MovieResource/PerformerResource, RFC 7807 exceptions (unauthorized/movie_not_found/invalid_filter/bulk_limit_exceeded/rate_limited). Confirmed laravel-controller v4.0.1 respondWithProblem + ProblemDetailsFormatter; laravel-repository v4 cursor + allowlist. `make test` 21 passed (226 assertions) · lint ✅ · analyse ✅.
+  - Completed: 2026-09-17 — NormalizedCode VO, MovieDraft/PerformerDraft/MovieResourceData readonly DTOs, MovieResource/PerformerResource, RFC 7807 exceptions (unauthorized/movie_not_found/invalid_filter/bulk_limit_exceeded/rate_limited). Confirmed laravel-controller v4.0.1 respondWithProblem + ProblemDetailsFormatter; laravel-repository v4 cursor + allowlist. `make test` 21 passed (226 assertions) · lint ✅.
   - Next step: JV-W1-005 ∥ JV-W1-009 (parallel-safe)
   - Blocked: —
   - On disk: —
@@ -154,7 +154,7 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
 
 - **Traceability:** REQ-2, AC-2.2, AC-2.4, AC-2.5, AC-2.6, AD-14, AD-15 → scheduler tests
 - **Assigned to:** joo-dev_5 · **Status:** done (verified 2026-09-17) · **Depends on:** JV-W0-004, JV-W0-001
-- **Write scope:** `config/jvmeta_sources.php`, `app/Console/Commands/CrawlTickCommand.php`,
+- **Write scope:** `config/javmeta_sources.php`, `app/Console/Commands/CrawlTickCommand.php`,
   `app/Services/Crawl/SourceThrottle.php`, `app/Services/Crawl/SourceCircuitBreaker.php`,
   `app/Services/Crawl/CrawlQueueService.php`, `routes/console.php`,
   `tests/Feature/Crawl/CrawlTickCommandTest.php`, `tests/Unit/Services/Crawl/**`
@@ -172,7 +172,7 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
   unreadable without approved fallback; queue reclaim behavior ambiguous.
 - **DoD:** tick per-source isolated; DB queue resumes after stale claim; tests cover closed/open/half-open.
 - **Progress / handover:**
-  - Completed: 2026-09-17 — config/jvmeta_sources.php (20 frozen sources, base_urls + throttle from crawlerx manifests, priority D-7, max_attempts=3 default), SourceThrottle (AIMD clamp [min,max]), SourceCircuitBreaker (closed↔open↔half_open, cooldown 300s), CrawlQueueService (dedupe UNIQUE, stale-claim reclaim, attempts≤max), CrawlTickCommand (per-source isolated loop, CrawlRun+CrawlEvent, enqueue listing seeds kind=listing delayed by gap), schedule every minute (test-guarded). Fixed 2 Pint + 5 PHPStan. `make test` 46 passed (313) · lint ✅ · analyse ✅ · `crawl:tick --limit=1` enqueued 20 listing rows.
+  - Completed: 2026-09-17 — config/javmeta_sources.php (20 frozen sources, base_urls + throttle from crawlerx manifests, priority D-7, max_attempts=3 default), SourceThrottle (AIMD clamp [min,max]), SourceCircuitBreaker (closed↔open↔half_open, cooldown 300s), CrawlQueueService (dedupe UNIQUE, stale-claim reclaim, attempts≤max), CrawlTickCommand (per-source isolated loop, CrawlRun+CrawlEvent, enqueue listing seeds kind=listing delayed by gap), schedule every minute (test-guarded). Fixed 2 Pint + 5 PHPStan. `make test` 46 passed (313) · lint ✅ · `crawl:tick --limit=1` enqueued 20 listing rows.
   - Next step: JV-W1-006 (crawlerx jobs + normalizers)
   - Blocked: —
   - On disk: —
@@ -199,7 +199,7 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
 - **DoD:** ≥2 working source normalizers implemented (if live-check allows); failed crawl
   never creates empty movie; tests use fake DTOs/fixtures.
 - **Progress / handover:**
-  - Completed: 2026-09-17 — CrawlerxClient wrapper (tryCrawl, 6-code error mapping), CrawlerxFetchResult DTO, SourceNormalizer interface + Registry + NormalizationFailedException, 3 normalizers (Default config-driven key map, Catalog family, Jable HLS), FetchListingJob (enqueue detail + next page, dedupe, events), FetchDetailJob (normalize → MovieDraftSink seam → MovieDraftCaptured event), HandlesCrawlQueueRow concern, MovieDraftSink contract (JV-W1-007 implements + binds). `make test` 87 passed (469) · lint 117 files ✅ · analyse ✅. NOTE: `make test` in container refreshes dev pgsql (pre-existing phpunit env quirk) — wiped the 20 seeded crawl_queue rows; re-run crawl:tick before manual smoke. Queue dispatch trigger (rows→jobs) deferred to JV-W1-014.
+  - Completed: 2026-09-17 — CrawlerxClient wrapper (tryCrawl, 6-code error mapping), CrawlerxFetchResult DTO, SourceNormalizer interface + Registry + NormalizationFailedException, 3 normalizers (Default config-driven key map, Catalog family, Jable HLS), FetchListingJob (enqueue detail + next page, dedupe, events), FetchDetailJob (normalize → MovieDraftSink seam → MovieDraftCaptured event), HandlesCrawlQueueRow concern, MovieDraftSink contract (JV-W1-007 implements + binds). `make test` 87 passed (469) · lint 117 files ✅. NOTE: `make test` in container refreshes dev pgsql (pre-existing phpunit env quirk) — wiped the 20 seeded crawl_queue rows; re-run crawl:tick before manual smoke. Queue dispatch trigger (rows→jobs) deferred to JV-W1-014.
   - Next step: JV-W1-007 (MoviePersister implements MovieDraftSink)
   - Blocked: —
   - On disk: —
@@ -227,7 +227,7 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
 - **Risk:** HIGH (R-4/R-5). False merge worse than false split; preserve exact-only.
 - **DoD:** tests prove append-only observations, no null overwrite, exact-only merge, review flag on sharp drop.
 - **Progress / handover:**
-  - Completed: 2026-09-17 — MovieMerger (exact code_normalized only, prefix-safe, no fuzzy), ConflictPolicy interface + SourcePriorityConflictPolicy (priority authority + tie→newest), MoviePersister implements MovieDraftSink (1 transaction: append-only observations incl null observations w/ value_hash, guards, upsert codes/genres/media/performers, completeness tier, counters, throttle/breaker onSuccess), CompletenessTierCalculator (11 core fields + source-class factor). Bound in AppServiceProvider. `make test` 115 passed (595, both sqlite host + PG17 docker) · lint 125 files ✅ · analyse ✅. NOTES: conflict priority = smaller number wins (javdb 10 > onejav 60); sharp-drop keeps ALL old values + needs_review + review_flags(consecutive_failures=0); kind inference FC2*/HEYZO*/TOKYOHOT* else dvd; source-declared linkage inactive in Wave 1 (exact-only, per AD-10). For JV-W1-013 reports: conflict rate must WHERE value IS NOT NULL. Dev recommends joo-reviewer on this HIGH-RISK task before QA.
+  - Completed: 2026-09-17 — MovieMerger (exact code_normalized only, prefix-safe, no fuzzy), ConflictPolicy interface + SourcePriorityConflictPolicy (priority authority + tie→newest), MoviePersister implements MovieDraftSink (1 transaction: append-only observations incl null observations w/ value_hash, guards, upsert codes/genres/media/performers, completeness tier, counters, throttle/breaker onSuccess), CompletenessTierCalculator (11 core fields + source-class factor). Bound in AppServiceProvider. `make test` 115 passed (595, both sqlite host + PG17 docker) · lint 125 files ✅. NOTES: conflict priority = smaller number wins (javdb 10 > onejav 60); sharp-drop keeps ALL old values + needs_review + review_flags(consecutive_failures=0); kind inference FC2*/HEYZO*/TOKYOHOT* else dvd; source-declared linkage inactive in Wave 1 (exact-only, per AD-10). For JV-W1-013 reports: conflict rate must WHERE value IS NOT NULL. Dev recommends joo-reviewer on this HIGH-RISK task before QA.
   - Next step: JV-W1-010 (lookup + bulk)
   - Blocked: —
   - On disk: —
@@ -247,11 +247,11 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
   `tests/Feature/Health/**`, `tests/Unit/Notifications/**`
 - **Endpoint:** `GET /health` no auth → `{status: ok|degraded|down, sources:[{slug,
   circuit_state, last_success_at, last_error_at}], queue:{pending,failed}}`. No title/performer data.
-- **Commands:** `php artisan jvmeta:watchdog`.
+- **Commands:** `php artisan javmeta:watchdog`.
 - **Edge cases:** Telegram env missing → log warning, no crash; source-down alert ≤24h;
   health must not leak movie codes/titles; stale worker heartbeat → log + Telegram alert.
 - **Do NOT:** require API key for /health; expose crawl URLs with sensitive params; add email.
-- **Verification:** `make test -- --filter=HealthControllerTest` && `--filter=TelegramAlertNotifierTest` && `php artisan jvmeta:watchdog`.
+- **Verification:** `make test -- --filter=HealthControllerTest` && `--filter=TelegramAlertNotifierTest` && `php artisan javmeta:watchdog`.
 - **Ask for help when:** Telegram token/Chat ID needed for manual live test; health needs
   extra fields not in ADR; alert frequency/debounce unclear.
 - **DoD:** /health works without key; alerts use Telegram + laravel-logging strategy; worker stale condition tested.
@@ -284,7 +284,7 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
   use DB without cache; immediate revoke conflicts with framework cache.
 - **DoD:** hash-only storage test passes; revoke immediate test passes; 401/429 RFC 7807 covered.
 - **Progress / handover:**
-  - Completed: 2026-09-17 — ApiKeyService (SHA-256 hash-only, jvm_ prefix, abuse_rpm=60 default, revoke immediate no-cache), AuthenticateApiKey + LogApiUsage + OwnerAdminGuard middlewares (hash_equals constant-time, fail-closed), Admin ApiKeyController CRUD (plaintext once), Laravel RateLimiter per key → 429 + Retry-After (database cache store, no Redis), config/jvmeta_auth.php, routes/api.php admin keys + auth wiring. AC-7.1..7.4 + AC-3.4 covered. `make test` 46 passed (313) · lint ✅ · analyse ✅ (after JV-W1-005 fixes). NOTE: repo branch `main` zero commits (POC marker allows bypass) — establish develop/master at first commit.
+  - Completed: 2026-09-17 — ApiKeyService (SHA-256 hash-only, jvm_ prefix, abuse_rpm=60 default, revoke immediate no-cache), AuthenticateApiKey + LogApiUsage + OwnerAdminGuard middlewares (hash_equals constant-time, fail-closed), Admin ApiKeyController CRUD (plaintext once), Laravel RateLimiter per key → 429 + Retry-After (database cache store, no Redis), config/javmeta_auth.php, routes/api.php admin keys + auth wiring. AC-7.1..7.4 + AC-3.4 covered. `make test` 46 passed (313) · lint ✅ (after JV-W1-005 fixes). NOTE: repo branch `main` zero commits (POC marker allows bypass) — establish develop/master at first commit.
   - Next step: JV-W1-010 / JV-W1-012
   - Blocked: —
   - On disk: —
@@ -310,7 +310,7 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
   duplicate behavior needs product approval; p95 cannot meet 500ms at 5k seed rows.
 - **DoD:** AC-3 and AC-6 fully covered; bulk uses batch query; RFC 7807 errors implemented.
 - **Progress / handover:**
-  - Completed: 2026-09-17 — MovieLookupService (normalize + findByCode + findByCodes batch `IN` no N+1, eager-load, provenance via ConflictPolicy), MovieLookupController (show 200/404 movie_not_found), MovieBulkController (per-code status, dedupe normalized, always 200 incl not-found, 413 over 100 process none), MovieBulkRequest, MovieResource (provenance + actresses guard + genres union dedupe), routes additive. `make test` 140 passed (727) · lint 131 files ✅ · analyse ✅ · lookup 32ms @5k seeded (NFR p95 ≤500ms). FOLLow-up fix: NormalizedCode now strips leading zeros on numeric suffix (SSIS-0001/SSIS-001/SSIS-1/ssis-001 → SSIS001; all-zero → 000; non-numeric suffix rejected; FC2-PPV vs FC2 still distinct). `make test` 142 passed (732).
+  - Completed: 2026-09-17 — MovieLookupService (normalize + findByCode + findByCodes batch `IN` no N+1, eager-load, provenance via ConflictPolicy), MovieLookupController (show 200/404 movie_not_found), MovieBulkController (per-code status, dedupe normalized, always 200 incl not-found, 413 over 100 process none), MovieBulkRequest, MovieResource (provenance + actresses guard + genres union dedupe), routes additive. `make test` 140 passed (727) · lint 131 files ✅ · lookup 32ms @5k seeded (NFR p95 ≤500ms). FOLLow-up fix: NormalizedCode now strips leading zeros on numeric suffix (SSIS-0001/SSIS-001/SSIS-1/ssis-001 → SSIS001; all-zero → 000; non-numeric suffix rejected; FC2-PPV vs FC2 still distinct). `make test` 142 passed (732).
   - Next step: JV-W1-011 (search)
   - Blocked: —
   - On disk: —
@@ -365,7 +365,7 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
   merge; fields outside ADR needed.
 - **DoD:** AC-5 fully covered; same-name separation test passes; alias search test passes.
 - **Progress / handover:**
-  - Completed: 2026-09-17 — PerformerRepository (laravel-repository v4, alias whereHas EXISTS, withCount movies for linked_title_count), PerformerSearchRequest (q min:2 → 400 invalid_filter, per_page≤100), PerformerController (index/show, 404 performer_not_found), PerformerResource ADR §5 shape, PerformerNotFoundException, routes additive. `make test` 62 passed (369) · lint 99 files ✅ · analyse ✅.
+  - Completed: 2026-09-17 — PerformerRepository (laravel-repository v4, alias whereHas EXISTS, withCount movies for linked_title_count), PerformerSearchRequest (q min:2 → 400 invalid_filter, per_page≤100), PerformerController (index/show, 404 performer_not_found), PerformerResource ADR §5 shape, PerformerNotFoundException, routes additive. `make test` 62 passed (369) · lint 99 files ✅.
   - Next step: JV-W1-007 / JV-W1-010
   - Blocked: —
   - On disk: —
@@ -413,12 +413,12 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
 - **Steps:** Compose services api/worker/scheduler/postgres (+ node/flaresolverr under
   profile `fetch`). Worker: `php artisan queue:work database --queue=default --sleep=3
   --tries=3 --max-time=3600 --max-jobs=500`. Scheduler: `php artisan schedule:work` (or
-  cron equivalent). Make targets up/down/worker/scheduler/migrate-fresh/crawl-tick.
+  cron equivalent). Make targets up/down/scheduler/migrate/setup/crawl.
   `CrawlerXFactory::reset()` between batches if available.
 - **Edge cases:** worker restart must not lose DB queue jobs; stale claimed jobs return
   pending; scheduler runs crawl:tick every minute; no Redis.
 - **Do NOT:** introduce Horizon/Redis; tune host OS/systemd in repo task; add deployment secrets.
-- **Verification:** `docker compose config` && `make up` && `docker compose ps` && `make worker` && `make scheduler` && `make test -- --filter=WorkerRuntimeTest`.
+- **Verification:** `docker compose config` && `make up MODE=crawler` && `docker compose ps` && `make scheduler` && `make test -- --filter=WorkerRuntimeTest`.
 - **Ask for help when:** Compose cannot run multiple roles from one image; long-running
   worker leaks memory in local smoke; host deployment details requested.
 - **DoD:** Compose validates; worker max-time/max-jobs configured; scheduler includes crawl tick + watchdog.
@@ -445,7 +445,7 @@ JV-W1-007 → JV-W1-010 → JV-W1-011 → JV-W1-013 → JV-W1-014 → JV-W1-015`
 - **Edge cases:** sample >200 rows → 400-like failure; empty DB → insufficient evidence;
   <1,000 movies → fail readiness, not exception; 72h proof requires runtime evidence.
 - **Do NOT:** fake live crawl success; auto-mark go/no-go; invent cost data.
-- **Verification:** `php artisan poc:smoke` && `php artisan poc:go-no-go-report` && `make test -- --filter=PocGoNoGoReportCommandTest` && `make lint` && `make analyse` && `make test`.
+- **Verification:** `php artisan poc:smoke` && `php artisan poc:go-no-go-report` && `make test -- --filter=PocGoNoGoReportCommandTest` && `make lint` && `make test`.
 - **Ask for help when:** owner wants to change G-3/G-6 thresholds; live crawl cannot reach
   1,000 movies with frozen sources; report lacks data because earlier tasks missed counters.
 - **DoD:** final local suite green; POC evidence commands reproducible; report supports

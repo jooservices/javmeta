@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Observability;
 
+use App\Services\Observability\NodeEgressProbe;
+use App\Support\NodeIdentity;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -13,6 +15,31 @@ use Throwable;
  */
 final class OpenObserveClient
 {
+    private const LOG_BUFFER_CAPACITY = 1000;
+
+    private const LOG_BATCH_SIZE = 50;
+
+    private const FAILURE_THRESHOLD = 3;
+
+    private const CIRCUIT_COOLDOWN_SECONDS = 30;
+
+    private const MAX_SHIPPING_WAIT_NANOSECONDS = 200_000_000;
+
+    /** @var list<array<string, mixed>> */
+    private array $logBuffer = [];
+
+    private int $droppedLogCount = 0;
+
+    private int $consecutiveFailures = 0;
+
+    private ?int $retryAt = null;
+
+    private bool $halfOpen = false;
+
+    private ?int $requestObjectId = null;
+
+    private ?int $requestDeadlineNanoseconds = null;
+
     public function __construct(
         private readonly TelemetrySanitizer $sanitizer,
     ) {}
@@ -34,16 +61,69 @@ final class OpenObserveClient
         $stream = (string) config('openobserve.stream_logs');
         $payload = [];
         foreach ($records as $record) {
+            $record = $this->withEgressContext($record);
             $payload[] = array_merge(
+                $this->sanitizer->sanitizeContext($record),
                 [
                     '_timestamp' => (int) ((float) ($record['_timestamp'] ?? (microtime(true) * 1_000_000))),
                     'service' => (string) config('openobserve.service_name'),
+                    'environment' => (string) config('app.env', 'production'),
+                    'role' => (string) (($record['event'] ?? null) === 'api_usage'
+                        ? ($record['role'] ?? config('dependencies.role', 'api'))
+                        : config('dependencies.role', 'api')),
                 ],
-                $this->sanitizer->sanitizeContext($record),
             );
         }
 
-        $this->postJson($this->jsonIngestUrl($stream), $payload);
+        $capacity = max(1, (int) config('openobserve.log_buffer_capacity', self::LOG_BUFFER_CAPACITY));
+        $availableSlots = max(0, $capacity - count($this->logBuffer));
+        $accepted = array_slice($payload, 0, $availableSlots);
+        $this->logBuffer = [...$this->logBuffer, ...$accepted];
+        $dropped = count($payload) - count($accepted);
+        if ($dropped > 0) {
+            $this->droppedLogCount += $dropped;
+            Log::channel('single')->warning('OpenObserve log buffer is full; records were dropped.', [
+                'dropped' => $dropped,
+                'total_dropped' => $this->droppedLogCount,
+            ]);
+        }
+
+        $this->flushLogBuffer($stream);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $records
+     */
+    public function ingestLogsToStream(array $records, string $stream): void
+    {
+        if (! $this->enabled() || $records === []) {
+            return;
+        }
+
+        $payload = [];
+        foreach ($records as $record) {
+            $record = $this->withEgressContext($record);
+            $payload[] = array_merge(
+                $this->sanitizer->sanitizeContext($record),
+                [
+                    '_timestamp' => (int) ((float) ($record['_timestamp'] ?? (microtime(true) * 1_000_000))),
+                    'service' => (string) config('openobserve.service_name'),
+                    'environment' => (string) config('app.env', 'production'),
+                    'role' => (string) (($record['event'] ?? null) === 'api_usage'
+                        ? ($record['role'] ?? config('dependencies.role', 'api'))
+                        : config('dependencies.role', 'api')),
+                ],
+            );
+        }
+
+        foreach (array_chunk($payload, self::LOG_BATCH_SIZE) as $batch) {
+            $this->postJson($this->jsonIngestUrl($stream), $batch, 'application/json');
+        }
+    }
+
+    public function droppedLogCount(): int
+    {
+        return $this->droppedLogCount;
     }
 
     /**
@@ -59,6 +139,8 @@ final class OpenObserveClient
         $scopeMetrics = [];
         foreach ($points as $point) {
             $labels = $point['labels'] ?? [];
+            $labels['environment'] = (string) config('app.env', 'production');
+            $labels['role'] = (string) config('dependencies.role', 'api');
             $attributes = [];
             foreach ($labels as $key => $value) {
                 $attributes[] = [
@@ -117,16 +199,16 @@ final class OpenObserveClient
             return;
         }
 
+        $spanAttributes = $this->spanEgressContext($span['attributes'] ?? []);
         $attributes = [];
-        foreach ($this->sanitizer->sanitizeContext($span['attributes'] ?? []) as $key => $value) {
+        foreach ($this->sanitizer->sanitizeContext($spanAttributes) as $key => $value) {
             if ($value === null) {
                 continue;
             }
             $attributes[] = [
                 'key' => (string) $key,
-                'value' => is_bool($value) || is_int($value) || is_float($value)
-                    ? ['stringValue' => (string) $value]
-                    : ['stringValue' => (string) $value],
+                // Every attribute is sent as a string, whatever its type.
+                'value' => ['stringValue' => (string) $value],
             ];
         }
 
@@ -163,6 +245,62 @@ final class OpenObserveClient
         $this->postJson($this->otlpUrl('traces'), $body, 'application/json');
     }
 
+    /** @param array<string, mixed> $record
+     *  @return array<string, mixed>
+     */
+    private function withEgressContext(array $record): array
+    {
+        [$node, $ip, $shared] = $this->egressContext();
+        $record['node'] ??= $shared['node'] ?? $node;
+        if (! array_key_exists('egress_ip', $record)) {
+            $record['egress_ip'] = array_key_exists('egress_ip', $shared) ? $shared['egress_ip'] : $ip;
+        }
+
+        return $record;
+    }
+
+    /** @param array<string, mixed> $attributes
+     *  @return array<string, mixed>
+     */
+    private function spanEgressContext(array $attributes): array
+    {
+        [$node, $ip, $shared] = $this->egressContext();
+        $attributes['node'] ??= $shared['node'] ?? $node;
+        if (! array_key_exists('egress_ip', $attributes)) {
+            $attributes['egress_ip'] = array_key_exists('egress_ip', $shared) ? $shared['egress_ip'] : $ip;
+        }
+        $attributes['egress_ip'] = is_string($attributes['egress_ip']) ? $attributes['egress_ip'] : '';
+
+        return $attributes;
+    }
+
+    /** @return array{0: string, 1: ?string, 2: array<string, mixed>} */
+    private function egressContext(): array
+    {
+        $shared = [];
+        try {
+            $shared = Log::sharedContext();
+        } catch (Throwable) {
+            // Logging context is optional during bootstrap and shutdown.
+        }
+
+        if (isset($shared['node']) && array_key_exists('egress_ip', $shared)) {
+            return [
+                (string) $shared['node'],
+                is_string($shared['egress_ip']) ? $shared['egress_ip'] : null,
+                $shared,
+            ];
+        }
+
+        try {
+            $context = app(NodeEgressProbe::class)->context();
+        } catch (Throwable) {
+            $context = ['node' => NodeIdentity::current(), 'egress_ip' => null];
+        }
+
+        return [(string) $context['node'], $context['egress_ip'], $shared];
+    }
+
     private function shouldSample(): bool
     {
         $rate = (float) config('openobserve.trace_sample_rate', 1.0);
@@ -173,7 +311,7 @@ final class OpenObserveClient
             return false;
         }
 
-        return (mt_rand() / mt_getrandmax()) <= $rate;
+        return random_int(0, 1_000_000) / 1_000_000 <= $rate;
     }
 
     private function jsonIngestUrl(string $stream): string
@@ -194,10 +332,20 @@ final class OpenObserveClient
     /**
      * @param  array<mixed>|list<array<string, mixed>>  $body
      */
-    private function postJson(string $url, array $body, string $contentType = 'application/json'): void
+    private function postJson(string $url, array $body, string $contentType = 'application/json'): bool
     {
+        if (! $this->canAttemptRequest()) {
+            return false;
+        }
+
+        $timeout = $this->shippingTimeoutSeconds();
+        if ($timeout <= 0) {
+            return false;
+        }
+
         try {
-            $pending = Http::timeout((int) config('openobserve.timeout', 3))
+            $pending = Http::timeout($timeout)
+                ->connectTimeout($timeout)
                 ->acceptJson()
                 ->withHeaders(['Content-Type' => $contentType]);
 
@@ -209,17 +357,95 @@ final class OpenObserveClient
 
             $response = $pending->post($url, $body);
             if ($response->failed()) {
+                $this->recordRequestFailure();
                 Log::channel('single')->warning('OpenObserve ingest failed.', [
                     'status' => $response->status(),
                     'url' => $this->redactUrl($url),
                 ]);
+
+                return false;
             }
+
+            $this->recordRequestSuccess();
+
+            return true;
         } catch (Throwable $exception) {
+            $this->recordRequestFailure();
             Log::channel('single')->warning('OpenObserve ingest error.', [
                 'error' => $exception->getMessage(),
                 'url' => $this->redactUrl($url),
             ]);
+
+            return false;
         }
+    }
+
+    private function flushLogBuffer(string $stream): void
+    {
+        if ($this->logBuffer === []) {
+            return;
+        }
+
+        $batch = array_slice($this->logBuffer, 0, self::LOG_BATCH_SIZE);
+        if (! $this->postJson($this->jsonIngestUrl($stream), $batch)) {
+            return;
+        }
+
+        $this->logBuffer = array_slice($this->logBuffer, count($batch));
+    }
+
+    private function canAttemptRequest(): bool
+    {
+        if ($this->retryAt === null) {
+            return true;
+        }
+
+        if (now()->getTimestamp() < $this->retryAt) {
+            return false;
+        }
+
+        $this->retryAt = null;
+        $this->halfOpen = true;
+
+        return true;
+    }
+
+    private function recordRequestSuccess(): void
+    {
+        $this->consecutiveFailures = 0;
+        $this->retryAt = null;
+        $this->halfOpen = false;
+    }
+
+    private function recordRequestFailure(): void
+    {
+        $this->consecutiveFailures++;
+        if (! $this->halfOpen && $this->consecutiveFailures < self::FAILURE_THRESHOLD) {
+            return;
+        }
+
+        $this->consecutiveFailures = self::FAILURE_THRESHOLD;
+        $this->retryAt = now()->getTimestamp() + self::CIRCUIT_COOLDOWN_SECONDS;
+        $this->halfOpen = false;
+    }
+
+    private function shippingTimeoutSeconds(): float
+    {
+        $timeout = min(0.2, max(0.001, (float) config('openobserve.timeout', 3)));
+        if (app()->runningInConsole() || ! app()->bound('request')) {
+            return $timeout;
+        }
+
+        $request = app('request');
+        $requestObjectId = spl_object_id($request);
+        if ($this->requestObjectId !== $requestObjectId) {
+            $this->requestObjectId = $requestObjectId;
+            $this->requestDeadlineNanoseconds = hrtime(true) + self::MAX_SHIPPING_WAIT_NANOSECONDS;
+        }
+
+        $remainingNanoseconds = ($this->requestDeadlineNanoseconds ?? hrtime(true)) - hrtime(true);
+
+        return min($timeout, max(0, $remainingNanoseconds) / 1_000_000_000);
     }
 
     private function redactUrl(string $url): string

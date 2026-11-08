@@ -1,0 +1,916 @@
+<!DOCTYPE html><html><head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="renderer" content="webkit">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JavBus - Sharing Adult Video Magnet Links - Japanese Adult Video Database</title>
+<meta name="keywords" content="Adult Video Magnet Links, Online Adult Video, Magnet Links Sharing, JAV ID Search, Japanese Adult Video">
+<meta name="description" content="Online JAV Magnet Links Sharing Website, JAV ID Search and Sharing JAV Magnet Links.">
+<link rel="alternate" href="https://www.javbus.com/en" hreflang="en">
+<link rel="alternate" href="https://www.javbus.com/ja" hreflang="ja">
+<link rel="alternate" href="https://www.javbus.com/ko" hreflang="ko">
+<link rel="alternate" href="https://www.javbus.com/" hreflang="zh">
+<link rel="alternate" href="https://www.javbus.com/" hreflang="x-default">
+<link rel="canonical" href="https://www.javbus.com/en/">
+<link rel="preconnect" href="https://poweredby.jads.co" crossorigin="">
+<link rel="dns-prefetch" href="https://poweredby.jads.co">
+<link rel="stylesheet" href="https://www.javbus.com/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://www.javbus.com/css/bootstrap-theme.min.css">
+<link rel="stylesheet" href="https://www.javbus.com/css/css-slider.css?v=9.3">
+<link rel="stylesheet" href="https://www.javbus.com/css/nav.overlay.css?v=3.9.8">
+<link rel="stylesheet" href="https://www.javbus.com/css/magnific-popup.css">
+<link rel="stylesheet" href="https://www.javbus.com/css/base.css?v=7.15">
+<script src="https://www.javbus.com/js/jquery.min.js"></script>
+<script src="https://www.javbus.com/js/jquery.magnific-popup.min.js"></script>
+<script src="https://www.javbus.com/js/bootstrap.min.js" defer=""></script>
+<script src="https://www.javbus.com/js/jquery.cookie.min.js" defer=""></script>
+<script src="https://www.javbus.com/js/base.js" defer=""></script>
+<script src="https://www.javbus.com/js/bootstrap-hover-dropdown.js" defer=""></script>
+<script src="https://www.javbus.com/js/nav.overlay.js?v=10.30.3" defer=""></script>
+<!--[if lt IE 9]> <script src="https://www.javbus.com/js/html5shiv.min.js"></script><script src="https://www.javbus.com/js/respond.min.js"></script><![endif]-->
+</head>
+<body>
+<script language="JavaScript">
+var mod = 0;
+var lang = 'en';
+var info = 'Search by ID, Title, Idol';
+function searchs(obj){
+	var searchinput = $("#"+obj);
+	if(searchinput.val()=='')
+	{
+		$('#magnet-url-post').trigger("click");	
+		   return false;
+	}
+	else
+	{
+		//$('#search-loading').show();str.replace(/ /g, "-")
+		window.open("https://www.javbus.com/en/search/"+encodeURIComponent($.trim(searchinput.val()).replace(/ /g,"+"))+"&type=&parent=ce");
+	}
+}
+
+$(function(){
+		
+	var url ='https://www.javbus.com/ajax/search-modal.php?floor='+Math.floor(Math.random()*1000+1)+'&lang='+lang;
+       $.ajax({url: url,type: 'GET',success: function(msg){
+			$("#searchModal").append(msg);										  
+	   }});
+});
+</script>
+<div id="search-loading">
+    <table class="search-loading-box" border="0" cellpadding="0" cellspacing="0">
+        <tbody>
+            <tr>
+                <td align="center">
+                    <table height="80" width="100%" border="0" cellpadding="0" cellspacing="0">
+                        <tbody>
+                            <tr>
+                                <td height="40" align="center">
+                                	<div class="search-loading-text">Searching...</div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td height="40" align="center">
+                                    <img src="https://www.javbus.com/images/search_loading.gif" border="0">
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Modal Search -->
+<div id="searchModal" class="modal fade" tabindex="-1" role="dialog"> 
+    <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+      	<a href="#searchModal" class="hide" data-toggle="modal"><button class="btn" id="magnet-url-post" type="button"></button></a>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">×</span></button>
+        <h4 class="modal-title">Please Enter Search Terms!</h4>
+      </div>
+      <div class="modal-body">
+        <p>You didn't enter anything, please entering keywords you want to search!</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div> 
+  </div>
+
+<nav class="navbar navbar-default navbar-fixed-top top-bar" style="z-index:900">
+    <div class="container-fluid">
+        <div class="navbar-header mh50">
+            <a href="https://www.javbus.com/en">
+                <img class="hidden-xs" height="50" alt="JavBus" src="https://www.javbus.com/images/logo.png" style="height:40px; margin-top:5px;">
+                <img class="visible-xs-inline" height="50" alt="JavBus" src="https://www.javbus.com/images/logo.png">
+            </a>                                                 
+
+            
+
+            <div class="btn-group pull-right visible-xs-inline" role="group" style="margin:8px 8px 0 0;">
+                <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-expanded="false">
+                    <span class="glyphicon glyphicon-globe"></span>  <span class="caret"></span>
+                </button>
+                <ul class="dropdown-menu" role="menu">
+                    <li><a href="https://www.javbus.com/en">English</a></li>
+                    <li><a href="https://www.javbus.com/ja">日本语</a></li>
+                    <li><a href="https://www.javbus.com/ko">한국의</a></li>
+                    <li><a href="https://www.javbus.com/">中文</a></li>   
+                </ul>
+            </div>
+ 
+ 		             <div class="btn-group pull-right visible-xs-inline" role="group" style="margin:8px 8px 0 0;">
+                <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-expanded="false">
+                    <span class="glyphicon glyphicon-film"></span>  <span class="caret"></span>
+                </button>
+                <ul class="dropdown-menu" role="menu">
+                	                    <li id="cellshowmag"><a><span class="glyphicon glyphicon-magnet"></span> Available</a></li>
+                     
+                </ul>
+            </div>
+        
+		                      
+ 
+        </div>
+ 
+        <div id="navbar" class="collapse navbar-collapse">
+            <div class="navbar-form navbar-left fullsearch-form">
+                <div class="input-group">
+                    <input id="search-input" type="text" class="form-control" placeholder="Search by ID, Title, Idol">
+                    <span class="input-group-btn">
+                    <button class="btn btn-default" type="submit" onclick="searchs('search-input')">Search</button>
+                    </span>
+                </div>
+            </div>
+            <ul class="nav navbar-nav">
+            	<li class="active"><a href="https://www.javbus.com/en">Censored</a></li>                    
+                <li><a href="https://www.javbus.com/en/uncensored">Uncensored</a></li>
+                <li class="hidden-md hidden-sm"><!-- <div class="icon-new"></div> --><a href="https://www.javbus.org/en">Western</a></li>
+				            	
+                <li class="dropdown hidden-sm ">
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown" data-hover="dropdown" role="button" aria-expanded="false">Genre <span class="caret"></span></a>
+                    <ul class="dropdown-menu" role="menu">
+                        <li><a href="https://www.javbus.com/en/genre">Censored Genre</a></li>
+                        <li><a href="https://www.javbus.com/en/uncensored/genre">Uncensored Genre</a></li>				
+                    </ul>
+                </li>
+                <li class="dropdown hidden-sm ">
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown" data-hover="dropdown" role="button" aria-expanded="false">Actress <span class="caret"></span></a>
+                    <ul class="dropdown-menu" role="menu">
+                        <li><a href="https://www.javbus.com/en/actresses">Censored JAV Idols</a></li>
+                        <li><a href="https://www.javbus.com/en/uncensored/actresses">Uncensored JAV Idols</a></li>				
+                    </ul>
+                </li>                
+                <li class="dropdown"><a href="https://www.javbus.com/en" class="dropdown-toggle" data-toggle="dropdown" data-hover="dropdown" role="button" aria-expanded="false"><span class="glyphicon glyphicon-menu-hamburger"></span></a>
+                    <ul class="dropdown-menu" role="menu">
+                    	<li class="visible-md-block visible-sm-block"><a href="https://www.javbus.org/en">Western</a></li>
+                                                <li class="visible-sm-block"><a href="https://www.javbus.com/en/genre">Censored Genre</a></li>
+                        <li class="visible-sm-block"><a href="https://www.javbus.com/en/uncensored/genre">Uncensored Genre</a></li>
+                        <li class="visible-sm-block"><a href="https://www.javbus.com/en/actresses">Censored JAV Idols</a></li>
+                        <li class="visible-sm-block"><a href="https://www.javbus.com/en/uncensored/actresses">Uncensored JAV Idols</a></li>                        
+                        <li><a href="https://www.javbus.com/en/genre/hd">HD</a></li>
+                        <li><a href="https://www.javbus.com/en/genre/sub">SUB</a></li>
+                    </ul>
+				</li> 
+            </ul>
+            
+            
+            
+            <ul class="nav navbar-nav navbar-right">
+                <li class="dropdown">
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown" data-hover="dropdown" role="button" aria-expanded="false"><span class="glyphicon glyphicon-globe" style="font-size:12px;"></span> <span class="hidden-md hidden-sm">English</span> <span class="caret"></span></a>
+                    <ul class="dropdown-menu" role="menu">
+                        <li><a href="https://www.javbus.com/en">English</a></li>
+                        <li><a href="https://www.javbus.com/ja">日本语</a></li>
+                        <li><a href="https://www.javbus.com/ko">한국의</a></li>
+                        <li><a href="https://www.javbus.com/">中文</a></li>   
+                    </ul>
+                </li>
+            </ul>
+
+                        
+            <ul class="nav navbar-nav navbar-right">
+                <li class="dropdown">
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown" data-hover="dropdown" role="button" aria-expanded="false"><span class="glyphicon glyphicon-film" style="font-size:12px;"></span> <span class="hidden-md hidden-sm">Show All</span> <span class="caret"></span></a>
+                    <ul class="dropdown-menu" role="menu">
+                                            <li class="mypointer" id="showmag"><a><span class="glyphicon glyphicon-magnet"></span> Available</a></li>
+					  
+                    </ul>
+                </li>
+            </ul>
+                        
+        	              
+        </div>
+        <!--/.nav-collapse -->
+    </div>
+</nav>
+<div class="row visible-xs-inline footer-bar">
+    <div class="col-xs-3 text-center">
+        <a id="menu" class="btn btn-default trigger-overlay"><span class="glyphicon glyphicon-align-justify"></span></a>
+    </div>
+    <div class="col-xs-3 text-center">
+         </div>
+    <div class="col-xs-3 text-center">
+            <a id="prev" class="btn btn-default" href="/en/page/2" style=""><span class="glyphicon glyphicon-chevron-right"></span></a>
+        </div>    
+    <div class="col-xs-3 text-center">
+        <a id="back" class="btn btn-default" href="javascript:window.history.back()"><span class="glyphicon glyphicon-share-alt flipx"></span></a>
+    </div>    
+</div>    
+<script src="https://www.javbus.com/js/focus.js?v=8.7"></script>  <link rel="stylesheet" type="text/css" href="https://www.javbus.com/css/main.css?v=9.6">
+<script src="https://www.javbus.com/js/jquery.masonry.min.js"></script>
+<div class="container-fluid">
+    <div class="row">
+
+<div class="ad-box all-top">
+        <div class="ad-item"><div class="ad-juicy"><script type="text/javascript" data-cfasync="false" async="" src="https://poweredby.jads.co/js/jads.js"></script><iframe id="uv34m43" style="z-index: 606; border: 0px; background-color: transparent; height: 90px; width: 728px; position: relative; visibility: visible; clear: both;" frameborder="0" marginheight="0" marginwidth="0" scrolling="no" height="90" width="728" allowtransparency="true" src="//poweredby.jads.co/adshow.php?adzone=1024542"></iframe><script type="text/javascript" data-cfasync="false" async="">(adsbyjuicy = window.adsbyjuicy || []).push({"adzone":1024542});</script></div></div>
+    </div>
+
+                
+
+
+
+<div class="alert alert-success alert-common">
+    <p><b>JavBus - Sharing Adult Video Magnet Links - Japanese Adult Video Database</b>&nbsp;：&nbsp;Currently shows<b><a class="mypointer" id="resultshowall">&nbsp;<span class="glyphicon glyphicon-film"></span>&nbsp;Show All</a></b>, you can switch to<b><a class="mypointer" id="resultshowmag">&nbsp;<span class="glyphicon glyphicon-magnet"></span>&nbsp;Available</a></b></p></div>
+
+        <div id="waterfall" class="masonry" style="position: relative; height: 1839px; width: 1309px;">
+<div id="waterfall">
+        
+            <div class="item masonry-brick" style="position: absolute; top: 0px; left: 0px;">
+                <a class="movie-box" href="https://www.javbus.com/en/PPR-010">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/ciys.jpg" title="河合あすな 8時間  BEST PRESTIGE PREMIUM RESTRICTED vol.13">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>河合あすな 8時間  BEST PRESTIGE PREMIUM RESTRICTED vol.13<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>PPR-010</date> / <date>2026-09-18</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 0px; left: 187px;">
+                <a class="movie-box" href="https://www.javbus.com/en/ABF-382">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cixj.jpg" title="性欲に支配された倒錯カップルの同棲中出し性交録。 鈴村あいり">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>性欲に支配された倒錯カップルの同棲中出し性交録。 鈴村あいり<br>
+						<div class="item-tag">
+                            <button class="btn btn-xs btn-primary" disabled="disabled" title="Containing Magnet Links with HD Videos">HD</button> 			
+                            <button class="btn btn-xs btn-success " disabled="disabled" title="Containing Magnet Links of Newest Torrent">3 Days</button>						</div>                        	
+						<date>ABF-382</date> / <date>2026-09-18</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 0px; left: 374px;">
+                <a class="movie-box" href="https://www.javbus.com/en/NAMH-074">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/chuw.jpg" title="至高の膣内射精アングル19発 潮吹きショートカット美少女 美咲音">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>至高の膣内射精アングル19発 潮吹きショートカット美少女 美咲音<br>
+						<div class="item-tag">
+                            <button class="btn btn-xs btn-primary" disabled="disabled" title="Containing Magnet Links with HD Videos">HD</button> 			
+                            						</div>                        	
+						<date>NAMH-074</date> / <date>2026-09-17</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 0px; left: 561px;">
+                <a class="movie-box" href="https://www.javbus.com/en/ABBBV-009">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj17.jpg" title="関東ドSお嬢様 激カワMぃちゃんのドS遊戯（3） スリーパーホールド/レッグロック/窒息責め/ご褒美生顔騎">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>関東ドSお嬢様 激カワMぃちゃんのドS遊戯（3） スリーパーホールド/レッグロック/窒息責め/ご褒美生顔騎<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>ABBBV-009</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 0px; left: 748px;">
+                <a class="movie-box" href="https://www.javbus.com/en/SILK-2061">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj16.jpg" title="壊れるほど愛して">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>壊れるほど愛して<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>SILK-2061</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 0px; left: 935px;">
+                <a class="movie-box" href="https://www.javbus.com/en/ORECS-676">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj15.jpg" title="カワイイ巨乳素人お嬢さん！童貞君にデカパイ授乳させてくれませんか！？赤ちゃんみたいにデカパイをチューチューすわれて赤面発情！授乳手コキで暴発しちゃうしおりちゃんとかすみちゃん">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>カワイイ巨乳素人お嬢さん！童貞君にデカパイ授乳させてくれませんか！？赤ちゃんみたいにデカパイをチューチューすわれて赤面発情！授乳手コキで暴発しちゃうしおりちゃんとかすみちゃん<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>ORECS-676</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 0px; left: 1122px;">
+                <a class="movie-box" href="https://www.javbus.com/en/IESM-032_2026-09-09">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj14.jpg" title="【AIリマスター】悦虐の折●調教 女子校生 大沢佑香 晶エリー">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>【AIリマスター】悦虐の折●調教 女子校生 大沢佑香 晶エリー<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>IESM-032</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 308px; left: 748px;">
+                <a class="movie-box" href="https://www.javbus.com/en/J-99007_2026-09-09">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj13.jpg" title="【巨乳縛り】僕の調教生フィギュア 翔田千里 吊り責めと褒美の挿入編">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>【巨乳縛り】僕の調教生フィギュア 翔田千里 吊り責めと褒美の挿入編<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>J-99007</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 354px; left: 1122px;">
+                <a class="movie-box" href="https://www.javbus.com/en/IE-149">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj12.jpg" title="【AIリマスター】全裸ヌーディストビーチ ずっと夢見た貴方の想い、叶えます！">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>【AIリマスター】全裸ヌーディストビーチ ずっと夢見た貴方の想い、叶えます！<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>IE-149</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 377px; left: 0px;">
+                <a class="movie-box" href="https://www.javbus.com/en/UMD-1020">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj11.jpg" title="【至高】ヨガしているだけなのになぜか目線が●●に行ってしまう挑発的な「犬ポーズ」！！目のやり場に困るエッチなぽっちんインストラクター6選 Part.2">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>【至高】ヨガしているだけなのになぜか目線が●●に行ってしまう挑発的な「犬ポーズ」！！目のやり場に困るエッチなぽっちんインストラクター6選 Part.2<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>UMD-1020</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 377px; left: 187px;">
+                <a class="movie-box" href="https://www.javbus.com/en/IESP-390_2026-09-09">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj10.jpg" title="【AIリマスター】麻薬捜査官 ヤク漬け膣痙攣 浜崎りお">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>【AIリマスター】麻薬捜査官 ヤク漬け膣痙攣 浜崎りお<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>IESP-390</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 377px; left: 374px;">
+                <a class="movie-box" href="https://www.javbus.com/en/IENFA-45902">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj0z.jpg" title="私のおっぱいはお兄ちゃんのもの 天音るな">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>私のおっぱいはお兄ちゃんのもの 天音るな<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>IENFA-45902</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 400px; left: 561px;">
+                <a class="movie-box" href="https://www.javbus.com/en/IENFA-45901">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj0y.jpg" title="私のおっぱいはお兄ちゃんのもの 逢沢みゆ">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>私のおっぱいはお兄ちゃんのもの 逢沢みゆ<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>IENFA-45901</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 492px; left: 935px;">
+                <a class="movie-box" href="https://www.javbus.com/en/IESP-010">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj0x.jpg" title="【AIリマスター】銀行強盗事件 ～知られざる真実～">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>【AIリマスター】銀行強盗事件 ～知られざる真実～<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>IESP-010</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 685px; left: 748px;">
+                <a class="movie-box" href="https://www.javbus.com/en/IENFA-45903">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj0w.jpg" title="私のおっぱいはお兄ちゃんのもの 望月つぼみ">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>私のおっぱいはお兄ちゃんのもの 望月つぼみ<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>IENFA-45903</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 708px; left: 374px;">
+                <a class="movie-box" href="https://www.javbus.com/en/UMD-1018">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj0v.jpg" title="巷で噂の激ヤバ系エナジードリンク「感度爆増敏感媚●」で姉と彼女の股間爆発させてみた！！">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>巷で噂の激ヤバ系エナジードリンク「感度爆増敏感媚●」で姉と彼女の股間爆発させてみた！！<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>UMD-1018</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 731px; left: 187px;">
+                <a class="movie-box" href="https://www.javbus.com/en/UMD-1019">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj0u.jpg" title="素股プレイでハプニング！！妹とセックスの練習中に間違ってヌルンと挿入！！ 13">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>素股プレイでハプニング！！妹とセックスの練習中に間違ってヌルンと挿入！！ 13<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>UMD-1019</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 731px; left: 561px;">
+                <a class="movie-box" href="https://www.javbus.com/en/UMD-1017">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj0t.jpg" title="魅惑の突起 隣のぽっち妻">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>魅惑の突起 隣のぽっち妻<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>UMD-1017</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 731px; left: 1122px;">
+                <a class="movie-box" href="https://www.javbus.com/en/CNSTV-037">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj0s.jpg" title="デート放棄！発情しまくり人妻、夫そっちのけで不倫チンポに即挿入 終始ビクビク痙攣イキ狂い中出し連発で理性崩壊">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>デート放棄！発情しまくり人妻、夫そっちのけで不倫チンポに即挿入 終始ビクビク痙攣イキ狂い中出し連発で理性崩壊<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>CNSTV-037</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 846px; left: 0px;">
+                <a class="movie-box" href="https://www.javbus.com/en/CNSTV-038">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj0r.jpg" title="65歳170cm長身グランドマザーの現役続行ヤリマン宣言！高貴高齢チート妻AV出演">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>65歳170cm長身グランドマザーの現役続行ヤリマン宣言！高貴高齢チート妻AV出演<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>CNSTV-038</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 846px; left: 935px;">
+                <a class="movie-box" href="https://www.javbus.com/en/INSTV-732">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj0q.jpg" title="">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span><br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>INSTV-732</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 1016px; left: 748px;">
+                <a class="movie-box" href="https://www.javbus.com/en/KAVR-522">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj0p.jpg" title="【VR】「おっぱいとお尻、どっちが好き？？」 際どいウェアで痴女トレーナーと密着レッスン【肉圧パイズリ】【グラインド尻コキ】【杭打ち騎乗位】チ●ポがコミットするまで射精させられた僕。 天音るな 渡来ふう">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>【VR】「おっぱいとお尻、どっちが好き？？」 際どいウェアで痴女トレーナーと密着レッスン【肉圧パイズリ】【グラインド尻コキ】【杭打ち騎乗位】チ●ポがコミットするまで射精させられた僕。 天音るな 渡来ふう<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>KAVR-522</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 1062px; left: 561px;">
+                <a class="movie-box" href="https://www.javbus.com/en/SIVR-381">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj0o.jpg" title="【VR】アナタもエスワン女優とSEXできる世界 ビジュ最強！AVスター×8KVRベスト 安達夕莉 渚あいり 村上悠華 明日葉みつは 榊原萌 初美なのか 夏生なつ 桜みお 紫堂るい 七ツ森りり 三田真鈴 浅野こころ みなみ羽琉 木村愛心 倉木華">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>【VR】アナタもエスワン女優とSEXできる世界 ビジュ最強！AVスター×8KVRベスト 安達夕莉 渚あいり 村上悠華 明日葉みつは 榊原萌 初美なのか 夏生なつ 桜みお 紫堂るい 七ツ森りり 三田真鈴 浅野こころ みなみ羽琉 木村愛心 倉木華<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>SIVR-381</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 1108px; left: 187px;">
+                <a class="movie-box" href="https://www.javbus.com/en/VRKM-1887">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj0n.jpg" title="【VR】シェアハウスで、男だと思ったら女の子だった件！？アヘ顔と潮吹きでイキまくりSEX！！ 天馬ゆい">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>【VR】シェアハウスで、男だと思ったら女の子だった件！？アヘ顔と潮吹きでイキまくりSEX！！ 天馬ゆい<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>VRKM-1887</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 1108px; left: 374px;">
+                <a class="movie-box" href="https://www.javbus.com/en/VRKM-1889">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj0m.jpg" title="【VR】響蓮に沼る">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>【VR】響蓮に沼る<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>VRKM-1889</date> / <date>2026-09-09</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 1154px; left: 935px;">
+                <a class="movie-box" href="https://www.javbus.com/en/SPSC-022_2026-09-08">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj20.jpg" title="美少女戦士セーラーぺティート 由良かな">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>美少女戦士セーラーぺティート 由良かな<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>SPSC-022</date> / <date>2026-09-08</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 1154px; left: 1122px;">
+                <a class="movie-box" href="https://www.javbus.com/en/SPSC-021_2026-09-08">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj1z.jpg" title="ヒロイン快楽屈服 プライド崩壊 ～美少女戦士セーラーシルフィード編～ 有加里ののか">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>ヒロイン快楽屈服 プライド崩壊 ～美少女戦士セーラーシルフィード編～ 有加里ののか<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>SPSC-021</date> / <date>2026-09-08</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 1223px; left: 0px;">
+                <a class="movie-box" href="https://www.javbus.com/en/SPSC-020_2026-09-08">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj1y.jpg" title="ふたなりヒロイン 美少女戦士セーラーメーネ">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>ふたなりヒロイン 美少女戦士セーラーメーネ<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>SPSC-020</date> / <date>2026-09-08</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 1416px; left: 374px;">
+                <a class="movie-box" href="https://www.javbus.com/en/SPSC-019_2026-09-08">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj1x.jpg" title="学園騎士スクールジャンヌ 二大悪魔の恐るべき陰謀 星仲ここみ">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>学園騎士スクールジャンヌ 二大悪魔の恐るべき陰謀 星仲ここみ<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>SPSC-019</date> / <date>2026-09-08</date></span>
+					</div>
+                </a>
+            </div>
+        
+            <div class="item masonry-brick" style="position: absolute; top: 1485px; left: 935px;">
+                <a class="movie-box" href="https://www.javbus.com/en/SPSC-018">
+                    <div class="photo-frame">
+                        <img src="/pics/thumb/cj1w.jpg" title="サヨナラ ビーストイエロー 引退日の悪夢 岬あずさ">
+                    </div>                     
+					<div class="photo-info">                                   
+						<span>サヨナラ ビーストイエロー 引退日の悪夢 岬あずさ<br>
+						<div class="item-tag">
+                            						</div>                        	
+						<date>SPSC-018</date> / <date>2026-09-08</date></span>
+					</div>
+                </a>
+            </div>
+</div>        </div>
+    </div>
+</div>
+<script language="JavaScript">
+    (function($) {
+        $('#waterfall').masonry({
+            itemSelector: ".item",
+            isAnimated: false,
+            isFitWidth: true
+        });
+    })(jQuery);
+</script>
+
+
+<div class="ad-box">
+        <div class="ad-item"><div class="ad-juicy"><script type="text/javascript" data-cfasync="false" async="" src="https://poweredby.jads.co/js/jads.js"></script><iframe id="uv34mmu" style="z-index: 606; border: 0px; background-color: transparent; height: 90px; width: 728px; position: relative; visibility: visible; clear: both;" frameborder="0" marginheight="0" marginwidth="0" scrolling="no" height="90" width="728" allowtransparency="true" src="//poweredby.jads.co/adshow.php?adzone=1024551"></iframe><script type="text/javascript" data-cfasync="false" async="">(adsbyjuicy = window.adsbyjuicy || []).push({"adzone":1024551});</script></div></div>
+    </div>
+
+
+<div class="text-center hidden-xs">
+    <ul class="pagination pagination-lg">
+    	<li class="active"><a href="/en/page/1">1</a></li><li><a href="/en/page/2">2</a></li><li><a href="/en/page/3">3</a></li><li><a href="/en/page/4">4</a></li><li><a href="/en/page/5">5</a></li><li><a href="/en/page/6">6</a></li><li><a href="/en/page/7">7</a></li><li><a href="/en/page/8">8</a></li><li><a href="/en/page/9">9</a></li><li><a href="/en/page/10">10</a></li>        <li>
+            <a id="next" href="/en/page/2" style="display: block;">下一頁</a>
+        </li>
+            </ul>
+</div><footer class="footer hidden-xs">
+	<div class="container-fluid">
+        <p><a href="https://www.javbus.com/en/doc/terms">Terms</a> / <a href="https://www.javbus.com/en/doc/privacy">Privacy</a> / <a href="https://www.javbus.com/en/doc/usc">2257</a> / <a href="http://www.rtalabel.org/" target="_blank" rel="external nofollow">RTA</a> / <a href="javascript:bootstr(1);" r="">Advertising</a> / <a href="javascript:bootstr(2);">Contact</a> / <a href="javascript:bootstr(3);">Translation</a><br><a href="#formModal" id="adscontact" data-toggle="modal"></a>
+        Copyright © 2013 JavBus. All Rights Reserved. All other trademarks and copyrights are the property of their respective holders. The reviews and comments expressed at or through this website are the opinions of the individual author and do not reflect the opinions or views of JavBus. JavBus is not responsible for the accuracy of any of the information supplied here.</p>
+	</div>
+</footer>
+<div class="visible-xs-block footer-bar-placeholder"></div>
+
+<script language="javascript">
+    function bootstr(type){
+    	ads = "Advertising";
+    	contact = "Contact";
+    	translate = "Translation";
+    	$("#adstype").val(type);
+    	if(type==1){
+    		$("#contactModalLab").html(ads);
+    		$("#qqskype").show();
+    		$("#transinfo").hide();
+    		$("#translanguage").hide();
+    		$("#mailcontent").show();		
+    	}else if(type==2){
+    		$("#contactModalLab").html(contact);
+    		$("#qqskype").show();
+    		$("#transinfo").hide();
+    		$("#translanguage").hide();
+    		$("#mailcontent").show();
+    	}else if(type==3){
+    		$("#contactModalLab").html(translate);
+    		$("#qqskype").hide();
+    		$("#transinfo").show();
+    		$("#translanguage").show();
+    		$("#mailcontent").hide();
+    	}
+    	$("#adscontact").trigger("click");
+		getverifycode();    	
+    };
+    function getverifycode(){
+       $('#verify').attr("src","/post/verify?"+Math.random()*10000);
+    };
+    function IsMail(mail){
+     var remail= /^([a-zA-Z0-9_-])+(\.)?([a-zA-Z0-9_-])+@([a-zA-Z0-9_-])+(.[a-zA-Z0-9_-])+/;
+     return(remail.test(mail));
+    };
+    function checkform(){
+    	var post = true; 
+      if($("#verifycode").val().length!=5){
+    	  	alert("Wrong Verification Code!") 
+    		$("#verifycode").focus(); 
+    		post = false;
+    	  }
+      if($("#contact").val().length>255){
+    	  	alert("Your QQ/Skype is too long!") 
+    		$("#contact").focus(); 
+    		post = false;
+    	  }
+      
+      if(!IsMail($("#mail").val())){
+    	alert("Please Enter Correct Email Address!") 
+     	$("#mail").focus(); 
+        post = false;
+      }
+      
+      if($("#intention").val().length>25500){
+    	  	alert("Too many words in contents!") 
+    		$("#intention").focus(); 
+    		post = false;
+    	  }
+    	  
+      if($("#trans").val().length>255){
+    	  	alert("Too many words in your language textbox!") 
+    		$("#intention").focus(); 
+    		post = false;
+    	  }	  
+      if(post== true){
+    	  $("#modalclose").trigger("click");
+    	  $("#postform").attr("action", "/post/contact");
+    	  $("#postform").submit();
+    	}
+      return post;
+    };
+</script>
+
+<script>
+$("#showmag,#cellshowmag,#resultshowmag").click(function(){
+	$.cookie("existmag", "mag",{expires:365,path:'/'}); 
+	location.reload() 
+});
+
+$("#showall,#cellshowall,#resultshowall").click(function(){
+	$.cookie("existmag", "all",{expires:365,path:'/'}); 
+	location.reload() 
+});
+$("#showonline").click(function(){
+	$.cookie("existmag", "online",{expires:365,path:'/'}); 
+	location.reload() 
+});
+$(".info .mypointer").click(function(){
+	var obj = $(this);
+	var code = obj.attr('value');
+	var token = $("#token").val();
+	var e = "../ajax/addfavorite.php?code=" + encodeURIComponent(code) + "&token=" + encodeURIComponent(token) + "&floor=" + Math.floor(Math.random() * 1e3 + 1);
+    $.ajax({
+        url: e,
+        type: "POST",
+		//dataType: "json",
+		cache:false,
+        success: function (json) {
+			//obj.html(json);
+			ajaxobj=eval("("+json+")");
+			if(ajaxobj.act=='err'){
+				alert('收藏次數達上限，請稍候再試');	
+			}else{
+				obj.html(ajaxobj.act);
+				obj.attr('value',ajaxobj.code);
+				obj.attr('title',ajaxobj.title);
+				$("#token").val(ajaxobj.token);
+			}
+        }
+    });
+});
+
+$(".glyphicon-heart-empty").hover(function () {
+    $(this).removeClass('glyphicon-heart-empty');
+	$(this).addClass('glyphicon-heart');
+}, function () {
+    $(this).removeClass('glyphicon-heart');
+    $(this).addClass('glyphicon-heart-empty');
+});
+$(".glyphicon-heart").hover(function () {
+    $(this).removeClass('glyphicon-heart');
+	$(this).addClass('glyphicon-heart-empty');
+}, function () {
+    $(this).removeClass('glyphicon-heart-empty');
+    $(this).addClass('glyphicon-heart');
+});
+</script>
+
+<!-- Modal Forms -->
+<div id="formModal" class="modal fade" tabindex="-1" role="dialog" aria-labelledby="formModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button id="modalclose" type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">×</span></button>
+                <h4 class="modal-title" id="contactModalLab">Contact</h4>
+            </div>
+            <div class="modal-body">                     
+                <form class="form-horizontal" name="postform" method="post" id="postform" enctype="multipart/form-data">
+                    <fieldset>
+                                                <div class="form-group" id="transinfo">
+                            <div class="alert alert-info alert-common">
+                                <p>For those of who have the ability to translate our website to your language, we need your help!</p>
+                                <p>Here's how it works. Please leave your email address and fill in the language you are going to help us translate below. We will send you an email with our source language text file, so that you could translate it from English to your language.</p>
+                                <p>Your could also help us to correct current translations. Just specify the language you are going to correct, and what you are going to correct in the "Your Language" textbox.</p>
+                            </div>
+                        </div>
+                                                <div class="form-group" id="qqskype">
+                            <label class="col-sm-4 control-label" for="contact">QQ / Skype</label>
+                            <div class="col-sm-6">
+                                <input id="contact" name="contact" type="text" placeholder="" class="form-control">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="col-sm-4 control-label" for="mail">Email</label>
+                            <div class="col-sm-6">
+                                <input id="mail" name="mail" type="text" placeholder="" class="form-control">  
+                            </div>
+                        </div>
+                        <div class="form-group" id="translanguage">
+                            <label class="col-sm-4 control-label" for="trans">Your Language</label>
+                            <div class="col-sm-6">
+                                <input id="trans" name="trans" type="text" placeholder="" class="form-control">  
+                            </div>
+                        </div>
+                        <div class="form-group" id="mailcontent">
+                            <label class="col-sm-4 control-label" for="intention" id="inten-trans">Content</label>
+                            <div class="col-sm-6">                     
+                                <textarea id="intention" name="intention" rows="9" class="form-control"></textarea>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="col-sm-4 control-label" for="verify">Verify</label>
+                            <div class="col-sm-6">                     
+                                <input type="text" id="verifycode" name="verifycode" style="width:50px">
+                                <img id="verify" src="" style="cursor: pointer; vertical-align:middle;" onclick="getverifycode()">
+                            </div>
+                        </div>
+                        <input type="hidden" id="adstype" name="adstype" value="1">
+                    </fieldset>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" button="" class="btn btn-primary" onclick="checkform()">Send</button>  
+                <button type="button" button="" class="btn btn-default" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ////////////////////////////////////////////////// -->
+<style>.overlay .col-xs-6 a {font-size:16px;}</style>
+<div class="overlay overlay-contentscale">
+    <div class="row">
+        <div class="col-xs-12 text-center ptb20">
+                 <div class="input-group col-xs-offset-2 col-xs-8">
+                      <input id="search-input-mobile" type="text" class="form-control" placeholder="Search by ID, Title, Idol">
+                      <span class="input-group-btn">
+                      <button class="btn btn-default" type="submit" onclick="searchs('search-input-mobile')">Search</button>
+                      </span>
+                 </div>
+        </div>             
+        <div class="col-xs-6 text-center"><a href="https://www.javbus.com/en">Censored</a></div>
+        <div class="col-xs-6 text-center"><a href="https://www.javbus.com/en/uncensored">Uncensored</a></div>   
+        <div class="col-xs-6 text-center"><a href="https://www.javbus.com/en/genre">Censored Genre</a></div>
+        <div class="col-xs-6 text-center"><a href="https://www.javbus.com/en/uncensored/genre">Uncensored Genre</a></div>
+        <div class="col-xs-6 text-center"><a href="https://www.javbus.com/en/actresses">Censored JAV Idols</a></div>
+        <div class="col-xs-6 text-center"><a href="https://www.javbus.com/en/uncensored/actresses">Uncensored JAV Idols</a></div>
+		<div class="col-xs-6 text-center"><a href="https://www.javbus.org/en">Western</a></div>
+        <div class="col-xs-6 text-center"><a href="https://www.javbus.com/en/genre/hd">HD</a></div>
+    
+       <div class="col-xs-12 text-center overlay-close">
+          <i class="glyphicon glyphicon-remove"></i>
+       </div>  
+    </div>
+</div>
+
+
+
+<div id="ttvmmyttru" style="border:0;padding:0;margin:0;width:1px;height:1px;display:inline-block;clear:none;position:absolute;left:-1440px;top:2249.7px;"></div><div id="qqwwcqmq44" style="border:0;padding:0;margin:0;width:1px;height:1px;display:inline-block;clear:none;position:absolute;left:-1440px;top:2441.7px;"></div></body></html>

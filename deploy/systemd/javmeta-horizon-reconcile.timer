@@ -1,0 +1,11 @@
+[Unit]
+Description=Check this node's Horizon worker settings every minute
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+Persistent=true
+Unit=javmeta-horizon-reconcile.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,10 @@
+{
+  "source_url": "https://xxx.xcity.jp/avod/list/",
+  "final_url": "https://xxx.xcity.jp/avod/maker/hot/list/?style=simple&num=30",
+  "captured_at": "2026-09-09T04:19:13.836Z",
+  "http_status": 200,
+  "content_hash": "139151738c0807651f4bc4b6dbe122cf7ca98cfc0343944982278ab2bc7b1f09",
+  "target_type": "listing",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

@@ -6,6 +6,8 @@ namespace App\Services\Search;
 
 use App\Models\Movie;
 use App\Repositories\MovieRepository;
+use App\Services\Dependencies\Dependency;
+use App\Services\Dependencies\DependencyMonitor;
 use Illuminate\Support\Collection;
 
 /**
@@ -18,6 +20,7 @@ final class MovieSearchService
     public function __construct(
         private readonly ElasticsearchIndexer $elasticsearch,
         private readonly MovieRepository $movies,
+        private readonly DependencyMonitor $dependencies,
     ) {}
 
     /**
@@ -29,13 +32,19 @@ final class MovieSearchService
     {
         $q = $filters['q'] ?? null;
 
-        if (! app()->environment('testing') && is_string($q) && trim($q) !== '') {
+        if (
+            (bool) config('elasticsearch.enabled', true)
+            && $this->canUseElasticsearch($filters, $sort, $cursor)
+            && is_string($q)
+            && trim($q) !== ''
+            && $this->dependencies->isAvailable(Dependency::Elasticsearch)
+        ) {
             $uuids = $this->elasticsearch->searchMovieUuids(trim($q), min(100, max($perPage * 5, $perPage)));
             if ($uuids !== []) {
                 $pageUuids = array_slice($uuids, 0, $perPage);
-                $byUuid = Movie::query()
+                $byUuid = app(MovieRepository::class)->modelQuery(Movie::class)
                     ->whereIn('uuid', $pageUuids)
-                    ->with(['genres', 'performers.aliases', 'media', 'codes'])
+                    ->with(['genres', 'performers.aliases', 'performers.sources', 'media', 'codes'])
                     ->get()
                     ->keyBy('uuid');
 
@@ -62,5 +71,80 @@ final class MovieSearchService
         }
 
         return $this->movies->search($filters, $sort, $cursor, $perPage);
+    }
+
+    /**
+     * Accurate filtered total from the Postgres SoR (no items, no ES cap).
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    public function count(array $filters): int
+    {
+        return $this->movies->countFiltered($filters);
+    }
+
+    /**
+     * Natural-language semantic search: embed the query, kNN over ES vectors,
+     * hydrate uuids from Postgres. Falls back to keyword search when the
+     * embedder or ES vectors are unavailable.
+     *
+     * @return array{items: Collection<int, Movie>, total: int, has_more: bool, last_id: int|null, last_sort: mixed, sort: string}
+     */
+    public function semanticSearch(string $query, int $perPage, ?array $prefetchedUuids = null): array
+    {
+        if (
+            ! (bool) config('elasticsearch.enabled', true)
+            || app()->environment('testing')
+            || ! $this->dependencies->isAvailable(Dependency::Elasticsearch)
+            || ! $this->dependencies->isAvailable(Dependency::Embedder)
+        ) {
+            return $this->movies->search(['q' => $query], 'relevance', null, $perPage);
+        }
+
+        $uuids = $prefetchedUuids ?? $this->elasticsearch->semanticMovieUuids($query, min(100, max($perPage * 5, $perPage)));
+        if ($uuids !== []) {
+            $pageUuids = array_slice($uuids, 0, $perPage);
+            $byUuid = app(MovieRepository::class)->modelQuery(Movie::class)
+                ->whereIn('uuid', $pageUuids)
+                    ->with(['genres', 'performers.aliases', 'performers.sources', 'media', 'codes'])
+                ->get()
+                ->keyBy('uuid');
+
+            $ordered = collect($pageUuids)
+                ->map(static fn(string $uuid): ?Movie => $byUuid->get($uuid))
+                ->filter(static fn($movie): bool => $movie instanceof Movie)
+                ->values();
+
+            if ($ordered->isNotEmpty()) {
+                /** @var Movie $last */
+                $last = $ordered->last();
+
+                return [
+                    'items' => $ordered,
+                    'total' => count($uuids),
+                    'has_more' => count($uuids) > $perPage,
+                    'last_id' => $last->id,
+                    'last_sort' => null,
+                    'sort' => 'relevance',
+                ];
+            }
+        }
+
+        return $this->movies->search(['q' => $query], 'relevance', null, $perPage);
+    }
+
+    /**
+     * Elasticsearch currently only supports the free-text relevance path.
+     * Filtered, sorted or cursor-paginated lookups must use the Postgres SoR.
+     *
+     * @param  array<string, mixed>  $filters
+     */
+    private function canUseElasticsearch(array $filters, string $sort, ?array $cursor): bool
+    {
+        if (app()->environment('testing') || $sort !== 'relevance' || $cursor !== null) {
+            return false;
+        }
+
+        return array_diff(array_keys($filters), ['q']) === [];
     }
 }

@@ -15,6 +15,6 @@ class SourceFactory extends Factory
     /** @return array<string, mixed> */
     public function definition(): array
     {
-        return ['slug' => fake()->unique()->slug(2), 'name' => fake()->company(), 'base_url' => fake()->url(), 'enabled' => true, 'priority' => fake()->numberBetween(1, 100), 'needs_proxy' => false, 'gap_seconds_default' => fake()->randomFloat(2, 10, 60), 'gap_seconds_min' => fake()->randomFloat(2, 5, 10), 'gap_seconds_max' => fake()->randomFloat(2, 60, 120), 'gap_seconds_current' => fake()->randomFloat(2, 10, 60), 'consecutive_failures' => 0, 'circuit_state' => Source::CIRCUIT_CLOSED, 'circuit_opened_at' => null, 'last_success_at' => null, 'last_error_at' => null, 'last_error' => null, 'soft404_markers' => null];
+        return ['slug' => fake()->unique()->slug(2), 'name' => fake()->company(), 'base_url' => fake()->url(), 'enabled' => true, 'priority' => fake()->numberBetween(1, 100), 'needs_proxy' => false, 'gap_seconds_default' => fake()->randomFloat(2, 10, 60), 'gap_seconds_min' => fake()->randomFloat(2, 5, 10), 'gap_seconds_max' => fake()->randomFloat(2, 60, 120), 'gap_seconds_current' => fake()->randomFloat(2, 10, 60), 'last_success_at' => null, 'last_error_at' => null, 'last_error' => null];
     }
 }

@@ -1,0 +1,10 @@
+{
+  "source_url": "https://www.javbus.com/en/NAMH-074",
+  "final_url": "https://www.javbus.com/en/NAMH-074",
+  "captured_at": "2026-09-09T04:09:54.696Z",
+  "http_status": 200,
+  "content_hash": "fac3af9a9efd6da4caa6edd350e2efdd1640e8f35aab37e0a7a08efacdb79532",
+  "target_type": "detail",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

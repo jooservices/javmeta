@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Import observability definitions (dashboards, alert rules) into the shared OpenObserve with the
+# javmeta_test / javmeta_wt<id> stream prefix, using the shared PHP runtime.
+#   docker/ci/observability-import-shared [--dry-run|--strict]
+#   JAVMETA_SEED_STREAMS=1 docker/ci/observability-import-shared   # seed metric streams first
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+exec "$root/docker/dev/shared-run" --mode "${JAVMETA_MODE:-test}" -- bash -lc '
+set -euo pipefail
+if [[ "${JAVMETA_SEED_STREAMS:-0}" == "1" ]]; then
+  php artisan migrate --force --no-interaction >/dev/null
+  php artisan crawler:sync-sources >/dev/null
+  php artisan javmeta:obs-publish-metrics
+fi
+php artisan observability:import "$@"' bash "$@"

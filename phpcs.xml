@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<ruleset name="JOOservices JAVMeta">
+    <description>PHP_CodeSniffer rules. Pint has priority for formatting.</description>
+    <rule ref="PSR12">
+        <!-- Pint is the primary formatter; these spacing rules conflict with Pint's output. -->
+        <exclude name="PSR12.ControlStructures.ControlStructureSpacing.CloseParenthesisLine"/>
+        <exclude name="PSR12.ControlStructures.ControlStructureSpacing.FirstExpressionLine"/>
+        <exclude name="PSR12.ControlStructures.ControlStructureSpacing.LineIndent"/>
+        <exclude name="PSR12.Files.FileHeader.IncorrectOrder"/>
+        <exclude name="PSR12.Files.FileHeader.SpacingAfterDocblockBlock"/>
+        <exclude name="PSR12.Traits.UseDeclaration.NoBlankLineAfterUse"/>
+        <exclude name="PSR2.Classes.ClassDeclaration.OpenBraceNewLine"/>
+        <exclude name="Squiz.Functions.MultiLineFunctionDeclaration.BraceOnSameLine"/>
+        <exclude name="Squiz.WhiteSpace.ScopeClosingBrace.ContentBefore"/>
+    </rule>
+    <rule ref="Generic.Files.LineLength">
+        <properties>
+            <property name="lineLimit" value="120"/>
+        </properties>
+    </rule>
+    <rule ref="PSR1.Methods.CamelCapsMethodName">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <file>app</file>
+    <file>config</file>
+    <file>database</file>
+    <file>routes</file>
+    <file>tests</file>
+    <arg value="sp"/>
+    <arg name="colors"/>
+    <arg name="warning-severity" value="0"/>
+</ruleset>

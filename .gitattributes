@@ -9,3 +9,6 @@
 /.github export-ignore
 CHANGELOG.md export-ignore
 .styleci.yml export-ignore
+
+# Live-captured fixtures must stay byte-exact (some pages use CRLF).
+/tests/Fixtures/crawlerx/** -text

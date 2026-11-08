@@ -9,6 +9,7 @@ use App\Models\PerformerAlias;
 use App\Models\Movie;
 use App\Models\MoviePerformer;
 use App\Services\Auth\ApiKeyService;
+use Illuminate\Support\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -99,6 +100,115 @@ final class PerformerControllerTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('data.0.id', $performer->id)
             ->assertJsonPath('data.0.aliases.0', $alias);
+    }
+
+    public function test_search_matches_bio_text(): void
+    {
+        $bioTerm = fake()->unique()->words(2, true);
+        $performer = Performer::factory()->create(['bio_text' => "Profile {$bioTerm}"]);
+
+        $response = $this->getJson('/api/v1/performers?q=' . urlencode($bioTerm), [
+            'X-API-Key' => $this->apiKey,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.0.id', $performer->id);
+    }
+
+    public function test_search_filters_age_blood_type_and_hip(): void
+    {
+        Carbon::setTestNow('2026-09-30');
+        $matching = Performer::factory()->create([
+            'birth_date' => '1996-01-01',
+            'blood_type' => 'A',
+            'hip' => 92,
+        ]);
+        Performer::factory()->create([
+            'birth_date' => '1980-01-01',
+            'blood_type' => 'A',
+            'hip' => 92,
+        ]);
+        Performer::factory()->create([
+            'birth_date' => '1996-01-01',
+            'blood_type' => 'B',
+            'hip' => 92,
+        ]);
+
+        $response = $this->getJson('/api/v1/performers?age_min=25&age_max=35&blood_type=A&hip_min=90&hip_max=95', [
+            'X-API-Key' => $this->apiKey,
+        ]);
+
+        Carbon::setTestNow();
+
+        $response->assertOk()
+            ->assertJsonPath('meta.pagination.total', 1)
+            ->assertJsonPath('data.0.id', $matching->id);
+    }
+
+    public function test_cursor_pagination_returns_non_overlapping_performer_pages(): void
+    {
+        $performers = Performer::factory()->count(5)->create();
+
+        $pageOne = $this->getJson('/api/v1/performers?sort=name&per_page=2', [
+            'X-API-Key' => $this->apiKey,
+        ]);
+        $pageOne->assertOk()
+            ->assertJsonPath('meta.pagination.has_more', true)
+            ->assertJsonStructure(['meta' => ['pagination' => ['next_cursor']]]);
+
+        $cursor = $pageOne->json('meta.pagination.next_cursor');
+        $pageTwo = $this->getJson('/api/v1/performers?sort=name&per_page=2&cursor=' . urlencode((string) $cursor), [
+            'X-API-Key' => $this->apiKey,
+        ]);
+        $pageTwo->assertOk();
+
+        $pageOneIds = collect($pageOne->json('data'))->pluck('id')->all();
+        $pageTwoIds = collect($pageTwo->json('data'))->pluck('id')->all();
+
+        $this->assertCount(2, $pageOneIds);
+        $this->assertCount(2, $pageTwoIds);
+        $this->assertSame([], array_intersect($pageOneIds, $pageTwoIds));
+        $this->assertSame(5, $pageTwo->json('meta.pagination.total'));
+        $this->assertCount(5, $performers);
+    }
+
+    public function test_cursor_with_changed_performer_sort_returns_invalid_filter(): void
+    {
+        Performer::factory()->count(3)->create();
+
+        $pageOne = $this->getJson('/api/v1/performers?sort=name&per_page=2', [
+            'X-API-Key' => $this->apiKey,
+        ]);
+        $cursor = $pageOne->json('meta.pagination.next_cursor');
+
+        $response = $this->getJson('/api/v1/performers?sort=updated_at&per_page=2&cursor=' . urlencode((string) $cursor), [
+            'X-API-Key' => $this->apiKey,
+        ]);
+
+        $response->assertBadRequest()
+            ->assertJsonPath('type', 'invalid_filter');
+    }
+
+    public function test_show_accepts_performer_uuid(): void
+    {
+        $performer = Performer::factory()->create();
+
+        $response = $this->getJson('/api/v1/performers/' . $performer->uuid, [
+            'X-API-Key' => $this->apiKey,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.uuid', $performer->uuid);
+    }
+
+    public function test_reversed_profile_range_returns_invalid_filter(): void
+    {
+        $response = $this->getJson('/api/v1/performers?hip_min=100&hip_max=90', [
+            'X-API-Key' => $this->apiKey,
+        ]);
+
+        $response->assertBadRequest()
+            ->assertJsonPath('type', 'invalid_filter');
     }
 
     public function test_same_name_different_sources_remain_separate_ac52(): void
@@ -314,5 +424,19 @@ final class PerformerControllerTest extends TestCase
 
         $response->assertBadRequest()
             ->assertJsonPath('type', 'invalid_filter');
+    }
+    public function test_count_sort_cursor_page_two_keeps_ties_and_zero_counts(): void
+    {
+        $performers = Performer::factory()->count(4)->create(['canonical_performer_id' => null]);
+        foreach ($performers->take(2) as $performer) {
+            MoviePerformer::factory()->create(['movie_id' => Movie::factory()->create()->id, 'performer_id' => $performer->id]);
+        }
+        $headers = ['X-API-Key' => $this->apiKey];
+        $first = $this->getJson('/api/v1/performers?sort=linked_title_count&per_page=1', $headers)->assertOk();
+        $cursor = $first->json('meta.pagination.next_cursor');
+        $second = $this->getJson('/api/v1/performers?sort=linked_title_count&per_page=1&cursor=' . urlencode($cursor), $headers)->assertOk();
+        $third = $this->getJson('/api/v1/performers?sort=linked_title_count&per_page=2&cursor=' . urlencode($second->json('meta.pagination.next_cursor')), $headers)->assertOk();
+        $this->assertSame([$performers[1]->id, $performers[0]->id, $performers[3]->id, $performers[2]->id], array_merge(array_column($first->json('data'), 'id'), array_column($second->json('data'), 'id'), array_column($third->json('data'), 'id')));
+        $third->assertJsonPath('meta.pagination.has_more', false)->assertJsonPath('meta.pagination.total', 4);
     }
 }

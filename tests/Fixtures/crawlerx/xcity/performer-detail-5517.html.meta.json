@@ -1,0 +1,10 @@
+{
+  "source_url": "https://xxx.xcity.jp/idol/detail/5517/",
+  "final_url": "https://xxx.xcity.jp/avod/maker/hot/list/?style=simple&num=30",
+  "captured_at": "2026-09-09T04:37:32.564Z",
+  "http_status": 200,
+  "content_hash": "2e5f45a64e640210060ad0477c4db937141d9c547a454d96d25a7c5f2dc8cade",
+  "target_type": "performer_detail",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

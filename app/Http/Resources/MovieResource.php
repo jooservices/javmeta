@@ -6,11 +6,13 @@ namespace App\Http\Resources;
 
 use App\Data\Api\MovieResourceData;
 use App\Http\Resources\Concerns\FormatsResourceValues;
+use App\Http\Resources\Concerns\FormatsPhotos;
 use App\Models\Movie;
 use App\Models\MovieCredit;
 use App\Models\MovieMedia;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Collection;
 
 /**
  * Full movie detail for GET /movies/{code}.
@@ -19,6 +21,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 final class MovieResource extends JsonResource
 {
     use FormatsResourceValues;
+    use FormatsPhotos;
 
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
@@ -64,6 +67,11 @@ final class MovieResource extends JsonResource
             'magnets' => $this->media($resource, MovieMedia::KIND_MAGNET),
             'hls_stream_urls' => $this->media($resource, MovieMedia::KIND_HLS),
             'gallery' => $this->media($resource, MovieMedia::KIND_GALLERY),
+            'photos' => $this->photos(
+                $resource->relationLoaded('media') ? $resource->media : new Collection(),
+                [MovieMedia::KIND_SAMPLE],
+                MovieMedia::KIND_GALLERY,
+            )->toArray(),
             'crawled_at' => $this->dateTimeString($resource->getAttribute('crawled_at')),
             'delisted_at' => $this->dateTimeString($resource->getAttribute('delisted_at')),
             'needs_review' => (bool) $resource->needs_review,
@@ -100,7 +108,7 @@ final class MovieResource extends JsonResource
             ->all();
     }
 
-    /** @return list<array{url: string, crawled_at: string|null}> */
+    /** @return list<array{url: string, crawled_at: string|null, thumbnail_url?: string|null}> */
     private function media(Movie $movie, string $kind): array
     {
         if (! $movie->relationLoaded('media')) {
@@ -109,10 +117,21 @@ final class MovieResource extends JsonResource
 
         return $movie->media
             ->where('kind', $kind)
-            ->map(fn($media): array => [
-                'url' => $media->url,
-                'crawled_at' => $this->dateTimeString($media->getAttribute('crawled_at')),
-            ])
+            ->map(function ($media) use ($kind): array {
+                $item = [
+                    'url' => $media->url,
+                    'crawled_at' => $this->dateTimeString($media->getAttribute('crawled_at')),
+                ];
+
+                if ($kind === MovieMedia::KIND_GALLERY) {
+                    $meta = $media->getAttribute('meta');
+                    $item['thumbnail_url'] = is_array($meta) && is_string($meta['thumbnail_url'] ?? null)
+                        ? $meta['thumbnail_url']
+                        : null;
+                }
+
+                return $item;
+            })
             ->values()
             ->all();
     }

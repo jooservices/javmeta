@@ -1,0 +1,10 @@
+{
+  "source_url": "https://en.caribbeancom.com/eng/moviepages/080826-001/index.html",
+  "final_url": "https://en.caribbeancom.com/eng/moviepages/080826-001/index.html",
+  "captured_at": "2026-09-09T04:06:11.577Z",
+  "http_status": 200,
+  "content_hash": "ad426a2197bb6a189937b6a30e9fe2642406d9a1893276aff285e62951c58a06",
+  "target_type": "detail",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

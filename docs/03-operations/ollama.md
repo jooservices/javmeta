@@ -1,0 +1,15 @@
+# Ollama (on the Windows host) for JavMeta on WSL
+
+WSL and Windows are two different environments. Ollama runs on **Windows** (port 11434, GPU RTX 4070 Ti Super); JavMeta runs in **WSL**. In WSL's mirrored network mode `127.0.0.1` inside WSL is not reliably the Windows loopback: tested 2026-10-24, every Windows listener (135, 445, 3389, 5040 and 11434) times out from WSL over `127.0.0.1`, and `192.168.2.10` (the shared LAN address) is answered by WSL itself, so it refuses. The Hyper-V firewall (a separate firewall from Windows Defender Firewall) blocks traffic from the WSL VM to the host, and turning Windows Defender Firewall off does not change that.
+
+What works, and is used: the gatekeeper (HAProxy, 192.168.10.4) reaches Windows Ollama on the LAN address and listens for WSL on `192.168.10.4:11434`, only for `192.168.2.10` and `192.168.10.0/24` (frontend `ollama-lan` in `/etc/haproxy/haproxy.cfg`, backup `haproxy.cfg.bak-jav-cc-20261024T153147Z`). So JavMeta's setting `ai.ollama_url` is `http://192.168.10.4:11434`. The public name `ai-ollama.jooservices.com` (basic auth) is for use from outside.
+
+If the Hyper-V firewall is opened later (`Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow` on Windows), `http://127.0.0.1:11434` would work from WSL too; nothing needs to change in JavMeta except the setting.
+
+Check it: `php artisan ai:check` (models installed, vector size). Models used (settings in the database): chat `qwen2.5:7b` (reads typed questions), embeddings `nomic-embed-text` when the provider is switched with `php artisan search:switch-embeddings ollama`. A cold model load takes 10 to 40 seconds, so a typed question waits at most two seconds for Ollama; the rules answer when the model misses that deadline. The setting `ai.nl_timeout_seconds` accepts 1 or 2 seconds and older larger values are clamped to 2, `ai.ollama_keep_alive` (30m) keeps the model loaded and `ai:warm` (every 15 minutes) reloads it before it expires.
+
+## Natural-language query parsing
+
+POST /api/v1/search/parse accepts a JSON body with q (2–300 characters) and requires an API key with the movies scope. The response data.keywords is the text remainder, data.filters contains only API filter fields, data.explanations gives a short explanation for each returned field, and data.by reports rules or ollama. The local Ollama request uses the fixed prompt and JSON schema in QueryInterpreter; its response is checked against values mentioned in the question and the current catalog. Queries stay on the configured local Ollama. Invalid or ungrounded model values are discarded; unknown words remain in the text remainder. Identical questions are cached for javmeta_ai.nl_cache_seconds (60 seconds by default).
+
+The opt-in composer test:nl evaluation runs 40 English, Vietnamese and Japanese examples against the configured local model, prints field-level accuracy, and requires at least 80%. Set NL_OLLAMA_URL to the local gatekeeper endpoint before running it; the normal CI suite uses faked Ollama responses and does not call a model.

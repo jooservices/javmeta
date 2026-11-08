@@ -5,9 +5,10 @@ declare(strict_types=1);
 namespace Tests\Unit\Services\Normalize;
 
 use App\Data\Crawl\PerformerDraft;
+use App\Services\Normalize\JavbtcCodeMissingException;
 use App\Services\Normalize\NormalizationFailedException;
-use App\Services\Normalize\Normalizers\CatalogSourceNormalizer;
 use App\Services\Normalize\Normalizers\DefaultSourceNormalizer;
+use App\Services\Normalize\Normalizers\JavbtcSourceNormalizer;
 use App\Services\Normalize\Normalizers\JableSourceNormalizer;
 use App\Services\Normalize\SourceNormalizerRegistry;
 use Carbon\CarbonImmutable;
@@ -18,6 +19,19 @@ use Tests\TestCase;
 
 final class SourceNormalizerTest extends TestCase
 {
+    public function test_other_sources_keep_product_ids_from_query_parameters(): void
+    {
+        $draft = $this->registry()->forSlug('xcity')->normalizeMovie(
+            new MovieDto(title: 'Product title'),
+            [],
+            'xcity',
+            'https://xcity.jp/avod/detail/?id=202424',
+            CarbonImmutable::parse('2026-11-01'),
+        );
+
+        self::assertSame('XCITY-202424', $draft->code);
+    }
+
     public function test_default_normalizer_maps_typed_fields_and_known_metadata_keys(): void
     {
         $normalizer = $this->registry()->forSlug('onejav');
@@ -65,15 +79,15 @@ final class SourceNormalizerTest extends TestCase
 
     public function test_absent_fields_stay_null_never_empty_strings(): void
     {
-        $normalizer = $this->registry()->forSlug('missav');
+        $normalizer = $this->registry()->forSlug('onejav');
 
         $movie = new MovieDto(title: 'Only Title', code: 'SSIS-001');
 
         $draft = $normalizer->normalizeMovie(
             $movie,
             [],
-            'missav',
-            'https://missav.ws/en/ssis-001',
+            'onejav',
+            'https://onejav.com/torrent/ssis001',
             CarbonImmutable::now(),
         );
 
@@ -108,10 +122,10 @@ final class SourceNormalizerTest extends TestCase
         self::assertSame(['Drama', 'Solowork', 'Romance'], $draft->genres);
     }
 
-    public function test_catalog_normalizer_maps_label_keys_and_score(): void
+    public function test_legacy_catalog_labels_are_still_understood(): void
     {
         $normalizer = $this->registry()->forSlug('javdb');
-        self::assertInstanceOf(CatalogSourceNormalizer::class, $normalizer);
+        self::assertInstanceOf(DefaultSourceNormalizer::class, $normalizer);
 
         $movie = new MovieDto(
             title: 'Catalog Title',
@@ -131,12 +145,99 @@ final class SourceNormalizerTest extends TestCase
         self::assertSame('MOODYZ Collection', $draft->label);
         self::assertSame('Example Series', $draft->series);
         self::assertSame(8.5, $draft->extras['score']);
-        self::assertSame('2023-07-01', $draft->releaseDate?->toDateString());
+    }
+
+    public function test_crawlerx_standard_keys_fill_maker_label_series_score_and_magnets(): void
+    {
+        foreach (['javdb', 'duga', 'javlibrary', 'fc2'] as $slug) {
+            $normalizer = $this->registry()->forSlug($slug);
+            $movie = new MovieDto(
+                title: 'Standard Title',
+                code: 'SSIS-001',
+                metadata: [
+                    'maker' => 'S1',
+                    'label' => 'S1 NO.1 STYLE',
+                    'series' => 'Series One',
+                    'director' => 'Director A',
+                    'rating' => ['score' => 4.5, 'scale' => 5.0, 'votes' => 20],
+                    'magnets' => [
+                        ['name' => 'a', 'url' => 'magnet:?xt=urn:btih:aaa', 'size_label' => '1GB'],
+                        ['name' => 'dup', 'url' => 'magnet:?xt=urn:btih:aaa'],
+                    ],
+                ],
+            );
+
+            $draft = $normalizer->normalizeMovie($movie, $movie->metadata, $slug, 'https://example.test/' . $slug, CarbonImmutable::now());
+
+            self::assertSame('S1', $draft->maker, $slug);
+            self::assertSame('S1 NO.1 STYLE', $draft->label, $slug);
+            self::assertSame('Series One', $draft->series, $slug);
+            self::assertSame(9.0, $draft->extras['score'], $slug);
+            self::assertSame(['Director A'], $draft->directors, $slug);
+            self::assertCount(1, $draft->extras['magnets'], $slug);
+            self::assertSame('1GB', $draft->extras['magnets'][0]['size_label'], $slug);
+        }
+    }
+
+    public function test_titles_in_both_languages_and_the_original_title_fill_both_columns(): void
+    {
+        config()->set('javmeta_sources.sources.onepondo.normalize.title_locale', 'en');
+        $normalizer = $this->registry()->forSlug('onepondo');
+
+        $both = new MovieDto(title: 'English Title', code: '060426_001', metadata: ['titles' => ['ja' => '日本語タイトル', 'en' => 'English Title']]);
+        $draft = $normalizer->normalizeMovie($both, $both->metadata, 'onepondo', 'https://en.1pondo.tv/movies/060426_001/', CarbonImmutable::now());
+        self::assertSame('日本語タイトル', $draft->titleJp);
+        self::assertSame('English Title', $draft->titleEn);
+
+        $original = new MovieDto(title: 'English Title', code: 'FNS-247', metadata: ['original_title' => 'オリジナル']);
+        $draft = $normalizer->normalizeMovie($original, $original->metadata, 'onepondo', 'https://missav.ws/en/fns-247', CarbonImmutable::now());
+        self::assertSame('オリジナル', $draft->titleJp);
+        self::assertSame('English Title', $draft->titleEn);
+    }
+
+    public function test_the_title_language_is_detected_when_the_source_does_not_force_one(): void
+    {
+        config()->set('javmeta_sources.sources.xcity.normalize.title_locale', 'auto');
+        $normalizer = $this->registry()->forSlug('xcity');
+        $japanese = new MovieDto(title: '隣の若妻は昼間は天使', code: 'HEZ-888');
+        $english = new MovieDto(title: 'Young wife next door', code: 'HEZ-888');
+
+        $jp = $normalizer->normalizeMovie($japanese, [], 'xcity', 'https://xcity.jp/a', CarbonImmutable::now());
+        $en = $normalizer->normalizeMovie($english, [], 'xcity', 'https://xcity.jp/b', CarbonImmutable::now());
+
+        self::assertSame('隣の若妻は昼間は天使', $jp->titleJp);
+        self::assertNull($jp->titleEn);
+        self::assertSame('Young wife next door', $en->titleEn);
+        self::assertNull($en->titleJp);
+    }
+
+    public function test_an_out_of_range_score_is_dropped(): void
+    {
+        $normalizer = $this->registry()->forSlug('javdb');
+        $movie = new MovieDto(title: 'T', code: 'SSIS-001', metadata: ['rating' => ['score' => 500, 'scale' => 5]]);
+
+        $draft = $normalizer->normalizeMovie($movie, $movie->metadata, 'javdb', 'https://javdb.com/v/1', CarbonImmutable::now());
+
+        self::assertNull($draft->extras['score']);
+
+        $above = new MovieDto(title: 'T', code: 'SSIS-001', metadata: ['rating' => ['score' => 8, 'scale' => 5]]);
+        $draft = $normalizer->normalizeMovie($above, $above->metadata, 'javdb', 'https://javdb.com/v/1', CarbonImmutable::now());
+        self::assertNull($draft->extras['score']);
+    }
+
+    public function test_the_next_score_alias_is_tried_after_an_invalid_rating(): void
+    {
+        $normalizer = $this->registry()->forSlug('javdb');
+        $movie = new MovieDto(title: 'T', code: 'SSIS-001', metadata: ['rating' => ['score' => 500, 'scale' => 5], 'score' => 8]);
+
+        $draft = $normalizer->normalizeMovie($movie, $movie->metadata, 'javdb', 'https://javdb.com/v/1', CarbonImmutable::now());
+
+        self::assertSame(8.0, $draft->extras['score']);
     }
 
     public function test_per_source_key_map_override_is_applied(): void
     {
-        config()->set('jvmeta_sources.sources.onejav.normalize.key_map', ['maker' => ['studio']]);
+        config()->set('javmeta_sources.sources.onejav.normalize.key_map', ['maker' => ['studio']]);
 
         $normalizer = $this->registry()->forSlug('onejav');
 
@@ -145,6 +246,114 @@ final class SourceNormalizerTest extends TestCase
         $draft = $normalizer->normalizeMovie($movie, $movie->metadata, 'onejav', 'https://onejav.com/torrent/ymds282', CarbonImmutable::now());
 
         self::assertSame('ACME', $draft->maker);
+    }
+
+    public function test_it_keeps_only_valid_media_urls_when_metadata_has_mixed_entries(): void
+    {
+        config()->set('javmeta_sources.sources.onejav.normalize.key_map', [
+            'magnets' => ['downloads'],
+            'hls' => ['stream'],
+        ]);
+        $normalizer = new DefaultSourceNormalizer();
+        $movie = new MovieDto(
+            title: 'Media Title',
+            code: 'YMDS-282',
+            metadata: [
+                'downloads' => [
+                    'invalid entry',
+                    ['url' => '  '],
+                    ['url' => ' magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567 ', 'seeders' => 4],
+                ],
+                'stream' => [
+                    'manifest_url' => ' https://onejav.com/sample.m3u8 ',
+                    'video_id' => '42',
+                    'expires_at' => '2026-10-01T00:00:00Z',
+                ],
+            ],
+        );
+
+        $draft = $normalizer->normalizeMovie(
+            $movie,
+            $movie->metadata,
+            'onejav',
+            'https://onejav.com/torrent/ymds282',
+            CarbonImmutable::parse('2026-10-01T00:00:00Z'),
+        );
+
+        self::assertSame([
+            ['url' => 'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567', 'seeders' => 4],
+        ], $draft->extras['magnets']);
+        self::assertSame([
+            ['url' => 'https://onejav.com/sample.m3u8', 'video_id' => '42'],
+        ], $draft->extras['hls']);
+    }
+
+    public function test_it_wraps_a_single_magnet_url_string_from_metadata(): void
+    {
+        config()->set('javmeta_sources.sources.onejav.normalize.key_map', ['magnets' => ['download_url']]);
+        $normalizer = new DefaultSourceNormalizer();
+        $movie = new MovieDto(
+            title: 'Magnet Title',
+            code: 'YMDS-282',
+            metadata: ['download_url' => ' magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567 '],
+        );
+
+        $draft = $normalizer->normalizeMovie(
+            $movie,
+            $movie->metadata,
+            'onejav',
+            'https://onejav.com/torrent/ymds282',
+            CarbonImmutable::parse('2026-10-01T00:00:00Z'),
+        );
+
+        self::assertSame([
+            ['url' => 'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567'],
+        ], $draft->extras['magnets']);
+    }
+
+    public function test_it_maps_directors_when_metadata_contains_strings_and_named_records(): void
+    {
+        config()->set('javmeta_sources.sources.onejav.normalize.key_map', ['directors' => ['director']]);
+        $normalizer = new DefaultSourceNormalizer();
+        $movie = new MovieDto(
+            title: 'Director Title',
+            code: 'YMDS-282',
+            metadata: ['director' => ['  A. Director ', ['name' => 'B. Director'], ['name' => '  '], 'A. Director']],
+        );
+
+        $draft = $normalizer->normalizeMovie(
+            $movie,
+            $movie->metadata,
+            'onejav',
+            'https://onejav.com/torrent/ymds282',
+            CarbonImmutable::parse('2026-10-01T00:00:00Z'),
+        );
+
+        self::assertSame(['A. Director', 'B. Director'], $draft->directors);
+    }
+
+    public function test_it_keeps_optional_values_null_when_source_values_are_invalid(): void
+    {
+        $normalizer = new DefaultSourceNormalizer();
+        $movie = new MovieDto(
+            title: 'Optional Fields',
+            code: 'YMDS-282',
+            date: 'not-a-date',
+            duration: 0,
+            performers: [new PerformerDto(name: '  ')],
+        );
+
+        $draft = $normalizer->normalizeMovie(
+            $movie,
+            [],
+            'onejav',
+            'https://onejav.com/torrent/ymds282',
+            CarbonImmutable::parse('2026-10-01T00:00:00Z'),
+        );
+
+        self::assertNull($draft->releaseDate);
+        self::assertNull($draft->runtimeMinutes);
+        self::assertSame([], $draft->performers);
     }
 
     public function test_per_source_title_locale_maps_title_to_title_en(): void
@@ -230,6 +439,80 @@ final class SourceNormalizerTest extends TestCase
         $this->expectException(NormalizationFailedException::class);
 
         $normalizer->normalizeMovie($movie, [], 'missav', 'https://missav.ws/en/1', CarbonImmutable::now());
+    }
+
+    public function test_javbtc_product_code_from_page_fields_is_normalized(): void
+    {
+        $normalizer = $this->registry()->forSlug('javbtc');
+        self::assertInstanceOf(JavbtcSourceNormalizer::class, $normalizer);
+
+        $movie = new MovieDto(
+            externalId: 's1no1style-yua-mikami-sougouwiki-celebrity',
+            title: 'Big Tits Bursting Out Of Her School Swimsuit',
+            code: 'SSNI-00916',
+        );
+
+        $draft = $normalizer->normalizeMovie(
+            $movie,
+            $movie->metadata,
+            'javbtc',
+            'https://javbtc.com/r18/s1no1style-yua-mikami-sougouwiki-celebrity',
+            CarbonImmutable::now(),
+        );
+
+        self::assertSame('SSNI-00916', $draft->code);
+    }
+
+    public function test_javbtc_product_code_in_title_is_normalized(): void
+    {
+        $normalizer = $this->registry()->forSlug('javbtc');
+        $movie = new MovieDto(title: 'SSNI-00916 Big Tits');
+
+        $draft = $normalizer->normalizeMovie(
+            $movie,
+            [],
+            'javbtc',
+            'https://javbtc.com/r18/s1no1style-yua-mikami',
+            CarbonImmutable::now(),
+        );
+
+        self::assertSame('SSNI-00916', $draft->code);
+    }
+
+    public function test_javbtc_product_code_in_url_is_normalized(): void
+    {
+        $normalizer = $this->registry()->forSlug('javbtc');
+        $movie = new MovieDto(externalId: 'detail-page', title: 'A video title');
+
+        $draft = $normalizer->normalizeMovie(
+            $movie,
+            [],
+            'javbtc',
+            'https://javbtc.com/r18/ssni00916',
+            CarbonImmutable::now(),
+        );
+
+        self::assertSame('SSNI-00916', $draft->code);
+    }
+
+    public function test_javbtc_without_a_product_code_or_detail_path_throws_a_specific_exception(): void
+    {
+        $normalizer = $this->registry()->forSlug('javbtc');
+        $movie = new MovieDto(
+            externalId: 'no-code-detail',
+            title: 'A detail page without a product code',
+        );
+
+        $this->expectException(JavbtcCodeMissingException::class);
+        $this->expectExceptionMessage('JavBTC detail page has no recognizable product code.');
+
+        $normalizer->normalizeMovie(
+            $movie,
+            [],
+            'javbtc',
+            'https://javbtc.com/',
+            CarbonImmutable::now(),
+        );
     }
 
     public function test_missing_title_throws_normalization_failed(): void

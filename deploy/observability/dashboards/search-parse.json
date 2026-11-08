@@ -1,0 +1,498 @@
+{
+  "version": 8,
+  "title": "JAVMETA Search parse",
+  "description": "Privacy-safe natural-language parser request rate, cache performance, backend selection and Ollama outcomes.",
+  "tabs": [
+    {
+      "tabId": "default",
+      "name": "Search parse",
+      "panels": [
+        {
+          "id": "search-parse-request-rate",
+          "type": "line",
+          "title": "Parse requests by cache status",
+          "description": "Requests per minute, split between parse-cache hits and misses.",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": "numbers",
+            "base_map": null,
+            "map_view": null
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp, '1 minute') AS \"x_axis_1\", count(*) AS \"y_axis_1\", parse_cache_status AS \"breakdown_1\" FROM \"javmeta_logs\" WHERE event = 'api_usage' AND endpoint = '/api/v1/search/parse' GROUP BY x_axis_1, breakdown_1 ORDER BY x_axis_1",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "javmeta_logs",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "x_axis_1",
+                    "column": "_timestamp",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Requests",
+                    "alias": "y_axis_1",
+                    "column": "_timestamp",
+                    "color": "#5960b2",
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "z": [],
+                "breakdown": [
+                  {
+                    "label": "Cache status",
+                    "alias": "breakdown_1",
+                    "column": "parse_cache_status",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "line",
+                "weight_fixed": 1.0,
+                "limit": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 0,
+            "w": 96,
+            "h": 18,
+            "i": 0
+          }
+        },
+        {
+          "id": "search-parse-p95-by-cache",
+          "type": "bar",
+          "title": "Parse p95 latency by cache status",
+          "description": "Parse-handler latency in milliseconds; acceptance targets are under 4 seconds for misses and 100 ms for hits.",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": "milliseconds",
+            "base_map": null,
+            "map_view": null
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT parse_cache_status AS \"x_axis_1\", round(approx_percentile_cont(parse_duration_ms, 0.95)) AS \"y_axis_1\" FROM \"javmeta_logs\" WHERE event = 'api_usage' AND endpoint = '/api/v1/search/parse' AND parse_duration_ms IS NOT NULL GROUP BY x_axis_1 ORDER BY x_axis_1",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "javmeta_logs",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Cache status",
+                    "alias": "x_axis_1",
+                    "column": "parse_cache_status",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "p95 ms",
+                    "alias": "y_axis_1",
+                    "column": "parse_duration_ms",
+                    "color": "#5960b2",
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "bar",
+                "weight_fixed": 1.0,
+                "limit": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 0,
+            "w": 96,
+            "h": 18,
+            "i": 1
+          }
+        },
+        {
+          "id": "search-parse-backend-count",
+          "type": "bar",
+          "title": "Parse backend distribution",
+          "description": "Successful request counts by the backend that produced the cached or uncached parse.",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": "numbers",
+            "base_map": null,
+            "map_view": null
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT parse_backend AS \"x_axis_1\", count(*) AS \"y_axis_1\" FROM \"javmeta_logs\" WHERE event = 'api_usage' AND endpoint = '/api/v1/search/parse' AND parse_outcome = 'success' GROUP BY x_axis_1 ORDER BY y_axis_1 DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "javmeta_logs",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Backend",
+                    "alias": "x_axis_1",
+                    "column": "parse_backend",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Requests",
+                    "alias": "y_axis_1",
+                    "column": "_timestamp",
+                    "color": "#53ca53",
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "bar",
+                "weight_fixed": 1.0,
+                "limit": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 18,
+            "w": 96,
+            "h": 18,
+            "i": 2
+          }
+        },
+        {
+          "id": "search-parse-ollama-outcomes",
+          "type": "bar",
+          "title": "Ollama chat outcomes",
+          "description": "Uncached requests by Ollama outcome. Rules-only requests are excluded.",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": "numbers",
+            "base_map": null,
+            "map_view": null
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT ollama_chat_outcome AS \"x_axis_1\", count(*) AS \"y_axis_1\" FROM \"javmeta_logs\" WHERE event = 'api_usage' AND endpoint = '/api/v1/search/parse' AND parse_cache_status = 'miss' AND ollama_chat_outcome != 'not_attempted' GROUP BY x_axis_1 ORDER BY y_axis_1 DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "javmeta_logs",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Ollama outcome",
+                    "alias": "x_axis_1",
+                    "column": "ollama_chat_outcome",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Requests",
+                    "alias": "y_axis_1",
+                    "column": "_timestamp",
+                    "color": "#e0584a",
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "bar",
+                "weight_fixed": 1.0,
+                "limit": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 18,
+            "w": 96,
+            "h": 18,
+            "i": 3
+          }
+        },
+        {
+          "id": "search-parse-ollama-p95",
+          "type": "bar",
+          "title": "Ollama chat p95 latency",
+          "description": "Ollama request latency in milliseconds by outcome, excluding cached and rules-only parses.",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": "milliseconds",
+            "base_map": null,
+            "map_view": null
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT ollama_chat_outcome AS \"x_axis_1\", round(approx_percentile_cont(ollama_chat_duration_ms, 0.95)) AS \"y_axis_1\" FROM \"javmeta_logs\" WHERE event = 'api_usage' AND endpoint = '/api/v1/search/parse' AND parse_cache_status = 'miss' AND ollama_chat_duration_ms IS NOT NULL GROUP BY x_axis_1 ORDER BY y_axis_1 DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "javmeta_logs",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Ollama outcome",
+                    "alias": "x_axis_1",
+                    "column": "ollama_chat_outcome",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "p95 ms",
+                    "alias": "y_axis_1",
+                    "column": "ollama_chat_duration_ms",
+                    "color": "#5960b2",
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "bar",
+                "weight_fixed": 1.0,
+                "limit": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 36,
+            "w": 96,
+            "h": 18,
+            "i": 4
+          }
+        },
+        {
+          "id": "search-parse-fallback-reasons",
+          "type": "bar",
+          "title": "Parse fallback reasons",
+          "description": "Rules-backed parses after Ollama could not provide a usable result.",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": "numbers",
+            "base_map": null,
+            "map_view": null
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT parse_fallback_reason AS \"x_axis_1\", count(*) AS \"y_axis_1\" FROM \"javmeta_logs\" WHERE event = 'api_usage' AND endpoint = '/api/v1/search/parse' AND parse_fallback_reason IS NOT NULL GROUP BY x_axis_1 ORDER BY y_axis_1 DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "javmeta_logs",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Fallback reason",
+                    "alias": "x_axis_1",
+                    "column": "parse_fallback_reason",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Requests",
+                    "alias": "y_axis_1",
+                    "column": "_timestamp",
+                    "color": "#e0584a",
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "bar",
+                "weight_fixed": 1.0,
+                "limit": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 36,
+            "w": 96,
+            "h": 18,
+            "i": 5
+          }
+        },
+        {
+          "id": "search-parse-cache-hit-ratio",
+          "type": "line",
+          "title": "Search parse cache hit ratio",
+          "description": "Percentage of parsed requests served from cache in each minute.",
+          "config": {
+            "show_legends": true,
+            "legends_position": null,
+            "unit": "percent",
+            "base_map": null,
+            "map_view": null
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT histogram(_timestamp, '1 minute') AS \"x_axis_1\", round(100.0 * sum(CASE WHEN parse_cache_status = 'hit' THEN 1 ELSE 0 END) / count(*), 1) AS \"y_axis_1\" FROM \"javmeta_logs\" WHERE event = 'api_usage' AND endpoint = '/api/v1/search/parse' AND parse_cache_status IS NOT NULL GROUP BY x_axis_1 ORDER BY x_axis_1",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "javmeta_logs",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Time",
+                    "alias": "x_axis_1",
+                    "column": "_timestamp",
+                    "color": null,
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Cache hit ratio (%)",
+                    "alias": "y_axis_1",
+                    "column": "_timestamp",
+                    "color": "#5960b2",
+                    "isDerived": false,
+                    "havingConditions": []
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": "",
+                "layer_type": "line",
+                "weight_fixed": 1.0,
+                "limit": 0.0,
+                "min": 0.0,
+                "max": 0.0,
+                "time_shift": []
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 54,
+            "w": 96,
+            "h": 18,
+            "i": 6
+          }
+        }
+      ]
+    }
+  ]
+}

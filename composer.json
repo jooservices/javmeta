@@ -1,10 +1,10 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "jooservices/jvmeta",
+    "name": "jooservices/javmeta",
     "type": "project",
     "description": "Laravel POC API and crawl worker for JAV metadata normalization.",
     "keywords": [
-        "jvmeta",
+        "javmeta",
         "laravel",
         "metadata",
         "poc"
@@ -12,29 +12,37 @@
     "license": "MIT",
     "require": {
         "php": "^8.5",
-        "jooservices/client": "^4.0",
-        "jooservices/crawlerx": "*",
+        "ext-redis": "^6.3",
+        "jooservices/client": "^4.4.1",
+        "jooservices/crawlerx": "^1.5.0",
         "jooservices/dto": "^3.0",
         "jooservices/exceptions": "^4.0",
+        "jooservices/laravel-config": "^4.0",
         "jooservices/laravel-controller": "^4.0",
         "jooservices/laravel-logging": "^4.0",
         "jooservices/laravel-notifications": "^1.0.1",
         "jooservices/laravel-repository": "^4.0",
-        "laravel/framework": "^12.0",
-        "laravel/tinker": "^2.10.1",
-        "mongodb/mongodb": "^2.0"
+        "laravel/framework": "^13",
+        "laravel/horizon": "^5.50",
+        "laravel/tinker": "^3",
+        "mongodb/mongodb": "^2.0",
+        "sentry/sentry-laravel": "^4.29"
     },
     "require-dev": {
-        "fakerphp/faker": "^1.23",
         "captainhook/captainhook": "^5.23",
+        "fakerphp/faker": "^1.23",
+        "friendsofphp/php-cs-fixer": "^3.75",
         "larastan/larastan": "^3.0",
         "laravel/pail": "^1.2.2",
         "laravel/pint": "^1.24",
         "laravel/sail": "^1.41",
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.6",
+        "phpmd/phpmd": "^3.0",
         "phpstan/phpstan": "^2.1",
-        "phpunit/phpunit": "^11.5.50"
+        "phpstan/phpstan-phpunit": "^2.0",
+        "phpunit/phpunit": "^13.0",
+        "squizlabs/php_codesniffer": "^3.13.6 || ^4.0.0"
     },
     "autoload": {
         "psr-4": {
@@ -49,26 +57,82 @@
         }
     },
     "scripts": {
-        "analyse": "XDEBUG_MODE=off phpstan analyse --configuration=phpstan.neon --memory-limit=512M",
         "hooks:install": "captainhook install --force --skip-existing",
-        "lint": "pint --test",
-        "lint:fix": "pint",
+        "lint:pint": "pint --test",
+        "lint:pint:fix": "pint",
+        "lint:phpcs": "phpcs --standard=phpcs.xml",
+        "lint:phpmd": "vendor/bin/phpmd analyze app tests --format text --ruleset phpmd.xml --no-progress",
+        "lint:phpstan": "XDEBUG_MODE=off phpstan analyse --configuration=phpstan.neon --memory-limit=512M",
+        "lint:cs": "php-cs-fixer fix --config=.php-cs-fixer.dist.php --dry-run --diff --sequential",
+        "lint:cs:fix": "php-cs-fixer fix --config=.php-cs-fixer.dist.php --sequential",
+        "lint": [
+            "@lint:pint",
+            "@lint:phpcs",
+            "@lint:phpmd",
+            "@lint:phpstan",
+            "@lint:cs"
+        ],
+        "lint:fix": [
+            "@lint:pint:fix",
+            "@lint:cs:fix"
+        ],
         "setup": [
             "composer install",
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
             "@php artisan key:generate",
-            "@php artisan migrate --force",
-            "npm install",
-            "npm run build"
+            "@php artisan migrate --force"
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
-            "npx concurrently -c \"#93c5fd,#c4b5fd,#fb7185,#fdba74\" \"php artisan serve\" \"php artisan queue:listen --tries=1 --timeout=0\" \"php artisan pail --timeout=0\" \"npm run dev\" --names=server,queue,logs,vite --kill-others"
+            "@php artisan serve"
         ],
         "test": [
             "@php -r \"file_exists('.env') || touch('.env');\"",
             "@php artisan config:clear --ansi",
-            "APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= APP_NAME=jvmeta php artisan test"
+            "APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= APP_NAME=javmeta php artisan test"
+        ],
+        "test:coverage": [
+            "@php -r \"file_exists('.env') || touch('.env');\"",
+            "@php artisan config:clear --ansi",
+            "XDEBUG_MODE=coverage APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= APP_NAME=javmeta php artisan test --coverage-clover=build/coverage.xml"
+        ],
+        "test:shell": [
+            "bash tests/Shell/worker-queues.test.sh",
+            "bash tests/Shell/integration-harness.test.sh",
+            "bash tests/Shell/shared-run.test.sh",
+            "bash tests/Shell/run-captainhook.test.sh",
+            "bash tests/Shell/backup.test.sh",
+            "bash tests/Shell/sentry-release.test.sh",
+            "bash tests/Shell/staging.test.sh",
+            "bash tests/Shell/production.test.sh",
+            "bash tests/Shell/install.test.sh",
+            "bash tests/Shell/join-node.test.sh",
+            "bash tests/Shell/node-template.test.sh",
+            "bash tests/Shell/roles.test.sh",
+            "bash tests/Shell/uat-reset.test.sh",
+            "bash tests/Shell/retention.test.sh",
+            "if command -v shellcheck >/dev/null 2>&1; then shellcheck -x deploy/install.sh deploy/join-node.sh deploy/lib/*.sh tests/Shell/install.test.sh tests/Shell/join-node.test.sh tests/Shell/node-template.test.sh tests/Shell/roles.test.sh tests/Shell/integration-harness.test.sh deploy/production.sh deploy/production/provision/*.sh deploy/production/node/install-node.sh deploy/production/node/refresh-units.sh tests/Shell/production.test.sh deploy/backup/*.sh tests/Shell/backup.test.sh deploy/staging.sh deploy/uat-reset.sh tests/Shell/staging.test.sh tests/Shell/uat-reset.test.sh tests/Shell/retention.test.sh; elif [ \"${CI:-}\" = true ]; then echo 'shellcheck is required in CI' >&2; exit 1; else echo 'shellcheck not installed here; it runs in GitHub CI'; fi"
+        ],
+        "test:e2e": [
+            "@php -r \"is_dir('.tmp') || mkdir('.tmp', 0700);\"",
+            "@php artisan config:clear --ansi",
+            "php -d pcov.enabled=1 -d pcov.directory=${PWD}/tests/E2E vendor/bin/phpunit --configuration phpunit.e2e.xml --do-not-cache-result --coverage-clover=${JAVMETA_E2E_COVERAGE_FILE:-.tmp/e2e-coverage.xml}",
+            "@php tools/coverage-enforce.php ${JAVMETA_E2E_COVERAGE_FILE:-.tmp/e2e-coverage.xml} 90"
+        ],
+        "coverage:report": "php tools/coverage-report.php build/coverage.xml build/coverage/uncovered-files.md",
+        "coverage:check": "php tools/coverage-enforce.php build/coverage.xml 90",
+        "coverage:per-file": "php tools/quality/coverage-per-file.php 85 build/coverage.xml build/integration.xml",
+        "check": [
+            "@lint",
+            "@test",
+            "@test:shell"
+        ],
+        "ci": [
+            "@lint",
+            "@test:coverage",
+            "@coverage:report",
+            "@coverage:check",
+            "@test:shell"
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
@@ -87,7 +151,8 @@
         ],
         "pre-package-uninstall": [
             "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
-        ]
+        ],
+        "test:nl": "@php artisan test tests/Nl/NaturalLanguageEvaluationTest.php"
     },
     "extra": {
         "laravel": {
@@ -95,6 +160,7 @@
         }
     },
     "config": {
+        "process-timeout": 1800,
         "optimize-autoloader": true,
         "preferred-install": "dist",
         "sort-packages": true,
@@ -104,68 +170,6 @@
             "php-http/discovery": true
         }
     },
-    "repositories": [
-        {
-            "type": "vcs",
-            "url": "https://github.com/jooservices/laravel-notifications.git"
-        },
-        {
-            "name": "laravel-logging",
-            "type": "path",
-            "url": "../laravel-logging",
-            "canonical": false,
-            "options": {
-                "symlink": true
-            }
-        },
-        {
-            "type": "path",
-            "url": "../client",
-            "canonical": false,
-            "options": {
-                "symlink": true
-            }
-        },
-        {
-            "type": "path",
-            "url": "../crawlerx",
-            "options": {
-                "symlink": true
-            }
-        },
-        {
-            "type": "path",
-            "url": "../dto",
-            "canonical": false,
-            "options": {
-                "symlink": true
-            }
-        },
-        {
-            "type": "path",
-            "url": "../exceptions",
-            "canonical": false,
-            "options": {
-                "symlink": true
-            }
-        },
-        {
-            "type": "path",
-            "url": "../laravel-controller",
-            "canonical": false,
-            "options": {
-                "symlink": true
-            }
-        },
-        {
-            "type": "path",
-            "url": "../laravel-repository",
-            "canonical": false,
-            "options": {
-                "symlink": true
-            }
-        }
-    ],
-    "minimum-stability": "dev",
+    "minimum-stability": "stable",
     "prefer-stable": true
 }

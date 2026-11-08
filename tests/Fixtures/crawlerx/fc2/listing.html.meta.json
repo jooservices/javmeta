@@ -1,0 +1,10 @@
+{
+  "source_url": "https://adult.contents.fc2.com/",
+  "final_url": "https://adult.contents.fc2.com/",
+  "captured_at": "2026-09-09T04:06:47.449Z",
+  "http_status": 200,
+  "content_hash": "67f30145adaa205d5002ab65df69790a1834978f84958585c42393bc28a3ec5d",
+  "target_type": "listing",
+  "fetch_method": "playwright",
+  "sanitized": false
+}

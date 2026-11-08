@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Jobs;
 
+use App\Enums\CrawlErrorCode;
 use App\Jobs\FetchGalleryJob;
 use App\Jobs\FetchPerformerDetailJob;
 use App\Jobs\FetchPerformerListingJob;
@@ -13,9 +14,11 @@ use App\Models\Source;
 use App\Models\Movie;
 use App\Models\MovieCode;
 use App\Models\MovieMedia;
+use App\Models\PerformerMedia;
 use App\Services\Crawler\CrawlerxClient;
 use App\Services\Crawler\CrawlerxFetchResult;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use JOOservices\CrawlerX\Dto\CrawlItemResultDto;
 use JOOservices\CrawlerX\Dto\CrawlListResultDto;
 use JOOservices\CrawlerX\Dto\CrawlPaginationDto;
@@ -36,7 +39,7 @@ final class FetchPerformerAndGalleryJobTest extends TestCase
             'source_slug' => $source->slug,
             'url' => 'https://warashi-asian-pornstars.fr/en/s-2-2/female-pornstars/toutes/all/page/1',
             'kind' => CrawlQueue::KIND_PERFORMER_LISTING,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
         ]);
 
         $this->fakeClient(
@@ -67,6 +70,47 @@ final class FetchPerformerAndGalleryJobTest extends TestCase
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
     }
 
+    public function test_performer_listing_enqueues_items_by_next_crawl_type_hint(): void
+    {
+        $source = $this->source('xcity');
+        $row = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'url' => 'https://xxx.xcity.jp/idol/',
+            'kind' => CrawlQueue::KIND_PERFORMER_LISTING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+        ]);
+
+        $this->fakeClient(
+            listing: CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'),
+            detail: CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'),
+            performerListing: CrawlerxFetchResult::success(new CrawlListResultDto(
+                url: $row->url,
+                page: 1,
+                entityType: 'performer',
+                items: [
+                    new CrawlItemResultDto(
+                        url: 'https://xxx.xcity.jp/idol/?kana=%E3%81%82',
+                        entityType: 'performer',
+                        meta: [],
+                        nextCrawlType: 'performer_listing',
+                    ),
+                    new CrawlItemResultDto(
+                        url: 'https://xxx.xcity.jp/idol/detail/5517/',
+                        entityType: 'performer',
+                        meta: [],
+                        nextCrawlType: 'performer_detail',
+                    ),
+                ],
+                pagination: new CrawlPaginationDto(currentPage: 1, lastPage: null, nextPage: null, nextUrl: null, hasNextPage: false),
+            )),
+        );
+
+        FetchPerformerListingJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', ['url' => 'https://xxx.xcity.jp/idol/?kana=%E3%81%82', 'kind' => CrawlQueue::KIND_PERFORMER_LISTING]);
+        $this->assertDatabaseHas('crawl_queue', ['url' => 'https://xxx.xcity.jp/idol/detail/5517/', 'kind' => CrawlQueue::KIND_PERFORMER_DETAIL]);
+    }
+
     public function test_performer_detail_persists_rich_profile(): void
     {
         $source = $this->source('javdatabase');
@@ -74,7 +118,7 @@ final class FetchPerformerAndGalleryJobTest extends TestCase
             'source_slug' => $source->slug,
             'url' => 'https://www.javdatabase.com/idols/airi-suzumura/',
             'kind' => CrawlQueue::KIND_PERFORMER_DETAIL,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
         ]);
 
         $this->fakeClient(
@@ -109,10 +153,76 @@ final class FetchPerformerAndGalleryJobTest extends TestCase
             'height_cm' => 158,
             'cup' => 'E',
             'blood_type' => 'A',
-            'location' => 'Tokyo',
+            'location' => '東京都',
+        ]);
+        $this->assertDatabaseHas('performer_media', [
+            'kind' => PerformerMedia::KIND_IMAGE,
+            'url' => 'https://cdn.test/airi.jpg',
+            'source_slug' => 'javdatabase',
         ]);
         $this->assertDatabaseHas('performer_aliases', ['alias' => 'AiriS']);
         $this->assertDatabaseHas('crawl_queue', ['id' => $row->id, 'status' => CrawlQueue::STATUS_DONE]);
+    }
+
+    public function test_performer_detail_normalization_failure_records_reason(): void
+    {
+        $source = $this->source('javdatabase');
+        $row = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'url' => 'https://www.javdatabase.com/idols/unknown/',
+            'kind' => CrawlQueue::KIND_PERFORMER_DETAIL,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+        ]);
+
+        $this->fakeClient(
+            listing: CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'),
+            detail: CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'),
+            performerDetail: CrawlerxFetchResult::performer(PerformerDto::fromParsed(null, null, [], $row->url)),
+        );
+
+        FetchPerformerDetailJob::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', [
+            'id' => $row->id,
+            'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::NormalizationFailed->value,
+            'last_error' => 'Performer normalization failed.',
+        ]);
+    }
+
+    #[DataProvider('unknownSourceJobs')]
+    public function test_unknown_source_failure_paths_record_reason(string $jobClass, string $kind): void
+    {
+        $row = CrawlQueue::factory()->create([
+            'source_slug' => 'missing-source',
+            'url' => 'https://missing-source.test/' . $kind,
+            'kind' => $kind,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+        ]);
+
+        $this->fakeClient(
+            listing: CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'),
+            detail: CrawlerxFetchResult::failure(CrawlerxClient::ERROR_PARSE_FAILED, 'unused'),
+        );
+
+        $jobClass::dispatch($row->id);
+
+        $this->assertDatabaseHas('crawl_queue', [
+            'id' => $row->id,
+            'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::UnknownSource->value,
+            'last_error' => 'Unknown source slug.',
+        ]);
+    }
+
+    /** @return array<string, array{class-string, string}> */
+    public static function unknownSourceJobs(): array
+    {
+        return [
+            'performer listing' => [FetchPerformerListingJob::class, CrawlQueue::KIND_PERFORMER_LISTING],
+            'performer detail' => [FetchPerformerDetailJob::class, CrawlQueue::KIND_PERFORMER_DETAIL],
+            'gallery' => [FetchGalleryJob::class, CrawlQueue::KIND_GALLERY],
+        ];
     }
 
     public function test_gallery_attaches_media_when_movie_code_matches(): void
@@ -134,7 +244,7 @@ final class FetchPerformerAndGalleryJobTest extends TestCase
             'source_slug' => $source->slug,
             'url' => 'https://www.eporner.com/gallery/xKeoFe7VHmO/Iori-Kogawa-STAR-836/',
             'kind' => CrawlQueue::KIND_GALLERY,
-            'status' => CrawlQueue::STATUS_PENDING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
         ]);
 
         $this->fakeClient(
@@ -172,7 +282,7 @@ final class FetchPerformerAndGalleryJobTest extends TestCase
 
     private function source(string $slug): Source
     {
-        return Source::factory()->create(['slug' => $slug, 'circuit_state' => Source::CIRCUIT_CLOSED]);
+        return Source::factory()->create(['slug' => $slug]);
     }
 
     private function fakeClient(

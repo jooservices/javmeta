@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Observability;
 
+use App\Services\Settings\SettingUrl;
+
 /**
  * Strips domain content and secrets before telemetry leave the process.
  */
@@ -58,7 +60,6 @@ final class TelemetrySanitizer
         'queue',
         'field',
         'tier',
-        'circuit_state',
         'queued',
         'gap_seconds',
         'items',
@@ -79,6 +80,14 @@ final class TelemetrySanitizer
         'reclaimed',
         'tool',
         'action',
+        'page_url',
+        'error_message',
+        'http_status',
+        'method',
+        'retryable',
+        'retry_after_seconds',
+        'queue_row_id',
+        'exception_class',
     ];
 
     /**
@@ -102,7 +111,7 @@ final class TelemetrySanitizer
                 continue;
             }
             if (is_scalar($value) || $value === null) {
-                $clean[$key] = $value;
+                $clean[$key] = is_string($value) ? SettingUrl::redactText($value) : $value;
             }
         }
 
@@ -139,5 +148,48 @@ final class TelemetrySanitizer
         }
 
         return strlen($value) > 120;
+    }
+
+    /**
+     * A page address safe to send: scheme, host and path only (no query string, fragment or credentials), at most 300 characters.
+     */
+    public function sanitizeUrl(?string $url): ?string
+    {
+        if ($url === null || trim($url) === '') {
+            return null;
+        }
+
+        $parts = parse_url(trim($url));
+        if (! is_array($parts) || ! isset($parts['host'])) {
+            return mb_substr(preg_replace('/[?#].*$/', '', trim($url)) ?? '', 0, 300);
+        }
+
+        $clean = ($parts['scheme'] ?? 'https') . '://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '') . ($parts['path'] ?? '');
+
+        return mb_substr($clean, 0, 300);
+    }
+
+    /**
+     * Free text (an error message, an exception message) with obvious secrets masked, cut to $max characters.
+     */
+    public function sanitizeText(?string $text, int $max = 500): ?string
+    {
+        if ($text === null || $text === '') {
+            return null;
+        }
+
+        $text = SettingUrl::redactText($text);
+
+        $masked = preg_replace(
+            [
+                '/\b(bearer|basic)\s+[A-Za-z0-9._~+\/=-]+/i',
+                '/(authorization|bearer|cookie|set-cookie|x-api-key|api[_-]?key|token|password|passwd|secret)(["\']?\s*[:=]\s*|\s+)[^\s,;"\']+/i',
+                '/([?&](?:token|key|apikey|api_key|password|secret|sig|signature)=)[^&\s"\']+/i',
+            ],
+            ['$1 [redacted]', '$1$2[redacted]', '$1[redacted]'],
+            $text,
+        ) ?? $text;
+
+        return mb_substr($masked, 0, $max);
     }
 }
