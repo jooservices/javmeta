@@ -7,6 +7,7 @@ namespace Tests\Unit\Services\Dependencies\Probes;
 use App\Services\Dependencies\Probes\ObservabilityProbe;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Client\ConnectionException;
 use Tests\TestCase;
 
 final class ObservabilityProbeTest extends TestCase
@@ -30,5 +31,17 @@ final class ObservabilityProbeTest extends TestCase
 
         self::assertTrue((new ObservabilityProbe())->probe());
         Http::assertNothingSent();
+    }
+
+    public function test_an_unhealthy_answer_or_a_transport_failure_is_down(): void
+    {
+        config(['openobserve.enabled' => true, 'openobserve.url' => 'http://oo.example.test:5080/']);
+        Http::fake(['oo.example.test:5080/*' => Http::response('', 500)]);
+        self::assertFalse((new ObservabilityProbe())->check()->available);
+        self::assertFalse((new ObservabilityProbe())->probe());
+
+        Http::swap(new \Illuminate\Http\Client\Factory());
+        Http::fake(static fn() => throw new ConnectionException('refused'));
+        self::assertFalse((new ObservabilityProbe())->check()->available);
     }
 }

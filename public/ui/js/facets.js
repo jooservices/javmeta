@@ -4,7 +4,7 @@ import { values, activeFilters, removeFilter } from './filterState.js';
 
 const previous = new Map();
 const groups = {
-  movies: [['genres', 'Thể loại', 'genre'], ['makers', 'Hãng', 'maker'], ['series', 'Series', 'series'], ['labels', 'Nhãn', 'label'], ['years', 'Năm', 'year'], ['sources', 'Nguồn', 'source'], ['performers', 'Diễn viên', 'actress_id']],
+  movies: [['genres', 'Thể loại', 'genre'], ['makers', 'Hãng', 'maker'], ['series', 'Loạt phim', 'series'], ['labels', 'Nhãn', 'label'], ['years', 'Năm', 'year'], ['sources', 'Nguồn', 'source'], ['performers', 'Diễn viên', 'actress_id']],
   performers: [['cups', 'Cup', 'cup'], ['blood_types', 'Nhóm máu', 'blood_type'], ['locations', 'Nơi sống', 'location'], ['sources', 'Nguồn', 'source'], ['status', 'Hoạt động', 'status']],
 };
 const display = v => ({ active: 'Đang hoạt động', retired: 'Đã nghỉ' }[v] || v);

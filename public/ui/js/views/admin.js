@@ -1,9 +1,10 @@
 import { esc, fmt } from '../util.js';
 import { admin, send } from '../api.js';
 import { head, errorBox, ic } from '../components.js';
+import { askConfirm } from '../confirm.js';
 
 const SCOPES = [['movies', 'Phim'], ['bulk', 'Tra hàng loạt'], ['performers', 'Diễn viên'], ['catalog', 'Danh mục & gợi ý'], ['status', 'Trạng thái'], ['config', 'Cấu hình dịch vụ'], ['mcp', 'MCP'], ['media', 'Worker media']];
-const FIELD_NAMES = { code: 'Mã', title_jp: 'Tên JP', title_en: 'Tên EN', actresses: 'Diễn viên', cover_url: 'Ảnh bìa', release_date: 'Ngày phát hành', runtime: 'Thời lượng', maker: 'Maker', label: 'Label', series: 'Series', genres: 'Thể loại' };
+const FIELD_NAMES = { code: 'Mã', title_jp: 'Tên JP', title_en: 'Tên EN', actresses: 'Diễn viên', cover_url: 'Ảnh bìa', release_date: 'Ngày phát hành', runtime: 'Thời lượng', maker: 'Hãng', label: 'Nhãn', series: 'Loạt phim', genres: 'Thể loại' };
 
 /* owner administration: data quality report and API keys */
 export default {
@@ -23,8 +24,8 @@ export default {
       </div>
       <div class="panel"><div class="hd"><h2>Khoá API</h2><span class="chip mono">${fmt(keys.data.length)}</span></div>
         <div class="bd"><form id="kf" class="brbar" style="flex-wrap:wrap;gap:8px"><input type="text" name="label" placeholder="Tên khoá" required maxlength="100" style="max-width:200px"><input type="number" name="abuse_rpm" value="60" min="1" max="10000" style="width:90px" title="Số lệnh gọi mỗi phút"><span class="muted">/phút</span>
-          ${SCOPES.map(s => `<label class="muted"><input type="checkbox" name="scopes" value="${s[0]}"> ${s[1]}</label>`).join(' ')}<button class="btn pri" type="submit">Tạo khoá</button></form>
-          <div id="newkey" class="muted" style="margin-top:6px">Không chọn quyền nào = khoá dùng được mọi thứ.</div></div>
+          ${SCOPES.map(s => `<label class="muted"><input type="checkbox" name="scopes" value="${s[0]}" ${s[0] === 'catalog' ? 'checked' : ''}> ${s[1]}</label>`).join(' ')}<button class="btn pri" type="submit">Tạo khoá</button></form>
+          <div id="newkey" class="muted" style="margin-top:6px">Chọn ít nhất một quyền. Khoá mới chỉ làm được những quyền đã chọn.</div></div>
         <div class="tbl-wrap"><table><thead><tr><th>Tên</th><th>Tiền tố</th><th>Quyền</th><th>/phút</th><th>Trạng thái</th><th>Tạo lúc</th><th></th></tr></thead><tbody id="keyrows">${keys.data.map(k => row(k)).join('')}</tbody></table></div>
         <div id="usage" class="bd"></div></div></div>`;
     return { html, mount };
@@ -43,11 +44,16 @@ function mount(root) {
   form.addEventListener('submit', async e => {
     e.preventDefault();
     const f = new FormData(form), scopes = f.getAll('scopes');
+    if (!scopes.length) { out.innerHTML = '<span class="err" role="alert">Chọn ít nhất một quyền.</span>'; return; }
+    if (!await askConfirm({ title: 'Tạo khoá API', body: `Tạo khoá «${f.get('label')}» với quyền: ${scopes.join(', ')}?`, confirmLabel: 'Tạo khoá' })) return;
     try {
-      const r = await send('POST', 'keys', { label: f.get('label'), abuse_rpm: Number(f.get('abuse_rpm')), ...(scopes.length ? { scopes } : {}) });
+      const r = await send('POST', 'keys', { label: f.get('label'), abuse_rpm: Number(f.get('abuse_rpm')), scopes });
       out.innerHTML = `Khoá mới (chỉ hiện một lần): <code class="mono" style="user-select:all">${esc(r.data.plaintext)}</code> <button class="btn sm" data-act="copy" data-v="${esc(r.data.plaintext)}">${ic('copy')} Sao chép</button>`;
-      form.reset(); await reload();
-    } catch (err) { out.innerHTML = `<span class="err">${esc(err.message)}</span>`; }
+      form.reset();
+      const catalog = form.querySelector('input[name=scopes][value=catalog]');
+      if (catalog) catalog.checked = true;
+      await reload();
+    } catch (err) { out.innerHTML = `<span class="err" role="alert">${esc(err.message)}</span>`; }
   });
   root.addEventListener('click', async e => {
     const r = e.target.closest('[data-revoke]'), u = e.target.closest('[data-usage]');

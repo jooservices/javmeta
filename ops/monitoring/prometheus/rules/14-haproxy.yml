@@ -1,0 +1,36 @@
+# Selected rules adapted from samber/awesome-prometheus-alerts HAProxy rules (CC BY 4.0):
+# https://samber.github.io/awesome-prometheus-alerts/rules/proxies-load-balancers-and-service-meshes/haproxy/
+groups:
+  - name: haproxy-exporter-v1
+    rules:
+      # The deployed HAProxy 3.4.5 build has no enabled Prometheus frontend; use the v1 socket exporter.
+      - alert: HaproxyExporterDown
+        expr: up{job="haproxy_exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          value: "{{ $value }}"
+          summary: HAProxy exporter target is down
+          description: "Prometheus cannot scrape the HAProxy exporter.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/haproxy#availability
+      - alert: HaproxyBackendDown
+        expr: haproxy_backend_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          value: "{{ $value }}"
+          summary: HAProxy backend has no alive servers
+          description: "No active or backup servers are available for backend {{ $labels.backend }}.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/haproxy#backend-health
+      - alert: HaproxyPendingRequests
+        expr: sum by (backend) (haproxy_backend_current_queue) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          value: "{{ $value }}"
+          summary: HAProxy has pending requests
+          description: "Requests have remained queued for backend {{ $labels.backend }}.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/haproxy#queues

@@ -1,0 +1,10 @@
+{
+  "source_url": "https://attackers.net/actress/detail/347922",
+  "final_url": "https://attackers.net/actress/detail/347922",
+  "captured_at": "2026-11-03T06:07:57.587147+00:00",
+  "http_status": 200,
+  "content_hash": "e5c7fe6c23f780b8155fc673ad76abba7a41e26e50708017724688ff1a3db27b",
+  "target_type": "performer_detail",
+  "fetch_method": "http",
+  "sanitized": false
+}

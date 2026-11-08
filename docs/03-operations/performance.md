@@ -56,6 +56,10 @@ The new batch counts are restricted to returned IDs; count sorting retains the e
 
 To repeat the measurement, create a temporary key with a high `abuse_rpm`, call each endpoint with the `Host: jav.soulevil.com` header, and revoke the key.
 
+### JOOXCR-341: performer normalization facets, 2026-11-03
+
+One direct `PerformerRepository::facets()` call against the integration PostgreSQL catalog seeded with 26,000 performers took 90.41 ms end to end. Its single grouped query per indexed expression took 12 ms for `LOWER(cup)`, 11 ms for `LOWER(blood_type)`, and 11 ms for `LOWER(location)`. Existing functional indexes cover those expressions. The test also verifies only canonical Cup A–K, blood groups A/B/AB/O plus the optional unknown bucket, and canonical Tokyo are returned. This is one synthetic integration sample, not a production or HTTP p95 measurement.
+
 ### JOOXCR-261: status and facets, 2026-10-25
 
 30 sequential direct service/repository calls per operation, one app bootstrap through the shared PHP 8.5 runtime on WSL. Real staging PostgreSQL was read-only; baseline catalog: 29,766 movies / 30,777 canonical performers; after: 29,799 / 30,810. Crawling continued during the samples. Every SELECT over 50 ms was logged, followed by EXPLAIN ANALYZE BUFFERS for distinct slow queries. These measurements exclude HTTP, authentication, bootstrap, serialization and shared Redis cache access; they measure recomputation on every call and do not replace the historical endpoint table above. After code was loaded from the worktree into the profiling process only; staging was not deployed.

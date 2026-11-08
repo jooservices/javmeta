@@ -12,6 +12,8 @@ final class ImportCommand extends Command
 {
     protected $signature = 'observability:import {--dry-run : Show the import plan without contacting OpenObserve} {--strict : Fail when an alert could not be created because its stream does not exist yet}';
 
+    protected $aliases = ['obs:import-alerts'];
+
     protected $description = 'Import versioned dashboards and alert rules into OpenObserve.';
 
     public function handle(ObservabilityImporter $importer): int

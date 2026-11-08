@@ -8,7 +8,7 @@ Tìm phim theo ngày phát hành trong một tháng.
 
 ## Cách dùng
 
-Lịch bắt đầu từ thứ hai. Dùng ‹ và › để đổi tháng, Hôm nay để về tháng hiện tại. Bấm mã phim để xem chi tiết; bấm số phim ở một ngày để mở danh sách của ngày đó. Mỗi ô chỉ hiện tối đa 3 mã; “+… nữa” cho biết còn phim khác.
+Lịch bắt đầu từ thứ hai. Khi mở từ menu, trang hiện tháng gần nhất có phim. Dùng ‹ và › để đổi tháng, Hôm nay để về tháng hiện tại. Tháng trống có nút tới tháng gần nhất có phát hành. Bấm mã phim để xem chi tiết; bấm số phim ở một ngày để mở danh sách của ngày đó. Mỗi ô chỉ hiện tối đa 3 mã; “+… nữa” cho biết còn phim khác.
 
 ## Nếu có vẻ sai
 

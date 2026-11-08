@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Search;
 
 use App\Services\Embedding\OllamaClient;
+use App\Repositories\QueryInterpreterServiceRepository;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Turns a typed question into validated API filters plus the words left for text search.
@@ -39,7 +39,10 @@ final class QueryInterpreter
         'additionalProperties' => false,
     ];
 
-    public function __construct(private readonly OllamaClient $ollama) {}
+    public function __construct(
+        private readonly OllamaClient $ollama,
+        private readonly QueryInterpreterServiceRepository $repository,
+    ) {}
 
     /** @return array{keywords: string, filters: array<string, mixed>, by: string} */
     public function interpret(string $question): array
@@ -277,7 +280,7 @@ final class QueryInterpreter
                 continue;
             }
 
-            $candidate = trim((string) preg_replace('/^[\\p{P}\\p{Z}]+|[\\p{P}\\p{Z}]+$/u', '', trim($value)));
+            $candidate = $this->stripEdgePunctuation(trim($value));
             if (! $this->mentioned($key, $candidate, $question)) {
                 $invalid = true;
                 continue;
@@ -376,62 +379,17 @@ final class QueryInterpreter
 
     private function knownMovieValue(string $field, string $value): ?string
     {
-        $column = match ($field) {
-            'maker' => 'maker',
-            'series' => 'series',
-            default => null,
-        };
-        $needle = mb_strtolower($value);
-        if ($column !== null) {
-            $known = DB::table('movies')->whereNotNull($column)->whereRaw('LOWER(' . $column . ') = ?', [$needle])->value($column);
-
-            return is_string($known) ? $known : null;
-        }
-
-        $known = DB::table('genres')
-            ->selectRaw('COALESCE(label_raw, label_normalized) AS value')
-            ->whereRaw('LOWER(COALESCE(label_raw, label_normalized)) = ?', [$needle])
-            ->value('value');
-
-        return is_string($known) ? $known : null;
+        return $this->repository->knownMovieValue($field, $value);
     }
 
     private function knownPerformer(string $value): ?string
     {
-        $needle = mb_strtolower($value);
-        $row = DB::table('performers')
-            ->whereNull('canonical_performer_id')
-            ->where(static function ($query) use ($needle): void {
-                foreach (['name_romaji', 'name_kanji', 'name_kana'] as $column) {
-                    $query->orWhereRaw('LOWER(' . $column . ') = ?', [$needle]);
-                }
-            })
-            ->first(['name_romaji', 'name_kanji', 'name_kana']);
-        if ($row === null) {
-            return null;
-        }
-
-        foreach (['name_romaji', 'name_kanji', 'name_kana'] as $column) {
-            if (is_string($row->{$column}) && $row->{$column} !== '') {
-                return $row->{$column};
-            }
-        }
-
-        return null;
+        return $this->repository->knownPerformer($value);
     }
 
     private function knownFacet(string $field, string $value): ?string
     {
-        if (! in_array($field, ['blood_type', 'location', 'cup'], true)) {
-            return null;
-        }
-        $known = DB::table('performers')
-            ->whereNotNull($field)
-            ->where($field, '<>', '')
-            ->whereRaw('LOWER(' . $field . ') = ?', [mb_strtolower(trim($value))])
-            ->value($field);
-
-        return is_string($known) ? $known : null;
+        return $this->repository->knownFacet($field, $value);
     }
 
     /** @return list<string> */
@@ -441,21 +399,14 @@ final class QueryInterpreter
             return [];
         }
 
-        return Cache::remember('javmeta:interpreter:facet:' . $field, 120, static function () use ($field): array {
-            return DB::table('performers')->whereNotNull($field)->where($field, '<>', '')->distinct()->orderBy($field)->pluck($field)->map(static fn($value): string => (string) $value)->all();
-        });
+        return Cache::remember('javmeta:interpreter:facet:' . $field, 120, fn(): array => $this->repository->facetNames($field));
     }
 
     /** @return list<string> catalog names, longest first (cached for two minutes) */
     private function names(string $list): array
     {
-        return Cache::remember('javmeta:interpreter:' . $list, 120, static function () use ($list): array {
-            $names = match ($list) {
-                'makers' => DB::table('movies')->whereNotNull('maker')->where('maker', '<>', '')->distinct()->pluck('maker')->all(),
-                'series' => DB::table('movies')->whereNotNull('series')->where('series', '<>', '')->distinct()->pluck('series')->all(),
-                default => DB::table('genres')->selectRaw('COALESCE(label_raw, label_normalized) AS n')->pluck('n')->all(),
-            };
-            $names = array_values(array_filter(array_map('strval', $names)));
+        return Cache::remember('javmeta:interpreter:' . $list, 120, function () use ($list): array {
+            $names = $this->repository->catalogNames($list);
             usort($names, static fn(string $a, string $b): int => mb_strlen($b) <=> mb_strlen($a));
 
             return $names;
@@ -471,7 +422,7 @@ final class QueryInterpreter
     {
         $words = preg_split('/\s+/u', trim($text)) ?: [];
         $words = array_values(array_filter(array_map(
-            static fn(string $word): string => trim((string) preg_replace('/^[\\p{P}\\p{Z}]+|[\\p{P}\\p{Z}]+$/u', '', $word)),
+            fn(string $word): string => $this->stripEdgePunctuation($word),
             $words,
         ), static fn(string $word): bool => $word !== ''));
         $candidates = [];
@@ -484,12 +435,12 @@ final class QueryInterpreter
         if ($candidates === []) {
             return null;
         }
-        $name = DB::table('performers')
-            ->whereNull('canonical_performer_id')
-            ->whereIn(DB::raw('LOWER(name_romaji)'), $candidates)
-            ->orderByRaw('LENGTH(name_romaji) DESC')
-            ->value('name_romaji');
+        return $this->repository->performerNameIn($candidates);
+    }
 
-        return is_string($name) ? $name : null;
+    /** Removes punctuation and separators from both ends of a word. */
+    private function stripEdgePunctuation(string $word): string
+    {
+        return trim((string) preg_replace('/(?:^[\\p{P}\\p{Z}]+)|(?:[\\p{P}\\p{Z}]+$)/u', '', $word));
     }
 }

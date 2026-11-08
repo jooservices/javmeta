@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Tests\Feature\Observability;
 
 use App\Jobs\FetchDetailJob;
+use App\Enums\CrawlErrorCode;
 use App\Models\CrawlQueue;
 use App\Models\Source;
+use App\Observability\Sentry\CrawlFailureReporter;
 use App\Services\Crawl\CrawlQueueService;
 use App\Services\Crawl\SourceActivityRecorder;
 use App\Services\Crawl\SourceThrottle;
@@ -23,6 +25,7 @@ use Mockery;
 use RuntimeException;
 use Sentry\ClientBuilder;
 use Sentry\ClientInterface;
+use Sentry\Severity;
 use Sentry\SentrySdk;
 use Sentry\State\Hub;
 use Sentry\State\HubInterface;
@@ -127,7 +130,7 @@ final class SentryReportingTest extends TestCase
             'max_attempts' => 3,
         ]);
         $client = Mockery::mock(CrawlerxClient::class);
-        $client->shouldReceive('fetchDetail')->once()->with('classified-source', $row->url)->andReturn(
+        $client->shouldReceive('fetchQueueRow')->once()->with(Mockery::on(fn(CrawlQueue $candidate): bool => $candidate->is($row)))->andReturn(
             CrawlerxFetchResult::failure('blocked', 'Request failed at https://source.example/item?api_key=private', true),
         );
         (new FetchDetailJob($row->id))->handle(
@@ -145,11 +148,52 @@ final class SentryReportingTest extends TestCase
         self::assertSame(CrawlQueue::KIND_DETAIL, $event->getTags()['crawl_kind'] ?? null);
         self::assertSame('blocked', $event->getTags()['error_code'] ?? null);
         self::assertSame(['blocked', 'classified-source'], $event->getFingerprint());
+        self::assertEquals(Severity::warning(), $event->getLevel());
         self::assertStringNotContainsString('api_key=private', $event->getExceptions()[0]->getValue());
+    }
+
+    public function test_expected_source_failures_are_warnings_and_group_by_code_and_source_across_urls(): void
+    {
+        $reporter = new CrawlFailureReporter($this->testHub);
+        $reporter->report(
+            new RuntimeException('Fetch budget exhausted for URL [https://missav.example/item/one].'),
+            'missav',
+            CrawlQueue::KIND_LISTING,
+            CrawlErrorCode::Timeout->value,
+        );
+        $reporter->report(
+            new RuntimeException('Fetch budget exhausted for URL [https://missav.example/item/two].'),
+            'missav',
+            CrawlQueue::KIND_LISTING,
+            CrawlErrorCode::Timeout->value,
+        );
+        $reporter->report(
+            new RuntimeException('All fetch methods exhausted for URL [https://tokyohot.example/list].'),
+            'tokyohot',
+            CrawlQueue::KIND_LISTING,
+            CrawlErrorCode::Network->value,
+        );
+        $reporter->report(
+            new RuntimeException('S1 listing page is blocked or unavailable.'),
+            's1',
+            CrawlQueue::KIND_LISTING,
+            CrawlErrorCode::Blocked->value,
+        );
+
+        self::assertCount(4, $this->transport->events);
+        foreach ($this->transport->events as $event) {
+            self::assertEquals(Severity::warning(), $event->getLevel());
+        }
+        self::assertSame(['timeout', 'missav'], $this->transport->events[0]->getFingerprint());
+        self::assertSame($this->transport->events[0]->getFingerprint(), $this->transport->events[1]->getFingerprint());
+        self::assertSame(['network', 'tokyohot'], $this->transport->events[2]->getFingerprint());
+        self::assertSame(['blocked', 's1'], $this->transport->events[3]->getFingerprint());
     }
 
     public function test_stale_started_crawl_is_sent_with_worker_lost_tags(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
+
         config()->set('sentry.role', 'scheduler');
         $row = CrawlQueue::factory()->create([
             'source_slug' => 'stale-source',
@@ -174,6 +218,8 @@ final class SentryReportingTest extends TestCase
 
     public function test_stale_unstarted_crawl_is_sent_with_worker_lost_tags(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
+
         config()->set('sentry.role', 'scheduler');
         CrawlQueue::factory()->create([
             'source_slug' => 'stale-unstarted-source',
@@ -181,7 +227,7 @@ final class SentryReportingTest extends TestCase
             'status' => CrawlQueue::STATUS_CLAIMED,
             'attempts' => 0,
             'max_attempts' => 3,
-            'claimed_at' => now()->subHour(),
+            'claimed_at' => now()->subSeconds(18_001),
             'started_at' => null,
         ]);
 
@@ -211,6 +257,7 @@ final class SentryReportingTest extends TestCase
 
         self::assertCount(1, $this->transport->events);
         self::assertSame('timeout', $this->transport->events[0]->getTags()['error_code'] ?? null);
+        self::assertNotEquals(Severity::warning(), $this->transport->events[0]->getLevel());
     }
 
     public function test_non_claimed_crawl_row_does_not_report_an_event(): void

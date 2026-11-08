@@ -22,7 +22,10 @@ final class UiPlayerTest extends TestCase
         $this->actingAs(User::factory()->create(['role' => 'super_administrator']));
         DB::table('library_files')->insert(['path' => '/generated/video.mp4', 'folder' => '/generated', 'code' => 'GEN-001', 'size' => 10, 'mtime' => 1, 'first_seen_at' => now(), 'last_seen_at' => now()]);
         $this->getJson('/ui-me/player/GEN-001')->assertOk()->assertJsonPath('data.enabled', false)->assertJsonPath('data.url', null);
-        $this->getJson('/ui-me/player/UNKNOWN')->assertNotFound();
+        $this->getJson('/ui-me/player/UNKNOWN')->assertOk()
+            ->assertJsonPath('data.url', null)
+            ->assertJsonPath('data.files', [])
+            ->assertJsonPath('data.error', 'Không có tệp trên đĩa.');
         $this->getJson('/ui-me/player/GEN-001?file=999')->assertNotFound();
     }
 

@@ -21,6 +21,11 @@ final class HorizonReconcileWorkersCommand extends Command
 
             return self::SUCCESS;
         }
+        if ($result['status'] === 'connection-budget-exceeded') {
+            $this->components->warn('Worker reconciliation: configured PostgreSQL connection budget exceeded; keeping the current layout.');
+
+            return self::SUCCESS;
+        }
         if (in_array($result['status'], ['invalid-settings', 'settings-unavailable'], true)) {
             $this->components->warn('Worker reconciliation: settings are invalid or unavailable; keeping the current layout.');
 

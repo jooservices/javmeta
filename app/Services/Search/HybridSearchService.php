@@ -29,14 +29,14 @@ final class HybridSearchService
     ) {}
 
     /**
-     * @return array{movies: Collection<int, Movie>, performers: Collection<int, Performer>, interpretation: array<string, mixed>}
+     * @return array{movies: Collection<int, Movie>, performers: Collection<int, Performer>, interpretation: array<string, mixed>, totals: array{movies: int, performers: int}}
      */
     public function search(string $question, int $perPage = 12, bool $understand = true): array
     {
         return $this->budget->run(fn(): array => $this->searchWithinBudget($question, $perPage, $understand));
     }
 
-    /** @return array{movies: Collection<int, Movie>, performers: Collection<int, Performer>, interpretation: array<string, mixed>} */
+    /** @return array{movies: Collection<int, Movie>, performers: Collection<int, Performer>, interpretation: array<string, mixed>, totals: array{movies: int, performers: int}} */
     private function searchWithinBudget(string $question, int $perPage, bool $understand): array
     {
         $question = trim($question);
@@ -68,10 +68,20 @@ final class HybridSearchService
         /** @var Collection<int, Performer> $performerSemantic */
         $performerSemantic = $needPerformers && ($vectors !== null || ! $this->budget->expired()) && mb_strlen($question) >= 2 ? $this->performerSearch->semanticSearch($question, $pool, $vectors['performers'] ?? null)['items'] : collect();
 
+        $countFilters = $filters + ($hasText ? ['q' => $text] : []);
+        $movieTotal = $countFilters === [] ? 0 : $this->movies->count($countFilters);
+        if ($movieTotal === 0 && $hasText && $keyword->isNotEmpty()) {
+            $movieTotal = $this->movies->count(['q' => $text]);
+        }
+
         return [
             'movies' => $this->fuse([$keyword, $semantic])->take($perPage)->values(),
             'performers' => $this->fuse([$performerKeyword, $performerSemantic])->take($performerLimit)->values(),
-            'interpretation' => $interpretation,
+            'interpretation' => $interpretation + ['used_vectors' => $vectors !== null],
+            'totals' => [
+                'movies' => $movieTotal,
+                'performers' => $hasText ? $this->performers->search(['q' => $text], 'name', null, 1)['total'] : 0,
+            ],
         ];
     }
 

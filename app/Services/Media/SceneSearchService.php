@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Services\Media;
 
+use App\Repositories\MediaServiceRepository;
 use App\Services\Downloads\FileLinkService;
 use App\Services\Embedding\EmbedderClient;
 use App\Services\Search\ElasticsearchHttpClient;
-use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Throwable;
 
@@ -17,7 +17,7 @@ final class SceneSearchService
 
     public function indexFile(int $file): void
     {
-        $scenes = DB::table('media_scenes')->where('library_file_id', $file)->whereNotNull('description')->whereNull('embedding_indexed_at')->get();
+        $scenes = app(MediaServiceRepository::class)->tableQuery('media_scenes')->where('library_file_id', $file)->whereNotNull('description')->whereNull('embedding_indexed_at')->get();
         if ($scenes->isEmpty()) {
             return;
         }
@@ -39,7 +39,7 @@ final class SceneSearchService
                 }
                 $response = $this->es->put('scene-index-document', $index . '/_doc/' . $scene->id, ['description' => $scene->description, 'embedding' => $vector]);
                 if ($response->successful()) {
-                    DB::table('media_scenes')->where('id', $scene->id)->update(['embedding_indexed_at' => now()]);
+                    app(MediaServiceRepository::class)->tableQuery('media_scenes')->where('id', $scene->id)->update(['embedding_indexed_at' => now()]);
                 }
             }
         } catch (Throwable) {
@@ -65,7 +65,7 @@ final class SceneSearchService
         } catch (Throwable) {
             $ids = [];
         }
-        $query = DB::table('media_scenes AS s')->join('library_files AS f', 'f.id', '=', 's.library_file_id')->whereNull('f.missing_at')->whereNotNull('s.description');
+        $query = app(MediaServiceRepository::class)->tableQuery('media_scenes AS s')->join('library_files AS f', 'f.id', '=', 's.library_file_id')->whereNull('f.missing_at')->whereNotNull('s.description');
         if ($ids !== []) {
             $query->whereIn('s.id', $ids);
         } else {

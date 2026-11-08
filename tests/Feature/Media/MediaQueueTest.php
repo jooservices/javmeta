@@ -71,6 +71,8 @@ final class MediaQueueTest extends TestCase
 
     public function test_expired_claim_is_recovered_and_old_worker_cannot_finish(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
+
         $q = app(MediaQueue::class);
         $id = $q->enqueue('thumbnails', $this->file());
         $old = $q->claim('old');

@@ -9,6 +9,7 @@ use App\Models\Performer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Support\Facades\Http;
+use RuntimeException;
 use Tests\TestCase;
 
 final class EsSetupCommandTest extends TestCase
@@ -79,5 +80,41 @@ final class EsSetupCommandTest extends TestCase
 
         Http::assertSentCount(1);
         Http::assertNotSent(static fn(ClientRequest $request): bool => str_contains($request->url(), '/_doc/'));
+    }
+
+    public function test_setup_updates_mappings_when_both_indexes_already_exist(): void
+    {
+        $host = 'http://elasticsearch.test';
+        config()->set('elasticsearch.host', $host);
+        Http::preventStrayRequests();
+        Http::fake(static function (ClientRequest $request) {
+            if ($request->method() === 'HEAD') {
+                return Http::response([], 200);
+            }
+
+            return Http::response(['acknowledged' => true], 200);
+        });
+
+        $this->artisan('es:setup')
+            ->expectsOutputToContain('Updated mapping: ' . config('elasticsearch.movies_index'))
+            ->expectsOutputToContain('Updated mapping: ' . config('elasticsearch.performers_index'))
+            ->assertSuccessful();
+
+        $requests = Http::recorded()->map(static fn(array $recorded): ClientRequest => $recorded[0])->values();
+        self::assertSame(['HEAD', 'PUT', 'HEAD', 'PUT'], $requests->map(static fn(ClientRequest $request): string => $request->method())->all());
+        self::assertSame(384, $requests[1]->data()['properties']['embedding_movie']['dims']);
+        self::assertSame(384, $requests[3]->data()['properties']['embedding_performer']['dims']);
+    }
+
+    public function test_setup_catches_an_unexpected_index_check_exception(): void
+    {
+        Http::preventStrayRequests();
+        Http::fake(static function (ClientRequest $request) {
+            throw new RuntimeException('Elasticsearch unavailable.');
+        });
+
+        $this->artisan('es:setup')
+            ->expectsOutputToContain('Elasticsearch mapping failed for ' . config('elasticsearch.movies_index') . '.')
+            ->assertFailed();
     }
 }

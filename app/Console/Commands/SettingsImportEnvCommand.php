@@ -25,7 +25,7 @@ final class SettingsImportEnvCommand extends Command
             }
             if ($rows !== []) {
                 $this->table(['Setting', 'Current value', 'Source'], array_map(
-                    static fn(array $row): array => [$row['key'], is_scalar($row['display']) ? (string) $row['display'] : json_encode($row['display'], JSON_THROW_ON_ERROR), $row['source']],
+                    static fn(array $row): array => [$row['key'], self::shorten(is_scalar($row['display']) ? (string) $row['display'] : json_encode($row['display'], JSON_THROW_ON_ERROR)), $row['source']],
                     $rows,
                 ));
                 $this->line(count($rows) . ' missing settings would be stored; secrets are redacted.');
@@ -40,6 +40,12 @@ final class SettingsImportEnvCommand extends Command
         $this->reportSkipped($skipped);
 
         return self::SUCCESS;
+    }
+
+    /** A very long default (for example a large allow-list) must not widen every table row, so cells are cut to a readable length. */
+    private static function shorten(string $value): string
+    {
+        return mb_strlen($value) > 120 ? mb_substr($value, 0, 117) . '...' : $value;
     }
 
     /** @param list<array{key: string, environment: string, reason: string}> $skipped */

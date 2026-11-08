@@ -25,14 +25,14 @@ final class FollowNotifierTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->travelTo('2026-10-24T05:00:00Z');
         SettingsService::forgetDefaults();
         $this->app->instance(ConfigStore::class, new FakeConfigStore());
         $this->app->forgetInstance(SettingsService::class);
         config(['app.url' => 'https://jav.example.test']);
+        config(['laravel-notifications.channels.telegram.bot_token' => '123:token', 'laravel-notifications.channels.telegram.chat_id' => '555']);
         $this->owner = User::factory()->create(['role' => 'super_administrator']);
         $settings = app(SettingsService::class);
-        $settings->set('telegram.bot_token', '123:token');
-        $settings->set('telegram.chat_id', '555');
         $settings->set('telegram.api_base', 'https://api.telegram.test');
         Http::fake(['api.telegram.test/*' => Http::response(['ok' => true])]);
     }
@@ -78,7 +78,7 @@ final class FollowNotifierTest extends TestCase
         $this->follow('performer', (string) $performerId);
 
         $this->assertSame(1, app(FollowNotifier::class)->run($this->noon())['sent']);
-        Http::assertSent(fn($r) => str_contains($r->url(), '/sendMessage') && str_contains($r['text'], 'diễn viên Aiko Test'));
+        Http::assertSent(fn($r) => str_contains($r->url(), '/sendMessage') && str_contains($r['text'], 'performer Aiko Test') && $r['parse_mode'] === 'HTML');
     }
 
     public function test_quiet_hours_hold_messages_back_and_the_daily_cap_limits_them(): void
@@ -108,7 +108,7 @@ final class FollowNotifierTest extends TestCase
         $this->assertSame('disabled', app(FollowNotifier::class)->run($this->noon())['skipped']);
 
         $settings->set('follow_notifications.enabled', true);
-        $settings->set('telegram.bot_token', '');
+        config(['laravel-notifications.channels.telegram.bot_token' => '']);
         $this->assertSame('telegram is not configured', app(FollowNotifier::class)->run($this->noon())['skipped']);
         Http::assertNothingSent();
     }

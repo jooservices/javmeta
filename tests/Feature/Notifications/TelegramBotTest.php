@@ -30,10 +30,9 @@ final class TelegramBotTest extends TestCase
         $this->app->instance(ConfigStore::class, new FakeConfigStore());
         $this->app->forgetInstance(SettingsService::class);
         config(['app.url' => 'https://jav.example.test']);
+        config(['laravel-notifications.channels.telegram.bot_token' => '123:token', 'laravel-notifications.channels.telegram.chat_id' => '555']);
         User::factory()->create(['role' => 'super_administrator']);
         $s = app(SettingsService::class);
-        $s->set('telegram.bot_token', '123:token');
-        $s->set('telegram.chat_id', '555');
         $s->set('telegram.api_base', 'https://api.telegram.test');
         $s->set('telegram.bot_enabled', true);
     }
@@ -123,7 +122,7 @@ final class TelegramBotTest extends TestCase
     {
         $settings = app(SettingsService::class);
         $chat = $type === 'private' ? 555 : -555;
-        $settings->set('telegram.chat_id', (string) $chat);
+        config(['laravel-notifications.channels.telegram.chat_id' => (string) $chat]);
         $settings->set('telegram.owner_user_id', $owner);
         Http::fake(['*' => Http::response(['ok' => true])]);
         $result = app(TelegramBot::class)->handle(['message' => ['chat' => ['id' => $chat, 'type' => $type], 'from' => ['id' => $sender], 'text' => '/follow maker OwnerOnly']]);
@@ -137,7 +136,7 @@ final class TelegramBotTest extends TestCase
     {
         $settings = app(SettingsService::class);
         $chat = $type === 'private' ? 555 : -555;
-        $settings->set('telegram.chat_id', (string) $chat);
+        config(['laravel-notifications.channels.telegram.chat_id' => (string) $chat]);
         $settings->set('telegram.owner_user_id', $owner);
         $settings->set('downloads.enabled', false);
         Http::fake(['*' => Http::response(['ok' => true])]);

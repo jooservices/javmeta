@@ -1,0 +1,49 @@
+/* UI kit: one shared set of component classes. Pages reuse these classes instead of styling each element on its own.
+   Controls: .input (text, number, select, textarea share it), .switch (toggle), .btn (+ .pri .ghost .sm, icon first), .tabs/.tab,
+   .section (titled block with actions), .chip, .field (label + control + hint). Colours come only from the theme tokens. */
+
+/* Controls: every text-like control looks the same, including textarea (it had no rule and showed the browser grey) */
+.input,input[type=text],input[type=search],input[type=number],input[type=password],input[type=email],input[type=time],input[type=date],input[type=url],select,textarea{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 10px;min-width:0;max-width:100%;font:inherit;transition:border-color .15s,box-shadow .15s}
+textarea{display:block;width:100%;line-height:1.45;resize:vertical}
+.input:focus,input:focus,select:focus,textarea:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.input::placeholder,input::placeholder,textarea::placeholder{color:var(--mute)}
+textarea.code,textarea[data-type=json]{font-family:var(--mono);font-size:12.5px}
+
+/* Toggle switch: <label class="switch"><input type="checkbox"><span class="track"></span><span class="txt">Bật</span></label> */
+.switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.switch input{position:absolute;opacity:0;width:0;height:0}
+.switch .track{position:relative;width:38px;height:22px;border-radius:999px;background:var(--line);border:1px solid var(--line);transition:background .15s,border-color .15s;flex:none}
+.switch .track::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--fg);opacity:.85;transition:transform .15s,opacity .15s}
+.switch input:checked+.track{background:var(--accent);border-color:var(--accent)}
+.switch input:checked+.track::after{transform:translateX(16px);background:var(--accent-ink);opacity:1}
+.switch input:focus-visible+.track{box-shadow:0 0 0 3px var(--accent-soft)}
+.switch input:disabled+.track{opacity:.5}
+.switch .txt{color:var(--mute);min-width:2.2em}
+
+/* Buttons: an icon goes first, same size and gap everywhere */
+.btn svg{width:15px;height:15px;flex:none}
+.btn.sm svg{width:14px;height:14px}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* Section: titled block, actions on the right */
+.section{border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden}
+.section>.hd{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.section>.hd h2{margin:0;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);font-weight:600}
+.section-stack{display:grid;gap:12px}
+
+/* Tabs with icons */
+.tab svg{width:15px;height:15px;flex:none}
+
+/* Buttons must be readable on every surface: a clear border and text colour, a visible hover, a strong primary */
+.btn{border-color:color-mix(in srgb,var(--fg) 26%,var(--line));background:color-mix(in srgb,var(--fg) 6%,var(--panel2));color:var(--fg)}
+.btn:hover{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--panel2))}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.pri:hover{background:var(--accent);filter:brightness(1.1)}
+.btn:disabled{opacity:.5;cursor:default}
+.switch .txt{white-space:nowrap}
+/* Notification list: the purpose and channel columns are repeated in the editor, so the list keeps name, state, last sent and the edit button visible */
+.notifications-list th:nth-child(2),.notifications-list td:nth-child(2),.notifications-list th:nth-child(3),.notifications-list td:nth-child(3){display:none}
+.notifications-list td:last-child,.notifications-list th:last-child{text-align:right;white-space:nowrap}
+/* Form buttons inside a grid keep their natural width instead of stretching across the panel */
+.notification-daily-schedule .btn{justify-self:start}
+.bd .switch+.muted{margin-left:10px}

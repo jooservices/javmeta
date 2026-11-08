@@ -1,5 +1,6 @@
-import { $, $$, esc, fmt, debounce, copyText, titleOf } from './util.js';
+import { $, $$, esc, fmt, debounce, copyText, titleOf, codeLabel } from './util.js';
 import { ic } from './icons.js';
+import { initLightbox } from './lightbox.js';
 import { api } from './api.js';
 import { initTheme, toggleTheme } from './theme.js';
 import { errorBox, loadingBox, performerName, href, avatar, disk } from './components.js';
@@ -12,6 +13,8 @@ import facet from './views/facet.js';
 import crawl from './views/crawl.js';
 import search from './views/search.js';
 import settings from './views/settings.js';
+import notifications from './views/notifications.js';
+import report from './views/report.js';
 import catalog from './views/catalog.js';
 import calendar from './views/calendar.js';
 import adminView from './views/admin.js';
@@ -46,14 +49,16 @@ const ROUTES = [
   [/^bio$/, bio, 'bio'],
   [/^stats$/, stats, 'stats'],
   [/^crawl$/, crawl, 'crawl'],
+  [/^settings\/notifications$/, notifications, 'settings'],
   [/^settings$/, settings, 'settings'],
+  [/^settings\/report$/, report, 'settings'],
 ];
 
 const NAV = [
-  ['Khám phá', [['home', 'Discover', 'home', '#/'], ['search', 'Tìm kiếm', 'search', '#/search'], ['stats', 'Thống kê', 'chart', '#/stats']]],
-  ['Danh mục', [['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers'], ['bio', 'Hồ sơ diễn viên', 'user', '#/bio'], ['smart-new', 'Mới cập nhật', 'film', '#/movies?sort=update_date'], ['catalog-genres', 'Thể loại', 'tag', '#/catalog/genres'], ['catalog-makers', 'Maker', 'building', '#/catalog/makers'], ['catalog-series', 'Series', 'folder', '#/catalog/series'], ['catalog-labels', 'Label', 'layers', '#/catalog/labels'], ['catalog-years', 'Năm', 'cal', '#/catalog/years'], ['calendar', 'Lịch phát hành', 'cal', '#/calendar']]],
-  ['Của tôi', [['me-favourite', 'Yêu thích', 'tag', '#/me/favourite'], ['me-watch_later', 'Xem sau', 'cal', '#/me/watch_later'], ['me-seen', 'Đã xem', 'film', '#/me/seen'], ['feed', 'Theo dõi', 'user', '#/feed'], ['library', 'Thư viện', 'layers', '#/library'], ['downloads', 'Tải về', 'disk', '#/downloads'], ['media', 'Media', 'film', '#/media']]],
-  ['Công cụ', [['crawl', 'Crawl & nguồn', 'spider', '#/crawl'], ['ops', 'Vận hành (Command Center)', 'chart', document.querySelector('meta[name=command-center-url]')?.content || '/ops'], ['admin', 'Quản trị', 'gear', '#/admin'], ['settings', 'Cài đặt', 'gear', '#/settings']]],
+  ['Khám phá', [['home', 'Khám phá', 'home', '#/'], ['search', 'Tìm kiếm', 'search', '#/search'], ['stats', 'Thống kê', 'chart', '#/stats']]],
+  ['Danh mục', [['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers'], ['bio', 'Hồ sơ diễn viên', 'user', '#/bio'], ['smart-new', 'Mới cập nhật', 'film', '#/movies?sort=update_date'], ['catalog-genres', 'Thể loại', 'tag', '#/catalog/genres'], ['catalog-makers', 'Hãng', 'building', '#/catalog/makers'], ['catalog-series', 'Loạt phim', 'folder', '#/catalog/series'], ['catalog-labels', 'Nhãn', 'layers', '#/catalog/labels'], ['catalog-years', 'Năm', 'cal', '#/catalog/years'], ['calendar', 'Lịch phát hành', 'cal', '#/calendar']]],
+  ['Của tôi', [['me-favourite', 'Yêu thích', 'tag', '#/me/favourite'], ['me-watch_later', 'Xem sau', 'cal', '#/me/watch_later'], ['me-seen', 'Đã xem', 'film', '#/me/seen'], ['feed', 'Theo dõi', 'user', '#/feed'], ['library', 'Thư viện', 'layers', '#/library'], ['downloads', 'Tải về', 'disk', '#/downloads'], ['media', 'Tệp media', 'film', '#/media']]],
+  ['Công cụ', [['crawl', 'Thu thập & nguồn', 'spider', '#/crawl'], ['ops', 'Vận hành', 'chart', document.querySelector('meta[name=command-center-url]')?.content || '/ops'], ['admin', 'Quản trị', 'gear', '#/admin'], ['settings', 'Cài đặt', 'gear', '#/settings']]],
 ];
 
 let cleanup = null;
@@ -62,7 +67,7 @@ const guestMode = document.body.dataset.guestMode === 'true';
 const OWNER_ONLY_NAV_IDS = new Set(['me-favourite', 'me-watch_later', 'me-seen', 'feed', 'library', 'downloads', 'media', 'ops', 'admin', 'settings']);
 
 function guestLoginPrompt(page) {
-  const pageNames = { admin: 'Quản trị', settings: 'Cài đặt', library: 'Thư viện', downloads: 'Tải về', media: 'Media', feed: 'Theo dõi' };
+  const pageNames = { admin: 'Quản trị', settings: 'Cài đặt', library: 'Thư viện', downloads: 'Tải về', media: 'Tệp media', feed: 'Theo dõi' };
   const label = pageNames[page] || page;
   return `<div class="wrap"><section class="panel guest-login-prompt"><div class="bd"><h1>Đăng nhập để dùng tính năng này</h1><p>${label} chỉ dành cho chủ sở hữu đã đăng nhập.</p><a class="btn pri" href="/login">Đăng nhập</a></div></section></div>`;
 }
@@ -93,8 +98,10 @@ function drawShell(top) {
       .filter(group => group[1].length)
     : NAV;
   $('#side').innerHTML = '<div class="brand"><i>X</i>XCrawler</div>' + groups.map(g => `<div class="nav-h">${g[0]}</div>` + g[1].map(n => `<a class="nav ${top === n[0] ? 'on' : ''}" href="${n[3]}" style="text-decoration:none">${ic(n[2])}<span>${n[1]}</span></a>`).join('')).join('') + '<div class="side-foot">JavMeta API · dữ liệu thật</div>';
-  const bn = [['home', 'Discover', 'home', '#/'], ['search', 'Tìm', 'search', '#/search'], ['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers'], ['crawl', 'Crawl', 'spider', '#/crawl']];
-  $('#bnav').innerHTML = bn.map(n => `<a class="${top === n[0] ? 'on' : ''}" href="${n[3]}" style="flex:1;text-decoration:none;color:inherit;display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 0;font-size:10px">${ic(n[2])}${n[1]}</a>`).join('');
+  const bn = guestMode
+    ? [['home', 'Khám phá', 'home', '#/'], ['search', 'Tìm', 'search', '#/search'], ['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers']]
+    : [['home', 'Khám phá', 'home', '#/'], ['search', 'Tìm', 'search', '#/search'], ['movies', 'Phim', 'film', '#/movies'], ['me-favourite', 'Yêu thích', 'tag', '#/me/favourite'], ['settings', 'Cài đặt', 'gear', '#/settings']];
+  $('#bnav').innerHTML = bn.map(n => `<a class="${top === n[0] ? 'on' : ''}" href="${n[3]}">${ic(n[2])}${n[1]}</a>`).join('');
   $('.top .menu').innerHTML = ic('menu');
 }
 
@@ -103,14 +110,14 @@ async function render() {
   const r = parse();
   const view = $('#view');
   drawShell(r.top);
-  $('#side').classList.remove('open');
+  setSideOpen(false);
   const token = current = {};
   if (guestMode && isOwnerPage(r)) {
     const page = r.top.startsWith('me-') || r.top === 'feed' ? 'Tính năng cá nhân' : r.top;
     view.innerHTML = guestLoginPrompt(page);
     return;
   }
-  if (!r.view) { view.innerHTML = '<div class="wrap"><div class="empty">Trang không tồn tại.<a class="btn" href="#/">Về Discover</a></div></div>'; return; }
+  if (!r.view) { view.innerHTML = '<div class="wrap"><div class="empty">Trang không tồn tại.<a class="btn" href="#/">Về Khám phá</a></div></div>'; return; }
   view.innerHTML = loadingBox();
   try {
     await loadDisk(disk);
@@ -136,10 +143,10 @@ async function omniDraw() {
     const { data: sg } = await api('suggest', { q, limit: 5 });
     if ($('#omq').value.trim() !== q) return;
     OM.items = [
-      ...(sg.movies || []).map(x => ({ g: 'Phim', href: href.movie(x.code), label: `${x.code} · ${x.title || ''}`, sub: x.maker || '' })),
+      ...(sg.movies || []).map(x => ({ g: 'Phim', href: href.movie(x.code), label: `${codeLabel(x.code)} · ${x.title || ''}`, sub: x.maker || '' })),
       ...(sg.performers || []).map(x => ({ g: 'Diễn viên', href: href.performer(x.id), label: x.name || `#${x.id}`, sub: `#${x.id}`, p: { id: x.id, name_romaji: x.name } })),
-      ...(sg.makers || []).map(x => ({ g: 'Maker', href: href.facet('maker', x.name), label: x.name, sub: `${fmt(x.movie_count)} phim` })),
-      ...(sg.series || []).map(x => ({ g: 'Series', href: href.facet('series', x.name), label: x.name, sub: `${fmt(x.movie_count)} phim` })),
+      ...(sg.makers || []).map(x => ({ g: 'Hãng', href: href.facet('maker', x.name), label: x.name, sub: `${fmt(x.movie_count)} phim` })),
+      ...(sg.series || []).map(x => ({ g: 'Loạt phim', href: href.facet('series', x.name), label: x.name, sub: `${fmt(x.movie_count)} phim` })),
       { g: 'Tìm kiếm', href: href.search(q), label: `Tìm “${q}” trong mọi thứ`, sub: 'Enter' },
     ];
     OM.i = 0;
@@ -189,12 +196,24 @@ document.addEventListener('click', e => {
   const t = e.target.closest('[data-act]'); if (!t) return;
   const act = t.dataset.act;
   if (act === 'theme') toggleTheme();
-  if (act === 'menu') $('#side').classList.toggle('open');
+  if (act === 'menu') setSideOpen(!$('#side').classList.contains('open'));
   if (act === 'reload') render();
   if (act === 'copy') copyText(t.dataset.v);
-  if (act === 'help') { $('#dlg').innerHTML = '<h2 style="margin-bottom:8px">Phím tắt</h2><dl class="kv" style="grid-template-columns:120px 1fr"><dt><kbd>⌘K</kbd> <kbd>/</kbd></dt><dd>Tìm kiếm</dd><dt><kbd>t</kbd></dt><dd>Đổi sáng/tối</dd><dt><kbd>Esc</kbd></dt><dd>Đóng</dd></dl>'; $('#ov').classList.add('on'); }
+  if (act === 'help') openHelp();
 });
-$('#ov').addEventListener('click', e => { if (e.target.id === 'ov') $('#ov').classList.remove('on'); });
+$('#sidescrim')?.addEventListener('click', () => setSideOpen(false));
+function setSideOpen(open) {
+  $('#side')?.classList.toggle('open', open);
+  const scrim = $('#sidescrim');
+  if (scrim) scrim.hidden = !open;
+}
+$('#ov').addEventListener('click', e => {
+  if (e.target.closest('[data-dlg-close]')) { $('#ov').classList.remove('on'); return; }
+  if (e.target.id !== 'ov') return;
+  const cancel = document.querySelector('#dlg [data-confirm-no], #dlg [data-dlg-close]');
+  if (cancel) cancel.click();
+  else $('#ov').classList.remove('on');
+});
 document.addEventListener('keydown', e => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('#omq').focus(); $('#omq').select(); }
@@ -203,6 +222,25 @@ document.addEventListener('keydown', e => {
   else if (!typing && e.key === '?') document.querySelector('[data-act=help]').click();
   else if (e.key === 'Escape') { $('#ov').classList.remove('on'); }
 });
+function shortcutMod() {
+  return /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? '⌘' : 'Ctrl';
+}
+
+function openHelp() {
+  const mod = shortcutMod();
+  const dlg = $('#dlg');
+  dlg.setAttribute('role', 'dialog');
+  dlg.setAttribute('aria-modal', 'true');
+  dlg.setAttribute('aria-labelledby', 'help-title');
+  dlg.innerHTML = `<h2 id="help-title" style="margin-bottom:8px">Phím tắt</h2><dl class="kv" style="grid-template-columns:120px 1fr"><dt><kbd>${mod}+K</kbd> <kbd>/</kbd></dt><dd>Tìm kiếm</dd><dt><kbd>t</kbd></dt><dd>Đổi sáng/tối</dd><dt><kbd>Esc</kbd></dt><dd>Đóng</dd><dt><kbd>?</kbd></dt><dd>Bảng phím tắt</dd></dl><button type="button" class="btn" data-dlg-close>Đóng</button>`;
+  $('#ov').classList.add('on');
+  dlg.querySelector('[data-dlg-close]')?.focus();
+}
+
+const omniKbd = document.querySelector('.omni kbd');
+if (omniKbd) omniKbd.textContent = shortcutMod() + 'K';
+
+initLightbox();
 render();
 live();
 setInterval(live, 30000);

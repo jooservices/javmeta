@@ -16,7 +16,9 @@ foreach ($queueNames as $queueName) {
         'connection' => 'redis',
         'queue' => [$queueName],
         'balance' => false,
-        'maxProcesses' => in_array($queueName, $queueConfig['browser_names'], true) ? $queueConfig['browser_workers_per_queue'] : $workersPerQueue,
+        'maxProcesses' => in_array($queueName, $queueConfig['browser_names'], true)
+            ? $queueConfig['browser_workers_per_queue']
+            : (in_array($queueName, $queueConfig['retry_names'], true) ? $queueConfig['retry']['workers_per_queue'] : $workersPerQueue),
         'maxTime' => (int) $queueConfig['queue_max_time'],
         'maxJobs' => (int) $queueConfig['queue_max_jobs'],
         'sleep' => (int) $queueConfig['queue_sleep_seconds'],

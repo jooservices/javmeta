@@ -3,7 +3,7 @@ import { head, crumbs, emptyBox, a } from '../components.js';
 import { moviesBrowser } from './movies.js';
 import { myMarks, markBtn } from '../marks.js';
 
-const LABEL = { genre: 'Thể loại', maker: 'Maker', series: 'Series', label: 'Label', year: 'Năm phát hành' };
+const LABEL = { genre: 'Thể loại', maker: 'Hãng', series: 'Loạt phim', label: 'Nhãn', year: 'Năm phát hành' };
 
 /* every genre, maker, series, label and year is a page: the movies of that value */
 export default {

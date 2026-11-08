@@ -78,20 +78,36 @@ session or API credential.
 | `GET, HEAD` | `horizon/api/workload` | Login required | Horizon authorization gate protects worker workload. |
 | `GET, HEAD` | `horizon/{view?}` | Login required | Horizon authorization gate protects the dashboard. |
 | `GET, HEAD` | `login` | Guest allowed | Public authentication form; it exposes no owner or API credentials. |
+| `GET, HEAD` | `metrics` | Guest allowed | Exposes configured PostgreSQL worker-budget gauges without session or credential data. |
 | `POST` | `login` | Login required | Not a guest-browsing route. Anonymous clients may submit credentials; invalid input redirects to the login form. |
 | `POST` | `logout` | Login required | Requires an owner session. |
+| `GET, HEAD` | `node/join.sh` | Guest allowed | The node join script; it contains only this installation's address and no secret. |
+| `POST` | `node/enroll` | Login required | Not an owner session: it needs a one-time node token (401 without one, a uniform 404 for an unknown, used, expired or foreign token) and is limited to 6 attempts per minute per address. |
 | `GET, HEAD` | `ops` | Login required | Requires an authenticated super-administrator. |
 | `GET, HEAD` | `ops/data` | Login required | Requires an authenticated super-administrator; returns operational data. |
+| `GET, HEAD` | `ops/nodes` | Login required | Requires an authenticated super-administrator; lists node enrollments without tokens. |
+| `POST` | `ops/nodes` | Login required | Requires an authenticated super-administrator; creates a one-time node join command. |
 | `GET, HEAD` | `storage/{path}` | Login required | Private local files require a signed URL. |
 | `PUT` | `storage/{path}` | Login required | Private local file uploads require a signed upload URL. |
 | `GET, HEAD` | `ui-admin/keys` | Login required | Requires an authenticated super-administrator. |
 | `POST` | `ui-admin/keys` | Login required | Requires an authenticated super-administrator and creates an API key. |
 | `DELETE` | `ui-admin/keys/{id}` | Login required | Requires an authenticated super-administrator and revokes an API key. |
 | `GET, HEAD` | `ui-admin/keys/{id}/usage` | Login required | Requires an authenticated super-administrator. |
+| `GET, HEAD` | `ui-admin/notifications` | Login required | Requires an authenticated super-administrator; lists notification templates and delivery metadata. |
+| `GET, HEAD` | `ui-admin/notifications/{key}` | Login required | Requires an authenticated super-administrator; returns an editable notification template. |
+| `PUT` | `ui-admin/notifications/{key}` | Login required | Requires an authenticated super-administrator and edits a notification template. |
+| `POST` | `ui-admin/notifications/{key}/preview` | Login required | Requires an authenticated super-administrator and renders an unsaved notification preview. |
+| `POST` | `ui-admin/notifications/{key}/test` | Login required | Requires an authenticated super-administrator and sends a sample message to the configured Telegram owner. |
+| `POST` | `ui-admin/notifications/{key}/reset` | Login required | Requires an authenticated super-administrator and restores a registry default. |
+| `GET, HEAD` | `ui-admin/notifications/{key}/revisions` | Login required | Requires an authenticated super-administrator; returns private template revision history. |
+| `POST` | `ui-admin/notifications/{key}/revisions/{revision}/restore` | Login required | Requires an authenticated super-administrator and restores a selected revision. |
 | `GET, HEAD` | `ui-admin/report/{type}` | Login required | Requires an authenticated super-administrator; returns reports. |
+| `GET, HEAD` | `ui-admin/report/periodic` | Login required | Requires an authenticated super-administrator; returns the periodic report preview and history. |
+| `GET, HEAD` | `ui-admin/report/daily` | Login required | Requires an authenticated super-administrator; returns the daily report preview and history. |
+| `POST` | `ui-admin/report/periodic/send-now` | Login required | Requires an authenticated super-administrator and CSRF token. |
 | `GET, HEAD` | `ui-admin/settings` | Login required | Requires an authenticated super-administrator; may return settings values. |
 | `PUT` | `ui-admin/settings` | Login required | Requires an authenticated super-administrator and changes settings. |
-| `GET, HEAD` | `ui-api/{path}` | Guest allowed | Read-only bridge with a strict public catalog allow-list, field redaction, per-IP rate limiting, and `noindex` headers. |
+| `GET, HEAD` | `ui-api/{path}` | Guest allowed | Read-only bridge with a strict public catalog allow-list, field redaction (guest status summaries omit worker data), per-IP rate limiting, and `noindex` headers. |
 | `DELETE, PATCH, POST, PUT` | `ui-api/{path}` | Login required | Guest mode rejects writes; signed-in owners may use only authorized operations. |
 | `GET, HEAD` | `ui-me/downloads` | Login required | Requires an authenticated super-administrator; returns owner download state. |
 | `POST` | `ui-me/downloads` | Login required | Requires an authenticated super-administrator and starts a download. |
@@ -127,7 +143,8 @@ session or API credential.
 - Guest health responses omit dependency endpoints, source details, worker
   names, queue details, and environment values. Guest bridge responses remove
   credentials, signed/download URLs, paths, internal URLs/IPs, and stack trace
-  fields. The package liveness route also removes environment/version details.
+  fields. Guests never receive worker data: the bridge's status summary drops
+  the `workers` list entirely. The package liveness route also removes environment/version details.
   Server errors on the guest bridge return a generic response.
 - The shell and every guest bridge response, including denials and rate limits,
   carries `X-Robots-Tag: noindex, nofollow` and `Cache-Control: no-store`.

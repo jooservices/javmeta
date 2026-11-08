@@ -29,6 +29,7 @@ final class ProductCodeFixtureTest extends CrawlerxContractTestCase
     #[DataProvider('fixtures')]
     public function test_captured_page_is_stored_and_recrawl_updates_it(string $slug, string $url, string $fixture, string $code): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
         $this->source($slug);
         $row = $this->claimedRow($slug, $url, CrawlQueue::KIND_DETAIL);
         $path = __DIR__ . '/../../Fixtures/product-codes/' . $fixture . '.html';

@@ -39,8 +39,11 @@ with current settings and scale count-only changes inside the running Horizon
 master; they do not restart the node or require a deploy. Deploy locks, jitter,
 fleet serialization and a 10-minute per-node cooldown guard each change. A
 queue-name or other non-count Horizon layout change is reported for an
-operator-managed restart. PostgreSQL's role connection limit **60** and shared
-`max_connections` **150** bound fleet capacity. Browser capacity on vm-tools is
+operator-managed restart. The PostgreSQL application role connection limit is
+**120**, with a default **30-slot reserve** for scheduler, PHP-FPM, deploy
+overlap, and other role clients. Horizon's configured PostgreSQL demand is
+capped at 90 slots across the fleet; see the [connection budget runbook](postgres-connections.md).
+The shared `max_connections` remains 150. Browser capacity on vm-tools is
 global, shared by every crawler node. The native Playwright script must be
 under `<root>/current/vendor/jooservices/crawlerx/scripts/`.
 

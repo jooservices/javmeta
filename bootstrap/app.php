@@ -18,6 +18,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias(['requires' => RequiresDependency::class]);
+        // A new node has no browser session: its token is the credential for this one call.
+        $middleware->validateCsrfTokens(except: ['node/enroll']);
         if (! app()->runningUnitTests()) {
             $middleware->prepend(StartupHealthMiddleware::class);
         }

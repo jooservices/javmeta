@@ -81,13 +81,25 @@ final class E2EStepTest extends TestCase
 
     public function test_create_key_keeps_plaintext_only_in_context(): void
     {
-        Http::fake(['https://api.test/api/v1/admin/keys' => Http::response(['data' => ['id' => 41, 'plaintext' => 'jvm_generated-key']], 201)]);
+        Http::fake(['https://api.test/api/v1/admin/keys' => Http::sequence()
+            ->push(['errors' => ['scopes' => ['Chọn ít nhất một quyền.']]], 422)
+            ->push(['data' => ['id' => 41, 'plaintext' => 'jvm_generated-key']], 201)]);
 
         $context = (new CreateApiKey())->run($this->context());
 
         self::assertSame('jvm_generated-key', $context->key()?->plaintext);
         self::assertSame('owner-secret', $context->lastRequest['headers']['X-Owner-Token'] ?? null);
         self::assertSame('[REDACTED]', (new Redactor())->redact($context->lastRequest, ['owner-secret'])['headers']['X-Owner-Token']);
+        Http::assertSentCount(2);
+        Http::assertSent(static fn($request): bool => $request['scopes'] === []);
+        Http::assertSent(static fn($request): bool => $request['scopes'] === ['movies', 'bulk', 'performers']);
+    }
+
+    public function test_create_key_fails_when_the_api_accepts_a_key_without_scopes(): void
+    {
+        Http::fake(['https://api.test/api/v1/admin/keys' => Http::response(['data' => ['id' => 41, 'plaintext' => 'jvm_generated-key']], 201)]);
+
+        $this->expectStepFailure(new CreateApiKey(), $this->context(), 'Expected HTTP 422; received 201.');
     }
 
     public function test_list_keys_does_not_accept_plaintext_fields(): void
@@ -485,7 +497,9 @@ final class E2EStepTest extends TestCase
             ->push(['data' => ['code' => 'SSIS-001']]);
         Http::fake([
             'https://api.test/api/v1/admin/keys/*' => Http::response([], 204),
-            'https://api.test/api/v1/admin/keys' => Http::response(['data' => ['id' => 41, 'plaintext' => 'jvm_generated-key']], 201),
+            'https://api.test/api/v1/admin/keys' => Http::sequence()
+                ->push(['errors' => ['scopes' => ['Chọn ít nhất một quyền.']]], 422)
+                ->push(['data' => ['id' => 41, 'plaintext' => 'jvm_generated-key']], 201),
             'https://api.test/api/v1/auth/verify' => Http::response(['type' => 'unauthorized', 'data' => null], 401),
             'https://api.test/api/v1/mcp' => Http::response(['result' => ['content' => [['type' => 'text', 'text' => '{"code":"SSIS-001"}']], 'isError' => false]]),
             'https://api.test/api/v1/movies/*' => $revokedStillWorks,

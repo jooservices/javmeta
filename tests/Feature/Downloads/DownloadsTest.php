@@ -116,6 +116,7 @@ final class DownloadsTest extends TestCase
 
     public function test_a_finished_file_is_served_only_through_a_valid_signed_link_from_the_home_network(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
         $s = app(SettingsService::class);
         $s->set('downloads.enabled', true);
         $s->set('files.enabled', true);
@@ -134,7 +135,7 @@ final class DownloadsTest extends TestCase
 
         $this->travel(2)->hours();
         $this->get($url)->assertStatus(403);
-        $this->travelBack();
+        $this->travelTo('2026-11-02T12:34:00Z');
 
         $s->set('files.enabled', false);
         $this->get($url)->assertStatus(404);

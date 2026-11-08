@@ -14,6 +14,7 @@ use App\Models\MovieMedia;
 use App\Models\Performer;
 use App\Models\Source;
 use App\Models\User;
+use App\Services\Crawl\WorkerHeartbeat;
 use App\Services\Ui\UiLoginStateRecorder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -141,6 +142,17 @@ final class UiGuestModeTest extends TestCase
         self::assertFalse($bridge->headers->has('Set-Cookie'));
     }
 
+    public function test_guest_status_summary_has_no_workers(): void
+    {
+        Cache::put(WorkerHeartbeat::INDEX_KEY, ['node-a:100' => now()->getTimestamp()], now()->addDay());
+
+        $summary = $this->getJson('/ui-api/status/summary')->assertOk();
+
+        $this->assertArrayNotHasKey('workers', $summary->json('data'));
+        $this->assertArrayNotHasKey('workers_total', $summary->json('data'));
+        $this->assertStringNotContainsString('node-a', (string) $summary->getContent());
+    }
+
     public function test_guest_movie_details_do_not_expose_private_paths_or_signed_media_links(): void
     {
         $movie = Movie::factory()->create([
@@ -220,6 +232,8 @@ final class UiGuestModeTest extends TestCase
             '/ui-admin/keys' => $this->getJson('/ui-admin/keys'),
             'ui-admin key write' => $this->postJson('/ui-admin/keys', ['label' => 'guest']),
             '/ui-admin/report/quality' => $this->getJson('/ui-admin/report/quality'),
+            '/ui-admin/report/periodic' => $this->getJson('/ui-admin/report/periodic'),
+            'ui-admin report send now' => $this->postJson('/ui-admin/report/periodic/send-now'),
             '/ui-admin/settings' => $this->getJson('/ui-admin/settings'),
             'ui-admin settings write' => $this->putJson('/ui-admin/settings', ['settings' => []]),
             'API source cookie write' => $this->putJson('/api/v1/admin/sources/private-source/login-cookies', ['cookies' => 'private']),
@@ -275,6 +289,7 @@ final class UiGuestModeTest extends TestCase
 
     public function test_owner_can_open_a_signed_private_file_in_guest_mode(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
         Storage::fake('local');
         Storage::disk('local')->put('private.txt', 'private owner file');
         $url = URL::temporarySignedRoute('storage.local', now()->addMinutes(5), ['path' => 'private.txt'], absolute: false);

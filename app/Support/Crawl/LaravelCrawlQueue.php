@@ -14,6 +14,9 @@ final class LaravelCrawlQueue
 {
     public static function depthLimit(string $queue): int
     {
+        if (in_array($queue, (array) config('javmeta_queues.retry_names', []), true)) {
+            return max(1, (int) config('javmeta_queues.retry.depth_limit', 10));
+        }
         $browser = in_array($queue, (array) config('javmeta_queues.browser_names', []), true);
 
         return max(1, (int) config($browser ? 'javmeta_queues.browser_depth_limit' : 'javmeta_queues.depth_limit', 100));
@@ -62,7 +65,11 @@ final class LaravelCrawlQueue
         /** @var array<string, string> $names */
         $names = config('javmeta_queues.names', []);
 
-        return array_values(array_unique([...array_values($names), ...array_values((array) config('javmeta_queues.browser_names', []))]));
+        return array_values(array_unique([
+            ...array_values($names),
+            ...array_values((array) config('javmeta_queues.browser_names', [])),
+            ...array_values((array) config('javmeta_queues.retry_names', [])),
+        ]));
     }
 
     public static function forListing(): string

@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Tests\Feature\Ui;
 
 use App\Models\Movie;
+use App\Models\Performer;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class UiMarksTest extends TestCase
@@ -33,8 +35,20 @@ final class UiMarksTest extends TestCase
 
         $this->postJson('/ui-me/marks', ['kind' => 'favourite', 'subject' => 'movie', 'key' => 'MRK-001', 'on' => false])->assertOk();
         $this->assertCount(0, $this->getJson('/ui-me/marks')->json('data'));
-        $this->postJson('/ui-me/marks', ['kind' => 'follow', 'subject' => 'movie', 'key' => 'x', 'on' => true])->assertStatus(422);
+        $this->postJson('/ui-me/marks', ['kind' => 'follow', 'subject' => 'movie', 'key' => 'x', 'on' => true])
+            ->assertStatus(422)
+            ->assertExactJson(['message' => 'This mark does not apply to that subject.']);
         $this->postJson('/ui-me/marks', ['kind' => 'nope', 'subject' => 'movie', 'key' => 'x', 'on' => true])->assertStatus(422);
+    }
+
+    public function test_movie_marks_skip_codes_without_a_catalog_movie_but_keep_the_mark_total(): void
+    {
+        $this->actingAs(User::factory()->create(['role' => 'super_administrator']));
+        $this->postJson('/ui-me/marks', ['kind' => 'favourite', 'subject' => 'movie', 'key' => 'MISSING-001', 'on' => true])->assertOk();
+
+        $this->getJson('/ui-me/movies/favourite')->assertOk()
+            ->assertJsonPath('data', [])
+            ->assertJsonPath('meta.total', 1);
     }
 
     public function test_the_feed_shows_new_movies_of_follows_and_remembers_the_last_visit(): void
@@ -43,6 +57,7 @@ final class UiMarksTest extends TestCase
         Movie::factory()->create(['display_code' => 'FED-001', 'maker' => 'Followed', 'first_seen_at' => now()->subDay()]);
         Movie::factory()->create(['display_code' => 'FED-002', 'maker' => 'Followed', 'first_seen_at' => now()->subDays(60)]);
         Movie::factory()->create(['display_code' => 'OTH-001', 'maker' => 'Other', 'first_seen_at' => now()->subDay()]);
+        Movie::factory()->create(['display_code' => 'FED-DELISTED', 'maker' => 'Followed', 'first_seen_at' => now()->subDay(), 'delisted_at' => now()]);
 
         $this->getJson('/ui-me/feed')->assertOk()->assertJsonPath('meta.follows', 0)->assertJsonPath('data', []);
         $this->postJson('/ui-me/marks', ['kind' => 'follow', 'subject' => 'maker', 'key' => 'Followed', 'on' => true])->assertOk();
@@ -53,6 +68,46 @@ final class UiMarksTest extends TestCase
 
         $this->postJson('/ui-me/feed/seen')->assertOk();
         $this->assertSame(0, $this->getJson('/ui-me/feed')->json('meta.new_since_last_visit'));
+    }
+
+    public function test_the_feed_includes_movies_linked_to_followed_performers_and_series(): void
+    {
+        $this->actingAs(User::factory()->create(['role' => 'super_administrator']));
+        $performer = Performer::factory()->create();
+        $performerMovie = Movie::factory()->create([
+            'display_code' => 'FED-PERFORMER',
+            'series' => 'Unfollowed Series',
+            'first_seen_at' => now()->subDay(),
+        ]);
+        DB::table('movie_performers')->insert([
+            'movie_id' => $performerMovie->id,
+            'performer_id' => $performer->id,
+            'source_slug' => $performer->source_slug,
+            'crawled_at' => now(),
+        ]);
+        Movie::factory()->create([
+            'display_code' => 'FED-SERIES',
+            'series' => 'Followed Series',
+            'first_seen_at' => now()->subDay(),
+        ]);
+        $this->postJson('/ui-me/marks', [
+            'kind' => 'follow',
+            'subject' => 'performer',
+            'key' => (string) $performer->id,
+            'on' => true,
+        ])->assertOk();
+        $this->postJson('/ui-me/marks', [
+            'kind' => 'follow',
+            'subject' => 'series',
+            'key' => 'Followed Series',
+            'on' => true,
+        ])->assertOk();
+
+        $feed = $this->getJson('/ui-me/feed')->assertOk();
+
+        self::assertEqualsCanonicalizing(['FED-PERFORMER', 'FED-SERIES'], array_column($feed->json('data'), 'code'));
+        self::assertSame(2, $feed->json('meta.follows'));
+        self::assertSame(2, $feed->json('meta.new_since_last_visit'));
     }
 
     public function test_saved_searches_replace_by_name_and_are_scoped_to_owner_and_browser(): void
@@ -88,7 +143,10 @@ final class UiMarksTest extends TestCase
     {
         $this->actingAs(User::factory()->create(['role' => 'super_administrator']));
         $mark = ['kind' => 'saved_search', 'subject' => 'movies', 'on' => true];
-        foreach (['not json', 'null', '[]', '{}', '{"name":" ","query":""}', '{"name":12,"query":""}', '{"name":"x","query":[]}', '{"name":"x"}'] as $key) {
+        $this->postJson('/ui-me/marks', [...$mark, 'key' => 'not json'])
+            ->assertStatus(422)
+            ->assertExactJson(['message' => 'A saved search requires a name (1–80 characters) and a query (up to 1500 characters).']);
+        foreach (['null', '[]', '{}', '{"name":" ","query":""}', '{"name":12,"query":""}', '{"name":"x","query":[]}', '{"name":"x"}'] as $key) {
             $this->postJson('/ui-me/marks', [...$mark, 'key' => $key])->assertUnprocessable();
         }
         foreach ([['name' => str_repeat('a', 81), 'query' => ''], ['name' => 'x', 'query' => str_repeat('a', 1501)]] as $value) {

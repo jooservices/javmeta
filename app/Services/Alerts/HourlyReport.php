@@ -6,6 +6,7 @@ namespace App\Services\Alerts;
 
 use App\Contracts\ReportChannel;
 use App\Services\Crawl\CrawlStatusService;
+use App\Services\Notifications\NotificationRenderer;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\File;
 
@@ -18,6 +19,7 @@ final class HourlyReport
     public function __construct(
         private readonly CrawlStatusService $status,
         private readonly ReportChannel $channel,
+        private readonly ?NotificationRenderer $renderer = null,
     ) {}
 
     /**
@@ -28,13 +30,17 @@ final class HourlyReport
         $now = CarbonImmutable::now();
         $counts = $this->status->counts();
         $previous = $this->previous();
-        $message = $this->message($counts, $previous, $now);
+        $rendered = ($this->renderer ?? app(NotificationRenderer::class))->render('catalog.hourly', $this->variables($counts, $previous, $now));
+        $message = $rendered['body'];
 
         if ($dryRun) {
             return ['sent' => false, 'message' => $message, 'counts' => $counts];
         }
 
-        $sent = $this->channel->deliver('Hourly report', $message);
+        $sent = $this->channel->deliver($rendered['title'], $message, [
+            'template_key' => 'catalog.hourly',
+            'template_rendered' => true,
+        ]);
         if ($sent) {
             $this->store($counts, $now);
         }
@@ -42,29 +48,29 @@ final class HourlyReport
         return ['sent' => $sent, 'message' => $message, 'counts' => $counts];
     }
 
-    /**
-     * @param  array{movies: int, performers: int}  $counts
-     * @param  array{movies: int, performers: int, at: CarbonImmutable}|null  $previous
+    /** @param array{movies: int, performers: int} $counts
+     *  @param array{movies: int, performers: int, at: CarbonImmutable}|null $previous
+     *  @return array<string, scalar>
      */
-    public function message(array $counts, ?array $previous, CarbonImmutable $now): string
+    private function variables(array $counts, ?array $previous, CarbonImmutable $now): array
     {
-        $timezone = (string) config('javmeta_alerts.hourly_report.timezone', 'Asia/Ho_Chi_Minh');
-        $lines = ['Report ' . $now->setTimezone($timezone)->format('Y-m-d H:i') . ' (' . $timezone . ')'];
-
-        if ($previous === null) {
-            $lines[] = 'Movies: ' . number_format($counts['movies']);
-            $lines[] = 'Performers: ' . number_format($counts['performers']);
-            $lines[] = 'First report: there is no earlier value to compare with.';
-
-            return implode("\n", $lines);
+        $timezone = (string) config('javmeta_alerts.hourly_report.timezone', 'America/Mexico_City');
+        $movieChange = $previous === null ? 'no previous value' : $this->change($counts['movies'] - $previous['movies']);
+        $performerChange = $previous === null ? 'no previous value' : $this->change($counts['performers'] - $previous['performers']);
+        $period = 'since the previous report';
+        if ($previous !== null) {
+            $minutes = max(1, (int) round($previous['at']->diffInMinutes($now, true)));
+            $period = intdiv($minutes, 60) > 0 ? intdiv($minutes, 60) . 'h ' . ($minutes % 60) . 'm' : $minutes . 'm';
         }
 
-        $minutes = max(1, (int) round($previous['at']->diffInMinutes($now, true)));
-        $period = intdiv($minutes, 60) > 0 ? intdiv($minutes, 60) . 'h ' . ($minutes % 60) . 'm' : $minutes . 'm';
-        $lines[] = 'Movies: ' . number_format($counts['movies']) . ' (' . $this->change($counts['movies'] - $previous['movies']) . ' in ' . $period . ')';
-        $lines[] = 'Performers: ' . number_format($counts['performers']) . ' (' . $this->change($counts['performers'] - $previous['performers']) . ')';
-
-        return implode("\n", $lines);
+        return [
+            'report_time' => $now->setTimezone($timezone)->format('M j, H:i'),
+            'movies' => number_format($counts['movies'], 0, '.', ','),
+            'movie_change' => $movieChange . ' in ' . $period,
+            'performers' => number_format($counts['performers'], 0, '.', ','),
+            'performer_change' => $performerChange,
+            'comparison_note' => $previous === null ? 'First report: there is no earlier value to compare with.' : '',
+        ];
     }
 
     private function change(int $difference): string

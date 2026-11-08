@@ -19,6 +19,12 @@ final class BackupStatusCommand extends Command
 
     public function handle(OpenObserveClient $client, AlertDispatcher $alerts): int
     {
+        if (! config('backup.monitoring_enabled')) {
+            $this->info('Backup monitoring is off (setting backup.monitoring_enabled).');
+
+            return self::SUCCESS;
+        }
+
         $age = $this->lastSuccessAge((string) config('backup.manifest_path'));
         $client->ingestMetrics([
             [
@@ -30,10 +36,9 @@ final class BackupStatusCommand extends Command
         $threshold = max(1, (int) config('backup.stale_after_seconds', 26 * 60 * 60));
         $throttle = (int) config('javmeta_alerts.throttle_seconds', 3600);
         if ($age === null) {
-            $alerts->send(
+            $alerts->sendTemplate(
                 debounceKey: 'backup:missing',
-                subject: 'Backup manifest missing',
-                body: 'No successful database backup manifest is available.',
+                templateKey: 'backup.manifest_missing',
                 context: ['backup_age_seconds' => -1],
                 debounceSeconds: $throttle,
             );
@@ -43,10 +48,9 @@ final class BackupStatusCommand extends Command
         }
 
         if ($age > $threshold) {
-            $alerts->send(
+            $alerts->sendTemplate(
                 debounceKey: 'backup:stale',
-                subject: 'Database backup is stale',
-                body: 'The last successful database backup is older than the configured freshness limit.',
+                templateKey: 'backup.stale',
                 context: ['backup_age_seconds' => $age, 'threshold_seconds' => $threshold],
                 debounceSeconds: $throttle,
             );
@@ -55,8 +59,8 @@ final class BackupStatusCommand extends Command
             return $this->option('lenient') ? self::SUCCESS : self::FAILURE;
         }
 
-        $alerts->resolve('backup:stale', 'Database backup recovered', 'The last successful database backup is fresh again.', ['backup_age_seconds' => $age]);
-        $alerts->resolve('backup:missing', 'Backup manifest recovered', 'A successful database backup manifest is available again.', ['backup_age_seconds' => $age]);
+        $alerts->resolveTemplate('backup:stale', 'backup.recovered', ['backup_age_seconds' => $age]);
+        $alerts->resolveTemplate('backup:missing', 'backup.recovered', ['backup_age_seconds' => $age]);
         $this->info("Last successful backup is current ({$age} seconds old).");
 
         return self::SUCCESS;

@@ -1,0 +1,11 @@
+{
+  "source_url": "https://www.pacopacomama.com/dyn/phpauto/movie_lists/list_newest_0.json",
+  "final_url": "https://www.pacopacomama.com/dyn/phpauto/movie_lists/list_newest_0.json",
+  "captured_at": "2026-11-02T18:03:26.474524+00:00",
+  "http_status": 200,
+  "content_hash": "0c7b211ab05e11bbe985e345ce0c7e3eb31e0adc1e8e1615b9b49fa1831553c0",
+  "target_type": "listing",
+  "fetch_method": "http",
+  "sanitized": true,
+  "capture_notes": "Captured with curl; JSON formatted for readability. Listing retains the first two complete real rows and original pagination totals."
+}

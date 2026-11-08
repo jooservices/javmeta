@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Settings;
 
 use App\Events\SettingsApplied;
+use DateTimeZone;
 use InvalidArgumentException;
 use RuntimeException;
 use Illuminate\Support\Env;
@@ -28,7 +29,7 @@ final class SettingsService
     /** @var list<string> */
     private array $invalidWorkerSettings = [];
 
-    public function __construct(private readonly ConfigStore $store) {}
+    public function __construct(private readonly ConfigStore $store, private readonly JsonShapeValidator $jsonShapes) {}
 
     /** @return array<string, array<string, mixed>> */
     public function definitions(): array
@@ -72,9 +73,17 @@ final class SettingsService
                     continue;
                 }
             } else {
-                $value = $isSaved
-                    ? $this->effectiveValue($key, $definition, $this->fromStorage($definition, $saved[$key]))
-                    : $fallback;
+                try {
+                    $value = $isSaved
+                        ? $this->effectiveValue($key, $definition, $this->storedValue($key, $definition, $saved[$key]))
+                        : $fallback;
+                } catch (Throwable $exception) {
+                    Log::warning('Invalid stored setting ignored; using the code default.', [
+                        'key' => $key,
+                        'reason' => $exception->getMessage(),
+                    ]);
+                    $value = $this->default($key);
+                }
             }
             if ($this->urlWarning($key, $definition, $value) !== null) {
                 $value = $this->default($key);
@@ -150,9 +159,22 @@ final class SettingsService
                     }
                 }
             } else {
-                $current = $inDatabase
-                    ? $this->effectiveValue($key, $definition, $this->fromStorage($definition, $saved[$key]))
-                    : $fallback;
+                try {
+                    $current = $this->effectiveValue(
+                        $key,
+                        $definition,
+                        $inDatabase ? $this->storedValue($key, $definition, $saved[$key]) : $fallback,
+                    );
+                } catch (Throwable $exception) {
+                    Log::warning('Invalid stored setting shown with its default.', [
+                        'key' => $key,
+                        'reason' => $exception->getMessage(),
+                    ]);
+                    $warning = 'Giá trị đã lưu không hợp lệ; đang dùng giá trị mặc định.';
+                    $current = $this->default($key);
+                    $inDatabase = false;
+                    $source = 'default';
+                }
             }
             $warning ??= $this->urlWarning($key, $definition, $current);
             if ($warning !== null && ! $this->isWorkerSetting($key, $definition)) {
@@ -169,10 +191,13 @@ final class SettingsService
                 'min' => $definition['min'] ?? null,
                 'max' => $definition['max'] ?? null,
                 'options' => $definition['options'] ?? null,
+                'item_options' => $definition['item_options'] ?? null,
+                'format' => $definition['format'] ?? null,
                 'restart' => $definition['restart'] ?? null,
                 'apply_after_seconds' => (int) ($definition['apply_after_seconds'] ?? 30),
                 'shape' => $definition['shape'] ?? null,
-                'max_length' => (int) config('javmeta_settings.validation.max_text_length', 500),
+                'max_length' => (int) ($definition['max_length'] ?? config('javmeta_settings.validation.max_text_length', 500)),
+                'multiline' => (bool) ($definition['multiline'] ?? false),
                 'source' => $inDatabase ? 'database' : $source,
                 'value' => $isSecret ? null : $current,
                 'is_set' => $isSecret ? (is_string($current) && $current !== '') : null,
@@ -351,7 +376,20 @@ final class SettingsService
                 return $this->default($key);
             }
         }
-        $value = $this->effectiveValue($key, $definition, $inDatabase ? $this->fromStorage($definition, $saved[$key]) : $fallback);
+        try {
+            $value = $this->effectiveValue(
+                $key,
+                $definition,
+                $inDatabase ? $this->storedValue($key, $definition, $saved[$key]) : $fallback,
+            );
+        } catch (Throwable $exception) {
+            Log::warning('Invalid stored setting ignored; using the code default.', [
+                'key' => $key,
+                'reason' => $exception->getMessage(),
+            ]);
+
+            return $this->default($key);
+        }
 
         return $this->urlWarning($key, $definition, $value) === null ? $value : $this->default($key);
     }
@@ -598,6 +636,10 @@ final class SettingsService
         }
         if ($type === 'string_list') {
             $items = $this->validateStringList($key, $value, $fail);
+            $items = PerformerNormalizationSettingsValidator::normalizeAllowList($key, $items, $fail);
+            if ($key === 'report.channels' && $items === []) {
+                $fail('select at least one delivery channel');
+            }
             foreach ($items as $item) {
                 if (isset($definition['item_options']) && ! in_array($item, $definition['item_options'], true)) {
                     $fail('entries must be one of ' . implode(', ', $definition['item_options']));
@@ -607,18 +649,45 @@ final class SettingsService
             return $items;
         }
         if ($type === 'int_list') {
-            return $this->validateIntList($value, $fail);
+            $items = $this->validateIntList($value, $fail);
+            if (isset($definition['max_items']) && count($items) > (int) $definition['max_items']) {
+                $fail('has too many entries');
+            }
+            foreach ($items as $item) {
+                if (isset($definition['min_item']) && $item < (int) $definition['min_item']) {
+                    $fail('entries must be at least ' . $definition['min_item']);
+                }
+                if (isset($definition['max_item']) && $item > (int) $definition['max_item']) {
+                    $fail('entries must be at most ' . $definition['max_item']);
+                }
+            }
+
+            return $items;
         }
         if ($type === 'json') {
             return $this->validateJson($key, $definition, $value, $fail);
         }
-        // string and secret
+        // string and secret — Laravel's ConvertEmptyStringsToNull turns cleared inputs into null.
+        if ($value === null) {
+            $value = '';
+        }
         if (! is_string($value) && ! is_numeric($value)) {
             $fail('must be text');
         }
         $text = trim((string) $value);
-        if (mb_strlen($text) > (int) config('javmeta_settings.validation.max_text_length', 500)) {
+        $maxLength = (int) ($definition['max_length'] ?? config('javmeta_settings.validation.max_text_length', 500));
+        if (mb_strlen($text) > $maxLength) {
             $fail('is too long');
+        }
+        if (($definition['format'] ?? null) === 'timezone') {
+            try {
+                new DateTimeZone($text);
+            } catch (\Throwable) {
+                $fail('must be a valid IANA timezone');
+            }
+        }
+        if (($definition['format'] ?? null) === 'time' && $text !== '' && preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $text) !== 1) {
+            $fail('must use HH:MM');
         }
         if (isset($definition['options']) && ! in_array($text, $definition['options'], true)) {
             $fail('must be one of ' . implode(', ', $definition['options']));
@@ -667,10 +736,15 @@ final class SettingsService
 
         $crawlQueues = array_values((array) config('javmeta_queues.names', []));
         $browserQueues = array_values((array) config('javmeta_queues.browser_names', []));
+        $retryQueues = array_values((array) config('javmeta_queues.retry_names', []));
         foreach ($crawlQueues as $index => $queue) {
             $browserQueue = $browserQueues[$index] ?? null;
             if (in_array($queue, $items, true) && is_string($browserQueue) && ! in_array($browserQueue, $items, true)) {
                 $items[] = $browserQueue;
+            }
+            if ((in_array($queue, $items, true) || (is_string($browserQueue) && in_array($browserQueue, $items, true)))
+                && isset($retryQueues[$index]) && ! in_array($retryQueues[$index], $items, true)) {
+                $items[] = $retryQueues[$index];
             }
         }
 
@@ -707,7 +781,11 @@ final class SettingsService
      */
     private function validateJson(string $key, array $definition, mixed $value, callable $fail): array
     {
+        $maxLength = isset($definition['max_length']) ? (int) $definition['max_length'] : null;
         if (is_string($value)) {
+            if ($maxLength !== null && mb_strlen($value) > $maxLength) {
+                $fail('is too long');
+            }
             if (! str_starts_with(ltrim($value), '{')) {
                 $fail('must be a JSON object');
             }
@@ -720,10 +798,13 @@ final class SettingsService
         if (! is_array($value) || (array_is_list($value) && $value !== [])) {
             $fail('must be a JSON object');
         }
-        if (count($value) > (int) config('javmeta_settings.validation.max_json_entries', 50)) {
+        if ($maxLength !== null && mb_strlen(json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) > $maxLength) {
+            $fail('is too long');
+        }
+        if (count($value) > (int) ($definition['max_entries'] ?? config('javmeta_settings.validation.max_json_entries', 50))) {
             $fail('has too many entries');
         }
-        $this->validateJsonShape($key, (string) ($definition['shape'] ?? ''), $value, $fail);
+        $this->jsonShapes->validate((string) ($definition['shape'] ?? ''), $value, $fail);
 
         return $value;
     }
@@ -760,6 +841,17 @@ final class SettingsService
     }
 
     /** @param array<string, mixed> $definition */
+    private function storedValue(string $key, array $definition, mixed $stored): mixed
+    {
+        $value = $this->fromStorage($definition, $stored);
+        if (in_array($definition['shape'] ?? null, ['source_gap_override_map', 'retry_fetch_profile'], true)) {
+            return $this->validate($key, $definition, $value);
+        }
+
+        return $value;
+    }
+
+    /** @param array<string, mixed> $definition */
     private function storageType(array $definition): string
     {
         if ($definition['nullable'] ?? false) {
@@ -772,47 +864,6 @@ final class SettingsService
             'secret' => ConfigType::Encrypted->value,
             default => ConfigType::String->value,
         };
-    }
-
-    /** @param array<array-key, mixed> $value
-     *  @param callable(string): never $fail
-     */
-    private function validateJsonShape(string $key, string $shape, array $value, callable $fail): void
-    {
-        if ($shape === 'queue_worker_map') {
-            $queues = (array) config('javmeta_queues.horizon_names', []);
-            foreach ($value as $queue => $workers) {
-                if (! is_string($queue) || ! in_array($queue, $queues, true) || ! is_int($workers) || $workers < 1 || $workers > 32) {
-                    $fail('must map known queue names to worker counts from 1 to 32');
-                }
-            }
-
-            return;
-        }
-        if ($shape !== 'node_worker_map') {
-            $fail('has an unsupported JSON shape');
-        }
-        foreach ($value as $node => $overrides) {
-            if (! is_string($node) || ! preg_match('/^(main|worker)(?:@[A-Za-z0-9._-]+)?$/', $node) || ! is_array($overrides) || array_is_list($overrides)) {
-                $fail('must map main, worker, or role@hostname to worker overrides');
-            }
-            foreach ($overrides as $name => $workers) {
-                if ($name === 'queues') {
-                    if (! is_array($workers) || array_is_list($workers)) {
-                        $fail('node queues must be an object of known queues and worker counts');
-                    }
-                    foreach ($workers as $queue => $count) {
-                        if (! is_string($queue) || ! in_array($queue, (array) config('javmeta_queues.horizon_names', []), true) || ! is_int($count) || $count < 1 || $count > 32) {
-                            $fail('node queue overrides must use known queues and worker counts from 1 to 32');
-                        }
-                    }
-                    continue;
-                }
-                if (! in_array($name, ['default', 'direct', 'browser'], true) || ! is_int($workers) || $workers < 1 || $workers > 32) {
-                    $fail('node overrides may define default, direct, and browser worker counts from 1 to 32');
-                }
-            }
-        }
     }
 
     private function legacyValue(array $definition): mixed
@@ -880,10 +931,8 @@ final class SettingsService
             throw new InvalidArgumentException('browser.gateway_client_timeout_ms must exceed browser.gateway_wait_timeout_ms.');
         }
 
-        $dispatchWarning = (int) $candidate('alerts.crawl_dispatch_warning_seconds');
-        $dispatchCritical = (int) $candidate('alerts.crawl_dispatch_critical_seconds');
-        if ($dispatchCritical < $dispatchWarning) {
-            throw new InvalidArgumentException('alerts.crawl_dispatch_critical_seconds must be at least alerts.crawl_dispatch_warning_seconds.');
-        }
+        $validateSuccessRatePair = array_key_exists('alerts.success_rate_min_percent', $overrides)
+            || array_key_exists('alerts.success_rate_critical_percent', $overrides);
+        (new AlertThresholdOrderValidator())->validate($candidate, $validateSuccessRatePair);
     }
 }

@@ -8,10 +8,15 @@ use App\Http\Controllers\Operations\LoginController;
 use App\Http\Controllers\Ui\UiAdminController;
 use App\Http\Controllers\Ui\UiApiController;
 use App\Http\Controllers\FileController;
+use App\Http\Controllers\Nodes\NodeEnrollmentController;
+use App\Http\Controllers\Observability\PostgresConnectionMetricsController;
+use App\Http\Controllers\Operations\NodeController;
 use App\Http\Controllers\Ui\UiDownloadsController;
 use App\Http\Controllers\Ui\UiLibraryController;
+use App\Http\Controllers\Ui\UiNotificationTemplateController;
 use App\Http\Controllers\Ui\UiMarksController;
 use App\Http\Controllers\Ui\UiSettingsController;
+use App\Http\Controllers\Ui\UiReportController;
 use App\Http\Controllers\Ui\UiShellController;
 use App\Http\Middleware\EnsureUiOwnerOrGuest;
 use App\Http\Middleware\EnsureSuperAdministrator;
@@ -19,6 +24,10 @@ use App\Http\Middleware\ThrottleGuestUiApi;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+
+Route::get('/metrics', PostgresConnectionMetricsController::class)
+    ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class])
+    ->name('metrics');
 
 Route::get('/', static fn() => redirect()->route('ui.index'));
 
@@ -47,7 +56,12 @@ Route::match(['POST', 'PUT', 'PATCH', 'DELETE'], '/ui-api/{path}', UiApiControll
     ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class])
     ->name('ui.api.write');
 
+Route::get('/node/join.sh', [NodeEnrollmentController::class, 'script'])->name('nodes.join-script');
+Route::post('/node/enroll', [NodeEnrollmentController::class, 'redeem'])->middleware('throttle:6,1')->name('nodes.enroll');
+
 Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static function (): void {
+    Route::get('/ops/nodes', [NodeController::class, 'index'])->name('operations.nodes.index');
+    Route::post('/ops/nodes', [NodeController::class, 'store'])->name('operations.nodes.store');
     Route::get('/ops', [DashboardController::class, 'index'])->name('operations.index');
     Route::get('/ops/data', [DashboardController::class, 'data'])->name('operations.data');
 
@@ -55,6 +69,9 @@ Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static funct
     Route::post('/ui-admin/keys', [UiAdminController::class, 'createKey']);
     Route::get('/ui-admin/keys/{id}/usage', [UiAdminController::class, 'usage'])->whereNumber('id');
     Route::delete('/ui-admin/keys/{id}', [UiAdminController::class, 'revoke'])->whereNumber('id');
+    Route::get('/ui-admin/report/periodic', [UiReportController::class, 'show']);
+    Route::get('/ui-admin/report/daily', [UiReportController::class, 'showDaily']);
+    Route::post('/ui-admin/report/periodic/send-now', [UiReportController::class, 'sendNow']);
     Route::get('/ui-admin/report/{type}', [UiAdminController::class, 'report']);
     Route::get('/ui-me/marks', [UiMarksController::class, 'index']);
     Route::post('/ui-me/marks', [UiMarksController::class, 'toggle']);
@@ -80,4 +97,12 @@ Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static funct
     Route::get('/ui-me/library/unmatched', [UiLibraryController::class, 'unmatched']);
     Route::get('/ui-admin/settings', [UiSettingsController::class, 'index']);
     Route::put('/ui-admin/settings', [UiSettingsController::class, 'update']);
+    Route::get('/ui-admin/notifications', [UiNotificationTemplateController::class, 'index']);
+    Route::get('/ui-admin/notifications/{key}', [UiNotificationTemplateController::class, 'show'])->where('key', '[a-z0-9_.]+');
+    Route::put('/ui-admin/notifications/{key}', [UiNotificationTemplateController::class, 'update'])->where('key', '[a-z0-9_.]+');
+    Route::post('/ui-admin/notifications/{key}/preview', [UiNotificationTemplateController::class, 'preview'])->where('key', '[a-z0-9_.]+');
+    Route::post('/ui-admin/notifications/{key}/test', [UiNotificationTemplateController::class, 'testSend'])->where('key', '[a-z0-9_.]+');
+    Route::post('/ui-admin/notifications/{key}/reset', [UiNotificationTemplateController::class, 'reset'])->where('key', '[a-z0-9_.]+');
+    Route::get('/ui-admin/notifications/{key}/revisions', [UiNotificationTemplateController::class, 'revisions'])->where('key', '[a-z0-9_.]+');
+    Route::post('/ui-admin/notifications/{key}/revisions/{revision}/restore', [UiNotificationTemplateController::class, 'restore'])->where(['key' => '[a-z0-9_.]+', 'revision' => '[0-9]+']);
 });

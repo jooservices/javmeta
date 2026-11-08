@@ -1,0 +1,10 @@
+{
+  "source_url": "https://attackers.net/works/list/genre/128",
+  "final_url": "https://attackers.net/works/list/genre/128",
+  "captured_at": "2026-11-03T06:07:57.584476+00:00",
+  "http_status": 200,
+  "content_hash": "49a09ad7601fef972c94594f4a0775dd9543da24dbcd805847575090cb7a5951",
+  "target_type": "listing",
+  "fetch_method": "http",
+  "sanitized": false
+}

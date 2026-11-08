@@ -1,0 +1,35 @@
+# Selected rules adapted from samber/awesome-prometheus-alerts MongoDB (Percona exporter) rules (CC BY 4.0):
+# https://samber.github.io/awesome-prometheus-alerts/rules/databases/mongodb/
+groups:
+  - name: mongodb-exporter
+    rules:
+      - alert: MongodbExporterDown
+        expr: up{job="mongodb_exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          value: "{{ $value }}"
+          summary: MongoDB exporter target is down
+          description: "Prometheus cannot scrape the MongoDB exporter.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/mongodb#availability
+      - alert: MongoDBDown
+        expr: mongodb_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          value: "{{ $value }}"
+          summary: MongoDB is unreachable from its exporter
+          description: "The exporter is running but cannot query MongoDB.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/mongodb#availability
+      - alert: MongoDBOpenCursorsHigh
+        expr: mongodb_ss_metrics_cursor_open{csr_type="total"} > 10000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          value: "{{ $value }}"
+          summary: MongoDB has more than 10,000 open cursors
+          description: "Review cursor usage and query lifetimes.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/mongodb#cursors

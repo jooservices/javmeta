@@ -1,0 +1,4 @@
+add table inet jooxcr388_monitoring
+add chain inet jooxcr388_monitoring input_filter { type filter hook input priority -10; policy accept; }
+add rule inet jooxcr388_monitoring input_filter ip saddr 192.168.10.10 tcp dport 9115 accept
+add rule inet jooxcr388_monitoring input_filter tcp dport 9115 drop

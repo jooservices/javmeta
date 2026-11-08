@@ -20,17 +20,9 @@ final class ScheduleTest extends TestCase
 {
     public function test_crawler_and_observability_schedule_has_the_expected_commands_and_frequencies(): void
     {
-        $previousEnvironment = app('env');
-        app()->instance('env', 'local');
-        try {
-            require base_path('routes/console.php');
-        } finally {
-            app()->instance('env', $previousEnvironment);
-        }
-
         $scheduled = [];
         $heartbeatEvents = [];
-        $events = app(Schedule::class)->events();
+        $events = $this->registeredEvents();
         foreach ($events as $event) {
             if ($event instanceof CallbackEvent) {
                 $heartbeatEvents[] = $event;
@@ -51,22 +43,27 @@ final class ScheduleTest extends TestCase
 
         $expectedFrequencies = [
             'ai:warm' => '*/15 * * * *',
+            'alerts:evaluate' => '* * * * *',
             'crawler:feed-pool' => '* * * * *',
             'crawler:prune-fetch-attempts' => '0 0 * * *',
             'crawler:reclaim' => '* * * * *',
             'crawler:recrawl-incomplete' => '0 * * * *',
             'crawler:seed' => '* * * * *',
             'crawler:source-health' => '0 4 * * *',
+            'crawler:stats-rollup' => '0 * * * *',
             'crawler:sync-sources' => '*/15 * * * *',
             'crawler:watchdog' => '*/5 * * * *',
             'follows:notify' => '*/5 * * * *',
             'horizon:reconcile-workers' => '* * * * *',
             'javmeta:backup-status' => '* * * * *',
-            'javmeta:hourly-report' => '0 * * * *',
             'library:scan' => '0 * * * *',
+            'node:egress-probe' => '*/2 * * * *',
+            'node:sample' => '* * * * *',
             'obs:publish-metrics' => '* * * * *',
             'perf:warm' => '* * * * *',
             'perf:warm --status-only' => '* * * * *',
+            'report:send' => '* * * * *',
+            'report:send-daily' => '0 8 * * *',
             'search:backfill-embeddings' => '0 * * * *',
             'staging:readiness' => '0 * * * *',
             'telegram:poll' => '* * * * *',
@@ -78,22 +75,30 @@ final class ScheduleTest extends TestCase
         $this->assertSame('* * * * *', $heartbeatEvents[0]->expression);
         $this->assertSame($expectedFrequencies, $actualFrequencies);
         $this->assertTrue($scheduled['crawler:prune-fetch-attempts']->withoutOverlapping);
+        $this->assertTrue($scheduled['alerts:evaluate']->withoutOverlapping);
+        $this->assertTrue($scheduled['crawler:stats-rollup']->withoutOverlapping);
         $this->assertTrue($scheduled['crawler:feed-pool']->withoutOverlapping);
         $this->assertSame(5, $scheduled['crawler:feed-pool']->repeatSeconds);
         $this->assertTrue($scheduled['crawler:recrawl-incomplete']->withoutOverlapping);
-        $this->assertTrue($scheduled['javmeta:hourly-report']->withoutOverlapping);
+        $this->assertTrue($scheduled['report:send']->withoutOverlapping);
+        $this->assertTrue($scheduled['report:send']->onOneServer);
+        $this->assertTrue($scheduled['report:send-daily']->withoutOverlapping);
+        $this->assertTrue($scheduled['report:send-daily']->onOneServer);
+        $this->assertSame('America/Mexico_City', $scheduled['report:send-daily']->timezone);
         $this->assertTrue($scheduled['search:backfill-embeddings']->withoutOverlapping);
         $this->assertTrue($scheduled['staging:readiness']->withoutOverlapping);
         $this->assertTrue($scheduled['perf:warm']->withoutOverlapping);
         $this->assertSame(10, $scheduled['perf:warm --status-only']->repeatSeconds);
         foreach ($events as $event) {
-            $this->assertFalse($event->onOneServer);
+            if (! str_contains((string) $event->command, 'report:send')) {
+                $this->assertFalse($event->onOneServer);
+            }
         }
     }
 
     public function test_feed_pool_schedule_polls_at_five_seconds_independent_of_the_current_database_interval(): void
     {
-        $settings = new SettingsService(new FakeConfigStore());
+        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class));
         $this->app->instance(SettingsService::class, $settings);
         $previousEnvironment = app('env');
         app()->instance('env', 'local');
@@ -115,6 +120,56 @@ final class ScheduleTest extends TestCase
         } finally {
             app()->instance('env', $previousEnvironment);
         }
+    }
+
+    public function test_backup_status_is_scheduled_only_while_backup_monitoring_is_enabled(): void
+    {
+        $backupStatus = static fn(array $events) => collect($events)
+            ->first(static fn($event): bool => str_contains((string) $event->command, 'javmeta:backup-status'));
+
+        config(['backup.monitoring_enabled' => false]);
+        $event = $backupStatus($this->registeredEvents());
+        self::assertNotNull($event);
+        self::assertSame('* * * * *', $event->expression);
+        self::assertFalse($event->filtersPass($this->app));
+
+        config(['backup.monitoring_enabled' => true]);
+        $event = $backupStatus($this->registeredEvents());
+        self::assertNotNull($event);
+        self::assertTrue($event->filtersPass($this->app));
+    }
+
+    public function test_legacy_hourly_report_is_disabled_by_default_and_while_periodic_is_enabled(): void
+    {
+        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class));
+        $settings->set('report.legacy_hourly_enabled', true);
+        $settings->set('report.enabled', true);
+        $this->app->instance(SettingsService::class, $settings);
+
+        $events = $this->registeredEvents();
+        self::assertNull(collect($events)->first(static fn($event): bool => str_contains((string) $event->command, 'javmeta:hourly-report')));
+
+        $settings->set('report.enabled', false);
+        $events = $this->registeredEvents();
+        $legacy = collect($events)->first(static fn($event): bool => str_contains((string) $event->command, 'javmeta:hourly-report'));
+        self::assertNotNull($legacy);
+        self::assertSame('0 * * * *', $legacy->expression);
+        self::assertTrue($legacy->withoutOverlapping);
+    }
+
+    public function test_daily_report_schedule_uses_saved_time_and_timezone(): void
+    {
+        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class));
+        $settings->set('report.daily_time', '09:15');
+        $settings->set('report.daily_timezone', 'UTC');
+        $this->app->instance(SettingsService::class, $settings);
+
+        $daily = collect($this->registeredEvents())
+            ->first(static fn($event): bool => str_contains((string) $event->command, 'report:send-daily'));
+
+        self::assertNotNull($daily);
+        self::assertSame('15 9 * * *', $daily->expression);
+        self::assertSame('UTC', $daily->timezone);
     }
 
     public function test_every_scheduled_command_string_is_accepted_by_the_artisan_kernel(): void

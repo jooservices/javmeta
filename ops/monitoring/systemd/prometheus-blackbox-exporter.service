@@ -1,0 +1,28 @@
+[Unit]
+Description=Prometheus blackbox exporter for JOOservices monitoring
+Wants=network-online.target
+After=network-online.target jooxcr388-monitoring-firewall.service
+Requires=jooxcr388-monitoring-firewall.service
+
+[Service]
+Type=simple
+DynamicUser=yes
+ExecStart=/usr/local/bin/blackbox_exporter --config.file=/etc/prometheus-blackbox/config.yml --web.listen-address=192.168.10.10:9115
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

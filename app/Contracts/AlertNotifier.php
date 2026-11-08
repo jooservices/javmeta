@@ -9,5 +9,5 @@ interface AlertNotifier
     /**
      * @param  array<string, mixed>  $context
      */
-    public function notify(string $subject, string $body, array $context = []): void;
+    public function notify(string $subject, string $body, array $context = []): bool;
 }

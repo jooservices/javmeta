@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Merge;
 
+use App\Repositories\MovieRepository;
 use App\Data\Crawl\MovieDraft;
 use App\Models\Movie;
 use App\Models\MovieCode;
@@ -29,7 +30,7 @@ final class MovieMerger
     public function resolveMovieId(MovieDraft $draft): int
     {
         $code = NormalizedCode::from($draft->code);
-        $existing = MovieCode::query()->where('code_normalized', $code->value())->first();
+        $existing = app(MovieRepository::class)->modelQuery(MovieCode::class)->where('code_normalized', $code->value())->first();
 
         if ($existing instanceof MovieCode) {
             return (int) $existing->movie_id;
@@ -38,14 +39,14 @@ final class MovieMerger
         // movies.code_normalized is unique and is the same exact key; the
         // fallback keeps resolution correct when the movie row exists but its
         // movie_codes row has not been written yet (retry/race).
-        $movie = Movie::query()->where('code_normalized', $code->value())->first();
+        $movie = app(MovieRepository::class)->modelQuery(Movie::class)->where('code_normalized', $code->value())->first();
         if ($movie instanceof Movie) {
             return (int) $movie->id;
         }
 
         $crawledAt = $draft->crawledAt ?? CarbonImmutable::now();
 
-        $movie = Movie::query()->create([
+        $movie = app(MovieRepository::class)->modelQuery(Movie::class)->create([
             'display_code' => $code->display(),
             'code_normalized' => $code->value(),
             'completeness_tier' => 0,

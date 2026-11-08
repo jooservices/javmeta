@@ -20,7 +20,7 @@ final class CrawlLaneTest extends IntegrationTestCase
 {
     public function test_postgres_classification_and_claims_route_to_independent_redis_queues(): void
     {
-        $this->freezeTime();
+        $this->travelTo('2026-11-02T12:34:00Z');
         $suffix = Str::lower(Str::random(12));
         $directQueue = 'direct_lane_' . $suffix;
         $browserQueue = 'browser_lane_' . $suffix;
@@ -57,7 +57,12 @@ final class CrawlLaneTest extends IntegrationTestCase
             config(['javmeta_queues.lane_direct_pins' => ['heyzo']]);
             $next = CrawlQueue::factory()->create(['kind' => 'detail', 'source_slug' => 'javbus']);
             $claims = app(CrawlQueueService::class);
-            $this->assertNull($claims->claimNext('second', 'detail', [], 'browser'));
+            $diagnostics = [];
+            $this->assertNull($claims->claimNext('second', 'detail', [], 'browser', $diagnostics));
+            $this->assertSame(['rows_examined' => 1, 'stop_reason' => 'per_source_inflight'], $diagnostics);
+            $empty = [];
+            $this->assertNull($claims->claimNext('second', 'unknown-kind', [], 'browser', $empty));
+            $this->assertSame(['rows_examined' => 0, 'stop_reason' => 'no_due_rows'], $empty);
             $this->assertSame('pending', $next->refresh()->status);
             $browser->forceFill(['claimed_at' => now()->subHour(), 'started_at' => null])->save();
             $this->assertSame(1, $claims->reclaimStaleClaimed(900));
@@ -92,7 +97,7 @@ final class CrawlLaneTest extends IntegrationTestCase
 
     public function test_postgres_feeder_respects_the_source_budget_across_six_ten_second_runs(): void
     {
-        $this->freezeTime();
+        $this->travelTo('2026-11-02T12:34:00Z');
         $start = now()->startOfMinute();
         $this->travelTo($start);
         $slug = 'paced_' . Str::lower(Str::random(8));

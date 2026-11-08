@@ -67,6 +67,8 @@ collect_answers() {
   if [[ -n "${answers[TARGET_DIR]}" && -f "${answers[TARGET_DIR]}/shared/.env" ]]; then
     while IFS='=' read -r key value; do
       [[ -v "allowed[$key]" && "$key" =~ ^[A-Z][A-Z0-9_]*$ ]] || continue
+      # Release identity comes from the exact fetched commit during apply_release.
+      [[ "$key" != SENTRY_RELEASE ]] || continue
       # Generated values use single-quoted dotenv strings. Never source operator input.
       if [[ "$value" == \"*\" ]]; then
         value="${value:1:${#value}-2}"
@@ -197,7 +199,7 @@ write_env() {
   fi
   while IFS='|' read -r key service optional; do
     enabled="SERVICE_${service^^}_ENABLED"
-    if [[ "$optional" == true && "${answers[$enabled]:-0}" != 1 ]]; then continue; fi
+    if [[ "$optional" == true && "${answers[$enabled]:-0}" != 1 && "$key" != SENTRY_RELEASE ]]; then continue; fi
     value="${answers[$key]}"
     value="${value//\\/\\\\}"
     value="${value//\"/\\\"}"
@@ -212,9 +214,10 @@ control() {
 }
 role_units() {
   local prefix="${answers[UNIT_PREFIX]}"
-  answers[STOP_UNITS]="$prefix-horizon $prefix-horizon-reconcile.timer $prefix-embedder"
+  answers[STOP_UNITS]="$prefix-horizon $prefix-horizon-reconcile.timer $prefix-node-sample.timer $prefix-embedder"
   answers[RESTART_UNITS]="$prefix-embedder $prefix-horizon ${answers[EXPORTER_UNIT]}"
   answers[START_UNITS]="$prefix-horizon-reconcile.timer"
+  if [[ "${answers[NODE_ROLE]}" == worker ]]; then answers[START_UNITS]+=" $prefix-node-sample.timer"; fi
   if [[ "${answers[NODE_ROLE]}" == primary ]]; then
     answers[STOP_UNITS]="$prefix-scheduler ${answers[STOP_UNITS]}"
     answers[RESTART_UNITS]="${answers[FPM_UNIT]} ${answers[NGINX_UNIT]} ${answers[RESTART_UNITS]}"
@@ -338,6 +341,7 @@ apply_release() {
   step 'Clone selected repository' git clone --no-checkout -- "${answers[REPO_URL]}" "$release/source"
   step 'Fetch selected branch, tag or SHA' git -C "$release/source" fetch --no-tags origin "${answers[REF]}"
   commit="$(git -C "$release/source" rev-parse --verify 'FETCH_HEAD^{commit}')"
+  answers[SENTRY_RELEASE]="$commit"
   step 'Optional exact-commit CI gate' ci_gate "$commit"
   step 'Checkout verified commit' git -C "$release/source" checkout --detach "$commit"
   local named
@@ -368,6 +372,7 @@ apply_release() {
     # Only the primary initializes shared data; adding workers must not rotate its owner.
     step 'Import manifest database settings' import_settings
     step 'Import missing database settings' php artisan settings:import-env
+    step 'Remove legacy Telegram credentials from database settings' php artisan settings:purge-telegram-credentials
     step 'Create Elasticsearch mappings before crawl' php artisan es:setup
     step 'Synchronize crawler sources' php artisan crawler:sync-sources
     if [[ -z "$previous" ]]; then

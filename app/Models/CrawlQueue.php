@@ -17,6 +17,7 @@ class CrawlQueue extends Model
     public const STATUS_CLAIMED = 'claimed';
     public const STATUS_DONE = 'done';
     public const STATUS_FAILED = 'failed';
+    public const STATUS_RETRY_PENDING = 'retry_pending';
     public const STATUS_SKIPPED = 'skipped';
     public const KIND_LISTING = 'listing';
     public const KIND_DETAIL = 'detail';
@@ -27,7 +28,7 @@ class CrawlQueue extends Model
     protected $table = 'crawl_queue';
     public $timestamps = false;
     /** @var list<string> */
-    protected $fillable = ['source_slug', 'url', 'kind', 'status', 'attempts', 'max_attempts', 'next_attempt_at', 'claimed_at', 'started_at', 'locked_by', 'last_error', 'error_code', 'last_failed_at', 'is_recrawl'];
+    protected $fillable = ['source_slug', 'url', 'kind', 'status', 'attempts', 'max_attempts', 'retry_round', 'retry_egress_label', 'next_attempt_at', 'claimed_at', 'started_at', 'locked_by', 'last_error', 'error_code', 'last_failed_at', 'is_recrawl'];
 
     /**
      * Map a crawlerx item's nextCrawlType to a queue kind. Falls back to the
@@ -52,6 +53,6 @@ class CrawlQueue extends Model
     /** @return array<string, string> */
     protected function casts(): array
     {
-        return ['attempts' => 'integer', 'max_attempts' => 'integer', 'is_recrawl' => 'boolean', 'next_attempt_at' => 'datetime', 'claimed_at' => 'datetime', 'started_at' => 'datetime', 'last_failed_at' => 'datetime'];
+        return ['attempts' => 'integer', 'max_attempts' => 'integer', 'retry_round' => 'integer', 'is_recrawl' => 'boolean', 'next_attempt_at' => 'datetime', 'claimed_at' => 'datetime', 'started_at' => 'datetime', 'last_failed_at' => 'datetime'];
     }
 }

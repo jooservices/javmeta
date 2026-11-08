@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Services\Crawl;
 
 use App\Services\Crawl\FetchMethodPreference;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
@@ -14,6 +15,7 @@ final class FetchMethodPreferenceTest extends TestCase
     {
         parent::setUp();
 
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
         config()->set('cache.default', 'array');
         config()->set([
             'javmeta_queues.fetch_method_window_size' => 4,

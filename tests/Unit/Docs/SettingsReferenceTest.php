@@ -35,4 +35,13 @@ final class SettingsReferenceTest extends TestCase
             }
         }
     }
+
+    public function test_performer_normalization_reference_uses_vietnamese_copy(): void
+    {
+        $reference = (string) file_get_contents(dirname(__DIR__, 3) . '/docs/user-guide/settings-reference.md');
+        $section = strstr($reference, '## Performer normalization');
+
+        $this->assertIsString($section);
+        $this->assertMatchesRegularExpression('/[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]/iu', $section);
+    }
 }

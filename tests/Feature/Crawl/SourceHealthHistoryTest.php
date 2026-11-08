@@ -62,7 +62,8 @@ final class SourceHealthHistoryTest extends TestCase
         $this->assertCount(1, $sent);
         $this->assertSame('open', $sent[0]['context']['alert_state']);
         $this->assertSame('warning', $sent[0]['context']['severity']);
-        $this->assertStringContainsString('demo', $sent[0]['body']);
+        $this->assertSame('source.health_blocked', $sent[0]['context']['template_key']);
+        $this->assertSame('demo', $sent[0]['context']['newly_blocked']);
 
         Artisan::call('crawler:source-health', ['--source' => 'other', '--delay' => 1]);
         $this->assertCount(1, $sent, 'a filtered check does not resolve omitted sources');
@@ -76,10 +77,12 @@ final class SourceHealthHistoryTest extends TestCase
         $this->assertCount(3, $sent, 'new blocks and recoveries are sent separately');
         $this->assertSame('open', $sent[1]['context']['alert_state']);
         $this->assertSame('warning', $sent[1]['context']['severity']);
-        $this->assertStringContainsString('other', $sent[1]['body']);
+        $this->assertSame('source.health_blocked', $sent[1]['context']['template_key']);
+        $this->assertSame('other', $sent[1]['context']['newly_blocked']);
         $this->assertSame('resolved', $sent[2]['context']['alert_state']);
         $this->assertSame('info', $sent[2]['context']['severity']);
-        $this->assertStringContainsString('Recovered: demo', $sent[2]['body']);
+        $this->assertSame('source.health_recovered', $sent[2]['context']['template_key']);
+        $this->assertSame('demo', $sent[2]['context']['recovered_sources']);
         $this->assertCount(4, array_filter(explode("\n", (string) file_get_contents($history))));
         File::delete($history);
     }

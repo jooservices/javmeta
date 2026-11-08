@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Stop the browser QA stack and drop its throw-away data.
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$root"
+JAVMETA_QA_PASSWORD=unused JAVMETA_CI_UID="$(id -u)" JAVMETA_CI_GID="$(id -g)" \
+  docker compose --file docker/qa/compose.qa.yml down --volumes --remove-orphans

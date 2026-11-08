@@ -27,6 +27,16 @@ final class StartupHealthServiceTest extends TestCase
         self::assertSame('secondary', $this->row($report, 'sentry')['class']);
     }
 
+    public function test_a_postgres_failure_does_not_mark_a_healthy_mongo_ping_as_unavailable(): void
+    {
+        $fixture = StartupHealthTestFixture::bind(['postgres' => false]);
+
+        $report = $fixture['health']->run('web', 0, false);
+
+        self::assertSame('fail', $this->row($report, 'postgres')['status']);
+        self::assertSame('pass', $this->row($report, 'mongo')['status']);
+    }
+
     public function test_all_optional_worker_dependencies_warn_without_blocking_startup(): void
     {
         $fixture = StartupHealthTestFixture::bind([

@@ -89,7 +89,7 @@ final class StartupHealthService
         $settingsLoaded = $bootstrapPassed && $this->settings->applyFresh();
         $settingsLatency = (int) round((hrtime(true) - $settingsStarted) / 1_000_000);
         foreach ($checks as &$check) {
-            if ($check['service'] !== Dependency::Mongo->value || $check['status'] === 'fail') {
+            if (! $bootstrapPassed || $check['service'] !== Dependency::Mongo->value || $check['status'] === 'fail') {
                 continue;
             }
             $check['latency_ms'] += $settingsLatency;
