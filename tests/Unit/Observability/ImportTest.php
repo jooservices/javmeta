@@ -7,10 +7,14 @@ namespace Tests\Unit\Observability;
 use JOOservices\Client\Client\ClientBuilder;
 use JOOservices\Client\Testing\TestResponse;
 use JOOservices\Client\Testing\TestResponseSequence;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Services\Notifications\NotificationTemplateService;
 use Tests\TestCase;
 
 final class ImportTest extends TestCase
 {
+    use RefreshDatabase;
+
     protected function tearDown(): void
     {
         ClientBuilder::clearFake();
@@ -49,6 +53,7 @@ final class ImportTest extends TestCase
                 ['alert_id' => 'dependency-id', 'name' => 'javmeta_dependency_down'],
                 ['alert_id' => 'p95-id', 'name' => 'javmeta_api_p95_high'],
                 ['alert_id' => 'pg-connections-id', 'name' => 'javmeta_postgres_connection_utilization_high'],
+                ['alert_id' => 'pg-budget-warning-id', 'name' => 'javmeta_postgres_connection_demand_warning'],
                 ['alert_id' => 'search-parse-alert-id', 'name' => 'javmeta_search_parse_degraded'],
                 ['alert_id' => 'dispatch-warning-id', 'name' => 'javmeta_crawl_dispatch_warning'],
                 ['alert_id' => 'dispatch-critical-id', 'name' => 'javmeta_crawl_dispatch_critical'],
@@ -70,6 +75,7 @@ final class ImportTest extends TestCase
             ['PUT', '/api/v2/javmeta_it/alerts/dependency-id'],
             ['PUT', '/api/v2/javmeta_it/alerts/p95-id'],
             ['PUT', '/api/v2/javmeta_it/alerts/pg-connections-id'],
+            ['PUT', '/api/v2/javmeta_it/alerts/pg-budget-warning-id'],
             ['PUT', '/api/v2/javmeta_it/alerts/search-parse-alert-id'],
             ['PUT', '/api/v2/javmeta_it/alerts/dispatch-warning-id'],
             ['PUT', '/api/v2/javmeta_it/alerts/dispatch-critical-id'],
@@ -79,13 +85,21 @@ final class ImportTest extends TestCase
         $this->respond('POST', '/api/javmeta_it/alerts/templates', [[], []]);
         $this->respond('POST', '/api/javmeta_it/alerts/destinations', [[], []]);
         $this->respond('POST', '/api/javmeta_it/dashboards', [[], [], [], []]);
-        $this->respond('POST', '/api/v2/javmeta_it/alerts', array_fill(0, 10, []));
+        $this->respond('POST', '/api/v2/javmeta_it/alerts', array_fill(0, 11, []));
 
         $this->artisan('observability:import')
-            ->expectsOutputToContain('Imported 4 dashboards and 10 alerts')
+            ->expectsOutputToContain('Imported 4 dashboards and 11 alerts')
             ->assertSuccessful();
+        app(NotificationTemplateService::class)->save(
+            'openobserve.telegram_warning',
+            '[XCrawler][WARNING] {alert_name}',
+            'Custom message for {stream_name}: {rows}',
+            true,
+            'warning',
+            null,
+        );
         $this->artisan('observability:import')
-            ->expectsOutputToContain('Imported 4 dashboards and 10 alerts')
+            ->expectsOutputToContain('Imported 4 dashboards and 11 alerts')
             ->assertSuccessful();
 
         $counts = [];
@@ -105,7 +119,7 @@ final class ImportTest extends TestCase
         self::assertSame(1, $counts['PUT /api/javmeta_it/dashboards/quality-id']);
         self::assertSame(1, $counts['PUT /api/javmeta_it/dashboards/crawl-id']);
         self::assertSame(1, $counts['PUT /api/javmeta_it/dashboards/search-parse-id']);
-        self::assertSame(10, $counts['POST /api/v2/javmeta_it/alerts']);
+        self::assertSame(11, $counts['POST /api/v2/javmeta_it/alerts']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/stale-id']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/error-rate-id']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/failure-rate-id']);
@@ -113,6 +127,7 @@ final class ImportTest extends TestCase
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/dependency-id']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/p95-id']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/pg-connections-id']);
+        self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/pg-budget-warning-id']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/search-parse-alert-id']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/dispatch-warning-id']);
         self::assertSame(1, $counts['PUT /api/v2/javmeta_it/alerts/dispatch-critical-id']);
@@ -133,10 +148,17 @@ final class ImportTest extends TestCase
         self::assertSame('javmeta_telegram_critical', $criticalDestination['template']);
         $template = $this->requestBody('POST', '/api/javmeta_it/alerts/templates');
         $templateMessage = json_decode($template['body'], true, 512, JSON_THROW_ON_ERROR);
-        self::assertSame('[javmeta:testing] [ALERT][WARNING][OPEN] {alert_name} triggered for {stream_name}. {rows}', $templateMessage['text']);
+        self::assertSame("[XCrawler][WARNING] {{.alert_name}}\nTriggered for {{.stream_name}}. {{.rows}}", $templateMessage['text']);
         $criticalTemplate = $this->requestBody('POST', '/api/javmeta_it/alerts/templates', 'javmeta_telegram_critical');
         $criticalTemplateMessage = json_decode($criticalTemplate['body'], true, 512, JSON_THROW_ON_ERROR);
-        self::assertSame('[javmeta:testing] [ALERT][CRITICAL][OPEN] {alert_name} triggered for {stream_name}. {rows}', $criticalTemplateMessage['text']);
+        self::assertSame("[XCrawler][CRITICAL] {{.alert_name}}\nTriggered for {{.stream_name}}. {{.rows}}", $criticalTemplateMessage['text']);
+        $updatedTemplate = collect(ClientBuilder::recorded())->first(
+            static fn($record): bool => $record->request->getMethod() === 'PUT'
+                && $record->request->getUri()->getPath() === '/api/javmeta_it/alerts/templates/javmeta_telegram',
+        );
+        self::assertNotNull($updatedTemplate);
+        $updatedMessage = json_decode((string) $updatedTemplate->request->getBody(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertSame("[XCrawler][WARNING] {{.alert_name}}\nCustom message for {{.stream_name}}: {{.rows}}", json_decode($updatedMessage['body'], true, 512, JSON_THROW_ON_ERROR)['text']);
         $criticalAlert = $this->requestBody('POST', '/api/v2/javmeta_it/alerts', 'javmeta_crawl_dispatch_critical');
         self::assertSame(['javmeta_telegram_critical'], $criticalAlert['destinations']);
 
@@ -215,7 +237,7 @@ final class ImportTest extends TestCase
         $this->respond('PUT', '/api/javmeta_it/alerts/destinations/javmeta_telegram_critical', [[], []]);
         $this->respond('POST', '/api/javmeta_it/dashboards', array_fill(0, 8, []));
         // Every alert creation answers 404 as OpenObserve does for a stream without data.
-        $this->respond('POST', '/api/v2/javmeta_it/alerts', array_fill(0, 20, ['code' => 404, 'message' => 'Stream not found']), 404);
+        $this->respond('POST', '/api/v2/javmeta_it/alerts', array_fill(0, 22, ['code' => 404, 'message' => 'Stream not found']), 404);
 
         $this->artisan('observability:import')
             ->expectsOutputToContain('Alerts pending until their metric stream receives data')

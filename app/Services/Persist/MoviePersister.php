@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Persist;
 
+use App\Repositories\CrawlRunRepository;
+use App\Repositories\MovieRepository;
 use App\Data\Crawl\MovieDraft;
+use App\Data\Crawl\PerformerDraft;
 use App\Jobs\IndexMovieJob;
-use App\Models\CrawlRun;
 use App\Models\Genre;
 use App\Models\Performer;
 use App\Models\PerformerAlias;
@@ -26,11 +28,11 @@ use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawl\MovieDraftSink;
 use App\Services\Merge\ConflictPolicy;
 use App\Services\Merge\MovieMerger;
+use App\Services\Normalize\PerformerAttributeNormalizer;
 use App\Support\Code\NormalizedCode;
 use App\Observability\ObservabilityEmitter;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Persists a normalized MovieDraft in one transaction (ARCHITECTURE 2.2 step 5).
@@ -50,6 +52,8 @@ use Illuminate\Support\Facades\DB;
 final class MoviePersister implements MovieDraftSink
 {
     public const SHARP_DROP_THRESHOLD = 3;
+
+    private readonly PerformerAttributeNormalizer $attributeNormalizer;
 
     /** @var list<string> movies columns projected from observations */
     private const PROJECTED_FIELDS = ['title_jp', 'title_en', 'release_date', 'runtime_minutes', 'censored', 'maker', 'label', 'series', 'community_score'];
@@ -75,7 +79,10 @@ final class MoviePersister implements MovieDraftSink
         private readonly SourceActivityRecorder $activity,
         private readonly \App\Services\Archive\MongoSiteArchive $archive,
         private readonly PerformerIdentityService $identity,
-    ) {}
+        ?PerformerAttributeNormalizer $attributeNormalizer = null,
+    ) {
+        $this->attributeNormalizer = $attributeNormalizer ?? new PerformerAttributeNormalizer();
+    }
 
     public function accept(MovieDraft $draft, bool $isRecrawl = false): void
     {
@@ -88,17 +95,17 @@ final class MoviePersister implements MovieDraftSink
         $drop = 0;
         $isNewMovie = false;
 
-        $movie = DB::transaction(function () use ($draft, $crawlRunId, $isRecrawl, &$sharpDrop, &$drop, &$isNewMovie): Movie {
+        $movie = app(MovieRepository::class)->transaction(function () use ($draft, $crawlRunId, $isRecrawl, &$sharpDrop, &$drop, &$isNewMovie): Movie {
             $crawledAt = $draft->crawledAt ?? CarbonImmutable::now();
             $code = NormalizedCode::from($draft->code);
 
-            $isNewMovie = ! MovieCode::query()->where('code_normalized', $code->value())->exists();
+            $isNewMovie = ! app(MovieRepository::class)->modelQuery(MovieCode::class)->where('code_normalized', $code->value())->exists();
             $movieId = $this->merger->resolveMovieId($draft);
 
             $this->appendObservations($movieId, $draft, $crawledAt);
 
             $observations = $this->observationsFor($movieId);
-            $movie = Movie::query()->lockForUpdate()->findOrFail($movieId);
+            $movie = app(MovieRepository::class)->modelQuery(Movie::class)->lockForUpdate()->findOrFail($movieId);
             $fieldsBefore = $this->populatedMovieFields($movie);
             $projection = $this->projectCoreFields($movie, $observations);
             $sharpDrop = $projection['sharp_drop'];
@@ -156,7 +163,7 @@ final class MoviePersister implements MovieDraftSink
             }
 
             if ($crawlRunId !== null) {
-                CrawlRun::query()->whereKey($crawlRunId)->increment($isNewMovie ? 'movies_new' : 'movies_updated');
+                app(CrawlRunRepository::class)->incrementMovieCount($crawlRunId, $isNewMovie);
             }
 
             $this->recordSourceSuccess($draft->sourceSlug);
@@ -227,7 +234,7 @@ final class MoviePersister implements MovieDraftSink
     private function appendObservations(int $movieId, MovieDraft $draft, CarbonImmutable $crawledAt): void
     {
         foreach ($this->draftObservations($draft) as [$field, $value]) {
-            MovieObservation::query()->create([
+            app(MovieRepository::class)->modelQuery(MovieObservation::class)->create([
                 'movie_id' => $movieId,
                 'field' => $field,
                 'value' => $value,
@@ -268,7 +275,7 @@ final class MoviePersister implements MovieDraftSink
     /** @return EloquentCollection<int, MovieObservation> */
     private function observationsFor(int $movieId): EloquentCollection
     {
-        return MovieObservation::query()
+        return app(MovieRepository::class)->modelQuery(MovieObservation::class)
             ->where('movie_id', $movieId)
             ->whereIn('field', [...array_values(self::OBSERVATION_FIELD), 'cover_url'])
             ->get();
@@ -334,7 +341,7 @@ final class MoviePersister implements MovieDraftSink
 
     private function upsertCode(int $movieId, MovieDraft $draft, NormalizedCode $code, CarbonImmutable $crawledAt): void
     {
-        MovieCode::query()->updateOrCreate(
+        app(MovieRepository::class)->modelQuery(MovieCode::class)->updateOrCreate(
             ['code_normalized' => $code->value(), 'source_slug' => $draft->sourceSlug],
             [
                 'movie_id' => $movieId,
@@ -374,12 +381,12 @@ final class MoviePersister implements MovieDraftSink
         foreach ($draft->genres as $label) {
             $normalized = mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', $label)));
 
-            $genre = Genre::query()->firstOrCreate(
+            $genre = app(MovieRepository::class)->modelQuery(Genre::class)->firstOrCreate(
                 ['label_normalized' => $normalized],
                 ['label_raw' => trim($label)],
             );
 
-            MovieGenre::query()->upsert(
+            app(MovieRepository::class)->modelQuery(MovieGenre::class)->upsert(
                 [
                     [
                         'movie_id' => $movieId,
@@ -402,7 +409,7 @@ final class MoviePersister implements MovieDraftSink
                 continue;
             }
 
-            MovieCredit::query()->updateOrCreate(
+            app(MovieRepository::class)->modelQuery(MovieCredit::class)->updateOrCreate(
                 [
                     'movie_id' => $movieId,
                     'role' => MovieCredit::ROLE_DIRECTOR,
@@ -417,24 +424,17 @@ final class MoviePersister implements MovieDraftSink
     private function upsertPerformers(int $movieId, MovieDraft $draft, CarbonImmutable $crawledAt): void
     {
         foreach ($draft->performers as $performerDraft) {
-            $previous = PerformerSource::query()->firstOrNew([
+            $performerDraft = $this->attributeNormalizer->normalizeDraft($performerDraft);
+            $previous = app(MovieRepository::class)->modelQuery(PerformerSource::class)->firstOrNew([
                 'site_slug' => $performerDraft->sourceSlug,
                 'external_id' => $performerDraft->externalId,
             ]);
-            $existing = Performer::query()->where('source_slug', $performerDraft->sourceSlug)
+            $existing = app(MovieRepository::class)->modelQuery(Performer::class)->where('source_slug', $performerDraft->sourceSlug)
                 ->where('external_id', $performerDraft->externalId)->first();
-            $performer = Performer::query()->updateOrCreate(
+            $existingProfile = $this->normalizedExistingPerformerProfile($existing, $performerDraft->sourceSlug);
+            $performer = app(MovieRepository::class)->modelQuery(Performer::class)->updateOrCreate(
                 ['source_slug' => $performerDraft->sourceSlug, 'external_id' => $performerDraft->externalId],
-                [
-                    'name_romaji' => $this->nullableTrim($performerDraft->nameRomaji),
-                    'name_kanji' => $this->nullableTrim($performerDraft->nameKanji),
-                    'name_kana' => $this->nullableTrim($performerDraft->nameKana),
-                    'profile_url' => $this->nullableTrim($performerDraft->profileUrl),
-                    'image_url' => $this->nullableTrim($performerDraft->imageUrl),
-                    'height_cm' => $performerDraft->heightCm ?? $existing?->height_cm,
-                    'blood_type' => $this->nullableTrim($performerDraft->bloodType) ?? $existing?->blood_type,
-                    'crawled_at' => $crawledAt,
-                ],
+                $this->performerAttributes($performerDraft, $existingProfile, $crawledAt),
             );
 
             $this->identity->preserveRenamedSourceNames(
@@ -452,7 +452,12 @@ final class MoviePersister implements MovieDraftSink
                 'name_romaji' => $performerDraft->nameRomaji ?? $source->name_romaji,
                 'name_kanji' => $performerDraft->nameKanji ?? $source->name_kanji,
                 'name_kana' => $performerDraft->nameKana ?? $source->name_kana,
-                'birth_date' => $performerDraft->birthDate ?? $source->birth_date,
+                'birth_date' => $performerDraft->birthDate ?? $this->attributeNormalizer->date(
+                    'birth_date',
+                    $source->getAttribute('birth_date'),
+                    $performerDraft->sourceSlug,
+                    false,
+                ),
                 'cross_link_source' => $performerDraft->crossLinkId === null
                     ? $source->cross_link_source
                     : ($performerDraft->crossLinkSource ?? $performerDraft->sourceSlug),
@@ -468,7 +473,7 @@ final class MoviePersister implements MovieDraftSink
                     continue;
                 }
 
-                PerformerAlias::query()->firstOrCreate(
+                app(MovieRepository::class)->modelQuery(PerformerAlias::class)->firstOrCreate(
                     [
                         'performer_id' => (int) ($performer->canonical_performer_id ?? $performer->id),
                         'alias' => $trimmed,
@@ -482,7 +487,7 @@ final class MoviePersister implements MovieDraftSink
             $this->identity->refreshNameKeys($source);
 
             // Preserve each original source credit before reconciling the complete cast.
-            MoviePerformer::query()->upsert(
+            app(MovieRepository::class)->modelQuery(MoviePerformer::class)->upsert(
                 [
                     [
                         'movie_id' => $movieId,
@@ -498,13 +503,59 @@ final class MoviePersister implements MovieDraftSink
         $this->reconcileMovieCast($movieId, $draft, $crawledAt);
     }
 
+    /** @return array<string, mixed> */
+    private function normalizedExistingPerformerProfile(?Performer $performer, string $sourceSlug): array
+    {
+        if ($performer === null) {
+            return [];
+        }
+
+        return $this->attributeNormalizer->normalizeStoredAttributes([
+            'birth_date' => $performer->getAttribute('birth_date'),
+            'height_cm' => $performer->getAttribute('height_cm'),
+            'bust' => $performer->getAttribute('bust'),
+            'waist' => $performer->getAttribute('waist'),
+            'hip' => $performer->getAttribute('hip'),
+            'cup' => $performer->getAttribute('cup'),
+            'blood_type' => $performer->getAttribute('blood_type'),
+            'blood_rh' => $performer->getAttribute('blood_rh'),
+            'debut_date' => $performer->getAttribute('debut_date'),
+            'location' => $performer->getAttribute('location'),
+        ], $sourceSlug, false);
+    }
+
+    /** @param array<string, mixed> $existingProfile
+     *  @return array<string, mixed>
+     */
+    private function performerAttributes(PerformerDraft $draft, array $existingProfile, CarbonImmutable $crawledAt): array
+    {
+        return [
+            'name_romaji' => $this->nullableTrim($draft->nameRomaji),
+            'name_kanji' => $this->nullableTrim($draft->nameKanji),
+            'name_kana' => $this->nullableTrim($draft->nameKana),
+            'profile_url' => $this->nullableTrim($draft->profileUrl),
+            'image_url' => $this->nullableTrim($draft->imageUrl),
+            'birth_date' => $draft->birthDate ?? ($existingProfile['birth_date'] ?? null),
+            'height_cm' => $draft->heightCm ?? ($existingProfile['height_cm'] ?? null),
+            'bust' => $draft->bust ?? ($existingProfile['bust'] ?? null),
+            'waist' => $draft->waist ?? ($existingProfile['waist'] ?? null),
+            'hip' => $draft->hip ?? ($existingProfile['hip'] ?? null),
+            'cup' => $draft->cup ?? ($existingProfile['cup'] ?? null),
+            'blood_type' => $draft->bloodType ?? ($existingProfile['blood_type'] ?? null),
+            'blood_rh' => $draft->bloodRh ?? ($existingProfile['blood_rh'] ?? null),
+            'debut_date' => $draft->debutDate ?? ($existingProfile['debut_date'] ?? null),
+            'location' => $draft->location ?? ($existingProfile['location'] ?? null),
+            'crawled_at' => $crawledAt,
+        ];
+    }
+
     private function reconcileMovieCast(int $movieId, MovieDraft $draft, CarbonImmutable $crawledAt): void
     {
         foreach ($draft->performers as $performerDraft) {
-            $source = PerformerSource::query()->where('site_slug', $performerDraft->sourceSlug)
+            $source = app(MovieRepository::class)->modelQuery(PerformerSource::class)->where('site_slug', $performerDraft->sourceSlug)
                 ->where('external_id', $performerDraft->externalId)->firstOrFail();
             $canonicalId = $this->identity->reconcileAndSync($source);
-            MoviePerformer::query()->insertOrIgnore([
+            app(MovieRepository::class)->modelQuery(MoviePerformer::class)->insertOrIgnore([
                 ['movie_id' => $movieId, 'performer_id' => $canonicalId,
                     'source_slug' => $draft->sourceSlug, 'crawled_at' => $crawledAt],
             ]);
@@ -529,7 +580,7 @@ final class MoviePersister implements MovieDraftSink
                 $meta = $item;
                 unset($meta['url']);
 
-                MovieMedia::query()->updateOrCreate(
+                app(MovieRepository::class)->modelQuery(MovieMedia::class)->updateOrCreate(
                     ['movie_id' => $movieId, 'kind' => $kind, 'url' => trim($url)],
                     [
                         'meta' => $meta === [] ? null : $meta,
@@ -556,8 +607,8 @@ final class MoviePersister implements MovieDraftSink
             'maker' => $movie->getAttribute('maker') !== null,
             'label' => $movie->getAttribute('label') !== null,
             'series' => $movie->getAttribute('series') !== null,
-            'actresses' => MoviePerformer::query()->where('movie_id', $movie->id)->exists(),
-            'genres' => MovieGenre::query()->where('movie_id', $movie->id)->exists(),
+            'actresses' => app(MovieRepository::class)->modelQuery(MoviePerformer::class)->where('movie_id', $movie->id)->exists(),
+            'genres' => app(MovieRepository::class)->modelQuery(MovieGenre::class)->where('movie_id', $movie->id)->exists(),
         ];
 
         $sourceSlugs = $observations->pluck('source_slug')->unique()->values();
@@ -580,8 +631,8 @@ final class MoviePersister implements MovieDraftSink
             $fields[$column] = $value !== null && (! is_string($value) || trim($value) !== '');
         }
 
-        $fields['genres'] = MovieGenre::query()->where('movie_id', $movie->id)->exists();
-        $fields['performers'] = MoviePerformer::query()->where('movie_id', $movie->id)->exists();
+        $fields['genres'] = app(MovieRepository::class)->modelQuery(MovieGenre::class)->where('movie_id', $movie->id)->exists();
+        $fields['performers'] = app(MovieRepository::class)->modelQuery(MoviePerformer::class)->where('movie_id', $movie->id)->exists();
 
         return $fields;
     }
@@ -603,7 +654,7 @@ final class MoviePersister implements MovieDraftSink
 
     private function flagSharpDrop(Movie $movie, MovieDraft $draft, int $drop, CarbonImmutable $crawledAt): void
     {
-        ReviewFlag::query()->create([
+        app(MovieRepository::class)->modelQuery(ReviewFlag::class)->create([
             'movie_id' => (int) $movie->id,
             'code_normalized' => $movie->code_normalized,
             'source_slug' => $draft->sourceSlug,
@@ -622,7 +673,7 @@ final class MoviePersister implements MovieDraftSink
      */
     private function fillSearchVector(Movie $movie): void
     {
-        if (DB::getDriverName() === 'pgsql') {
+        if (app(MovieRepository::class)->driverName() === 'pgsql') {
             return;
         }
 
@@ -638,7 +689,7 @@ final class MoviePersister implements MovieDraftSink
 
     private function recordSourceSuccess(string $sourceSlug): void
     {
-        if (! Source::query()->whereKey($sourceSlug)->exists()) {
+        if (! app(MovieRepository::class)->modelQuery(Source::class)->whereKey($sourceSlug)->exists()) {
             return;
         }
 

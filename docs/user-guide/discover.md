@@ -1,4 +1,4 @@
-# Discover
+# Khám phá
 
 [Mục lục](README.md)
 
@@ -14,4 +14,4 @@ Các số 1 giờ và 24 giờ là dữ liệu mới ghi nhận; việc đang ch
 
 ## Nếu có vẻ sai
 
-Số có thể bắt đầu ở 0 khi hiệu ứng đếm đang chạy. Nếu không có diễn viên mới, chờ nguồn cung cấp thêm dữ liệu. Dòng trạng thái trên cùng làm mới mỗi 30 giây; tải lại trang để làm mới các bảng trên Discover.
+Nếu hệ thống yêu cầu giảm chuyển động, các số hiện đúng ngay. Nếu không có diễn viên mới, nguồn chưa cung cấp thêm dữ liệu. Dòng trạng thái trên cùng làm mới mỗi 30 giây; tải lại trang để làm mới các bảng trên Khám phá.

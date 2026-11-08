@@ -8,6 +8,7 @@ use App\Contracts\ReportChannel;
 use App\Models\Movie;
 use App\Models\Source;
 use App\Services\Health\StagingReadiness;
+use App\Services\Health\SourceScheduleFreshness;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
@@ -15,6 +16,13 @@ use Tests\TestCase;
 final class StagingReadinessTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->travelTo('2026-11-02T12:34:00Z');
+    }
 
     /** @return array<string, array{name: string, status: string, message: string, action: ?string}> */
     private function byName(): array
@@ -47,6 +55,20 @@ final class StagingReadinessTest extends TestCase
         $this->assertSame('fail', $this->byName()['newest_movie']['status']);
     }
 
+    public function test_a_missing_backup_manifest_does_not_fail_readiness_while_backup_monitoring_is_off(): void
+    {
+        config(['backup.monitoring_enabled' => false]);
+
+        $this->assertSame('pass', $this->byName()['backup']['status']);
+    }
+
+    public function test_a_missing_backup_manifest_fails_readiness_while_backup_monitoring_is_on(): void
+    {
+        config(['backup.monitoring_enabled' => true]);
+
+        $this->assertSame('fail', $this->byName()['backup']['status']);
+    }
+
     public function test_source_freshness_respects_manifest_cycle_and_keeps_never_succeeded_sources_past_due(): void
     {
         Source::factory()->create(['slug' => 'eporner', 'last_success_at' => now()->subDays(3)]);
@@ -58,6 +80,14 @@ final class StagingReadinessTest extends TestCase
         $this->assertStringContainsString('1/2 enabled sources are current or not yet due', $sources['message']);
         $this->assertStringContainsString('past due: warashi', $sources['message']);
         $this->assertStringContainsString('Not yet due under configured cycle: eporner', $sources['message']);
+    }
+
+    public function test_source_freshness_uses_the_frozen_clock_at_the_stale_cutoff(): void
+    {
+        $freshness = app(SourceScheduleFreshness::class);
+
+        $this->assertFalse($freshness->isPastDue(now()->subSeconds(300), 'unknown-source', 300));
+        $this->assertTrue($freshness->isPastDue(now()->subSeconds(301), 'unknown-source', 300));
     }
 
     public function test_a_failing_run_is_stored_and_alerts_once_until_the_failures_change(): void
@@ -118,8 +148,9 @@ final class StagingReadinessTest extends TestCase
         ]);
 
         $this->assertCount(1, $sent);
-        $this->assertSame('Staging readiness recovered', $sent[0][0]);
-        $this->assertStringContainsString('backup, scheduler', $sent[0][1]);
+        $this->assertSame('', $sent[0][0]);
+        $this->assertSame('', $sent[0][1]);
+        $this->assertSame('staging.readiness_recovered', $sent[0][2]['template_key']);
         $this->assertSame(2, $sent[0][2]['resolved_checks']);
         $this->assertSame('resolved', $sent[0][2]['alert_state']);
         $this->assertSame('info', $sent[0][2]['severity']);

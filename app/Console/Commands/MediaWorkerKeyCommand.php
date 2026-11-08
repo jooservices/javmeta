@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Repositories\MediaServiceRepository;
 use App\Services\Auth\ApiKeyService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
 
@@ -37,7 +37,7 @@ final class MediaWorkerKeyCommand extends Command
         }
         chmod($path, 0640);
         try {
-            DB::transaction(static function () use ($keys, $handle): void {
+            app(MediaServiceRepository::class)->transaction(static function () use ($keys, $handle): void {
                 $key = $keys->create('Local media worker', 120, ['media']);
                 $json = json_encode(['url' => config('javmeta_media.api_url'), 'key' => $key->plaintext], JSON_THROW_ON_ERROR);
                 if (fwrite($handle, $json) !== strlen($json) || ! fflush($handle)) {

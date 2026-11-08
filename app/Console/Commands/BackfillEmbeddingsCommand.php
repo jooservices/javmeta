@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Repositories\MovieRepository;
 use App\Models\Movie;
 use App\Models\Performer;
 use App\Observability\OpenObserveClient;
@@ -193,7 +194,7 @@ final class BackfillEmbeddingsCommand extends Command
     private function loadBatchModels(string $entity, int $batchSize, int|string|null $lastId): Collection
     {
         if ($entity === 'movies') {
-            $query = Movie::query()->with(['genres', 'performers']);
+            $query = app(MovieRepository::class)->modelQuery(Movie::class)->with(['genres', 'performers']);
 
             if ($lastId !== null) {
                 $query->where('id', '>', $lastId);
@@ -202,7 +203,7 @@ final class BackfillEmbeddingsCommand extends Command
             return $query->orderBy('id')->limit($batchSize)->get();
         }
 
-        $query = Performer::query()->whereNull('canonical_performer_id')->with('aliases');
+        $query = app(MovieRepository::class)->modelQuery(Performer::class)->whereNull('canonical_performer_id')->with('aliases');
         if ($lastId !== null) {
             $query->where('id', '>', $lastId);
         }

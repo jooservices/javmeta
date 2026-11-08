@@ -9,28 +9,28 @@ use Throwable;
 
 final class StartupHealthSnapshotStore
 {
-    private const APCU_KEY = 'javmeta.startup-health.snapshot';
-
     private readonly string $path;
 
     private readonly Closure $clock;
 
-    public function __construct(?string $path = null, ?Closure $clock = null)
+    private readonly SnapshotMemory $memory;
+
+    public function __construct(?string $path = null, ?Closure $clock = null, ?SnapshotMemory $memory = null)
     {
         $this->path = $path ?? storage_path('framework/cache/startup-health.json');
         $this->clock = $clock ?? static fn(): int => time();
+        $this->memory = $memory ?? new ApcuSnapshotMemory();
     }
 
     /** @return array<string, mixed>|null */
     public function get(): ?array
     {
-        if (function_exists('apcu_fetch') && apcu_enabled()) {
-            $found = false;
-            $record = apcu_fetch(self::APCU_KEY, $found);
-            if ($found && is_array($record) && (int) ($record['expires_at'] ?? 0) > ($this->clock)()) {
-                return is_array($record['report'] ?? null) ? $record['report'] : null;
+        $remembered = $this->memory->fetch();
+        if ($remembered !== null) {
+            if ((int) ($remembered['expires_at'] ?? 0) > ($this->clock)()) {
+                return is_array($remembered['report'] ?? null) ? $remembered['report'] : null;
             }
-            apcu_delete(self::APCU_KEY);
+            $this->memory->forget();
         }
 
         try {
@@ -48,12 +48,11 @@ final class StartupHealthSnapshotStore
     /** @param array<string, mixed> $report */
     public function put(array $report, int $ttlSeconds): void
     {
-        $expiresAt = ($this->clock)() + max(1, $ttlSeconds);
+        $ttlSeconds = max(1, $ttlSeconds);
+        $expiresAt = ($this->clock)() + $ttlSeconds;
         $record = ['expires_at' => $expiresAt, 'report' => $report];
 
-        if (function_exists('apcu_store') && apcu_enabled()) {
-            @apcu_store(self::APCU_KEY, $record, max(1, $ttlSeconds));
-        }
+        $this->memory->store($record, $ttlSeconds);
 
         $temporary = $this->path . '.' . getmypid() . '.tmp';
         try {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Repositories\MovieRepository;
 use App\Models\Movie;
 use App\Models\Performer;
 use App\Services\Search\ElasticsearchHttpClient;
@@ -91,12 +92,12 @@ final class EsSetupCommand extends Command
     {
         $indexer = app(ElasticsearchIndexer::class);
 
-        foreach (Movie::cursor() as $movie) {
+        foreach (app(MovieRepository::class)->modelQuery(Movie::class)->cursor() as $movie) {
             $indexer->indexMovie($movie);
             $this->line("  movie #{$movie->id} indexed");
         }
 
-        foreach (Performer::query()->whereNull('canonical_performer_id')->cursor() as $performer) {
+        foreach (app(MovieRepository::class)->modelQuery(Performer::class)->whereNull('canonical_performer_id')->cursor() as $performer) {
             $indexer->indexPerformer($performer);
             $this->line("  performer #{$performer->id} indexed");
         }

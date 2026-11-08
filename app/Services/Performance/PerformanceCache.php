@@ -36,7 +36,7 @@ final class PerformanceCache
      */
     public function facets(array $filters = [], bool $refresh = false): array
     {
-        $key = 'javmeta:facets:' . md5(json_encode($filters, JSON_THROW_ON_ERROR));
+        $key = 'javmeta:facets:' . hash('sha256', json_encode($filters, JSON_THROW_ON_ERROR));
         if ($refresh) {
             $data = $this->movies->facets($filters);
             Cache::put($key, $data, 60);

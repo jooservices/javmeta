@@ -388,15 +388,16 @@ Failure injection: an OTLP point `javmeta_source_last_success_age_seconds{source
 `javmeta_source_stale` alert query. Delivery to Telegram is not exercised in the test org (placeholder token).
 
 
-## Hourly Telegram report
+## Periodic Telegram report
 
-`php artisan javmeta:hourly-report` is scheduled once an hour. It sends one message with the number of movies and
-performers (canonical, one person once) at that moment and how many were added since the previous report, for example
-`Movies: 12,345 (+812 in 1h 0m)`. The previous values are kept in `storage/app/private/monitoring/hourly-report-state.json`
-(or `JAVMETA_REPORT_STATE_PATH`) and are rewritten only after Telegram accepted the message, so a failed hour is
-included in the next one. The first report has no comparison. `--dry-run` prints the message and sends nothing. The time
-is shown in `JAVMETA_REPORT_TIMEZONE` (default Asia/Ho_Chi_Minh). The report does not depend on `JAVMETA_ALERTS_ENABLED`;
-it needs `NOTIFICATION_TELEGRAM_BOT_TOKEN` and `NOTIFICATION_TELEGRAM_CHAT_ID`.
+The main-node scheduler checks `report:send` every minute and sends the English
+status report on its database-configured interval grid (two hours by default).
+Use `php artisan javmeta:hourly-report --dry-run` for a live terminal preview or
+`php artisan report:send --now` for an immediate send that leaves the regular
+grid unchanged. The owner-only Báo cáo page displays the live preview, last
+result and last 20 snapshots. Delivery, node and worker metrics are listed in
+[`telemetry.md`](telemetry.md); report settings and quiet-hour behavior are in
+[`notifications.md`](notifications.md).
 
 ### JavPhotos source health sample
 

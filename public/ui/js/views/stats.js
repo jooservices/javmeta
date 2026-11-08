@@ -28,9 +28,9 @@ export default {
     const html = `<div class="wrap">${head('Thống kê', 'tổng quan bộ sưu tập')}
       <div class="grid g4" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));display:grid;gap:10px;margin-bottom:10px">${tile('Phim', s.counts.movies, `+${fmt(ing.movies_24h)} trong 24 giờ`)}${tile('Diễn viên', s.counts.performers, `+${fmt(ing.performers_24h)} trong 24 giờ`)}${tile('Phim mới / giờ', ing.movies_1h, 'giờ vừa qua')}${tile('Nguồn đang ổn', ok, `trên ${enabled.length} nguồn bật`)}</div>
       <div class="panel"><div class="hd"><h2>Phim theo năm phát hành</h2></div><div class="bd">${bars(ys, y => a(href.facet('year', y.name), esc(y.name)))}</div></div>
-      <div class="grid g2"><div class="panel"><div class="hd"><h2>Maker nhiều phim nhất</h2>${a('#/catalog/makers', 'Tất cả →', 'btn sm ghost')}</div>${bars(makers.data || [], x => a(href.facet('maker', x.name), esc(x.name)))}</div>
+      <div class="grid g2"><div class="panel"><div class="hd"><h2>Hãng nhiều phim nhất</h2>${a('#/catalog/makers', 'Tất cả →', 'btn sm ghost')}</div>${bars(makers.data || [], x => a(href.facet('maker', x.name), esc(x.name)))}</div>
         <div class="panel"><div class="hd"><h2>Thể loại phổ biến</h2>${a('#/catalog/genres', 'Tất cả →', 'btn sm ghost')}</div>${bars(genres.data || [], x => a(href.facet('genre', x.name), esc(x.name)))}</div></div>
-      <div class="panel"><div class="hd"><h2>Series lớn nhất</h2>${a('#/catalog/series', 'Tất cả →', 'btn sm ghost')}</div>${bars(series.data || [], x => a(href.facet('series', x.name), esc(x.name)))}</div></div>`;
+      <div class="panel"><div class="hd"><h2>Loạt phim lớn nhất</h2>${a('#/catalog/series', 'Tất cả →', 'btn sm ghost')}</div>${bars(series.data || [], x => a(href.facet('series', x.name), esc(x.name)))}</div></div>`;
     return { html };
   },
 };

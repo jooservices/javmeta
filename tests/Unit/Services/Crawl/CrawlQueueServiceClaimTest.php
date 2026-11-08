@@ -7,6 +7,7 @@ namespace Tests\Unit\Services\Crawl;
 use App\Models\CrawlQueue;
 use App\Models\Source;
 use App\Services\Crawl\CrawlQueueService;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -14,6 +15,13 @@ use Tests\TestCase;
 final class CrawlQueueServiceClaimTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-02T12:34:00Z'));
+    }
 
     public function test_claim_next_marks_row_claimed_without_counting_an_attempt(): void
     {
@@ -270,6 +278,69 @@ final class CrawlQueueServiceClaimTest extends TestCase
         $this->assertSame(now()->subSeconds(5)->timestamp, $activity['completed']['latest_started_at']?->timestamp);
     }
 
+    public function test_pacing_activity_uses_each_attempts_stored_lane_after_the_queue_lane_changes(): void
+    {
+        $this->source('lane-history');
+        $retryRow = $this->row('lane-history', CrawlQueue::STATUS_DONE)
+            ->forceFill(['claimed_lane' => 'direct']);
+        $retryRow->save();
+        $directRow = $this->row('lane-history', CrawlQueue::STATUS_DONE)
+            ->forceFill(['claimed_lane' => 'retry']);
+        $directRow->save();
+        DB::table('crawl_fetch_attempts')->insert([
+            [
+                'created_at' => now(),
+                'source_slug' => 'lane-history',
+                'lane' => 'retry',
+                'crawl_queue_id' => $retryRow->id,
+                'url_hash' => hash('sha256', 'retry-history-request-one'),
+                'method' => 'http',
+                'started_at' => now()->subSeconds(20),
+                'duration_ms' => 1,
+                'outcome' => 'error',
+            ],
+            [
+                'created_at' => now(),
+                'source_slug' => 'lane-history',
+                'lane' => 'retry',
+                'crawl_queue_id' => $retryRow->id,
+                'url_hash' => hash('sha256', 'retry-history-request-two'),
+                'method' => 'http',
+                'started_at' => now()->subSeconds(30),
+                'duration_ms' => 1,
+                'outcome' => 'error',
+            ],
+            [
+                'created_at' => now(),
+                'source_slug' => 'lane-history',
+                'lane' => 'direct',
+                'crawl_queue_id' => $directRow->id,
+                'url_hash' => hash('sha256', 'direct-history-request'),
+                'method' => 'http',
+                'started_at' => now()->subSeconds(10),
+                'duration_ms' => 1,
+                'outcome' => 'ok',
+            ],
+            [
+                'created_at' => now(),
+                'source_slug' => 'lane-history',
+                'lane' => null,
+                'crawl_queue_id' => null,
+                'url_hash' => hash('sha256', 'legacy-history-request'),
+                'method' => 'http',
+                'started_at' => now()->subSeconds(5),
+                'duration_ms' => 1,
+                'outcome' => 'ok',
+            ],
+        ]);
+
+        $service = app(CrawlQueueService::class);
+        $since = now()->subSeconds(60);
+
+        self::assertSame(2, $service->pacingActivityBySource($since, 'retry')['lane-history']['started']);
+        self::assertSame(2, $service->pacingActivityBySource($since, 'direct')['lane-history']['started']);
+    }
+
     public function test_a_source_alone_can_still_use_its_limit_and_is_released_when_a_row_finishes(): void
     {
         config()->set('javmeta_queues.per_source_inflight', 2);
@@ -285,6 +356,28 @@ final class CrawlQueueServiceClaimTest extends TestCase
 
         $first->forceFill(['status' => CrawlQueue::STATUS_DONE])->save();
         $this->assertSame($third->id, $service->claimNext('worker', CrawlQueue::KIND_DETAIL)?->id);
+    }
+
+    public function test_claim_next_reports_returned_candidate_rows_and_inflight_stop_reason(): void
+    {
+        config()->set('javmeta_queues.per_source_inflight', 1);
+        $this->source('reported');
+        $pending = $this->row('reported', CrawlQueue::STATUS_PENDING);
+        $diagnostics = [];
+
+        $claimed = app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_DETAIL, [], null, $diagnostics);
+
+        $this->assertSame($pending->id, $claimed?->id);
+        $this->assertSame(['rows_examined' => 1, 'stop_reason' => null], $diagnostics);
+
+        $this->row('reported', CrawlQueue::STATUS_PENDING);
+        $blocked = [];
+        $this->assertNull(app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_DETAIL, [], null, $blocked));
+        $this->assertSame(['rows_examined' => 1, 'stop_reason' => 'per_source_inflight'], $blocked);
+
+        $emptyLane = [];
+        $this->assertNull(app(CrawlQueueService::class)->claimNext('worker', CrawlQueue::KIND_LISTING, ['another-source'], 'browser', $emptyLane));
+        $this->assertSame(['rows_examined' => 0, 'stop_reason' => 'no_due_rows'], $emptyLane);
     }
 
     public function test_the_limit_is_shared_across_kinds_for_a_source(): void

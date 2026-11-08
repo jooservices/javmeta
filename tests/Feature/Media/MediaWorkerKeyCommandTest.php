@@ -38,4 +38,26 @@ final class MediaWorkerKeyCommandTest extends TestCase
             @rmdir($dir);
         }
     }
+
+    public function test_command_rolls_back_the_key_when_credentials_cannot_be_encoded(): void
+    {
+        $dir = sys_get_temp_dir() . '/javmeta-key-' . uniqid();
+        $this->app->useStoragePath($dir);
+        $keyPath = $dir . '/app/private/media/worker.key';
+        config(['javmeta_media.api_url' => "http://invalid-\xB1.test"]);
+
+        try {
+            $this->artisan('media:worker-key')
+                ->expectsOutputToContain('Worker credentials could not be saved. No key was retained.')
+                ->assertFailed();
+            $this->assertFileDoesNotExist($keyPath);
+            $this->assertDatabaseCount('api_keys', 0);
+        } finally {
+            @unlink($keyPath);
+            @rmdir(dirname($keyPath));
+            @rmdir(dirname(dirname($keyPath)));
+            @rmdir(dirname(dirname(dirname($keyPath))));
+            @rmdir($dir);
+        }
+    }
 }

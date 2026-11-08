@@ -84,6 +84,26 @@ final class OpsDashboardTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_the_login_form_does_not_prefill_an_email(): void
+    {
+        $html = $this->get('/login')->assertOk()->getContent();
+
+        $this->assertStringNotContainsString('soulevilx@gmail.com', $html);
+        $this->assertDoesNotMatchRegularExpression('/id="email"[^>]*value="[^"]+"/', $html);
+    }
+
+    public function test_the_login_page_is_vietnamese_xcrawler(): void
+    {
+        $this->get('/login')
+            ->assertOk()
+            ->assertSee('lang="vi"', false)
+            ->assertSee('Đăng nhập · XCrawler', false)
+            ->assertSee('<h1>Đăng nhập</h1>', false)
+            ->assertSee('Kho phim này là riêng tư', false)
+            ->assertDontSee('Operations sign in')
+            ->assertDontSee('JavMeta Operations');
+    }
+
     public function test_login_attempts_are_rate_limited(): void
     {
         for ($attempt = 0; $attempt < 6; $attempt++) {

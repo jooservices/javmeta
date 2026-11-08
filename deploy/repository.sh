@@ -55,10 +55,10 @@ compose() {
     "$@"
 }
 
-# The Sentry release is the git short SHA of the checkout being built; an image must never be baked with "unknown".
+# The Sentry release identifies the exact commit being built; an image must never be baked with "unknown".
 export_sentry_release() {
   local sha
-  sha="$(git -C "${JAVMETA_APP_DIR}" rev-parse --short --verify HEAD 2>/dev/null || true)"
-  [[ -n "${sha}" ]] || die "cannot read the git short SHA for SENTRY_RELEASE in ${JAVMETA_APP_DIR}"
+  sha="$(git -C "${JAVMETA_APP_DIR}" rev-parse --verify 'HEAD^{commit}' 2>/dev/null || true)"
+  [[ -n "${sha}" ]] || die "cannot read the full commit SHA for SENTRY_RELEASE in ${JAVMETA_APP_DIR}"
   export SENTRY_RELEASE="${sha}"
 }

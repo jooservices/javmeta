@@ -45,6 +45,95 @@ final class PerformerNormalizerTest extends TestCase
         self::assertNull((new PerformerNormalizer())->normalize($dto, 'xcity', 'https://example.test/1')?->birthDate);
     }
 
+    public function test_blood_types_are_canonical_and_rh_is_stored_separately(): void
+    {
+        foreach ([
+            'A' => 'A',
+            'O' => 'O',
+            'A型' => 'A',
+            'Ｏ型' => 'O',
+            'Ｂ' => 'B',
+            'AB型' => 'AB',
+            'TYPE A' => 'A',
+            'A Type' => 'A',
+            'Blood Type: A' => 'A',
+        ] as $raw => $expected) {
+            $dto = PerformerDto::fromParsed('1', 'X', ['blood_type' => $raw], 'https://example.test/1');
+            $draft = (new PerformerNormalizer())->normalize($dto, 'source-a', 'https://example.test/1');
+
+            self::assertSame($expected, $draft?->bloodType, $raw);
+        }
+
+        $dto = PerformerDto::fromParsed('1', 'X', ['blood_type' => 'Ａ型 Rh＋'], 'https://example.test/1');
+        $draft = (new PerformerNormalizer())->normalize($dto, 'source-a', 'https://example.test/1');
+
+        self::assertSame('A', $draft?->bloodType);
+        self::assertSame('+', $draft?->bloodRh);
+    }
+
+    public function test_blood_type_placeholders_are_rejected_for_every_source(): void
+    {
+        foreach (['- Type', '–', 'Trans', '型'] as $raw) {
+            foreach (['xcity', 'avjoho'] as $source) {
+                $dto = PerformerDto::fromParsed('1', 'X', ['blood_type' => $raw], 'https://example.test/1');
+
+                self::assertNull((new PerformerNormalizer())->normalize($dto, $source, 'https://example.test/1')?->bloodType, "{$source}: {$raw}");
+            }
+        }
+    }
+
+    public function test_cup_values_are_limited_to_the_configured_canonical_allowlist(): void
+    {
+        foreach (range('A', 'K') as $cup) {
+            $dto = PerformerDto::fromParsed('1', 'X', ['cup_size' => $cup], 'https://example.test/1');
+
+            self::assertSame($cup, (new PerformerNormalizer())->normalize($dto, 'source-a', 'https://example.test/1')?->cup);
+        }
+
+        foreach (['61', '100', '55', '65', 'FANZA', 'Q', 'T', 'Z'] as $raw) {
+            $dto = PerformerDto::fromParsed('1', 'X', ['cup_size' => $raw], 'https://example.test/1');
+
+            self::assertNull((new PerformerNormalizer())->normalize($dto, 'source-a', 'https://example.test/1')?->cup, $raw);
+        }
+    }
+
+    public function test_japanese_locations_are_canonical_and_location_junk_is_dropped(): void
+    {
+        $canonical = PerformerDto::fromParsed('1', 'X', ['birthplace' => '東京都渋谷区'], 'https://example.test/1');
+        $tokyo = PerformerDto::fromParsed('2', 'Y', ['birthplace' => 'Tokyo'], 'https://example.test/2');
+        $saitama = PerformerDto::fromParsed('4', 'Z', ['birthplace' => 'さいたま市'], 'https://example.test/4');
+        self::assertSame('東京都渋谷区', (new PerformerNormalizer())->normalize($canonical, 'xcity', 'https://example.test/1')?->location);
+        self::assertSame('東京都', (new PerformerNormalizer())->normalize($tokyo, 'xcity', 'https://example.test/2')?->location);
+        self::assertSame('埼玉県さいたま市', (new PerformerNormalizer())->normalize($saitama, 'xcity', 'https://example.test/4')?->location);
+
+        foreach (['–', '-', '不明', 'N/A'] as $raw) {
+            $dto = PerformerDto::fromParsed('3', 'Z', ['birthplace' => $raw], 'https://example.test/3');
+
+            self::assertNull((new PerformerNormalizer())->normalize($dto, 'avjoho', 'https://example.test/3')?->location, $raw);
+        }
+    }
+
+    public function test_profile_measurements_and_dates_are_range_checked(): void
+    {
+        $dto = PerformerDto::fromParsed('1', 'X', [
+            'birth_date_raw' => '1899-12-31',
+            'height_raw' => '99cm',
+            'bust_raw' => '251cm',
+            'waist_raw' => '29cm',
+            'hip_raw' => '251cm',
+            'debut_date_raw' => '1939-12-31',
+        ], 'https://example.test/1');
+
+        $draft = (new PerformerNormalizer())->normalize($dto, 'source-a', 'https://example.test/1');
+
+        self::assertNull($draft?->birthDate);
+        self::assertNull($draft?->heightCm);
+        self::assertNull($draft?->bust);
+        self::assertNull($draft?->waist);
+        self::assertNull($draft?->hip);
+        self::assertNull($draft?->debutDate);
+    }
+
     public function test_namespaced_cross_link_metadata_is_kept_on_the_draft(): void
     {
         $dto = PerformerDto::fromParsed('42', 'Mina Hope', [

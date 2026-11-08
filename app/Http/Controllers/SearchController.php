@@ -26,13 +26,14 @@ final class SearchController extends BaseApiController
 
         $understand = ! in_array((string) $request->query('understand', '1'), ['0', 'false'], true);
         // The same question asked again within a minute (the UI re-sends it while typing and paging) is answered from the cache.
-        $data = Cache::remember('javmeta:search:' . md5($q . '|' . $perPage . '|' . (int) $understand), 60, function () use ($search, $q, $perPage, $understand, $request): array {
+        $data = Cache::remember('javmeta:search:' . hash('sha256', $q . '|' . $perPage . '|' . (int) $understand), 60, function () use ($search, $q, $perPage, $understand, $request): array {
             $result = $search->search($q, $perPage, $understand);
 
             return [
                 'movies' => MovieSummaryResource::collection($result['movies'])->resolve($request),
                 'performers' => PerformerSummaryResource::collection($result['performers'])->resolve($request),
                 'interpretation' => $result['interpretation'],
+                'totals' => $result['totals'],
             ];
         });
 

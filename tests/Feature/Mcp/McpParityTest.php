@@ -29,7 +29,12 @@ final class McpParityTest extends TestCase
         $this->assertSame([['name' => 'Alpha', 'movie_count' => 2]], $tools->call('get_catalog', ['kind' => 'makers'])['items']);
         $this->assertSame('invalid_filter', $tools->call('get_catalog', ['kind' => 'nope'])['error']);
         $this->assertSame([['name' => 'Alpha', 'movie_count' => 2]], $tools->call('suggest', ['q' => 'alp'])['items']['makers']);
-        $this->assertSame(2, $tools->call('get_release_calendar', ['month' => '2026-10'])['meta']['total']);
+        $this->assertSame(['error' => 'invalid_filter', 'message' => 'Invalid q or limit.'], $tools->call('suggest', ['q' => 'a']));
+        $calendar = $tools->call('get_release_calendar', ['month' => '2026-10']);
+        $this->assertSame(2, $calendar['meta']['total']);
+        $this->assertSame('2026-10', $calendar['meta']['latest_month']);
+        $this->assertSame('2026-10', $tools->call('get_release_calendar', ['month' => ''])['meta']['month']);
+        $this->assertSame(['error' => 'invalid_filter', 'message' => 'Invalid month.'], $tools->call('get_release_calendar', ['month' => '2026-13']));
         $this->assertSame('not_found', $tools->call('get_related_movies', ['code' => 'NOPE-999'])['error']);
     }
 }

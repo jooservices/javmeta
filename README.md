@@ -8,7 +8,7 @@ Status: Beta — v0.1.0-beta
 
 ## Definition of Done
 
-- **Crawl all sites:** `make crawl ACTION=tick` → `make crawl ACTION=dispatch` (worker in compose). 25 sources in `config/javmeta_sources.php` — **movies, performers, and galleries** by capability.
+- **Crawl all sites:** `make crawl ACTION=tick` → `make crawl ACTION=dispatch` (worker in compose). 39 sources in `config/javmeta_sources.php` — **movies, performers, and galleries** by capability.
 - **Query API:** `GET /api/v1/movies/{code}` · `GET /api/v1/movies?q=…` · `GET /api/v1/performers` (aliases `/movies`). API key via admin.
 - **MCP for AI:** stdio and HTTP expose `lookup_movies`, `get_movie`, `search`, `lookup_performers`, `get_counts`, `crawl_status`, `system_status`, `get_performer`, `get_catalog`, `suggest`, `get_related_movies`, and `get_release_calendar`. See the [MCP guide](docs/03-operations/mcp.md) for inputs and examples.
 - **Docker + durable DB:** Postgres / Mongo / ES bind-mounted under `./data/*` (survive container drop; avoid `down -v`).
@@ -18,6 +18,20 @@ Status: Beta — v0.1.0-beta
 | Slug | Movie | Performer | Gallery | Tick seeds |
 |---|---|---|---|---|
 | `141jav` | listing+detail | cast from movie | — | movie |
+| `10musume` | listing+detail | cast from movie | — | movie |
+| `attackers` | listing+detail | cast from movie | — | movie |
+| `avwiki` | listing+detail | cast from movie | — | movie |
+| `caribbeancompr` | listing+detail | cast from movie | — | movie |
+| `dasdas` | listing+detail | cast from movie | — | movie |
+| `fitch` | listing+detail | cast from movie | — | movie |
+| `ideapocket` | listing+detail | cast from movie | — | movie |
+| `kawaiikawaii` | listing+detail | cast from movie | — | movie |
+| `madonna` | listing+detail | cast from movie | — | movie |
+| `moodyz` | listing+detail | cast from movie | — | movie |
+| `muramura` | listing+detail | cast from movie | — | movie |
+| `pacopacomama` | listing+detail | cast from movie | — | movie |
+| `premiumbeauty` | listing+detail | cast from movie | — | movie |
+| `s1` | listing+detail | cast from movie | — | movie |
 | `onepondo` | listing+detail | cast from movie | — | movie |
 | `aisex` | — | listing+detail | — | performer |
 | `avfan` | listing+detail | cast from movie | — | movie |
@@ -44,6 +58,8 @@ Status: Beta — v0.1.0-beta
 | `xcity` | listing+detail | listing+detail | — | movie + performer |
 
 \* Minnano AV has movie capability in crawlerx; POC seeds performer index only.
+
+`crawler:seed` queues the configured `movie_listing_urls` verbatim. The Maker CMS sources start at `/works/date`, where CrawlerX selects the latest date group; the 1Pondo family starts at its `list_newest_0.json` endpoint; Caribbeancom Premium uses `/eng/listpages/1.html`; AV-Wiki uses its WordPress posts API with embedded metadata. New CrawlerX 1.5.0 sources are stored with an 8-second default request gap (4-second minimum, 60-second maximum); the database setting `crawl.source_gap_overrides` can tune a source without changing environment configuration.
 
 ## Architecture (DoD)
 

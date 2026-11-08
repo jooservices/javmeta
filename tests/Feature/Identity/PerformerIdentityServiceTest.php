@@ -406,6 +406,7 @@ final class PerformerIdentityServiceTest extends TestCase
 
     public function test_same_name_with_conflicting_birth_dates_stays_separate_and_is_reported(): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
         $first = $this->sourcePerformer('source-a', 'person-a', 'Mika Aoi', '1990-01-01');
         $second = $this->sourcePerformer('source-b', 'person-b', 'Mika Aoi', '1986-01-01');
 
@@ -419,7 +420,7 @@ final class PerformerIdentityServiceTest extends TestCase
 
         $createdAt = (string) DB::table('performer_identity_reviews')->value('created_at');
         try {
-            Carbon::setTestNow(Carbon::now()->addDay());
+            Carbon::setTestNow(Carbon::parse($createdAt)->addDay());
             app(PerformerIdentityService::class)->backfill();
         } finally {
             Carbon::setTestNow();

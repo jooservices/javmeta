@@ -74,8 +74,11 @@ final class SiteCodeCanonicalizer
 
         $siteSpecific = match ($slug) {
             'onepondo' => self::qualifyOnepondo($raw),
-            'caribbeancom' => self::qualifyCaribbeancom($raw),
+            '10musume' => self::qualifyDateId($raw, '10MUSUME'),
+            'caribbeancom', 'caribbeancompr' => self::qualifyCaribbeancom($raw),
             'heyzo' => self::qualifyHeyzo($raw),
+            'muramura' => self::qualifyDateId($raw, 'MURAMURA'),
+            'pacopacomama' => self::qualifyDateId($raw, 'PACOPACOMAMA'),
             'tokyohot' => self::qualifyTokyohot($raw),
             'ffjav' => self::qualifyFfjav($raw),
             '141jav' => preg_match('/^C(\d+)$/i', $raw, $match) === 1 ? 'C-' . $match[1] : null,
@@ -150,6 +153,18 @@ final class SiteCodeCanonicalizer
     /**
      * @return non-empty-string|null
      */
+    private static function qualifyDateId(string $raw, string $source): ?string
+    {
+        if (preg_match('/^(\d{6})[\s._-]+(\d{2,5})$/u', trim($raw), $match) !== 1) {
+            return null;
+        }
+
+        return $source . '-' . $match[1] . '-' . $match[2];
+    }
+
+    /**
+     * @return non-empty-string|null
+     */
     private static function qualifyCaribbeancom(string $raw): ?string
     {
         $upper = mb_strtoupper($raw);
@@ -197,7 +212,7 @@ final class SiteCodeCanonicalizer
     {
         $upper = mb_strtoupper(trim($raw));
 
-        if (preg_match('/^(?:TOKYOHOT|TOKYO[\s._-]?HOT)[\s._-]*N?(\d{3,5})$/u', $upper, $match) === 1) {
+        if (preg_match('/^(?:TOKYO[\s._-]?HOT)[\s._-]*N?(\d{3,5})$/u', $upper, $match) === 1) {
             return 'TOKYOHOT-' . $match[1];
         }
 

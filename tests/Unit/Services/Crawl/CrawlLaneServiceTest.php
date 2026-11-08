@@ -31,7 +31,7 @@ final class CrawlLaneServiceTest extends TestCase
 
     public function test_recompute_uses_24_hours_minimum_and_inclusive_share_and_clears_old_decisions(): void
     {
-        $this->freezeTime();
+        $this->travelTo('2026-11-02T12:34:00Z');
         foreach (['threshold', 'below', 'few', 'old', 'skipped'] as $slug) {
             Source::factory()->create(['slug' => $slug, 'browser_lane' => true]);
         }

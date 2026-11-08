@@ -67,6 +67,8 @@ debounced Telegram alert. When the manifest age exceeds
 <code>backup.stale_after_seconds</code> (default 93,600 seconds), it publishes the
 age and sends the existing debounced Telegram alert.
 
+Backup monitoring is OFF by default (setting <code>backup.monitoring_enabled</code>). When off, <code>javmeta:backup-status</code> is not scheduled, no metric or alert is sent and the readiness report ignores backups. Turn it on in Settings > Sao lưu.
+
 The target RPO is 24 hours. RTO remains unverified until a successful rehearsal
 can record the full restore duration and per-service counts. The shared
 Elasticsearch filesystem snapshot path tracked by JOOS-114 is a prerequisite.

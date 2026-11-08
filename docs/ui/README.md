@@ -8,7 +8,15 @@ The UI is plain ES modules under `public/ui`, served at `/app` with static files
 
 Guests see a read-only banner, public navigation, and sign-in prompts for saved searches and owner-only pages. Personal marks, on-disk status, download controls, library details, signed media links, settings, admin screens, and the operations dashboard stay private. The `/api/v1/*` API-key contract is unchanged.
 
-The current NAV exposes Discover, Tìm kiếm, Thống kê; Phim, Diễn viên, Hồ sơ diễn viên, Mới cập nhật, Thể loại, Maker, Series, Label, Năm, Lịch phát hành; Yêu thích, Xem sau, Đã xem, Theo dõi, Thư viện, Tải về; Crawl & nguồn, Vận hành (Command Center), Quản trị and Cài đặt. [The user index](../user-guide/README.md) links each topic and every settings group. Downloads and file serving default off, but the download page exists and explains the disabled state.
+The owner-only **Cài đặt → Báo cáo** page uses `/ui-admin/report/periodic` for
+live preview/history and `/ui-admin/report/periodic/send-now` for a one-time
+Telegram send. The periodic report itself is English; controls and help text are
+Vietnamese. The page saves database-backed report settings and shows load, error,
+empty-history and send-result states.
+
+The current NAV exposes Khám phá, Tìm kiếm, Thống kê; Phim, Diễn viên, Hồ sơ diễn viên, Mới cập nhật, Thể loại, Hãng, Loạt phim, Nhãn, Năm, Lịch phát hành; Yêu thích, Xem sau, Đã xem, Theo dõi, Thư viện, Tải về, Tệp media; Thu thập & nguồn, Vận hành, Quản trị and Cài đặt. The owner-only Cài đặt page links to **Thông báo**, where notification templates, previews and revision history are managed. [The user index](../user-guide/README.md) links each topic and every settings group. Downloads and file serving default off, but the download page exists and explains the disabled state.
+
+The owner-only [Thông báo](../user-guide/notifications.md) subpage lists all registered notification types and their database-backed policy. It edits enabled state, tier, cooldown, escalation, report inclusion and resolved delivery; offers periodic/daily report previews, revision history and reset to defaults; and controls global quiet mode. Labels and help are Vietnamese while messages and reports are English. Guests cannot read these routes.
 
 The omnibox suggests movies, performers, makers and series, plus a full-search link. It does not keep recent searches. Search results separately include genre suggestions. Ctrl/Cmd-K or `/` focuses search; `t` toggles theme, `?` opens help, Esc closes it, and arrows/Enter choose omnibox suggestions. The `g …` shortcuts listed by the Settings view are not implemented. The top status pill refreshes every 30 seconds; the crawl table itself requires a reload.
 
@@ -56,8 +64,8 @@ to close. Selecting returns focus to the input; ID names are resolved from `perf
 | Control | URL parameter | Meaning |
 | --- | --- | --- |
 | Tên | `q` | Partial name or alias; at least two characters |
-| Cup / Nhóm máu | `cup`, `blood_type` | Comma-separated values, any selected value; current-result counts |
-| Nơi sống | `location` | Location text with catalog suggestions and facet values |
+| Cup / Blood type | `cup`, `blood_type` | Comma-separated canonical values; aliases merge counts and unknown blood type is hidden by default |
+| Location | `location` | Canonical Japanese prefecture/city suggestions with merged alias counts |
 | Age | `age_min`, `age_max` | Inclusive age bounds |
 | Height | `height_min`, `height_max` | Inclusive centimetres |
 | Số đo (collapsed initially) | `bust_min`, `bust_max`, `waist_min`, `waist_max`, `hip_min`, `hip_max` | Independent inclusive body measurement ranges |
@@ -67,6 +75,12 @@ to close. Selecting returns focus to the input; ID names are resolved from `perf
 | Số phim tối thiểu | `movies_min` | Minimum linked movie count |
 | Nguồn | `source` | Source slugs |
 | Xếp theo | `sort` | `name`, `updated_at`, `linked_title_count` |
+
+Performer Cup, Blood type, and Location suggestions use canonical values and merge
+counts for equivalent legacy spellings. Blood types are A, B, O, and AB; cups
+are A–K. Invalid and missing blood types appear in an `Unknown` catalog bucket
+only when explicitly requested by the API; the UI hides that bucket by default.
+Japanese prefecture and city aliases resolve to the official canonical names.
 
 ### Facets, empty results and saved searches
 
@@ -114,10 +128,12 @@ Per-file Media actions include **Phụ đề** (local GPU Whisper) and **Dịch 
 
 The Media page has **Ghi luồng** with a URL field. It remains disabled until capture is enabled in Settings. Each submit creates one explicit owner job; DRM/encryption refusals appear in the queue. Finished captures expose a signed **Mở tệp đã ghi** link when file serving is enabled. Capture is never offered as an automatic or bulk library action.
 
-Cài đặt → **Cảnh báo** includes the warning and critical age thresholds for
-crawl dispatch. The application applies saved values without a restart; the
-OpenObserve metrics and Telegram alerts use those database settings. See
-[dispatch monitoring](../03-operations/telemetry.md#logs-and-traces).
+Cài đặt → **Cảnh báo** includes crawl safety thresholds, minimum sample size,
+evaluation window, cooldown, channel selection and alert history retention.
+The application applies saved values without a restart; `alerts:evaluate`
+checks them every minute and `obs:publish-metrics` reports firing state and
+event counts. See [notifications](../03-operations/notifications.md) and
+[telemetry](../03-operations/telemetry.md).
 
 Capture refuses internal-network and cloud-metadata destinations, including redirects and segment hosts. Library paths and scene descriptions containing dollar signs render literally. A rejected worker result appears through the normal failure/retry flow instead of occupying a running slot until its lease expires.
 
@@ -127,11 +143,25 @@ Settings warns when a legacy service base URL is invalid and uses the config def
 
 Cài đặt → **Sức khỏe khi khởi động** controls primary-role policy, retry timing, web snapshot TTL and Artisan command exceptions. PostgreSQL, Redis and MongoDB remain primary; Elasticsearch defaults to primary on web and secondary on workers. A red primary health snapshot returns 503 before the owner login flow; `/api/health` and `/api/health/live` remain available for diagnosis. See [startup health operations](../03-operations/startup-health.md).
 
+Cài đặt → **Giám sát** includes the node and browser-host public IP probe
+URLs, intervals and timeout, the `record_egress_ip` switch, and the OpenObserve
+stream for address-change records. Operators can review cached addresses,
+browser probe failure reasons, and crawl block counts with
+`crawler:egress-status` and `crawler:egress-report`; see
+[egress telemetry](../03-operations/telemetry.md#egress-ip-attribution-jooxcr-314).
+
 ## Fetch diagnostics retention
 
 Cài đặt / Giám sát exposes **Số ngày giữ lịch sử thử tải** (default 14).
 The per-method report is an operator command, not a new UI screen; see
 [fetch attempts](../03-operations/telemetry.md#fetch-attempts).
+
+## Long-term crawl statistics
+
+Cài đặt → **Thống kê crawl** controls the statistics switch and hourly
+retention period. There is no new UI screen: operators use
+`crawler:stats-report` for source, method, lane and hourly reports. See
+[crawl statistics operations](../03-operations/telemetry.md#long-term-crawl-statistics-jooxcr-305).
 
 Native XCrawler production has independent host/index settings. See the
 [production operator runbook](../../deploy/production/README.md)
@@ -143,6 +173,9 @@ changes made in **Settings** remain authoritative across deployments.
 
 The Crawl & sources table shows each source’s effective lane (Trực tiếp or Trình duyệt). Configure lane thresholds, pins and the split switch in Cài đặt → Hàng đợi crawl.
 The same group exposes **Feed interval (seconds)** (`queue.feed_interval_seconds`), with choices 5, 10, 15, 30 and 60. The default is 10 seconds; 60 restores the former once-per-minute cadence. Changes apply on the next scheduler minute.
+The **Vòng lặp crawl** group exposes **Khoảng request ghi đè theo nguồn** (`crawl.source_gap_overrides`), a validated JSON map of per-source min/default/max gaps. Operators can inspect the effective and adaptive values with `crawler:source-gap` and `crawler:feed-diagnostics`.
+
+The **Làn thử lại** settings group controls delayed retry rounds, their separate feed budget and pacing, per-queue workers, and the optional fetch profile. Owners can inspect due failures with `crawler:retry-list` and recovery counts over SSH with `crawler:retry-stats`; the operations guide documents safe manual requeue and historical import.
 
 Product-code recovery for javbtc, ffjav, tokyohot and 141jav preserves source
 product identifiers and uses a stable source-scoped URL identity when needed.
@@ -159,3 +192,13 @@ in [performer identity](../03-operations/performer-identity.md#co-credit-identit
 ## Legacy telemetry maintenance
 
 Legacy OpenObserve stream removal is an operator-only Artisan command, with no browser action. Follow [Removing legacy streams](../03-operations/observability.md#removing-legacy-streams) for dry-run review, complete exports, confirmation and live-stream verification.
+
+## Layout width and cover viewer (JOOXCR-332)
+
+- The content column is fluid: `.wrap` is capped by `--wrap-max` (default 2400px) instead of 1400px, and card grids use the extra width for more columns. The S/M/L card size control keeps working; the default M card is 210px (was 176px), S is 150px and L is 300px.
+- On the movie detail page the cover column is `clamp(340px, 32vw, 620px)` and the cover is shown whole (`object-fit: contain`, no cropping).
+- Clicking a cover that has `data-zoom` (or pressing Enter or Space on it) opens a viewer (`js/lightbox.js`) with the full image and a link to the original. Escape, the close button or a click on the backdrop closes it; focus returns to the cover. Only `http` and `https` sources open.
+
+## Internal codes in the UI (JOOXCR-333)
+
+Movies whose source gave no product code carry a stable derived key such as `JAVBTC-DERIVED-<64 hex>` (JOOXCR-283). The UI never shows the hash as the visible code: cards, tables, the calendar, search suggestions, the breadcrumb and the detail header show a short label (`JAVBTC · #8E9952`), the title falls back to that label, and the full key stays in the tooltip, in the "Mã & nguồn" tab and behind the "Sao chép mã nội bộ" button. The detail page marks the movie as "chưa có mã chuẩn". Fixing the extraction itself is tracked in JOOXCR-282.

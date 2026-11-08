@@ -63,6 +63,7 @@ empty array); keys are never omitted. Changes are additive: existing keys keep t
 | `bust`, `waist`, `hip` | integer or null | Measurements in cm |
 | `cup` | string or null | Cup size |
 | `blood_type` | string or null | Blood type |
+| `blood_rh` | string or null | Rh sign, `+` or `-` |
 | `bio_text` | string or null | Biography |
 | `debut_date` | date or null | `YYYY-MM-DD` |
 | `retired_date` | date or null | `YYYY-MM-DD`; no CrawlerX source provides it yet, so it stays `null` until one does |

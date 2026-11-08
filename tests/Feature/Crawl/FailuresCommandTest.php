@@ -17,7 +17,7 @@ final class FailuresCommandTest extends TestCase
 
     public function test_json_counts_recent_failures_by_source_and_error_code(): void
     {
-        $this->freezeSecond();
+        $this->travelTo('2026-11-02T12:34:00Z');
 
         CrawlQueue::factory()->create([
             'source_slug' => 'onejav',

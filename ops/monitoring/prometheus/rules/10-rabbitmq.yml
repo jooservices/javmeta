@@ -1,0 +1,54 @@
+groups:
+  - name: rabbitmq-exporter
+    rules:
+      # rabbitmq_up is not exported by the deployed exporter. Prometheus's target health is authoritative.
+      - alert: RabbitmqDown
+        expr: up{job="rabbitmq_exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          value: "{{ $value }}"
+          summary: RabbitMQ exporter target is down
+          description: "Prometheus cannot scrape the RabbitMQ exporter.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/rabbitmq#availability
+      - alert: RabbitmqMemoryAlarm
+        expr: rabbitmq_alarms_memory_used_watermark{job="rabbitmq_exporter"} > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          value: "{{ $value }}"
+          summary: RabbitMQ memory alarm is active
+          description: "RabbitMQ has raised its memory watermark alarm.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/rabbitmq#memory-alarm
+      - alert: RabbitmqDiskAlarm
+        expr: rabbitmq_alarms_free_disk_space_watermark{job="rabbitmq_exporter"} > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          value: "{{ $value }}"
+          summary: RabbitMQ disk alarm is active
+          description: "RabbitMQ has raised its free disk space watermark alarm.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/rabbitmq#disk-alarm
+      - alert: RabbitmqQueueBacklogHigh
+        expr: rabbitmq_queue_messages_ready{job="rabbitmq_exporter"} > 1000
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          value: "{{ $value }}"
+          summary: RabbitMQ queue backlog is high
+          description: "Ready messages have remained above 1000 for 15 minutes.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/rabbitmq#queue-backlog
+      - alert: RabbitmqUnackedMessagesHigh
+        expr: rabbitmq_queue_messages_unacked{job="rabbitmq_exporter"} > 1000
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          value: "{{ $value }}"
+          summary: RabbitMQ unacknowledged messages are high
+          description: "Unacknowledged messages have remained above 1000 for 15 minutes.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/rabbitmq#unacked-messages

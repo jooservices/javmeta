@@ -1,0 +1,10 @@
+{
+  "source_url": "https://www.10musume.com/dyn/phpauto/movie_details/movie_id/110326_01.json",
+  "final_url": "https://www.10musume.com/dyn/phpauto/movie_details/movie_id/110326_01.json",
+  "captured_at": "2026-11-02T18:08:01.000Z",
+  "http_status": 200,
+  "content_hash": "61a7f43ad1074c528d17955cf529afbc369f18f334c36bff7f883fcca481bf0f",
+  "target_type": "detail",
+  "fetch_method": "http",
+  "sanitized": false
+}

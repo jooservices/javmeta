@@ -112,9 +112,6 @@ final class StreamExport
 
             return $this->slice($candidate, $start, $middle, $handle) + $this->slice($candidate, $middle, $end, $handle);
         }
-        if ($total !== null && (int) $total !== count($hits)) {
-            throw new RuntimeException('Search export result total does not match returned documents.');
-        }
         foreach ($hits as $hit) {
             if (! isset($hit['_timestamp']) || $hit['_timestamp'] < $start || $hit['_timestamp'] >= $end) {
                 throw new RuntimeException('Search returned an out-of-slice document.');

@@ -876,6 +876,16 @@
             "schema": {
               "type": "integer"
             }
+          },
+          {
+            "name": "include_unknown",
+            "in": "query",
+            "required": false,
+            "description": "For blood_types only, include the hidden Unknown bucket when true",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
           }
         ]
       }
@@ -1533,6 +1543,16 @@
             "description": "Blood type; several separated by commas mean any of them",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "include_unknown",
+            "in": "query",
+            "required": false,
+            "description": "Include the otherwise hidden Unknown blood type bucket",
+            "schema": {
+              "type": "boolean",
+              "default": false
             }
           },
           {

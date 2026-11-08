@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Start the browser QA stack and wait until the app answers. Prints the URL and the owner e-mail, never the password.
+#   JAVMETA_QA_PASSWORD=... docker/qa/qa-up        (a random one is generated and kept in .tmp/qa-password when unset)
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$root"
+mkdir -p .tmp
+if [[ -z "${JAVMETA_QA_PASSWORD:-}" ]]; then
+  if [[ ! -s .tmp/qa-password ]]; then
+    (umask 077; openssl rand -hex 16 > .tmp/qa-password)
+  fi
+  JAVMETA_QA_PASSWORD="$(cat .tmp/qa-password)"
+fi
+export JAVMETA_QA_PASSWORD
+export JAVMETA_CI_UID="$(id -u)" JAVMETA_CI_GID="$(id -g)"
+export JAVMETA_CI_APP_KEY="${JAVMETA_CI_APP_KEY:-base64:$(openssl rand -base64 32 | tr -d '\n')}"
+export JAVMETA_CI_ES_SECURITY=false
+export JAVMETA_CI_XCRAWLER_MONGO_PASSWORD=unused
+port="${JAVMETA_QA_PORT:-8099}"
+export JAVMETA_QA_PORT="$port"
+docker volume create javmeta-ci-composer-cache >/dev/null
+docker compose --file docker/qa/compose.qa.yml up --detach --wait postgres mongo redis elasticsearch openobserve
+docker compose --file docker/qa/compose.qa.yml up --detach web
+for _ in $(seq 1 120); do
+  if curl -fsS -o /dev/null "http://localhost:${port}/login"; then
+    echo "QA app ready: http://localhost:${port}  owner: ${JAVMETA_QA_EMAIL:-qa@javmeta.test}  (password in .tmp/qa-password)"
+    echo "Browser suite: QA_BASE=http://localhost:${port} node ui-tests/qa/run.mjs"
+    exit 0
+  fi
+  sleep 3
+done
+echo "The QA app did not answer in time; see: docker compose --file docker/qa/compose.qa.yml logs web" >&2
+exit 1

@@ -9,6 +9,7 @@ use App\Models\PerformerSource;
 use App\Models\Movie;
 use App\Observability\ObservabilityEmitter;
 use App\Services\Embedding\EmbedderClient;
+use App\Services\Normalize\PerformerAttributeNormalizer;
 use DateTimeInterface;
 use Throwable;
 
@@ -17,10 +18,15 @@ use Throwable;
  */
 final class ElasticsearchIndexer
 {
+    private readonly PerformerAttributeNormalizer $attributeNormalizer;
+
     public function __construct(
         private readonly EmbedderClient $embedder,
         private readonly ElasticsearchHttpClient $elasticsearch,
-    ) {}
+        ?PerformerAttributeNormalizer $attributeNormalizer = null,
+    ) {
+        $this->attributeNormalizer = $attributeNormalizer ?? new PerformerAttributeNormalizer();
+    }
 
     public function indexMovie(Movie $movie, bool $requireVector = false): bool
     {
@@ -98,7 +104,12 @@ final class ElasticsearchIndexer
             'name_romaji' => $source->name_romaji,
             'name_kanji' => $source->name_kanji,
             'name_kana' => $source->name_kana,
-            'birth_date' => $this->dateString($source->getAttribute('birth_date')),
+            'birth_date' => $this->attributeNormalizer->date(
+                'birth_date',
+                $source->getAttribute('birth_date'),
+                (string) $source->site_slug,
+                false,
+            ),
             'active' => $source->removed_at === null,
         ])->values()->all();
         $sourceNames = array_values(array_unique(array_filter(array_merge(
@@ -106,6 +117,18 @@ final class ElasticsearchIndexer
             array_column($sources, 'name_kanji'),
             array_column($sources, 'name_kana'),
         ), static fn(mixed $name): bool => is_string($name) && $name !== '')));
+        $profile = $this->attributeNormalizer->normalizeStoredAttributes([
+            'birth_date' => $performer->getAttribute('birth_date'),
+            'height_cm' => $performer->getAttribute('height_cm'),
+            'bust' => $performer->getAttribute('bust'),
+            'waist' => $performer->getAttribute('waist'),
+            'hip' => $performer->getAttribute('hip'),
+            'cup' => $performer->getAttribute('cup'),
+            'blood_type' => $performer->getAttribute('blood_type'),
+            'blood_rh' => $performer->getAttribute('blood_rh'),
+            'debut_date' => $performer->getAttribute('debut_date'),
+            'location' => $performer->getAttribute('location'),
+        ], (string) $performer->getAttribute('source_slug'), false);
         $document = [
             'performer_id' => $performer->id,
             'uuid' => $performer->uuid,
@@ -119,11 +142,17 @@ final class ElasticsearchIndexer
                 $performer->name_kanji,
                 $performer->name_kana,
             ], $sourceNames, $aliases), static fn(mixed $name): bool => is_string($name) && $name !== ''))),
-            'birth_date' => $this->dateString($performer->getAttribute('birth_date')),
+            'birth_date' => $profile['birth_date'],
             'bio_text' => $performer->bio_text,
-            'cup' => $performer->cup,
-            'debut_date' => $this->dateString($performer->getAttribute('debut_date')),
-            'location' => $performer->location,
+            'height_cm' => $profile['height_cm'],
+            'bust' => $profile['bust'],
+            'waist' => $profile['waist'],
+            'hip' => $profile['hip'],
+            'cup' => $profile['cup'],
+            'blood_type' => $profile['blood_type'],
+            'blood_rh' => $profile['blood_rh'],
+            'debut_date' => $profile['debut_date'],
+            'location' => $profile['location'],
             'updated_at' => $this->dateTimeString($performer->getAttribute('updated_at')),
         ];
 
@@ -134,11 +163,12 @@ final class ElasticsearchIndexer
             implode(' ', $sourceNames),
             implode(', ', $aliases),
             (string) $performer->bio_text,
-            $this->dateString($performer->getAttribute('birth_date')),
-            $this->dateString($performer->getAttribute('debut_date')),
-            (string) $performer->location,
-            (string) $performer->cup,
-            (string) $performer->blood_type,
+            $profile['birth_date'],
+            $profile['debut_date'],
+            (string) $profile['location'],
+            (string) $profile['cup'],
+            (string) $profile['blood_type'],
+            (string) $profile['blood_rh'],
         ]));
         $vector = $this->embedder->embedOne($embedText);
         if ($vector !== null) {

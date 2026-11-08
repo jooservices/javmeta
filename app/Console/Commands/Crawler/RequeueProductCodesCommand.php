@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueRepository;
 use App\Enums\CrawlErrorCode;
 use App\Models\CrawlQueue;
 use Illuminate\Console\Command;
@@ -18,7 +19,7 @@ final class RequeueProductCodesCommand extends Command
     public function handle(): int
     {
         foreach (['javbtc', 'ffjav', 'tokyohot', '141jav'] as $slug) {
-            $query = CrawlQueue::query()
+            $query = app(CrawlQueueRepository::class)->modelQuery(CrawlQueue::class)
                 ->where('source_slug', $slug)
                 ->where('kind', CrawlQueue::KIND_DETAIL)
                 ->where('status', CrawlQueue::STATUS_FAILED)
