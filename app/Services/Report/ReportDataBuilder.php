@@ -4,14 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Report;
 
-use App\Models\CrawlQueue;
-use App\Models\Movie;
-use App\Models\Performer;
-use App\Models\ReportSnapshot;
+use App\Repositories\ReportDataServiceRepository;
 use App\Services\Notifications\NotificationPolicyService;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 final class ReportDataBuilder
@@ -21,6 +16,7 @@ final class ReportDataBuilder
         private readonly NodeSampleAggregator $sampleAggregator,
         private readonly ReportServiceStats $serviceStats,
         private readonly NotificationPolicyService $notificationPolicies,
+        private readonly ReportDataServiceRepository $repository,
     ) {}
 
     /** @return array<string, mixed> */
@@ -29,10 +25,10 @@ final class ReportDataBuilder
         $at ??= CarbonImmutable::now();
         $minutes = $windowMinutes ?? (int) config('javmeta_report.interval_minutes', 120);
         $start = $at->subMinutes($minutes);
-        $previous = ReportSnapshot::query()->where('report_type', 'periodic')->where('result', 'sent')->orderByDesc('id')->first();
-        $previousValue = $previous?->getAttribute('raw_numbers');
+        $previous = $this->repository->previousSentPeriodic();
+        $previousValue = $previous['raw_numbers'] ?? null;
         $previousRaw = is_array($previousValue) ? $previousValue : null;
-        $periodicDigestSince = $previous?->created_at;
+        $periodicDigestSince = $previous['created_at'] ?? null;
         if (! $periodicDigestSince instanceof \DateTimeInterface) {
             $periodicDigestSince = $start;
         }
@@ -48,10 +44,10 @@ final class ReportDataBuilder
         ];
 
         if (in_array('movies', $this->sections(), true)) {
-            $raw['movies'] = $this->entity('movies', 'crawled_at', (int) Movie::query()->count(), $previousRaw, $start, $at, $minutes, $windowMinutes !== null);
+            $raw['movies'] = $this->entity('movies', 'crawled_at', $this->repository->entityCount('movies'), $previousRaw, $start, $at, $minutes, $windowMinutes !== null);
         }
         if (in_array('performers', $this->sections(), true)) {
-            $raw['performers'] = $this->entity('performers', 'first_seen_at', (int) Performer::query()->count(), $previousRaw, $start, $at, $minutes, $windowMinutes !== null);
+            $raw['performers'] = $this->entity('performers', 'first_seen_at', $this->repository->entityCount('performers'), $previousRaw, $start, $at, $minutes, $windowMinutes !== null);
         }
         if (in_array('crawl', $this->sections(), true)) {
             $raw['crawl'] = $this->crawl($start, $at);
@@ -116,11 +112,11 @@ final class ReportDataBuilder
     {
         $lastReportTotal = (int) ($previousRaw[$table]['total'] ?? $total);
         $since = $windowCount
-            ? (int) DB::table($table)->whereBetween($dateColumn, [$start, $at])->count()
+            ? $this->repository->entityCountBetween($table, $dateColumn, $start, $at)
             : max(0, $total - $lastReportTotal);
         $last24 = $windowCount && $minutes === 1440
             ? $since
-            : (int) DB::table($table)->where($dateColumn, '>=', $at->subDay())->where($dateColumn, '<=', $at)->count();
+            : $this->repository->entityCountLastDay($table, $dateColumn, $at);
         $buckets = $this->hourBuckets($table, $dateColumn, $start, $at);
         $hours = max(1 / 60, $minutes / 60);
         $scale = $minutes < 60 ? 60 / $minutes : 1;
@@ -137,46 +133,27 @@ final class ReportDataBuilder
     /** @return list<int> */
     private function hourBuckets(string $table, string $dateColumn, CarbonImmutable $start, CarbonImmutable $at): array
     {
-        $bucket = match (DB::connection()->getDriverName()) {
-            'pgsql' => "date_trunc('hour', {$dateColumn})",
-            'sqlite' => "strftime('%Y-%m-%d %H:00:00', {$dateColumn})",
-            default => "DATE_FORMAT({$dateColumn}, '%Y-%m-%d %H:00:00')",
-        };
-        $rows = DB::table($table)
-            ->whereBetween($dateColumn, [$start, $at])
-            ->whereNotNull($dateColumn)
-            ->selectRaw($bucket . ' AS hour_bucket, COUNT(*) AS items')
-            ->groupBy('hour_bucket')
-            ->get();
-
-        return $rows->map(static fn(object $row): int => (int) $row->items)->all();
+        return $this->repository->entityHourBuckets($table, $dateColumn, $start, $at);
     }
 
     /** @return array<string, array{attempts: int, success_percent: float, blocked_percent: float}> */
     private function crawl(CarbonImmutable $start, CarbonImmutable $at): array
     {
-        if (! Schema::hasTable('crawl_fetch_attempts')) {
-            return [];
-        }
-        $rows = DB::table('crawl_fetch_attempts')
-            ->whereIn('kind', [CrawlQueue::KIND_LISTING, CrawlQueue::KIND_DETAIL, CrawlQueue::KIND_GALLERY, CrawlQueue::KIND_PERFORMER_LISTING, CrawlQueue::KIND_PERFORMER_DETAIL])
-            ->whereBetween('started_at', [$start, $at])
-            ->selectRaw("kind, COUNT(*) AS attempts, SUM(CASE WHEN outcome <> 'skipped' THEN 1 ELSE 0 END) AS counted, SUM(CASE WHEN outcome <> 'skipped' AND http_status >= 200 AND http_status < 300 THEN 1 ELSE 0 END) AS successes, SUM(CASE WHEN http_status IN (403, 429) OR cf_mitigated IS NOT NULL THEN 1 ELSE 0 END) AS blocked")
-            ->groupBy('kind')
-            ->get()
-            ->keyBy('kind');
+        $rows = $this->repository->crawlAttemptCounts([
+            'listing', 'detail', 'gallery', 'performer_listing', 'performer_detail',
+        ], $start, $at);
         $result = [];
         foreach ([
-            'movies' => [CrawlQueue::KIND_LISTING, CrawlQueue::KIND_DETAIL, CrawlQueue::KIND_GALLERY],
-            'performers' => [CrawlQueue::KIND_PERFORMER_LISTING, CrawlQueue::KIND_PERFORMER_DETAIL],
+            'movies' => ['listing', 'detail', 'gallery'],
+            'performers' => ['performer_listing', 'performer_detail'],
         ] as $entity => $kinds) {
             $attempts = $counted = $successes = $blocked = 0;
             foreach ($kinds as $kind) {
-                $row = $rows->get($kind);
-                $attempts += (int) ($row->attempts ?? 0);
-                $counted += (int) ($row->counted ?? 0);
-                $successes += (int) ($row->successes ?? 0);
-                $blocked += (int) ($row->blocked ?? 0);
+                $row = $rows[$kind] ?? [];
+                $attempts += $row['attempts'] ?? 0;
+                $counted += $row['counted'] ?? 0;
+                $successes += $row['successes'] ?? 0;
+                $blocked += $row['blocked'] ?? 0;
             }
             if ($attempts > 0) {
                 $result[$entity] = [
@@ -194,36 +171,10 @@ final class ReportDataBuilder
     private function sources(CarbonImmutable $start, CarbonImmutable $at): array
     {
         $limit = max(1, min(5, (int) config('javmeta_report.top_sources_limit', 5)));
-        $blocked = [];
-        if (Schema::hasTable('crawl_fetch_attempts')) {
-            $blocked = DB::table('crawl_fetch_attempts')
-                ->whereIn('kind', [CrawlQueue::KIND_LISTING, CrawlQueue::KIND_DETAIL, CrawlQueue::KIND_GALLERY, CrawlQueue::KIND_PERFORMER_LISTING, CrawlQueue::KIND_PERFORMER_DETAIL])
-                ->whereBetween('started_at', [$start, $at])
-                ->where(static fn($query) => $query->whereIn('http_status', [403, 429])->orWhereNotNull('cf_mitigated'))
-                ->select('source_slug')
-                ->selectRaw('COUNT(*) AS blocked_count')
-                ->groupBy('source_slug')
-                ->orderByDesc('blocked_count')
-                ->orderBy('source_slug')
-                ->limit($limit)
-                ->pluck('source_slug')
-                ->all();
-        }
+        $blocked = $this->repository->topBlockedSources($start, $at, $limit);
+        $exhausted = $this->repository->topExhaustedSources($start, $at, $limit);
 
-        $exhausted = CrawlQueue::query()
-            ->where('status', CrawlQueue::STATUS_FAILED)
-            ->whereBetween('last_failed_at', [$start, $at])
-            ->whereColumn('attempts', '>=', 'max_attempts')
-            ->select('source_slug')
-            ->selectRaw('COUNT(*) AS exhausted_count')
-            ->groupBy('source_slug')
-            ->orderByDesc('exhausted_count')
-            ->orderBy('source_slug')
-            ->limit($limit)
-            ->pluck('source_slug')
-            ->all();
-
-        return ['blocked' => array_map('strval', $blocked), 'exhausted' => array_map('strval', $exhausted)];
+        return ['blocked' => $blocked, 'exhausted' => $exhausted];
     }
 
     /** @param list<array<string, mixed>> $events
@@ -264,22 +215,18 @@ final class ReportDataBuilder
                 // Fall back to the most recent recorded backup alert when the manifest cannot be read.
             }
         }
-        if (! Schema::hasTable('notification_policy_events')) {
-            return ['status' => 'No recent backup status recorded', 'at' => null];
-        }
-        $row = DB::table('notification_policy_events')->whereIn('notification_key', ['backup.stale', 'backup.manifest_missing', 'backup.success', 'backup.ok'])
-            ->where('first_seen_at', '<=', $at)->orderByDesc('first_seen_at')->first(['notification_key', 'first_seen_at', 'resolved_at']);
+        $row = $this->repository->latestBackupPolicyEvent($at);
         if ($row === null) {
             return ['status' => 'No recent backup status recorded', 'at' => null];
         }
 
         return [
-            'status' => $row->resolved_at !== null || ! in_array($row->notification_key, ['backup.stale', 'backup.manifest_missing'], true)
+            'status' => $row['resolved_at'] !== null || ! in_array($row['notification_key'], ['backup.stale', 'backup.manifest_missing'], true)
                 ? 'Successful'
                 : 'Failed or stale',
-            'at' => (string) ($row->resolved_at !== null && in_array($row->notification_key, ['backup.stale', 'backup.manifest_missing'], true)
-                ? $row->resolved_at
-                : $row->first_seen_at),
+            'at' => $row['resolved_at'] !== null && in_array($row['notification_key'], ['backup.stale', 'backup.manifest_missing'], true)
+                ? $row['resolved_at']
+                : $row['first_seen_at'],
         ];
     }
 
@@ -288,9 +235,7 @@ final class ReportDataBuilder
      */
     private function fleet(array $nodes, CarbonImmutable $start, CarbonImmutable $at): array
     {
-        $failedJobs = Schema::hasTable('failed_jobs')
-            ? (int) DB::table('failed_jobs')->whereBetween('failed_at', [$start, $at])->count()
-            : 0;
+        $failedJobs = $this->repository->failedJobsCount($start, $at);
 
         return ['nodes_running' => count($nodes), 'failed_jobs' => $failedJobs];
     }

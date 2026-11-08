@@ -58,6 +58,23 @@ final class PerformerFiltersTest extends TestCase
         $this->getJson('/api/v1/performers?status=maybe', $this->headers)->assertStatus(400);
     }
 
+    public function test_performer_facets_key_is_deterministic_and_differs_for_different_filters(): void
+    {
+        \Illuminate\Support\Facades\Cache::flush();
+        $a = $this->getJson('/api/v1/performers/facets', $this->headers)->assertOk()->json('data');
+        $filtersA = ['include_unknown' => false];
+        $keyA = 'javmeta:pfacets:' . hash('sha256', json_encode($filtersA, JSON_THROW_ON_ERROR));
+        $this->assertSame($a, \Illuminate\Support\Facades\Cache::get($keyA));
+        $this->assertSame($a, $this->getJson('/api/v1/performers/facets', $this->headers)->assertOk()->json('data'));
+
+        $b = $this->getJson('/api/v1/performers/facets?cup=D', $this->headers)->assertOk()->json('data');
+        $filtersB = ['cup' => 'D', 'include_unknown' => false];
+        $keyB = 'javmeta:pfacets:' . hash('sha256', json_encode($filtersB, JSON_THROW_ON_ERROR));
+        $this->assertNotSame($keyA, $keyB);
+        $this->assertSame($b, \Illuminate\Support\Facades\Cache::get($keyB));
+        $this->assertSame($a, \Illuminate\Support\Facades\Cache::get($keyA));
+    }
+
     public function test_performer_facets_count_inside_the_current_result(): void
     {
         $f = $this->getJson('/api/v1/performers/facets', $this->headers)->assertOk()->json('data');

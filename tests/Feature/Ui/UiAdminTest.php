@@ -35,6 +35,9 @@ final class UiAdminTest extends TestCase
         $this->deleteJson('/ui-admin/keys/' . $id)->assertNoContent();
         $this->assertSame('revoked', ApiKey::query()->find($id)->status);
         $this->postJson('/ui-admin/keys', ['label' => 'bad', 'scopes' => ['nope']])->assertStatus(422);
+        $missing = $this->postJson('/ui-admin/keys', ['label' => 'no-scope'])->assertStatus(422);
+        $this->assertSame(['Chọn ít nhất một quyền.'], $missing->json('errors.scopes'));
+        $this->postJson('/ui-admin/keys', ['label' => 'empty-scope', 'scopes' => []])->assertStatus(422);
     }
 
     public function test_the_owner_can_create_a_key_limited_to_browser_service_configuration(): void

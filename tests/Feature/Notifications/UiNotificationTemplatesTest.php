@@ -123,6 +123,59 @@ final class UiNotificationTemplatesTest extends TestCase
         $this->getJson('/ui-admin/notifications/unknown.template')->assertNotFound();
     }
 
+    public function test_unknown_keys_are_not_found_on_every_read_and_action_route(): void
+    {
+        $unknown = '/ui-admin/notifications/unknown.template';
+
+        $this->postJson($unknown . '/preview')->assertNotFound();
+        $this->postJson($unknown . '/test')->assertNotFound();
+        $this->getJson($unknown . '/revisions')->assertNotFound();
+        $this->postJson($unknown . '/reset')->assertNotFound();
+    }
+
+    public function test_a_template_with_an_unknown_variable_cannot_be_previewed_or_test_sent(): void
+    {
+        $bad = ['title_template' => 'Alert {unknown}', 'body_template' => 'Body'];
+
+        $this->postJson('/ui-admin/notifications/crawl.dispatch_delayed/preview', $bad)
+            ->assertUnprocessable()->assertJsonPath('message', 'Unknown template variable: {unknown}.');
+        $this->postJson('/ui-admin/notifications/crawl.dispatch_delayed/test', $bad)
+            ->assertUnprocessable()->assertJsonPath('message', 'Unknown template variable: {unknown}.');
+        self::assertSame([], $this->sent);
+    }
+
+    public function test_preview_and_test_send_validate_their_fields(): void
+    {
+        $this->postJson('/ui-admin/notifications/crawl.dispatch_delayed/preview', ['default_severity' => 'loud'])->assertUnprocessable();
+        $this->postJson('/ui-admin/notifications/crawl.dispatch_delayed/test', ['title_template' => str_repeat('x', 10001)])->assertUnprocessable();
+    }
+
+    public function test_a_failed_delivery_is_reported_as_unavailable_and_not_marked_sent(): void
+    {
+        $this->app->instance(ReportChannel::class, new class implements ReportChannel {
+            public function deliver(string $subject, string $body, array $context = []): bool
+            {
+                return false;
+            }
+        });
+
+        $this->postJson('/ui-admin/notifications/crawl.dispatch_delayed/test')
+            ->assertStatus(503)->assertJsonPath('data.sent', false);
+    }
+
+    public function test_policy_fields_must_be_sent_together_and_an_unknown_revision_cannot_be_restored(): void
+    {
+        $this->putJson('/ui-admin/notifications/crawl.dispatch_delayed', [
+            'title_template' => 'Dispatch delayed {dispatch_age}',
+            'body_template' => 'Due work: {due_items}',
+            'enabled' => true,
+            'default_severity' => 'warning',
+            'tier' => 'warning',
+        ])->assertUnprocessable()->assertJsonPath('message', 'All notification policy fields must be provided together.');
+
+        $this->postJson('/ui-admin/notifications/crawl.dispatch_delayed/revisions/999999/restore')->assertUnprocessable();
+    }
+
     public function test_anonymous_owner_only_template_routes_require_login(): void
     {
         auth()->logout();

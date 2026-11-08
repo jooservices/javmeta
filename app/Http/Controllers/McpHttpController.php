@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Services\Mcp\McpEventStream;
 use App\Services\Mcp\McpRequestHandler;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -45,19 +46,7 @@ final class McpHttpController
 
     private function stream(): Response
     {
-        return response()->stream(function (): void {
-            echo 'event: endpoint' . "\n";
-            echo 'data: ' . json_encode(['uri' => '/api/v1/mcp']) . "\n\n";
-            ob_flush();
-            flush();
-
-            for ($i = 0; $i < 3; $i++) {
-                echo ": keep-alive\n\n";
-                ob_flush();
-                flush();
-                sleep(10);
-            }
-        }, Response::HTTP_OK, [
+        return response()->stream(app(McpEventStream::class)(...), Response::HTTP_OK, [
             'Content-Type' => 'text/event-stream',
             'Cache-Control' => 'no-cache',
             'X-Accel-Buffering' => 'no',

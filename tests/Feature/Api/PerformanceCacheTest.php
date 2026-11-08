@@ -38,7 +38,7 @@ final class PerformanceCacheTest extends TestCase
         config(['javmeta_perf.warm_enabled' => false]);
         $this->artisan('perf:warm')->assertSuccessful();
         $this->assertNull(Cache::get('javmeta:status:summary'));
-        $this->assertNull(Cache::get('javmeta:facets:' . md5('[]')));
+        $this->assertNull(Cache::get('javmeta:facets:' . hash('sha256', '[]')));
     }
 
     public function test_status_only_keeps_the_short_ttl_without_rebuilding_facets(): void
@@ -46,9 +46,27 @@ final class PerformanceCacheTest extends TestCase
         $this->travelTo('2026-11-02T12:34:00Z');
         $this->artisan('perf:warm --status-only')->assertSuccessful();
         $this->assertNotNull(Cache::get('javmeta:status:summary'));
-        $this->assertNull(Cache::get('javmeta:facets:' . md5('[]')));
+        $this->assertNull(Cache::get('javmeta:facets:' . hash('sha256', '[]')));
         $this->travel(16)->seconds();
         $this->assertNull(Cache::get('javmeta:status:summary'));
+    }
+
+    public function test_facets_key_is_deterministic_and_differs_for_different_filters(): void
+    {
+        $cache = app(PerformanceCache::class);
+        Movie::factory()->create(['maker' => 'Sample Maker 03']);
+        Cache::flush();
+
+        $generic = $cache->facets([]);
+        $keyEmpty = 'javmeta:facets:' . hash('sha256', json_encode([], JSON_THROW_ON_ERROR));
+        $this->assertSame($generic, Cache::get($keyEmpty));
+        $this->assertSame($generic, $cache->facets([]));
+
+        $narrow = $cache->facets(['maker' => 'Sample Maker 03']);
+        $keyNarrow = 'javmeta:facets:' . hash('sha256', json_encode(['maker' => 'Sample Maker 03'], JSON_THROW_ON_ERROR));
+        $this->assertNotSame($keyEmpty, $keyNarrow);
+        $this->assertSame($narrow, Cache::get($keyNarrow));
+        $this->assertSame($generic, Cache::get($keyEmpty));
     }
 
     public function test_one_failure_preserves_the_previous_cache_and_does_not_skip_the_other(): void

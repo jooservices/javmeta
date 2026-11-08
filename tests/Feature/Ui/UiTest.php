@@ -7,7 +7,9 @@ namespace Tests\Feature\Ui;
 use App\Models\Movie;
 use App\Models\Source;
 use App\Models\User;
+use App\Services\Crawl\WorkerHeartbeat;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 final class UiTest extends TestCase
@@ -80,5 +82,21 @@ final class UiTest extends TestCase
         $this->assertSame('demo', $sources->json('data.0.slug'));
         $this->assertSame('direct', $sources->json('data.0.lane'));
         $this->assertSame(['pending', 'claimed', 'done', 'failed'], array_keys($sources->json('data.0.queue')));
+    }
+
+    public function test_owner_status_summary_workers_are_capped(): void
+    {
+        $now = now()->getTimestamp();
+        $index = [];
+        for ($i = 1; $i <= 80; $i++) {
+            $index['node-' . $i . ':' . $i] = $now - $i;
+        }
+        Cache::put(WorkerHeartbeat::INDEX_KEY, $index, now()->addDay());
+
+        $summary = $this->actingAs($this->owner())->getJson('/ui-api/status/summary')->assertOk();
+
+        $this->assertCount(50, $summary->json('data.workers'));
+        $summary->assertJsonPath('data.workers_total', 80);
+        $summary->assertJsonPath('data.workers_truncated', true);
     }
 }

@@ -5,13 +5,11 @@ declare(strict_types=1);
 namespace App\Services\Settings;
 
 use App\Events\SettingsApplied;
-use App\Models\Source;
 use DateTimeZone;
 use InvalidArgumentException;
 use RuntimeException;
 use Illuminate\Support\Env;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Support\ConfigType;
 use Throwable;
@@ -31,7 +29,7 @@ final class SettingsService
     /** @var list<string> */
     private array $invalidWorkerSettings = [];
 
-    public function __construct(private readonly ConfigStore $store) {}
+    public function __construct(private readonly ConfigStore $store, private readonly JsonShapeValidator $jsonShapes) {}
 
     /** @return array<string, array<string, mixed>> */
     public function definitions(): array
@@ -669,7 +667,10 @@ final class SettingsService
         if ($type === 'json') {
             return $this->validateJson($key, $definition, $value, $fail);
         }
-        // string and secret
+        // string and secret — Laravel's ConvertEmptyStringsToNull turns cleared inputs into null.
+        if ($value === null) {
+            $value = '';
+        }
         if (! is_string($value) && ! is_numeric($value)) {
             $fail('must be text');
         }
@@ -803,7 +804,7 @@ final class SettingsService
         if (count($value) > (int) ($definition['max_entries'] ?? config('javmeta_settings.validation.max_json_entries', 50))) {
             $fail('has too many entries');
         }
-        $this->validateJsonShape($key, (string) ($definition['shape'] ?? ''), $value, $fail);
+        $this->jsonShapes->validate((string) ($definition['shape'] ?? ''), $value, $fail);
 
         return $value;
     }
@@ -863,87 +864,6 @@ final class SettingsService
             'secret' => ConfigType::Encrypted->value,
             default => ConfigType::String->value,
         };
-    }
-
-    /** @param array<array-key, mixed> $value
-     *  @param callable(string): never $fail
-     */
-    private function validateJsonShape(string $key, string $shape, array $value, callable $fail): void
-    {
-        if (PerformerNormalizationSettingsValidator::validateJsonShape($shape, $value, $fail)) {
-            return;
-        }
-        if ($shape === 'retry_fetch_profile') {
-            app(RetryFetchProfileValidator::class)->validate($value, $fail);
-
-            return;
-        }
-        if ($shape === 'source_gap_override_map') {
-            $knownSources = array_fill_keys(array_map('strval', array_keys((array) config('javmeta_sources.sources', []))), true);
-            if (Schema::hasTable('sources')) {
-                foreach (Source::query()->pluck('slug') as $sourceSlug) {
-                    $knownSources[(string) $sourceSlug] = true;
-                }
-            }
-
-            foreach ($value as $slug => $bounds) {
-                if (! is_string($slug) || preg_match('/^[a-z0-9][a-z0-9_-]*$/', $slug) !== 1 || ! is_array($bounds) || array_is_list($bounds)) {
-                    $fail('must map source slugs to min, default, and max gap values');
-                }
-                if (! isset($knownSources[$slug])) {
-                    $fail("references unknown source [{$slug}]");
-                }
-                $fields = array_keys($bounds);
-                sort($fields);
-                if ($fields !== ['default', 'max', 'min']) {
-                    $fail('each source must define only min, default, and max');
-                }
-                foreach ($bounds as $gap) {
-                    if ((! is_int($gap) && ! is_float($gap)) || ! is_finite((float) $gap) || $gap < 0.25 || $gap > 600) {
-                        $fail('gap values must be numbers from 0.25 to 600 seconds');
-                    }
-                }
-                if ($bounds['min'] > $bounds['default'] || $bounds['default'] > $bounds['max']) {
-                    $fail('each source must satisfy min <= default <= max');
-                }
-            }
-
-            return;
-        }
-        if ($shape === 'queue_worker_map') {
-            $queues = (array) config('javmeta_queues.horizon_names', []);
-            foreach ($value as $queue => $workers) {
-                if (! is_string($queue) || ! in_array($queue, $queues, true) || ! is_int($workers) || $workers < 1 || $workers > 32) {
-                    $fail('must map known queue names to worker counts from 1 to 32');
-                }
-            }
-
-            return;
-        }
-        if ($shape !== 'node_worker_map') {
-            $fail('has an unsupported JSON shape');
-        }
-        foreach ($value as $node => $overrides) {
-            if (! is_string($node) || ! preg_match('/^(main|worker)(?:@[A-Za-z0-9._-]+)?$/', $node) || ! is_array($overrides) || array_is_list($overrides)) {
-                $fail('must map main, worker, or role@hostname to worker overrides');
-            }
-            foreach ($overrides as $name => $workers) {
-                if ($name === 'queues') {
-                    if (! is_array($workers) || array_is_list($workers)) {
-                        $fail('node queues must be an object of known queues and worker counts');
-                    }
-                    foreach ($workers as $queue => $count) {
-                        if (! is_string($queue) || ! in_array($queue, (array) config('javmeta_queues.horizon_names', []), true) || ! is_int($count) || $count < 1 || $count > 32) {
-                            $fail('node queue overrides must use known queues and worker counts from 1 to 32');
-                        }
-                    }
-                    continue;
-                }
-                if (! in_array($name, ['default', 'direct', 'browser', 'retry'], true) || ! is_int($workers) || $workers < 1 || $workers > 32) {
-                    $fail('node overrides may define default, direct, browser, and retry worker counts from 1 to 32');
-                }
-            }
-        }
     }
 
     private function legacyValue(array $definition): mixed

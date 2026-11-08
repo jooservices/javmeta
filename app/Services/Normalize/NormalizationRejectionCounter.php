@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Normalize;
 
-use Illuminate\Support\Facades\DB;
+use App\Repositories\NormalizationServiceRepository;
 use Throwable;
 
 /** Stores bounded cumulative rejection counters for the normalization metric. */
@@ -16,7 +16,7 @@ final class NormalizationRejectionCounter
         $identity = ['entity' => $entity, 'field' => $field, 'source' => $source];
 
         try {
-            $updated = DB::table('normalization_rejections')->where($identity)->increment(
+            $updated = app(NormalizationServiceRepository::class)->tableQuery('normalization_rejections')->where($identity)->increment(
                 'rejected_total',
                 1,
                 ['updated_at' => now()],
@@ -25,14 +25,14 @@ final class NormalizationRejectionCounter
                 return;
             }
 
-            $inserted = DB::table('normalization_rejections')->insertOrIgnore([
+            $inserted = app(NormalizationServiceRepository::class)->tableQuery('normalization_rejections')->insertOrIgnore([
                 ...$identity,
                 'rejected_total' => 1,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
             if ($inserted === 0) {
-                DB::table('normalization_rejections')->where($identity)->increment(
+                app(NormalizationServiceRepository::class)->tableQuery('normalization_rejections')->where($identity)->increment(
                     'rejected_total',
                     1,
                     ['updated_at' => now()],

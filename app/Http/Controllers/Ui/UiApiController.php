@@ -74,7 +74,7 @@ final class UiApiController
         }
 
         if ($path === 'status/summary' && is_array($payload['data'] ?? null)) {
-            $payload['data'] = array_intersect_key($payload['data'], array_flip(['checked_at', 'counts', 'ingest', 'queue', 'workers', 'runs_24h']));
+            $payload['data'] = array_intersect_key($payload['data'], array_flip(['checked_at', 'counts', 'ingest', 'queue', 'runs_24h']));
             if (is_array($payload['data']['queue'] ?? null)) {
                 $payload['data']['queue'] = array_intersect_key($payload['data']['queue'], array_flip(['by_status', 'stuck_claimed']));
             }
@@ -84,7 +84,6 @@ final class UiApiController
                     array_flip(['runs', 'pages_fetched', 'movies_new', 'movies_updated', 'failures']),
                 );
             }
-            $payload['data']['workers'] = $this->publicWorkers($payload['data']['workers'] ?? []);
         } elseif ($path === 'status/sources' && is_array($payload['data'] ?? null)) {
             $safeFields = array_flip([
                 'slug', 'name', 'enabled', 'lane', 'gap_seconds_current', 'gap_seconds_min', 'gap_seconds_max',
@@ -109,27 +108,6 @@ final class UiApiController
 
         $payload = $this->redactPrivateFields($payload);
         $response->setData($payload);
-    }
-
-    /** @param mixed $workers
-     * @return list<array{instance: string, stale: bool, active_claims: int}>
-     */
-    private function publicWorkers(mixed $workers): array
-    {
-        if (! is_array($workers)) {
-            return [];
-        }
-
-        $public = [];
-        foreach (array_values(array_filter($workers, 'is_array')) as $index => $worker) {
-            $public[] = [
-                'instance' => 'Worker ' . ($index + 1),
-                'stale' => (bool) ($worker['stale'] ?? false),
-                'active_claims' => (int) ($worker['active_claims'] ?? 0),
-            ];
-        }
-
-        return $public;
     }
 
     /** @param array<string, mixed> $value

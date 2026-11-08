@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Alerts;
 
-use App\Models\AlertEvent;
-use App\Models\Source;
+use App\Repositories\AlertOperationsServiceRepository;
 use App\Services\Notifications\NotificationRenderer;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
@@ -20,6 +19,8 @@ final class AlertEvaluationService
         private readonly AlertMessageFormatter $messages,
         private readonly AlertDispatcher $dispatcher,
         private readonly NotificationRenderer $notifications,
+        private readonly AlertTemplateValues $templateValues,
+        private readonly AlertOperationsServiceRepository $repository,
     ) {}
 
     public function evaluate(): bool
@@ -49,12 +50,12 @@ final class AlertEvaluationService
         $window = max(1, (int) config('javmeta_alerts.window_minutes', 15));
         $snapshot = $this->snapshotReader->snapshot(CarbonImmutable::now()->subMinutes($window));
         $firing = $this->rules->evaluate($snapshot);
-        $active = AlertEvent::query()->whereNull('resolved_at')->get()->keyBy('rule');
+        $active = $this->repository->activeEvents();
 
         foreach ($firing as $rule => $condition) {
-            $event = $active->get($rule);
-            if (! $event instanceof AlertEvent) {
-                $event = AlertEvent::query()->create([
+            $event = $active[$rule] ?? null;
+            if (! is_array($event)) {
+                $event = $this->repository->createEvent([
                     'rule' => $rule,
                     'severity' => $condition['severity'],
                     'value' => $condition['value'],
@@ -62,17 +63,18 @@ final class AlertEvaluationService
                     'started_at' => now(),
                 ]);
             } else {
-                $event->fill([
+                $attributes = [
                     'severity' => $condition['severity'],
                     'value' => $condition['value'],
                     'threshold' => $condition['threshold'],
-                ])->save();
+                ];
+                $this->persistEvent($event, $attributes);
             }
 
             if (! str_starts_with($rule, 'source_success_rate:') || ! array_key_exists('success_rate', $firing)) {
                 $this->notifyIfDue($event, $rule, $condition);
             }
-            $active->forget($rule);
+            unset($active[$rule]);
         }
 
         foreach ($active as $rule => $event) {
@@ -87,7 +89,7 @@ final class AlertEvaluationService
     }
 
     /** @param array{severity: string, value: float|int, threshold: float|int, context: array<string, mixed>} $condition */
-    private function notifyIfDue(AlertEvent $event, string $rule, array $condition): void
+    private function notifyIfDue(array &$event, string $rule, array $condition): void
     {
         $channelState = $this->channelState($event);
         $now = now()->getTimestamp();
@@ -108,8 +110,7 @@ final class AlertEvaluationService
             return;
         }
 
-        $event->setAttribute('channel_state', $channelState);
-        $event->save();
+        $this->persistEvent($event, ['channel_state' => $channelState]);
         $message = $this->notificationMessage($rule, $condition);
         $delivered = $this->dispatcher->dispatchChannels(
             $message['subject'],
@@ -121,22 +122,20 @@ final class AlertEvaluationService
             foreach ($delivered as $channel) {
                 $channelState[$channel]['open_notified_at'] = now()->getTimestamp();
             }
-            $event->setAttribute('channel_state', $channelState);
-            $event->setAttribute('notified_at', now());
-            $event->save();
+            $this->persistEvent($event, ['channel_state' => $channelState, 'notified_at' => now()]);
         }
     }
 
     /** @param array{attempts_by_source: array<string, array{attempts: int, successes: int, blocked: int}>, enabled_sources: list<string>, hot_sources: list<string>, due_by_source: array<string, int>, postgres_connections: int|null, dispatch_age_seconds: int|null, has_due_work: bool} $snapshot */
-    private function resolve(AlertEvent $event, string $rule, array $snapshot): void
+    private function resolve(array &$event, string $rule, array $snapshot): void
     {
         $measurement = $this->rules->measurement($rule, $snapshot);
         if ($measurement === null && $this->needsRateSample($rule, $snapshot)) {
             return;
         }
-        $value = $measurement['value'] ?? (float) $event->getAttribute('value');
-        $threshold = $measurement['threshold'] ?? (float) $event->getAttribute('threshold');
-        $severity = (string) $event->getAttribute('severity');
+        $value = $measurement['value'] ?? (float) $event['value'];
+        $threshold = $measurement['threshold'] ?? (float) $event['threshold'];
+        $severity = (string) $event['severity'];
         $context = $measurement['context'] ?? [];
         $condition = [
             'severity' => $severity,
@@ -145,22 +144,22 @@ final class AlertEvaluationService
             'context' => $context,
         ];
 
-        $event->fill(['value' => $value, 'threshold' => $threshold, 'resolved_at' => now()]);
+        $attributes = ['value' => $value, 'threshold' => $threshold, 'resolved_at' => now()];
         if (! (bool) config('javmeta_alerts.recovery_notice', true)) {
-            $event->setAttribute('recovery_completed_at', now());
+            $attributes['recovery_completed_at'] = now();
         }
-        $event->save();
+        $this->persistEvent($event, $attributes);
         if ((bool) config('javmeta_alerts.recovery_notice', true)) {
             $this->attemptRecovery($event, $rule, $condition);
         }
         $templateKey = $this->messages->templateKey($rule);
-        if ($templateKey !== null && $event->getAttribute('recovery_completed_at') !== null) {
+        if ($templateKey !== null && $event['recovery_completed_at'] !== null) {
             app(\App\Services\Notifications\NotificationPolicyDispatcher::class)->resolveCause($templateKey, $rule);
         }
     }
 
     /** @param array{severity: string, value: float|int, threshold: float|int, context: array<string, mixed>} $condition */
-    private function attemptRecovery(AlertEvent $event, string $rule, array $condition): void
+    private function attemptRecovery(array &$event, string $rule, array $condition): void
     {
         $channelState = $this->channelState($event);
         $openChannels = array_values(array_filter(
@@ -169,8 +168,7 @@ final class AlertEvaluationService
         ));
 
         if ($openChannels === []) {
-            $event->setAttribute('recovery_completed_at', now());
-            $event->save();
+            $this->persistEvent($event, ['recovery_completed_at' => now()]);
 
             return;
         }
@@ -194,8 +192,7 @@ final class AlertEvaluationService
         }
 
         if ($dueChannels !== []) {
-            $event->setAttribute('channel_state', $channelState);
-            $event->save();
+            $this->persistEvent($event, ['channel_state' => $channelState]);
             $condition['severity'] = 'info';
             $message = $this->notificationMessage($rule, $condition, true);
             $delivered = $this->dispatcher->dispatchChannels(
@@ -217,43 +214,37 @@ final class AlertEvaluationService
                 break;
             }
         }
-        $event->setAttribute('channel_state', $channelState);
+        $attributes = ['channel_state' => $channelState];
         if ($complete) {
-            $event->setAttribute('recovery_completed_at', now());
+            $attributes['recovery_completed_at'] = now();
         }
-        $event->save();
+        $this->persistEvent($event, $attributes);
     }
 
     private function retryPendingRecoveries(): void
     {
-        $openRules = array_fill_keys(AlertEvent::query()->whereNull('resolved_at')->pluck('rule')->all(), true);
+        $openRules = array_fill_keys($this->repository->activeRules(), true);
 
-        AlertEvent::query()
-            ->whereNotNull('resolved_at')
-            ->whereNull('recovery_completed_at')
-            ->orderBy('resolved_at')
-            ->get()
-            ->each(function (AlertEvent $event) use ($openRules): void {
-                $rule = (string) $event->getAttribute('rule');
-                if (isset($openRules[$rule])) {
-                    $event->setAttribute('recovery_completed_at', now());
-                    $event->save();
+        foreach ($this->repository->pendingRecoveries() as $event) {
+            $rule = (string) $event['rule'];
+            if (isset($openRules[$rule])) {
+                $this->persistEvent($event, ['recovery_completed_at' => now()]);
 
-                    return;
-                }
+                continue;
+            }
 
-                $condition = [
-                    'severity' => 'info',
-                    'value' => (float) $event->getAttribute('value'),
-                    'threshold' => (float) $event->getAttribute('threshold'),
-                    'context' => [],
-                ];
-                $this->attemptRecovery($event, $rule, $condition);
-                $templateKey = $this->messages->templateKey($rule);
-                if ($templateKey !== null && $event->getAttribute('recovery_completed_at') !== null) {
-                    app(\App\Services\Notifications\NotificationPolicyDispatcher::class)->resolveCause($templateKey, $rule);
-                }
-            });
+            $condition = [
+                'severity' => 'info',
+                'value' => (float) $event['value'],
+                'threshold' => (float) $event['threshold'],
+                'context' => [],
+            ];
+            $this->attemptRecovery($event, $rule, $condition);
+            $templateKey = $this->messages->templateKey($rule);
+            if ($templateKey !== null && $event['recovery_completed_at'] !== null) {
+                app(\App\Services\Notifications\NotificationPolicyDispatcher::class)->resolveCause($templateKey, $rule);
+            }
+        }
     }
 
     /** @param array{attempts_by_source: array<string, array{attempts: int, successes: int, blocked: int}>, enabled_sources: list<string>, hot_sources: list<string>, due_by_source: array<string, int>, postgres_connections: int|null, dispatch_age_seconds: int|null, has_due_work: bool} $snapshot */
@@ -272,9 +263,9 @@ final class AlertEvaluationService
     }
 
     /** @return array<string, array<string, int>> */
-    private function channelState(AlertEvent $event): array
+    private function channelState(array $event): array
     {
-        $state = $event->getAttribute('channel_state');
+        $state = $event['channel_state'] ?? null;
 
         return is_array($state) ? $state : [];
     }
@@ -286,11 +277,8 @@ final class AlertEvaluationService
 
     private function lockLeaseSeconds(): int
     {
-        $sources = Source::query()->where('enabled', true)->count();
-        $pendingRecoveries = AlertEvent::query()
-            ->whereNotNull('resolved_at')
-            ->whereNull('recovery_completed_at')
-            ->count();
+        $sources = $this->repository->enabledSourceCount();
+        $pendingRecoveries = $this->repository->pendingRecoveryCount();
         $channelCount = max(1, count($this->dispatcher->enabledChannels()));
         $timeout = max(
             1,
@@ -321,7 +309,7 @@ final class AlertEvaluationService
 
         $values = $context;
         unset($values['severity']);
-        $templateValues = $this->templateValues($rule, $condition, $resolved);
+        $templateValues = $this->templateValues->for($rule, $condition, $resolved);
         $values += $templateValues;
         $rendered = $this->notifications->render($key, $values);
         $context['severity'] = $resolved ? 'info' : $rendered['severity'];
@@ -330,85 +318,6 @@ final class AlertEvaluationService
         $context['template_rendered'] = true;
 
         return ['subject' => $rendered['title'], 'body' => $rendered['body'], 'context' => $context];
-    }
-
-    /** @param array{severity: string, value: float|int, threshold: float|int, context: array<string, mixed>} $condition
-     *  @return array<string, int|float|string>
-     */
-    private function templateValues(string $rule, array $condition, bool $resolved): array
-    {
-        $context = $condition['context'];
-        $window = max(1, (int) ($context['window_minutes'] ?? config('javmeta_alerts.window_minutes', 15)));
-
-        if (in_array($rule, ['success_rate', 'success_rate_critical'], true)) {
-            if ($rule === 'success_rate_critical') {
-                return [
-                    'success_rate' => $condition['value'],
-                    'threshold' => $condition['threshold'],
-                    'window_minutes' => $window,
-                ];
-            }
-
-            return [
-                'success_rate' => $condition['value'],
-                'minimum_rate' => $condition['threshold'],
-                'window_minutes' => $window,
-                'blocked_ratio' => $context['blocked_ratio'] ?? '',
-                'maximum_blocked_ratio' => $context['maximum_blocked_ratio'] ?? config('javmeta_alerts.blocked_ratio_max_percent', 10),
-                'attempts' => $context['attempts'] ?? '',
-                'worst_sources' => $context['worst_sources'] ?? '',
-            ];
-        }
-
-        if ($rule === 'blocked_ratio') {
-            return [
-                'blocked_ratio' => $condition['value'],
-                'maximum_ratio' => $condition['threshold'],
-                'window_minutes' => $window,
-                'attempts' => $context['attempts'] ?? '',
-                'worst_sources' => $context['worst_sources'] ?? '',
-            ];
-        }
-
-        if (str_starts_with($rule, 'source_success_rate:')) {
-            return [
-                'source_slug' => $context['source_slug'] ?? substr($rule, strlen('source_success_rate:')),
-                'success_rate' => $condition['value'],
-                'minimum_rate' => $condition['threshold'],
-                'window_minutes' => $window,
-                'attempts' => $context['attempts'] ?? '',
-            ];
-        }
-
-        if ($rule === 'postgres_connections') {
-            return ['connection_count' => $condition['value'], 'threshold' => $condition['threshold']];
-        }
-
-        if ($rule === 'dispatch_age') {
-            $idle = (bool) ($context['idle'] ?? false);
-            $missing = (bool) ($context['missing'] ?? false);
-            $state = $idle
-                ? 'no crawl work is due'
-                : ($missing ? 'no dispatch has been recorded' : ($resolved ? 'dispatch has resumed' : 'due work is waiting for dispatch'));
-            $age = $idle ? 'not applicable' : ($missing ? 'not recorded' : number_format((float) $condition['value'], 0, '.', ',') . ' seconds ago');
-
-            return [
-                'dispatch_state' => $state,
-                'dispatch_age' => $age,
-                'threshold_seconds' => $condition['threshold'],
-                'due_items' => $context['due_items'] ?? '',
-            ];
-        }
-
-        if (str_starts_with($rule, 'backlog_depth:')) {
-            return [
-                'source_slug' => $context['source_slug'] ?? substr($rule, strlen('backlog_depth:')),
-                'due_items' => $condition['value'],
-                'minimum_items' => $condition['threshold'],
-            ];
-        }
-
-        return [];
     }
 
     private function intervalElapsed(): bool
@@ -426,9 +335,15 @@ final class AlertEvaluationService
     private function pruneHistory(): void
     {
         $retentionDays = max(1, (int) config('javmeta_alerts.history_retention_days', 90));
-        AlertEvent::query()
-            ->whereNotNull('resolved_at')
-            ->where('resolved_at', '<', now()->subDays($retentionDays))
-            ->delete();
+        $this->repository->pruneResolvedBefore(now()->subDays($retentionDays));
+    }
+
+    /** @param array<string, mixed> $event
+     *  @param array<string, mixed> $attributes
+     */
+    private function persistEvent(array &$event, array $attributes): void
+    {
+        $event = array_replace($event, $attributes);
+        $this->repository->updateEvent((int) $event['id'], $attributes);
     }
 }

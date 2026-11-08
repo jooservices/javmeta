@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueRepository;
 use App\Jobs\FetchDetailJob;
 use App\Jobs\FetchGalleryJob;
 use App\Jobs\FetchListingJob;
@@ -23,7 +24,6 @@ use App\Support\Crawl\LaravelCrawlQueue;
 use Illuminate\Console\Command;
 use Illuminate\Foundation\Bus\PendingDispatch;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
@@ -50,8 +50,8 @@ final class FeedPoolCommand extends Command
         }
 
         // Keep depth reads and Redis pushes in one scope, including concurrent manual feeders.
-        $postgres = DB::getDriverName() === 'pgsql';
-        if ($postgres && ! DB::selectOne('SELECT pg_try_advisory_lock(?) AS acquired', [282])->acquired) {
+        $postgres = app(CrawlQueueRepository::class)->driverName() === 'pgsql';
+        if ($postgres && ! app(CrawlQueueRepository::class)->tryFeedPoolAdvisoryLock()) {
             $reason = FeedPoolStopReason::forQueue(true, false, true, true);
             $this->recordDiagnosticsSafely($diagnostics, [], [], $this->stopReasonsForQueues($this->queues(), (string) $reason), $runStartedAt, 0);
             $this->components->info('Another feed pool is dispatching.');
@@ -62,7 +62,7 @@ final class FeedPoolCommand extends Command
             return $this->feed($queue, $observability, $throttle, $dispatchHeartbeat, $diagnostics, $runStartedAt);
         } finally {
             if ($postgres) {
-                DB::select('SELECT pg_advisory_unlock(?)', [282]);
+                app(CrawlQueueRepository::class)->releaseFeedPoolAdvisoryLock();
             }
         }
     }
@@ -278,7 +278,7 @@ final class FeedPoolCommand extends Command
     /** @param array<string, float> $sourceGaps */
     private function sourceGaps(SourceThrottle $throttle, array &$sourceGaps): callable
     {
-        $sources = Source::query()->get()->keyBy('slug');
+        $sources = app(CrawlQueueRepository::class)->modelQuery(Source::class)->get()->keyBy('slug');
         foreach ($sources as $slug => $source) {
             $gap = $throttle->currentGap($source);
             $sourceGaps[(string) $slug] = $throttle->isOverridden($source) ? $gap : max(1.0, $gap);

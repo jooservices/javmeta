@@ -12,6 +12,8 @@ use App\Observability\MetricStreams;
 use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Crawl\FetchMethodPreference;
 use App\Services\Health\CrawlDispatchHeartbeat;
+use App\Services\Report\NodeSampleAggregator;
+use App\Services\Report\NodeSampleStore;
 use App\Services\Search\ElasticsearchRequestHealth;
 use App\Services\Settings\SettingsService;
 use App\Services\Workers\HorizonLayoutSnapshot;
@@ -85,7 +87,18 @@ final class PublishMetricsCommandTest extends TestCase
         Http::assertSent(function ($request): bool {
             $metrics = $request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [];
             $gaps = [];
+            $connectionBudget = [];
             foreach ($metrics as $metric) {
+                if (in_array($metric['name'] ?? null, [
+                    'javmeta_postgres_connection_demand',
+                    'javmeta_postgres_connection_role_limit',
+                    'javmeta_postgres_connection_budget_limit',
+                    'javmeta_postgres_connection_demand_warning_threshold',
+                    'javmeta_postgres_connection_demand_warning',
+                ], true)) {
+                    $point = $metric['gauge']['dataPoints'][0] ?? [];
+                    $connectionBudget[$metric['name']] = (float) ($point['asDouble'] ?? $point['asInt'] ?? 0);
+                }
                 if (! in_array($metric['name'] ?? null, ['javmeta_source_gap_seconds', 'javmeta_source_gap_effective_seconds'], true)) {
                     continue;
                 }
@@ -107,6 +120,11 @@ final class PublishMetricsCommandTest extends TestCase
                 && str_contains($request->body(), 'javmeta_source_gap_seconds')
                 && ($gaps['javmeta_source_gap_seconds'] ?? null) === ['gap' => 20.0, 'source' => 'override']
                 && ($gaps['javmeta_source_gap_effective_seconds'] ?? null) === ['gap' => 15.0, 'source' => 'override']
+                && ($connectionBudget['javmeta_postgres_connection_demand'] ?? null) === 66.0
+                && ($connectionBudget['javmeta_postgres_connection_role_limit'] ?? null) === 120.0
+                && ($connectionBudget['javmeta_postgres_connection_budget_limit'] ?? null) === 90.0
+                && ($connectionBudget['javmeta_postgres_connection_demand_warning_threshold'] ?? null) === 90.0
+                && ($connectionBudget['javmeta_postgres_connection_demand_warning'] ?? null) === 0.0
                 && ! str_contains($request->body(), 'javmeta_source_circuit_state')
                 && ! str_contains($request->body(), 'javmeta_source_consecutive_failures');
         });
@@ -234,6 +252,29 @@ final class PublishMetricsCommandTest extends TestCase
                 && $metricValue('javmeta_feed_run_ms', []) === 40.0
                 && $metricValue('javmeta_feed_claim_rows_examined_1m', []) === 4.0;
         });
+    }
+
+    public function test_command_publishes_node_resource_and_worker_lane_samples(): void
+    {
+        config()->set('cache.default', 'array');
+        Cache::setDefaultDriver('array');
+        Cache::store('array')->flush();
+        app(NodeSampleStore::class)->put('metrics-node', [
+            'sampled_at' => now()->timestamp,
+            'cpu_percent' => 42.5,
+            'mem_available_bytes' => 123456,
+            'disk_used_percent' => 67.5,
+            'workers' => ['lanes' => ['crawl' => ['busy' => 1, 'idle' => 2, 'total' => 3]]],
+        ]);
+        $method = new ReflectionMethod(PublishMetricsCommand::class, 'nodeMetrics');
+        /** @var list<array{name: string, value: float|int, labels: array<string, string>}> $points */
+        $points = $method->invoke(app(PublishMetricsCommand::class), app(NodeSampleStore::class), app(NodeSampleAggregator::class));
+
+        self::assertSame(42.5, collect($points)->firstWhere('name', 'javmeta_node_cpu_percent')['value']);
+        self::assertSame(123456, collect($points)->firstWhere('name', 'javmeta_node_mem_available_bytes')['value']);
+        self::assertSame(67.5, collect($points)->firstWhere('name', 'javmeta_node_disk_used_percent')['value']);
+        self::assertCount(3, collect($points)->where('name', 'javmeta_workers'));
+        self::assertSame(['node' => 'metrics-node', 'lane' => 'crawl', 'state' => 'busy'], collect($points)->firstWhere('labels.state', 'busy')['labels']);
     }
 
     public function test_command_publishes_fetch_attempt_preference_and_playwright_slot_metrics(): void

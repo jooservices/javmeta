@@ -1,8 +1,11 @@
 import { esc } from '../util.js';
-import { head } from '../components.js';
+import { head, ic } from '../components.js';
 import { admin, send } from '../api.js';
+import { askConfirm } from '../confirm.js';
 
 const endpoint = '/ui-admin/notifications';
+const TIER_LABEL = { critical: 'Nghiêm trọng', warning: 'Cảnh báo', notice: 'Thông báo', info: 'Thông tin' };
+const tierLabel = value => TIER_LABEL[value] || value;
 
 export default {
   async render() {
@@ -18,10 +21,10 @@ export default {
       const dailyTime = settings.find(row => row.key === 'report.daily_time');
       const dailyTimezone = settings.find(row => row.key === 'report.daily_timezone');
       quietHtml = quiet
-        ? `<label class="sw"><input type="checkbox" data-quiet-mode ${quiet.value ? 'checked' : ''}><span>Chỉ gửi CRITICAL và sự kiện bảo mật</span></label><span class="muted" data-quiet-status aria-live="polite"></span>`
+        ? `<label class="switch"><input type="checkbox" data-quiet-mode ${quiet.value ? 'checked' : ''}><span class="track"></span><span class="txt">Chỉ gửi mức nghiêm trọng và sự kiện bảo mật</span></label><span class="muted" data-quiet-status aria-live="polite"></span>`
         : '<div class="err" role="alert">Chưa có cấu hình chế độ yên lặng.</div>';
       dailyScheduleHtml = dailyTime && dailyTimezone
-        ? `<div class="bd"><label>Giờ gửi cục bộ<input type="time" data-daily-time value="${esc(dailyTime.value || '08:00')}"></label><label>Múi giờ IANA<input type="text" data-daily-timezone maxlength="64" value="${esc(dailyTimezone.value || 'America/Mexico_City')}"></label><button class="btn pri" data-action="save-daily-schedule">Lưu lịch</button><span class="muted" data-daily-schedule-status aria-live="polite"></span></div>`
+        ? `<div class="bd"><label>Giờ gửi cục bộ<input type="time" data-daily-time value="${esc(dailyTime.value || '08:00')}"></label><label>Múi giờ IANA<input type="text" data-daily-timezone maxlength="64" value="${esc(dailyTimezone.value || 'America/Mexico_City')}"></label><button class="btn pri" data-action="save-daily-schedule">${ic('save')}Lưu lịch</button><span class="muted" data-daily-schedule-status aria-live="polite"></span></div>`
         : '<div class="err" role="alert">Chưa có cấu hình lịch báo cáo hằng ngày.</div>';
     } catch (e) { quietHtml = `<div class="err" role="alert">${esc(e.message)}</div>`; }
     const previews = await Promise.all([
@@ -32,7 +35,7 @@ export default {
       ? `<div class="panel"><div class="bd"><div class="err" role="alert">${esc(error)}</div><button class="btn" data-action="reload">Thử lại</button></div></div>`
       : rows.length === 0
         ? '<div class="panel"><div class="bd empty">Chưa có mẫu thông báo.</div></div>'
-        : `<section class="panel"><div class="hd"><h2>Chế độ yên lặng</h2><span class="sp"></span>${quietHtml}</div><div class="bd muted">WARNING chỉ nằm trong báo cáo; NOTICE được gửi theo từng sự kiện và cooldown.</div></section><section class="panel notification-daily-schedule"><div class="hd"><h2>Lịch báo cáo hằng ngày</h2></div>${dailyScheduleHtml}</section><section class="panel"><div class="hd"><h2>Xem trước báo cáo kế tiếp</h2></div><div class="bd notification-report-previews">${previews.join('')}</div></section><div class="notifications-layout"><section class="panel notifications-list"><div class="hd"><h2>Danh sách thông báo</h2><span class="chip">${rows.length}</span></div><div class="notifications-scroll"><table><thead><tr><th>Tên</th><th>Mục đích</th><th>Kênh</th><th>Bật</th><th>Tầng</th><th>Gửi gần nhất</th><th>Sửa gần nhất</th><th></th></tr></thead><tbody>${rows.map(row => `<tr><td>${esc(row.name)}</td><td>${esc(row.usage)}</td><td>${esc(row.channel)}</td><td>${row.enabled ? 'Bật' : 'Tắt'}</td><td>${esc(row.tier || row.default_severity)}</td><td>${esc(row.last_sent_at || 'Chưa gửi')}</td><td>${esc(row.updated_at || 'Mặc định')}</td><td><button class="btn sm" data-action="edit" data-key="${esc(row.key)}">Sửa</button></td></tr>`).join('')}</tbody></table></div></section><section class="panel notifications-editor"><div class="hd"><h2>Chỉnh sửa mẫu và chính sách</h2><span class="sp"></span><span class="muted" data-status></span></div><div class="bd" data-editor><div class="muted">Chọn một loại thông báo để chỉnh sửa.</div></div></section></div>`;
+        : `<section class="panel"><div class="hd"><h2>Chế độ yên lặng</h2></div><div class="bd">${quietHtml}<div class="muted" style="margin-top:8px">Cảnh báo chỉ nằm trong báo cáo; thông báo được gửi theo từng sự kiện và thời gian chờ.</div></div></section><section class="panel notification-daily-schedule"><div class="hd"><h2>Lịch báo cáo hằng ngày</h2></div>${dailyScheduleHtml}</section><section class="panel"><div class="hd"><h2>Xem trước báo cáo kế tiếp</h2></div><div class="bd notification-report-previews">${previews.join('')}</div></section><div class="notifications-layout"><section class="panel notifications-list"><div class="hd"><h2>Danh sách thông báo</h2><span class="chip">${rows.length}</span></div><div class="notifications-scroll"><table><thead><tr><th>Tên</th><th>Mục đích</th><th>Kênh</th><th>Bật</th><th>Tầng</th><th>Gửi gần nhất</th><th>Sửa gần nhất</th><th></th></tr></thead><tbody>${rows.map(row => `<tr><td>${esc(row.name)}</td><td>${esc(row.usage)}</td><td>${esc(row.channel)}</td><td>${row.enabled ? 'Bật' : 'Tắt'}</td><td>${esc(tierLabel(row.tier || row.default_severity))}</td><td>${esc(row.last_sent_at || 'Chưa gửi')}</td><td>${esc(row.updated_at || 'Mặc định')}</td><td><button class="btn sm" data-action="edit" data-key="${esc(row.key)}">Sửa</button></td></tr>`).join('')}</tbody></table></div></section><section class="panel notifications-editor"><div class="hd"><h2>Chỉnh sửa mẫu và chính sách</h2><span class="sp"></span><span class="muted" data-status></span></div><div class="bd" data-editor><div class="muted">Chọn một loại thông báo để chỉnh sửa.</div></div></section></div>`;
     return {
       html: `<div class="wrap">${head('Chính sách thông báo', 'Mẫu tiếng Anh và chính sách gửi được lưu trong cơ sở dữ liệu')}${content}</div>`,
       mount: root => mount(root),
@@ -122,7 +125,7 @@ function mount(root) {
     try {
       const rows = (await admin(endpoint)).data || [];
       const tbody = root.querySelector('.notifications-list tbody');
-      if (tbody) tbody.innerHTML = rows.map(row => `<tr><td>${esc(row.name)}</td><td>${esc(row.usage)}</td><td>${esc(row.channel)}</td><td>${row.enabled ? 'Bật' : 'Tắt'}</td><td>${esc(row.tier || row.default_severity)}</td><td>${esc(row.last_sent_at || 'Chưa gửi')}</td><td>${esc(row.updated_at || 'Mặc định')}</td><td><button class="btn sm" data-action="edit" data-key="${esc(row.key)}">Sửa</button></td></tr>`).join('');
+      if (tbody) tbody.innerHTML = rows.map(row => `<tr><td>${esc(row.name)}</td><td>${esc(row.usage)}</td><td>${esc(row.channel)}</td><td>${row.enabled ? 'Bật' : 'Tắt'}</td><td>${esc(tierLabel(row.tier || row.default_severity))}</td><td>${esc(row.last_sent_at || 'Chưa gửi')}</td><td>${esc(row.updated_at || 'Mặc định')}</td><td><button class="btn sm" data-action="edit" data-key="${esc(row.key)}">Sửa</button></td></tr>`).join('');
     } catch { /* the current editor remains usable if the list refresh fails */ }
   };
 
@@ -153,6 +156,7 @@ function mount(root) {
     if (action === 'reload-template') { await loadTemplate(selected); return; }
     if (action === 'save') { event.preventDefault(); await save(); return; }
     if (action === 'reset') {
+      if (!await askConfirm({ title: 'Khôi phục mặc định', body: 'Khôi phục mẫu này về bản mặc định? Bản đang sửa sẽ mất.', confirmLabel: 'Khôi phục', danger: true })) return;
       button.disabled = true;
       try { template = (await send('POST', `${endpoint}/${encodeURIComponent(selected)}/reset`)).data; await loadTemplate(selected); await refreshList(); }
       catch (error) { if (status()) status().innerHTML = `<span class="err" role="alert">${esc(error.message)}</span>`; }
@@ -160,6 +164,7 @@ function mount(root) {
       return;
     }
     if (action === 'test') {
+      if (!await askConfirm({ title: 'Gửi thử qua Telegram', body: 'Gửi mẫu thử của thông báo này tới Telegram ngay bây giờ?', confirmLabel: 'Gửi thử' })) return;
       button.disabled = true;
       if (status()) status().textContent = 'Đang gửi thử…';
       const form = editor().querySelector('form');
@@ -173,6 +178,7 @@ function mount(root) {
     }
     if (action === 'preview') { await refreshPreview(); return; }
     if (action === 'restore') {
+      if (!await askConfirm({ title: 'Khôi phục bản cũ', body: 'Thay mẫu hiện tại bằng bản đã lưu này?', confirmLabel: 'Khôi phục', danger: true })) return;
       button.disabled = true;
       try { template = (await send('POST', `${endpoint}/${encodeURIComponent(selected)}/revisions/${encodeURIComponent(button.dataset.revision)}/restore`)).data; await loadTemplate(selected); await refreshList(); }
       catch (error) { if (status()) status().innerHTML = `<span class="err" role="alert">${esc(error.message)}</span>`; }
@@ -188,6 +194,13 @@ function mount(root) {
       textarea.focus();
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
     }
+  });
+
+  root.addEventListener('change', event => {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement) || input.name !== 'enabled') return;
+    const label = input.parentElement?.querySelector('.txt');
+    if (label) label.textContent = input.checked ? 'Đang bật' : 'Đang tắt';
   });
 
   root.addEventListener('input', event => {
@@ -238,9 +251,9 @@ function editorHtml(row) {
   return `<form class="notification-form"><div class="notification-meta"><b>${esc(row.name)}</b><span>${esc(row.usage)}</span><span>Kênh: ${esc(row.channel)}</span></div>
     <label class="notification-label">Tiêu đề<textarea name="title_template" rows="2" maxlength="10000">${esc(row.title_template)}</textarea></label>
     <label class="notification-label">Nội dung<textarea name="body_template" rows="7" maxlength="30000">${esc(row.body_template)}</textarea></label>
-    <fieldset class="notification-fields"><legend>Chính sách gửi</legend><label>Mức nội dung<select name="default_severity">${['critical', 'warning', 'notice', 'info'].map(value => `<option value="${value}"${row.default_severity === value ? ' selected' : ''}>${value}</option>`).join('')}</select></label><label>Tầng gửi<select name="tier">${['critical', 'warning', 'notice', 'info'].map(value => `<option value="${value}"${row.tier === value ? ' selected' : ''}>${value}</option>`).join('')}</select></label><label>Cooldown (phút)<input name="cooldown_minutes" type="number" min="0" max="10080" value="${Number(row.cooldown_minutes || 0)}"></label><label>Nâng WARNING (phút)<input name="escalation_minutes" type="number" min="0" max="10080" value="${Number(row.escalation_minutes || 0)}"></label><label class="sw"><input name="enabled" type="checkbox" ${row.enabled ? 'checked' : ''}><span>${row.enabled ? 'Đang bật' : 'Đang tắt'}</span></label><label class="sw"><input name="include_in_periodic_report" type="checkbox" ${row.include_in_periodic_report ? 'checked' : ''}><span>Trong báo cáo định kỳ</span></label><label class="sw"><input name="include_in_daily_report" type="checkbox" ${row.include_in_daily_report ? 'checked' : ''}><span>Trong báo cáo hằng ngày</span></label><label class="sw"><input name="send_resolved" type="checkbox" ${row.send_resolved ? 'checked' : ''}><span>Gửi khi đã khôi phục</span></label></fieldset>
+    <fieldset class="notification-fields"><legend>Chính sách gửi</legend><label>Mức nội dung<select name="default_severity">${['critical', 'warning', 'notice', 'info'].map(value => `<option value="${value}"${row.default_severity === value ? ' selected' : ''}>${esc(tierLabel(value))}</option>`).join('')}</select></label><label>Tầng gửi<select name="tier">${['critical', 'warning', 'notice', 'info'].map(value => `<option value="${value}"${row.tier === value ? ' selected' : ''}>${esc(tierLabel(value))}</option>`).join('')}</select></label><label>Thời gian chờ (phút)<input name="cooldown_minutes" type="number" min="0" max="10080" value="${Number(row.cooldown_minutes || 0)}"></label><label>Nâng cảnh báo (phút)<input name="escalation_minutes" type="number" min="0" max="10080" value="${Number(row.escalation_minutes || 0)}"></label><label class="switch"><input name="enabled" type="checkbox" ${row.enabled ? 'checked' : ''}><span class="track"></span><span class="txt">${row.enabled ? 'Đang bật' : 'Đang tắt'}</span></label><label class="switch"><input name="include_in_periodic_report" type="checkbox" ${row.include_in_periodic_report ? 'checked' : ''}><span class="track"></span><span class="txt">Trong báo cáo định kỳ</span></label><label class="switch"><input name="include_in_daily_report" type="checkbox" ${row.include_in_daily_report ? 'checked' : ''}><span class="track"></span><span class="txt">Trong báo cáo hằng ngày</span></label><label class="switch"><input name="send_resolved" type="checkbox" ${row.send_resolved ? 'checked' : ''}><span class="track"></span><span class="txt">Gửi khi đã khôi phục</span></label></fieldset>
     <div class="notification-variables"><b>Biến được phép</b><div>${variables || '<span class="muted">Mẫu này không có biến.</span>'}</div></div>
     <div class="notification-preview"><b>Xem trước trực tiếp</b><pre data-preview>Đang tạo bản xem trước…</pre></div>
-    <div class="notification-actions"><button type="button" class="btn pri" data-action="save">Lưu mẫu</button><button type="button" class="btn" data-action="test">Gửi thử</button><button type="button" class="btn" data-action="reset">Khôi phục mặc định</button></div>
+    <div class="notification-actions"><button type="button" class="btn pri" data-action="save">${ic('save')}Lưu mẫu</button><button type="button" class="btn" data-action="test">${ic('send')}Gửi thử</button><button type="button" class="btn" data-action="reset">${ic('refresh')}Khôi phục mặc định</button></div>
     <div class="notification-history"><b>Lịch sử phiên bản</b><div data-revisions><span class="muted">Đang tải lịch sử…</span></div></div></form>`;
 }

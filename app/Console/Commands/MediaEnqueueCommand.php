@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Repositories\MediaServiceRepository;
 use App\Services\Media\MediaQueue;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -22,7 +22,7 @@ final class MediaEnqueueCommand extends Command
             $this->error('Choose a supported kind and --file, --movie or --all.');
             return self::FAILURE;
         }
-        $query = DB::table('library_files')->whereNull('missing_at')->orderBy('id');
+        $query = app(MediaServiceRepository::class)->tableQuery('library_files')->whereNull('missing_at')->orderBy('id');
         if ($this->option('file')) {
             $query->where('id', $this->option('file'));
         }

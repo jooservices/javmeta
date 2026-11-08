@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Health;
 
-use App\Models\CrawlQueue;
-use App\Models\Source;
+use App\Repositories\HealthStatusServiceRepository;
 use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Crawl\WorkerHeartbeat;
 use App\Services\Dependencies\Dependency;
@@ -19,6 +18,7 @@ final class StatusHealthCheck
         private readonly DependencyMonitor $dependencies,
         private readonly MongoArchiveWriteHealth $archiveWrites,
         private readonly ElasticsearchRequestHealth $elasticsearchRequestHealth,
+        private readonly HealthStatusServiceRepository $repository,
     ) {}
 
     /**
@@ -45,9 +45,9 @@ final class StatusHealthCheck
      */
     private function healthyStatus(array $dependencyStatuses, array $archiveStatus): array
     {
-        $sourceRows = $this->sourceRows();
+        $sourceRows = $this->repository->sourceRows();
 
-        $queue = $this->queueCounts();
+        $queue = $this->repository->queueCounts();
 
         $lastHeartbeat = $this->heartbeat->lastBeatAt();
         $staleSeconds = (int) config('javmeta_alerts.watchdog.heartbeat_stale_seconds', 600);
@@ -73,16 +73,6 @@ final class StatusHealthCheck
             'sources' => $sourceRows,
             'dependencies' => $dependencyStatuses,
             'archive' => $archiveStatus,
-        ];
-    }
-
-    /** @return array{pending: int, claimed: int, failed: int} */
-    private function queueCounts(): array
-    {
-        return [
-            'pending' => CrawlQueue::query()->where('status', CrawlQueue::STATUS_PENDING)->count(),
-            'claimed' => CrawlQueue::query()->where('status', CrawlQueue::STATUS_CLAIMED)->count(),
-            'failed' => CrawlQueue::query()->where('status', CrawlQueue::STATUS_FAILED)->count(),
         ];
     }
 
@@ -149,32 +139,5 @@ final class StatusHealthCheck
         }
 
         return $dependencyStatuses;
-    }
-
-    /** @return list<array{slug: string, last_success_at: string|null, last_error_at: string|null}> */
-    private function sourceRows(): array
-    {
-        $sources = Source::query()
-            ->orderBy('priority')
-            ->orderBy('slug')
-            ->get(['slug', 'last_success_at', 'last_error_at']);
-
-        $sourceRows = [];
-        foreach ($sources as $source) {
-            $lastSuccess = $source->getAttribute('last_success_at');
-            $lastError = $source->getAttribute('last_error_at');
-
-            $sourceRows[] = [
-                'slug' => $source->slug,
-                'last_success_at' => $lastSuccess instanceof \DateTimeInterface
-                    ? $lastSuccess->format(DATE_ATOM)
-                    : null,
-                'last_error_at' => $lastError instanceof \DateTimeInterface
-                    ? $lastError->format(DATE_ATOM)
-                    : null,
-            ];
-        }
-
-        return $sourceRows;
     }
 }

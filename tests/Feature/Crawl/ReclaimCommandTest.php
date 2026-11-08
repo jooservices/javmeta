@@ -38,7 +38,7 @@ final class ReclaimCommandTest extends TestCase
             'retry_round' => 1,
             'attempts' => 1,
             'max_attempts' => 3,
-            'claimed_at' => now()->subHour(),
+            'claimed_at' => now()->subSeconds(18_001),
             'started_at' => null,
             'locked_by' => fake()->uuid(),
             'next_attempt_at' => now()->subMinute(),

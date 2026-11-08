@@ -212,7 +212,7 @@ final class SiteCodeCanonicalizer
     {
         $upper = mb_strtoupper(trim($raw));
 
-        if (preg_match('/^(?:TOKYOHOT|TOKYO[\s._-]?HOT)[\s._-]*N?(\d{3,5})$/u', $upper, $match) === 1) {
+        if (preg_match('/^(?:TOKYO[\s._-]?HOT)[\s._-]*N?(\d{3,5})$/u', $upper, $match) === 1) {
             return 'TOKYOHOT-' . $match[1];
         }
 

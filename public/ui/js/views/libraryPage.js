@@ -12,7 +12,7 @@ export default {
     try { [sum, on, un, files] = (await Promise.all([admin('/ui-me/library'), admin('/ui-me/library/on-disk'), admin('/ui-me/library/unmatched'), admin('/ui-me/media/files?page=' + Math.max(1, Number(query.media_page) || 1))])).map(r => r); } catch (e) { return { html: `<div class="wrap">${head('Thư viện', '')}${errorBox(e)}</div>` }; }
     const s = sum.data;
     if (!s.files && !s.missing) {
-      return { html: `<div class="wrap">${head('Thư viện', 'tệp trên đĩa')}${emptyBox(s.configured ? 'Chưa quét xong lần nào' : 'Chưa cấu hình thư mục', 'Vào Cài đặt → Thư viện trên đĩa để chọn thư mục và bật quét. Quét ngay: php artisan library:scan --force.', a('#/settings', 'Mở Cài đặt', 'btn'))}</div>` };
+      return { html: `<div class="wrap">${head('Thư viện', 'tệp trên đĩa')}${emptyBox(s.configured ? 'Chưa quét xong lần nào' : 'Chưa cấu hình thư mục', 'Vào Cài đặt → Thư viện & media để chọn thư mục và bật quét. Máy sẽ quét theo lịch đã đặt.', a('#/settings', 'Mở Cài đặt', 'btn'))}</div>` };
     }
     const max = Math.max(1, ...s.by_folder.map(f => f.bytes));
     const tile = (label, v, sub = '') => `<div class="panel"><div class="bd"><div class="muted">${esc(label)}</div><div style="font-size:22px;font-weight:600" class="mono">${v}</div><div class="dim">${esc(sub)}</div></div></div>`;

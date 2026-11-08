@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Downloads;
 
+use App\Repositories\MovieRepository;
 use App\Models\MovieMedia;
 use App\Services\Settings\SettingsService;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -27,17 +27,17 @@ final class DownloadService
     public function add(string $movieCode): array
     {
         $this->assertEnabled();
-        $movie = DB::table('movies')->whereRaw('UPPER(display_code) = ?', [strtoupper($movieCode)])->first(['id', 'display_code']);
+        $movie = app(MovieRepository::class)->tableQuery('movies')->whereRaw('UPPER(display_code) = ?', [strtoupper($movieCode)])->first(['id', 'display_code']);
         if ($movie === null) {
             throw new RuntimeException('Unknown movie.');
         }
-        $magnet = DB::table('movie_media')->where('movie_id', $movie->id)->where('kind', MovieMedia::KIND_MAGNET)->orderByDesc('crawled_at')->value('url');
+        $magnet = app(MovieRepository::class)->tableQuery('movie_media')->where('movie_id', $movie->id)->where('kind', MovieMedia::KIND_MAGNET)->orderByDesc('crawled_at')->value('url');
         if (! is_string($magnet) || ! str_starts_with($magnet, 'magnet:?')) {
             throw new RuntimeException('JavMeta has no magnet for this movie.');
         }
 
         $hash = $this->client->addMagnet($magnet, (string) $movie->display_code);
-        DB::table('download_items')->insertOrIgnore(['hash' => $hash, 'movie_code' => $movie->display_code, 'magnet' => $magnet, 'added_at' => now()]);
+        app(MovieRepository::class)->tableQuery('download_items')->insertOrIgnore(['hash' => $hash, 'movie_code' => $movie->display_code, 'magnet' => $magnet, 'added_at' => now()]);
 
         return ['hash' => $hash, 'movie_code' => (string) $movie->display_code];
     }
@@ -46,7 +46,7 @@ final class DownloadService
     public function list(): array
     {
         $this->assertEnabled();
-        $codes = DB::table('download_items')->pluck('movie_code', 'hash')->all();
+        $codes = app(MovieRepository::class)->tableQuery('download_items')->pluck('movie_code', 'hash')->all();
         $items = [];
         foreach ($this->client->list() as $t) {
             $hash = strtolower((string) ($t['hash'] ?? ''));
@@ -86,7 +86,7 @@ final class DownloadService
     {
         $this->assertOurs($hash);
         $this->client->delete($hash, $withFiles);
-        DB::table('download_items')->where('hash', strtolower($hash))->delete();
+        app(MovieRepository::class)->tableQuery('download_items')->where('hash', strtolower($hash))->delete();
     }
 
     /** The files of a completed download as absolute paths (the file server turns them into links). @return list<string> */

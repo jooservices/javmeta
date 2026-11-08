@@ -5,15 +5,17 @@ declare(strict_types=1);
 namespace App\Services\Crawl;
 
 use App\Models\CrawlQueue;
+use App\Repositories\CrawlFetchAttemptServiceRepository;
 use App\Services\Observability\NodeEgressProbe;
 use App\Services\Crawler\CrawlerxFetchResult;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 final class FetchAttemptRecorder
 {
+    public function __construct(private readonly ?CrawlFetchAttemptServiceRepository $attempts = null) {}
+
     public function record(CrawlQueue $queue, CrawlerxFetchResult $result): void
     {
         try {
@@ -59,9 +61,7 @@ final class FetchAttemptRecorder
                 'egress_kind' => $egress['egress_kind'],
             ];
         }
-        if ($rows !== []) {
-            DB::table('crawl_fetch_attempts')->insert($rows);
-        }
+        ($this->attempts ?? app(CrawlFetchAttemptServiceRepository::class))->insertAttempts($rows);
     }
 
     private function sanitize(?string $error): ?string

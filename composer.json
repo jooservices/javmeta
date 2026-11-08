@@ -106,11 +106,12 @@
             "bash tests/Shell/staging.test.sh",
             "bash tests/Shell/production.test.sh",
             "bash tests/Shell/install.test.sh",
+            "bash tests/Shell/join-node.test.sh",
             "bash tests/Shell/node-template.test.sh",
             "bash tests/Shell/roles.test.sh",
             "bash tests/Shell/uat-reset.test.sh",
             "bash tests/Shell/retention.test.sh",
-            "if command -v shellcheck >/dev/null 2>&1; then shellcheck -x deploy/install.sh deploy/lib/*.sh tests/Shell/install.test.sh tests/Shell/node-template.test.sh tests/Shell/roles.test.sh tests/Shell/integration-harness.test.sh deploy/production.sh deploy/production/provision/*.sh deploy/production/node/install-node.sh deploy/production/node/refresh-units.sh tests/Shell/production.test.sh deploy/backup/*.sh tests/Shell/backup.test.sh deploy/staging.sh deploy/uat-reset.sh tests/Shell/staging.test.sh tests/Shell/uat-reset.test.sh tests/Shell/retention.test.sh; elif [ \"${CI:-}\" = true ]; then echo 'shellcheck is required in CI' >&2; exit 1; else echo 'shellcheck not installed here; it runs in GitHub CI'; fi"
+            "if command -v shellcheck >/dev/null 2>&1; then shellcheck -x deploy/install.sh deploy/join-node.sh deploy/lib/*.sh tests/Shell/install.test.sh tests/Shell/join-node.test.sh tests/Shell/node-template.test.sh tests/Shell/roles.test.sh tests/Shell/integration-harness.test.sh deploy/production.sh deploy/production/provision/*.sh deploy/production/node/install-node.sh deploy/production/node/refresh-units.sh tests/Shell/production.test.sh deploy/backup/*.sh tests/Shell/backup.test.sh deploy/staging.sh deploy/uat-reset.sh tests/Shell/staging.test.sh tests/Shell/uat-reset.test.sh tests/Shell/retention.test.sh; elif [ \"${CI:-}\" = true ]; then echo 'shellcheck is required in CI' >&2; exit 1; else echo 'shellcheck not installed here; it runs in GitHub CI'; fi"
         ],
         "test:e2e": [
             "@php -r \"is_dir('.tmp') || mkdir('.tmp', 0700);\"",
@@ -120,6 +121,7 @@
         ],
         "coverage:report": "php tools/coverage-report.php build/coverage.xml build/coverage/uncovered-files.md",
         "coverage:check": "php tools/coverage-enforce.php build/coverage.xml 90",
+        "coverage:per-file": "php tools/quality/coverage-per-file.php 85 build/coverage.xml build/integration.xml",
         "check": [
             "@lint",
             "@test",

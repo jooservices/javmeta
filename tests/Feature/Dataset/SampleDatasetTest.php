@@ -36,6 +36,27 @@ final class SampleDatasetTest extends TestCase
         $this->assertGreaterThanOrEqual(10, $first['series']);
     }
 
+    public function test_observation_hash_and_deterministic_uuids_use_sha256(): void
+    {
+        $this->artisan('dataset:load', ['name' => 'sample'])->assertSuccessful();
+
+        $hash = DB::table('movie_observations')->where('source_slug', 'sample')->where('movie_id', DB::table('movies')->where('display_code', 'SMP-0001')->value('id'))->value('value_hash');
+        $this->assertSame(hash('sha256', 'title_en1sample'), $hash);
+
+        $uuids = DB::table('movies')->where('display_code', 'SMP-0001')->value('uuid');
+        $expectedHash = hash('sha256', 'javmeta-sample-movie-1');
+        $this->assertSame(sprintf('%s-%s-4%s-a%s-%s', substr($expectedHash, 0, 8), substr($expectedHash, 8, 4), substr($expectedHash, 13, 3), substr($expectedHash, 17, 3), substr($expectedHash, 20, 12)), $uuids);
+
+        $otherHash = DB::table('movie_observations')->where('source_slug', 'sample')->where('movie_id', DB::table('movies')->where('display_code', 'SMP-0002')->value('id'))->value('value_hash');
+        $this->assertSame(hash('sha256', 'title_en2sample'), $otherHash);
+        $this->assertNotSame($hash, $otherHash);
+        $this->assertNotSame($uuids, DB::table('movies')->where('display_code', 'SMP-0002')->value('uuid'));
+
+        $this->artisan('dataset:load', ['name' => 'sample'])->assertSuccessful();
+        $this->assertSame($hash, DB::table('movie_observations')->where('source_slug', 'sample')->where('movie_id', DB::table('movies')->where('display_code', 'SMP-0001')->value('id'))->value('value_hash'));
+        $this->assertSame($uuids, DB::table('movies')->where('display_code', 'SMP-0001')->value('uuid'));
+    }
+
     public function test_it_contains_the_awkward_cases(): void
     {
         $this->artisan('dataset:load', ['name' => 'sample'])->assertSuccessful();

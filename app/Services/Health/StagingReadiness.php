@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Health;
 
 use App\Contracts\ReportChannel;
+use App\Repositories\HealthStatusServiceRepository;
 use App\Services\Auth\ApiKeyService;
 use App\Services\Crawl\CrawlStatusService;
 use App\Services\Dependencies\DependencyMonitor;
@@ -25,6 +26,7 @@ final class StagingReadiness
         private readonly CrawlStatusService $crawlStatus,
         private readonly ReportChannel $channel,
         private readonly SourceScheduleFreshness $sourceFreshness,
+        private readonly HealthStatusServiceRepository $repository,
     ) {}
 
     /**
@@ -70,7 +72,7 @@ final class StagingReadiness
     {
         $rows = [];
         $maxAge = (int) config('javmeta_readiness.max_newest_movie_age_minutes', 30);
-        $newest = \App\Models\Movie::query()->max('first_seen_at');
+        $newest = $this->repository->newestMovieAt();
         $now = now()->getTimestamp();
         $ageMinutes = $newest === null ? null : (int) floor(($now - strtotime((string) $newest)) / 60);
         $rows[] = $ageMinutes !== null && $ageMinutes <= $maxAge
@@ -112,6 +114,10 @@ final class StagingReadiness
     /** @return array{name: string, status: string, message: string, action: ?string} */
     private function backupCheck(): array
     {
+        if (! config('backup.monitoring_enabled')) {
+            return $this->row('backup', 'pass', 'Backup monitoring is off.');
+        }
+
         $file = storage_path('app/private/backups/latest.json');
         $data = is_file($file) ? json_decode((string) file_get_contents($file), true) : null;
         $at = is_array($data) ? ($data['created_at'] ?? $data['finished_at'] ?? $data['generated_at'] ?? null) : null;

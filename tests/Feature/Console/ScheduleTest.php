@@ -98,7 +98,7 @@ final class ScheduleTest extends TestCase
 
     public function test_feed_pool_schedule_polls_at_five_seconds_independent_of_the_current_database_interval(): void
     {
-        $settings = new SettingsService(new FakeConfigStore());
+        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class));
         $this->app->instance(SettingsService::class, $settings);
         $previousEnvironment = app('env');
         app()->instance('env', 'local');
@@ -122,9 +122,26 @@ final class ScheduleTest extends TestCase
         }
     }
 
+    public function test_backup_status_is_scheduled_only_while_backup_monitoring_is_enabled(): void
+    {
+        $backupStatus = static fn(array $events) => collect($events)
+            ->first(static fn($event): bool => str_contains((string) $event->command, 'javmeta:backup-status'));
+
+        config(['backup.monitoring_enabled' => false]);
+        $event = $backupStatus($this->registeredEvents());
+        self::assertNotNull($event);
+        self::assertSame('* * * * *', $event->expression);
+        self::assertFalse($event->filtersPass($this->app));
+
+        config(['backup.monitoring_enabled' => true]);
+        $event = $backupStatus($this->registeredEvents());
+        self::assertNotNull($event);
+        self::assertTrue($event->filtersPass($this->app));
+    }
+
     public function test_legacy_hourly_report_is_disabled_by_default_and_while_periodic_is_enabled(): void
     {
-        $settings = new SettingsService(new FakeConfigStore());
+        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class));
         $settings->set('report.legacy_hourly_enabled', true);
         $settings->set('report.enabled', true);
         $this->app->instance(SettingsService::class, $settings);
@@ -142,7 +159,7 @@ final class ScheduleTest extends TestCase
 
     public function test_daily_report_schedule_uses_saved_time_and_timezone(): void
     {
-        $settings = new SettingsService(new FakeConfigStore());
+        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class));
         $settings->set('report.daily_time', '09:15');
         $settings->set('report.daily_timezone', 'UTC');
         $this->app->instance(SettingsService::class, $settings);

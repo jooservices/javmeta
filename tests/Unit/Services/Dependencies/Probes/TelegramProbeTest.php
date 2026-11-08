@@ -6,6 +6,7 @@ namespace Tests\Unit\Services\Dependencies\Probes;
 
 use App\Services\Dependencies\Probes\TelegramProbe;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Client\ConnectionException;
 use Tests\TestCase;
 
 final class TelegramProbeTest extends TestCase
@@ -26,5 +27,21 @@ final class TelegramProbeTest extends TestCase
         config(['javmeta_alerts.telegram.bot_token' => '', 'laravel-notifications.channels.telegram.bot_token' => '']);
 
         self::assertNull((new TelegramProbe())->check()->available);
+    }
+
+    public function test_a_negative_answer_or_a_transport_failure_is_down_and_never_leaks_the_token(): void
+    {
+        config(['javmeta_alerts.telegram.bot_token' => 'secret-token', 'javmeta_alerts.telegram.api_base' => 'https://api.example.test/']);
+        Http::fake(['api.example.test/*' => Http::response(['ok' => false])]);
+        $negative = (new TelegramProbe())->check();
+        self::assertFalse($negative->available);
+        self::assertStringNotContainsString('secret-token', $negative->message);
+        self::assertFalse((new TelegramProbe())->probe());
+
+        Http::swap(new \Illuminate\Http\Client\Factory());
+        Http::fake(static fn() => throw new ConnectionException('refused'));
+        $failed = (new TelegramProbe())->check();
+        self::assertFalse($failed->available);
+        self::assertStringNotContainsString('secret-token', $failed->message);
     }
 }

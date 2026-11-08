@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueRepository;
 use DateTimeInterface;
 use App\Events\CrawlSourceUnhealthy;
 use App\Events\WorkerHeartbeatStale;
@@ -43,7 +44,7 @@ final class WatchdogCommand extends Command
         }
 
         $defaultStaleSeconds = (int) config('javmeta_alerts.watchdog.source_stale_seconds', 86400);
-        $enabledSources = Source::query()->where('enabled', true)->get(['slug', 'last_success_at']);
+        $enabledSources = app(CrawlQueueRepository::class)->modelQuery(Source::class)->where('enabled', true)->get(['slug', 'last_success_at']);
         $staleSources = $enabledSources
             ->filter(fn(Source $source): bool => $sourceFreshness->isPastDue(
                 $source->last_success_at,

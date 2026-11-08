@@ -29,7 +29,7 @@ final class UiShellController
         if ($guest) {
             $html = str_replace(
                 '<div class="app">',
-                '<div class="app"><div class="guest-banner" role="note">Chế độ khách chỉ cho phép xem nội dung công khai. <a href="/login">Đăng nhập để dùng các tính năng cá nhân và quản trị</a>.</div>',
+                '<div class="app"><div class="guest-banner" role="note"><span>Chế độ khách chỉ cho phép xem nội dung công khai. <a href="/login">Đăng nhập để dùng các tính năng cá nhân và quản trị.</a></span></div>',
                 $html,
             );
         }

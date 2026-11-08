@@ -336,7 +336,7 @@ Ghi đè tùy chọn endpoint trình duyệt, HTTP proxy, nhãn egress và thứ
 
 ### Việc kẹt được giải phóng sau (giây)
 
-Việc ở trạng thái claimed lâu hơn mức này được trả lại hàng đợi.
+Việc đã bắt đầu được thu hồi sau mức này; việc chưa bắt đầu còn được chờ theo giới hạn hàng đợi và timeout worker.
 
 Số nguyên; từ 60 đến 86400. Mã mục: `crawl.stale_claim_timeout_seconds`.
 
@@ -1010,6 +1010,12 @@ Tệp trạng thái được lệnh backup cập nhật sau khi hoàn tất.
 
 Văn bản. Mã mục: `backup.manifest_path`.
 
+### Bật giám sát sao lưu
+
+Tắt mặc định. Khi bật, hệ thống kiểm tra tuổi bản sao lưu mỗi phút, gửi cảnh báo nếu quá cũ và tính vào báo cáo sẵn sàng.
+
+Bật/tắt. Mã mục: `backup.monitoring_enabled`.
+
 ## AI (Ollama, embedding)
 
 ### Nhà cung cấp embedding
@@ -1395,6 +1401,26 @@ Thông tin bí mật. Mã mục: `ui_security.owner_admin_token`.
 Được mã hóa trong cơ sở dữ liệu và không hiển thị lại; API key mới nên dùng scope MCP.
 
 Thông tin bí mật. Mã mục: `ui_security.mcp_api_key`.
+
+## Thêm node
+
+### Thời hạn mã thêm node (phút)
+
+Mã dùng một lần để thêm node hết hạn sau số phút này.
+
+Số nguyên; từ 5 đến 240. Mã mục: `nodes.enrollment_ttl_minutes`.
+
+### Kho mã nguồn cho node mới
+
+Địa chỉ Git mà node mới dùng để cài đặt; node phải đọc được kho này.
+
+Văn bản. Mã mục: `nodes.release_repo_url`.
+
+### Nhánh, tag hoặc commit cho node mới
+
+Bản phát hành mà node mới cài đặt; nên trùng bản đang chạy.
+
+Văn bản. Mã mục: `nodes.release_ref`.
 
 ## Sức khỏe khi khởi động
 

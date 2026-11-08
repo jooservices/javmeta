@@ -34,6 +34,53 @@ final class CalendarRelatedEndpointTest extends TestCase
         $this->assertSame(['2026-10-05', '2026-10-31'], array_column($r->json('data'), 'date'));
         $this->assertSame([2, 1], array_column($r->json('data'), 'count'));
         $this->assertSame(3, $r->json('meta.total'));
+        $this->assertSame('2026-11', $r->json('meta.latest_month'));
+    }
+
+    public function test_the_calendar_opens_on_the_latest_month_with_a_release(): void
+    {
+        Movie::factory()->create(['release_date' => '2025-11-06']);
+        Movie::factory()->create(['release_date' => '2024-03-01']);
+
+        $r = $this->getJson('/api/v1/movies/calendar', $this->headers())->assertOk();
+        $this->assertSame('2025-11', $r->json('meta.month'));
+        $this->assertSame('2025-11', $r->json('meta.latest_month'));
+        $this->assertGreaterThan(0, $r->json('meta.total'));
+    }
+
+    public function test_calendar_defaults_to_the_current_month_when_no_movie_has_a_release_date(): void
+    {
+        Movie::factory()->create(['release_date' => null]);
+
+        $r = $this->getJson('/api/v1/movies/calendar', $this->headers())->assertOk();
+        $this->assertSame(now()->format('Y-m'), $r->json('meta.month'));
+        $this->assertSame(now()->format('Y-m'), $r->json('meta.latest_month'));
+        $this->assertSame(0, $r->json('meta.total'));
+        $this->assertSame([], $r->json('data'));
+    }
+
+    public function test_calendar_counts_all_releases_and_limits_each_day_to_eight_movie_previews(): void
+    {
+        for ($number = 1; $number <= 9; $number++) {
+            Movie::factory()->create([
+                'display_code' => sprintf('CAL-%03d', $number),
+                'release_date' => '2025-11-06',
+                'community_score' => 10 - $number,
+                'title_en' => $number === 1 ? null : 'Calendar movie ' . $number,
+                'title_jp' => $number === 1 ? 'カレンダー映画' : null,
+                'cover_thumb_url' => $number === 1 ? null : 'https://example.test/thumb.jpg',
+                'cover_url' => $number === 1 ? 'https://example.test/full.jpg' : null,
+            ]);
+        }
+
+        $day = $this->getJson('/api/v1/movies/calendar?month=2025-11', $this->headers())
+            ->assertOk()
+            ->json('data.0');
+
+        $this->assertSame(9, $day['count']);
+        $this->assertCount(8, $day['movies']);
+        $this->assertSame('カレンダー映画', $day['movies'][0]['title']);
+        $this->assertSame('https://example.test/full.jpg', $day['movies'][0]['cover_url']);
     }
 
     public function test_related_movies_share_series_or_maker_and_exclude_the_movie(): void

@@ -19,14 +19,20 @@ final class WorkerHeartbeat
 {
     public const CACHE_KEY = 'javmeta:worker:heartbeat';
     public const INDEX_KEY = 'javmeta:worker:instances';
+    /** An instance without a beat for this long is forgotten by the index. */
+    public const INDEX_RETENTION_SECONDS = 3600;
+    /** Hard cap on the number of instances kept in the index. */
+    public const INDEX_MAX_ENTRIES = 200;
+    /** Minimum gap between two index writes for the same instance. */
+    public const INDEX_WRITE_INTERVAL_SECONDS = 30;
 
     public function beat(?string $instance = null): void
     {
         $instance = $instance ?? $this->currentInstance();
         $timestamp = now()->getTimestamp();
 
-        Cache::put(self::CACHE_KEY, $timestamp, now()->addDay());
-        Cache::put($this->instanceKey($instance), $timestamp, now()->addDay());
+        Cache::put(self::CACHE_KEY, $timestamp, now()->addSeconds(self::INDEX_RETENTION_SECONDS));
+        Cache::put($this->instanceKey($instance), $timestamp, now()->addSeconds(self::INDEX_RETENTION_SECONDS));
         $this->touchIndex($instance, $timestamp);
     }
 
@@ -65,13 +71,10 @@ final class WorkerHeartbeat
             return [];
         }
 
+        // Filter the raw integers first: a legacy index can hold tens of thousands of entries.
         $rows = [];
-        foreach ($index as $instance => $timestamp) {
-            if (! is_string($instance) || ! is_numeric($timestamp)) {
-                continue;
-            }
-
-            $last = Carbon::createFromTimestamp((int) $timestamp);
+        foreach ($this->retained($index, now()->getTimestamp()) as $instance => $timestamp) {
+            $last = Carbon::createFromTimestamp($timestamp);
             $rows[] = [
                 'instance' => $instance,
                 'last_heartbeat_at' => $last->toIso8601String(),
@@ -96,7 +99,34 @@ final class WorkerHeartbeat
             $index = [];
         }
 
+        $previous = $index[$instance] ?? null;
+        if (is_numeric($previous) && $timestamp - (int) $previous <= self::INDEX_WRITE_INTERVAL_SECONDS) {
+            return;
+        }
+
         $index[$instance] = $timestamp;
-        Cache::put(self::INDEX_KEY, $index, now()->addDay());
+        $index = $this->retained($index, $timestamp);
+        Cache::put(self::INDEX_KEY, $index, now()->addSeconds(self::INDEX_RETENTION_SECONDS));
+    }
+
+    /**
+     * Drops malformed and expired entries, then keeps the newest INDEX_MAX_ENTRIES.
+     *
+     * @param array<array-key, mixed> $index
+     * @return array<string, int> instance => last beat timestamp, newest first
+     */
+    private function retained(array $index, int $now): array
+    {
+        $cutoff = $now - self::INDEX_RETENTION_SECONDS;
+        $fresh = [];
+        foreach ($index as $instance => $timestamp) {
+            if (is_string($instance) && is_numeric($timestamp) && (int) $timestamp >= $cutoff) {
+                $fresh[$instance] = (int) $timestamp;
+            }
+        }
+
+        arsort($fresh);
+
+        return array_slice($fresh, 0, self::INDEX_MAX_ENTRIES, true);
     }
 }

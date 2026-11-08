@@ -78,6 +78,28 @@ final class SearchTest extends TestCase
         $performers = $this->getJson('/api/v1/search?q=' . urlencode('Aiko'), $headers)->assertOk();
         $this->assertNotEmpty($performers->json('data.performers'));
         $this->assertSame('none', $this->getJson('/api/v1/search?q=Aiko&understand=0', $headers)->json('data.interpretation.by'));
+        $totals = $this->getJson('/api/v1/search?q=' . urlencode('Sample Maker 03') . '&per_page=5', $headers)->assertOk();
+        $this->assertGreaterThan(count($totals->json('data.movies')), $totals->json('data.totals.movies'));
+        $this->assertArrayHasKey('used_vectors', $totals->json('data.interpretation'));
+    }
+
+    public function test_search_cache_key_is_deterministic_and_differs_for_different_queries(): void
+    {
+        Http::fake(['ollama.test:11434/*' => Http::response('down', 500)]);
+        $headers = ['X-API-Key' => app(ApiKeyService::class)->create('search-key')->plaintext];
+        \Illuminate\Support\Facades\Cache::flush();
+
+        $q = 'Sample Maker 03';
+        $first = $this->getJson('/api/v1/search?q=' . urlencode($q) . '&per_page=50', $headers)->assertOk()->json('data');
+        $key = 'javmeta:search:' . hash('sha256', $q . '|50|1');
+        $this->assertSame($first, \Illuminate\Support\Facades\Cache::get($key));
+        $this->assertSame($first, $this->getJson('/api/v1/search?q=' . urlencode($q) . '&per_page=50', $headers)->assertOk()->json('data'));
+
+        $other = $this->getJson('/api/v1/search?q=SMP-0007', $headers)->assertOk()->json('data');
+        $otherKey = 'javmeta:search:' . hash('sha256', 'SMP-0007|12|1');
+        $this->assertNotSame($key, $otherKey);
+        $this->assertSame($other, \Illuminate\Support\Facades\Cache::get($otherKey));
+        $this->assertSame($first, \Illuminate\Support\Facades\Cache::get($key));
     }
 
     public function test_a_key_without_the_movies_scope_cannot_search(): void

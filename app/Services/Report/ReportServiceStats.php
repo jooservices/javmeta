@@ -7,14 +7,17 @@ namespace App\Services\Report;
 use App\Services\Dependencies\Dependency;
 use App\Services\Dependencies\DependencyMonitor;
 use App\Services\Search\ElasticsearchHttpClient;
-use Illuminate\Support\Facades\DB;
+use App\Repositories\ReportDataServiceRepository;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Redis;
 use Throwable;
 
 final class ReportServiceStats
 {
-    public function __construct(private readonly ElasticsearchHttpClient $elasticsearch) {}
+    public function __construct(
+        private readonly ElasticsearchHttpClient $elasticsearch,
+        private readonly ReportDataServiceRepository $repository,
+    ) {}
 
     /** @return array<string, mixed> */
     public function collect(): array
@@ -36,16 +39,7 @@ final class ReportServiceStats
     /** @return array{used: int, maximum: int}|null */
     private function postgres(): ?array
     {
-        if (DB::connection()->getDriverName() !== 'pgsql') {
-            return null;
-        }
-        try {
-            $row = DB::selectOne("SELECT COUNT(*)::int AS used, current_setting('max_connections')::int AS maximum FROM pg_stat_activity WHERE backend_type = 'client backend'");
-
-            return ['used' => max(0, (int) ($row->used ?? 0)), 'maximum' => max(1, (int) ($row->maximum ?? 1))];
-        } catch (Throwable) {
-            return null;
-        }
+        return $this->repository->postgresStats();
     }
 
     private function redis(): ?string

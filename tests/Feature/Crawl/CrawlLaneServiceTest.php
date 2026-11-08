@@ -106,7 +106,7 @@ final class CrawlLaneServiceTest extends TestCase
     {
         $this->travelTo('2026-11-02T12:34:00Z');
         $queue = app(CrawlQueueService::class);
-        $row = CrawlQueue::factory()->create(['source_slug' => 'javbus', 'kind' => 'listing', 'status' => 'claimed', 'claimed_at' => now()->subHour(), 'started_at' => null, 'locked_by' => 'old-token']);
+        $row = CrawlQueue::factory()->create(['source_slug' => 'javbus', 'kind' => 'listing', 'status' => 'claimed', 'claimed_at' => now()->subSeconds(18_001), 'started_at' => null, 'locked_by' => 'old-token']);
         $this->assertSame(1, $queue->reclaimStaleClaimed(900));
         $this->assertNull($queue->startClaimedRow($row->id, 'listing', 'old-token'));
         $claim = $queue->claimNext('new-token', 'listing', [], 'browser');

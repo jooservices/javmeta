@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs\Middleware;
 
+use App\Repositories\CrawlQueueRepository;
 use App\Models\CrawlQueue;
 use App\Observability\OpenObserveClient;
 use App\Observability\TraceContext;
@@ -44,7 +45,7 @@ final class TraceCrawlJob
             /** @var mixed $queueId */
             $queueId = $job->crawlQueueId;
             if (is_int($queueId)) {
-                $row = CrawlQueue::query()->find($queueId);
+                $row = app(CrawlQueueRepository::class)->modelQuery(CrawlQueue::class)->find($queueId);
                 if ($row instanceof CrawlQueue) {
                     $sourceSlug = $row->source_slug;
                     $queueKind = $row->kind;

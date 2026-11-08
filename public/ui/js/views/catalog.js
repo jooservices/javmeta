@@ -5,9 +5,9 @@ import { head, a, href, emptyBox, infiniteList } from '../components.js';
 const n = x => x.movie_count ?? x.performer_count ?? 0;
 export const KINDS = {
   genres: { title: 'Thể loại', facet: 'genre', unit: 'phim' },
-  makers: { title: 'Maker (hãng)', facet: 'maker', unit: 'phim' },
-  series: { title: 'Series', facet: 'series', unit: 'phim' },
-  labels: { title: 'Label', facet: 'label', unit: 'phim' },
+  makers: { title: 'Hãng', facet: 'maker', unit: 'phim' },
+  series: { title: 'Loạt phim', facet: 'series', unit: 'phim' },
+  labels: { title: 'Nhãn', facet: 'label', unit: 'phim' },
   years: { title: 'Năm phát hành', facet: 'year', unit: 'phim' },
   cups: { title: 'Cup', perf: 'cup', unit: 'diễn viên' },
   blood_types: { title: 'Nhóm máu', perf: 'blood_type', unit: 'diễn viên' },

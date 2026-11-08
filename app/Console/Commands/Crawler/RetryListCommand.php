@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueRepository;
 use App\Models\CrawlQueue;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
@@ -17,7 +18,7 @@ final class RetryListCommand extends Command
 
     public function handle(): int
     {
-        $query = CrawlQueue::query()->where('status', CrawlQueue::STATUS_RETRY_PENDING)->orderBy('next_attempt_at')->orderBy('id');
+        $query = app(CrawlQueueRepository::class)->modelQuery(CrawlQueue::class)->where('status', CrawlQueue::STATUS_RETRY_PENDING)->orderBy('next_attempt_at')->orderBy('id');
         if (is_string($this->option('source')) && $this->option('source') !== '') {
             $query->where('source_slug', (string) $this->option('source'));
         }

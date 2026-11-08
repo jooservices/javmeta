@@ -17,19 +17,12 @@ use Throwable;
 final class NodeEgressProbe
 {
     private const NODE_INDEX_KEY = 'javmeta:egress:nodes';
-    // PHP's reserved-range filter omits some non-global ranges such as TEST-NET and multicast.
-    private const NON_GLOBAL_IPV4_RANGES = [
-        '100.64.0.0/10',
-        '192.0.0.0/24',
-        '192.0.2.0/24',
-        '192.88.99.0/24',
-        '198.18.0.0/15',
-        '198.51.100.0/24',
-        '203.0.113.0/24',
-        '224.0.0.0/4',
-    ];
 
-    public function __construct(private readonly ClientBuilder $clientBuilder) {}
+    public function __construct(
+        private readonly ClientBuilder $clientBuilder,
+        private readonly Ipv4Parser $ipv4 = new Ipv4Parser(),
+        private readonly EgressFailureReason $failures = new EgressFailureReason(),
+    ) {}
 
     /** @return array{node: string, egress_ip: ?string, egress_kind: string} */
     public function contextForLane(?string $lane = null, ?string $method = null): array
@@ -357,7 +350,7 @@ final class NodeEgressProbe
             $response = $client->sendRequest(new Request('GET', $url, ['Accept' => 'text/plain']));
 
             return $response->getStatusCode() >= 200 && $response->getStatusCode() < 300
-                ? $this->parseIpv4($response->getBody()->read(128))
+                ? $this->ipv4->parse($response->getBody()->read(128))
                 : null;
         } catch (Throwable) {
             return null;
@@ -411,7 +404,7 @@ final class NodeEgressProbe
             return ['ip' => null, 'error' => 'Playwright fetch returned an invalid response.'];
         }
         if ($exitCode !== 0) {
-            return ['ip' => null, 'error' => $this->playwrightFailureReason($exitCode, $body['stderr'] ?? null)];
+            return ['ip' => null, 'error' => $this->failures->playwright($exitCode, $body['stderr'] ?? null)];
         }
 
         $stdout = is_string($body['stdout'] ?? null) ? $body['stdout'] : '';
@@ -424,36 +417,12 @@ final class NodeEgressProbe
             return ['ip' => null, 'error' => 'Playwright fetch returned no page content.'];
         }
 
-        $ip = $this->parsePublicIpv4($html);
+        $ip = $this->ipv4->parsePublic($html);
 
         return [
             'ip' => $ip,
             'error' => $ip === null ? 'Echo page did not return a public IPv4 address.' : null,
         ];
-    }
-
-    private function playwrightFailureReason(int $exitCode, mixed $stderr): string
-    {
-        $details = is_string($stderr) ? trim($stderr) : '';
-        if ($details === '') {
-            return 'Playwright fetch exited with code ' . $exitCode . '.';
-        }
-
-        $details = preg_replace('~https?://\S+~i', '[URL]', $details) ?? $details;
-        $details = preg_replace('/[\x00-\x1F\x7F]+/', ' ', $details) ?? $details;
-        $details = trim(preg_replace('/\s+/', ' ', $details) ?? $details);
-
-        $details = strtolower($details);
-        $reason = match (true) {
-            str_contains($details, 'timeout'), str_contains($details, 'timed out') => 'Playwright fetch timed out',
-            str_contains($details, 'browser launch failed'), str_contains($details, 'could not launch') => 'Playwright browser could not start',
-            str_contains($details, 'ssrf_blocked') => 'Playwright fetch target was blocked',
-            str_contains($details, 'err_name_not_resolved'), str_contains($details, 'could not resolve') => 'Playwright could not resolve the echo host',
-            str_contains($details, 'err_connection_refused'), str_contains($details, 'connection refused') => 'Playwright could not connect to the echo host',
-            default => 'Playwright fetch failed',
-        };
-
-        return $reason . ' (exit code ' . $exitCode . ').';
     }
 
     /** @return array{ip: ?string, error: ?string} */
@@ -483,7 +452,7 @@ final class NodeEgressProbe
         }
 
         $solution = is_array($body['solution'] ?? null) ? $body['solution'] : [];
-        $ip = $this->parsePublicIpv4(is_string($solution['response'] ?? null) ? $solution['response'] : '');
+        $ip = $this->ipv4->parsePublic(is_string($solution['response'] ?? null) ? $solution['response'] : '');
 
         return [
             'ip' => $ip,
@@ -510,7 +479,7 @@ final class NodeEgressProbe
                 json_encode($payload, JSON_THROW_ON_ERROR),
             ));
         } catch (Throwable $exception) {
-            return ['response' => null, 'error' => $this->probeExceptionReason($exception)];
+            return ['response' => null, 'error' => $this->failures->exception($exception)];
         }
 
         if ($response->getStatusCode() < 200 || $response->getStatusCode() >= 300) {
@@ -518,95 +487,6 @@ final class NodeEgressProbe
         }
 
         return ['response' => $response, 'error' => null];
-    }
-
-    private function probeExceptionReason(Throwable $exception): string
-    {
-        $message = strtolower($exception->getMessage());
-        if (str_contains($message, 'timeout') || str_contains($message, 'timed out')) {
-            return 'Browser service request timed out.';
-        }
-        if (str_contains($message, 'connection refused')) {
-            return 'Browser service refused the connection.';
-        }
-        if (str_contains($message, 'could not resolve') || str_contains($message, 'name or service not known')) {
-            return 'Browser service host could not be resolved.';
-        }
-
-        return 'Browser service request failed (' . class_basename($exception) . ').';
-    }
-
-    private function parseIpv4(string $body): ?string
-    {
-        $visibleContent = preg_replace('~<(script|style)\b[^>]*>.*?</\1\s*>~is', ' ', $body) ?? $body;
-        $candidate = trim(html_entity_decode(
-            strip_tags($visibleContent),
-            ENT_QUOTES | ENT_HTML5 | ENT_SUBSTITUTE,
-            'UTF-8',
-        ));
-        if (filter_var($candidate, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
-            return $candidate;
-        }
-
-        return null;
-    }
-
-    private function parsePublicIpv4(string $body): ?string
-    {
-        $ip = $this->parseIpv4($body);
-        if ($ip === null || ! $this->isPublicIpv4($ip)) {
-            return null;
-        }
-
-        return $ip;
-    }
-
-    private function isPublicIpv4(string $ip): bool
-    {
-        if (filter_var(
-            $ip,
-            FILTER_VALIDATE_IP,
-            FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE,
-        ) === false) {
-            return false;
-        }
-
-        if (in_array($ip, ['192.0.0.9', '192.0.0.10'], true)) {
-            return true;
-        }
-
-        foreach (self::NON_GLOBAL_IPV4_RANGES as $range) {
-            if ($this->isInIpv4Range($ip, $range)) {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private function isInIpv4Range(string $ip, string $range): bool
-    {
-        [$network, $prefixLength] = explode('/', $range, 2);
-        $addressBytes = inet_pton($ip);
-        $networkBytes = inet_pton($network);
-        if ($addressBytes === false || $networkBytes === false) {
-            return false;
-        }
-
-        $prefixLength = (int) $prefixLength;
-        $fullBytes = intdiv($prefixLength, 8);
-        if (substr($addressBytes, 0, $fullBytes) !== substr($networkBytes, 0, $fullBytes)) {
-            return false;
-        }
-
-        $remainingBits = $prefixLength % 8;
-        if ($remainingBits === 0) {
-            return true;
-        }
-
-        $mask = (0xFF << (8 - $remainingBits)) & 0xFF;
-
-        return (ord($addressBytes[$fullBytes]) & $mask) === (ord($networkBytes[$fullBytes]) & $mask);
     }
 
     private function isHttpUrl(string $url): bool

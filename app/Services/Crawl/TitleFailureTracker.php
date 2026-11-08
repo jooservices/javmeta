@@ -5,9 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Crawl;
 
 use App\Events\CrawlSourceUnhealthy;
-use App\Models\Movie;
-use App\Models\MovieSource;
-use App\Models\ReviewFlag;
+use App\Repositories\CrawlTitleFailureServiceRepository;
 use Illuminate\Support\Facades\Event;
 
 /**
@@ -16,48 +14,42 @@ use Illuminate\Support\Facades\Event;
  */
 final class TitleFailureTracker
 {
+    public function __construct(private readonly ?CrawlTitleFailureServiceRepository $repository = null) {}
+
     public function recordFailure(string $sourceSlug, string $url, ?string $errorMessage = null, bool $soft404 = false): void
     {
-        $movie = $this->movieForUrl($sourceSlug, $url);
+        $movie = $this->repository()->movieForSourceUrl($sourceSlug, $url);
         $threshold = max(1, (int) config('javmeta_alerts.title_failure_threshold', 3));
         $isSoft404 = $soft404;
 
-        if ($isSoft404 && $movie instanceof Movie) {
-            if ($movie->delisted_at === null) {
-                $movie->forceFill(['delisted_at' => now()])->save();
+        if ($isSoft404 && $movie !== null) {
+            if ($movie['delisted_at'] === null) {
+                $this->repository()->markDelisted($movie['id'], now());
             }
 
             Event::dispatch(new CrawlSourceUnhealthy($sourceSlug, 'soft404', [
                 'url' => $url,
-                'movie_id' => $movie->id,
-                'code' => $movie->display_code,
+                'movie_id' => $movie['id'],
+                'code' => $movie['display_code'],
             ]));
         }
 
-        $flag = ReviewFlag::query()
-            ->where('source_slug', $sourceSlug)
-            ->whereNull('resolved_at')
-            ->where('reason', 'consecutive_crawl_failure')
-            ->when(
-                $movie instanceof Movie,
-                static fn($q) => $q->where('movie_id', $movie->id),
-                fn($q) => $q->whereNull('movie_id')->where('code_normalized', $this->urlKey($url)),
-            )
-            ->first();
+        $urlKey = $this->urlKey($url);
+        $flag = $this->repository()->activeFailureFlag($sourceSlug, $movie['id'] ?? null, $urlKey);
 
-        $failures = $flag instanceof ReviewFlag ? ((int) $flag->consecutive_failures) + 1 : 1;
+        $failures = $flag !== null ? $flag['consecutive_failures'] + 1 : 1;
 
-        if ($flag instanceof ReviewFlag) {
-            $flag->forceFill([
+        if ($flag !== null) {
+            $this->repository()->updateFailureFlag($flag['id'], [
                 'consecutive_failures' => $failures,
                 'flagged_at' => now(),
-                'movie_id' => $movie instanceof Movie ? $movie->id : $flag->movie_id,
-                'code_normalized' => $movie instanceof Movie ? $movie->code_normalized : $this->urlKey($url),
-            ])->save();
+                'movie_id' => $movie['id'] ?? $flag['movie_id'],
+                'code_normalized' => $movie['code_normalized'] ?? $urlKey,
+            ]);
         } else {
-            ReviewFlag::query()->create([
-                'movie_id' => $movie instanceof Movie ? $movie->id : null,
-                'code_normalized' => $movie instanceof Movie ? $movie->code_normalized : $this->urlKey($url),
+            $this->repository()->createFailureFlag([
+                'movie_id' => $movie['id'] ?? null,
+                'code_normalized' => $movie['code_normalized'] ?? $urlKey,
                 'source_slug' => $sourceSlug,
                 'consecutive_failures' => $failures,
                 'reason' => 'consecutive_crawl_failure',
@@ -65,12 +57,12 @@ final class TitleFailureTracker
             ]);
         }
 
-        if ($failures >= $threshold && $movie instanceof Movie) {
-            $movie->forceFill(['needs_review' => true])->save();
+        if ($failures >= $threshold && $movie !== null) {
+            $this->repository()->markNeedsReview($movie['id'], now());
             Event::dispatch(new CrawlSourceUnhealthy($sourceSlug, 'title_needs_review', [
                 'url' => $url,
-                'movie_id' => $movie->id,
-                'code' => $movie->display_code,
+                'movie_id' => $movie['id'],
+                'code' => $movie['display_code'],
                 'consecutive_failures' => $failures,
             ]));
         }
@@ -78,39 +70,19 @@ final class TitleFailureTracker
 
     public function recordSuccess(string $sourceSlug, string $url): void
     {
-        $movie = $this->movieForUrl($sourceSlug, $url);
+        $movie = $this->repository()->movieForSourceUrl($sourceSlug, $url);
         $urlKey = $this->urlKey($url);
 
-        ReviewFlag::query()
-            ->where('source_slug', $sourceSlug)
-            ->whereNull('resolved_at')
-            ->where('reason', 'consecutive_crawl_failure')
-            ->when(
-                $movie instanceof Movie,
-                static fn($q) => $q->where('movie_id', $movie->id),
-                static fn($q) => $q->whereNull('movie_id')->where('code_normalized', $urlKey),
-            )
-            ->update(['resolved_at' => now()]);
-    }
-
-    private function movieForUrl(string $sourceSlug, string $url): ?Movie
-    {
-        $link = MovieSource::query()
-            ->where('site_slug', $sourceSlug)
-            ->where('source_url', $url)
-            ->first();
-
-        if (! $link instanceof MovieSource) {
-            return null;
-        }
-
-        $movie = Movie::query()->find($link->movie_id);
-
-        return $movie instanceof Movie ? $movie : null;
+        $this->repository()->resolveFailureFlags($sourceSlug, $movie['id'] ?? null, $urlKey, now());
     }
 
     private function urlKey(string $url): string
     {
         return 'url:' . hash('sha256', $url);
+    }
+
+    private function repository(): CrawlTitleFailureServiceRepository
+    {
+        return $this->repository ?? app(CrawlTitleFailureServiceRepository::class);
     }
 }

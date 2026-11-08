@@ -27,6 +27,7 @@ final class BackupStatusCommandTest extends TestCase
         config()->set([
             'backup.manifest_path' => Storage::disk('local')->path('backups/latest.json'),
             'backup.stale_after_seconds' => 26 * 60 * 60,
+            'backup.monitoring_enabled' => true,
             'openobserve.enabled' => true,
             'openobserve.url' => 'http://openobserve.test',
             'openobserve.org' => 'javmeta_it',
@@ -168,6 +169,28 @@ final class BackupStatusCommandTest extends TestCase
         $path = Storage::disk('local')->path('backups/latest.json');
         Storage::disk('local')->makeDirectory('backups');
         file_put_contents($path, json_encode(['created_at' => $createdAt], JSON_THROW_ON_ERROR));
+    }
+
+    public function test_it_does_nothing_when_backup_monitoring_is_off(): void
+    {
+        config()->set('backup.monitoring_enabled', false);
+        $this->writeManifest(now()->subHours(30)->toIso8601String());
+        $notifier = Mockery::mock(AlertNotifier::class);
+        $notifier->shouldNotReceive('notify');
+        $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
+
+        $this->artisan('javmeta:backup-status')
+            ->expectsOutputToContain('Backup monitoring is off')
+            ->assertSuccessful();
+
+        Http::assertNothingSent();
+    }
+
+    public function test_default_configuration_has_backup_monitoring_off(): void
+    {
+        $this->refreshApplication();
+
+        $this->assertFalse(config('backup.monitoring_enabled'));
     }
 
     public function test_lenient_mode_exits_zero_when_the_backup_is_missing_but_still_reports_it(): void

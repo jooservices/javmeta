@@ -18,7 +18,7 @@ Mở Bộ lọc, chọn điều kiện rồi bấm Áp dụng; phần lớn thay
 | Tên chứa… | Tìm phần tên romaji, kana, kanji hoặc tên khác của diễn viên |
 | Thể loại, Tìm thể loại | Chọn một hay nhiều thể loại; số bên cạnh theo kết quả hiện tại |
 | Tất cả thể loại | Bất kỳ thể loại: khớp ít nhất một; Tất cả thể loại: phải có mọi thể loại đã chọn |
-| Hãng, Series, Nhãn | Chọn maker, series hoặc label; có gợi ý tên và các giá trị phổ biến |
+| Hãng, Loạt phim, Nhãn | Chọn hãng, loạt phim hoặc nhãn; có gợi ý tên và các giá trị phổ biến |
 | Từ năm, Đến năm | Giới hạn năm phát hành, gồm cả hai đầu |
 | Dài ≥ (phút), Dài ≤ (phút) | Giới hạn thời lượng theo phút |
 | Điểm tối thiểu | Từ 0 đến 10; điểm do nguồn cung cấp |

@@ -11,11 +11,21 @@ use Tests\E2E\Support\StepFailure;
 
 final class CreateApiKey extends HttpStep
 {
+    /** The scopes the journeys call with this key: movie lookup and search, bulk lookup and performer profiles. */
+    private const SCOPES = ['movies', 'bulk', 'performers'];
+
     public function __construct(private readonly string $label = 'E2E consumer') {}
 
     public function run(Context $context): Context
     {
-        $result = $this->exchange($context, 'POST', '/api/v1/admin/keys', ['X-Owner-Token' => $context->ownerToken], ['label' => $this->label]);
+        $headers = ['X-Owner-Token' => $context->ownerToken];
+
+        // A key without scopes must be refused, so the journeys never run against an unscoped key.
+        $refused = $this->exchange($context, 'POST', '/api/v1/admin/keys', $headers, ['label' => $this->label, 'scopes' => []]);
+        $context = $refused->context;
+        $this->expectStatus($context, $refused->response, 422);
+
+        $result = $this->exchange($context, 'POST', '/api/v1/admin/keys', $headers, ['label' => $this->label, 'scopes' => self::SCOPES]);
         $context = $result->context;
         $this->expectStatus($context, $result->response, 201);
         $id = $result->response->json('data.id');

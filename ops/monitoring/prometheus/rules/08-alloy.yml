@@ -1,0 +1,39 @@
+groups:
+
+- name: AlloyMonitoring
+
+
+  rules:
+
+    - alert: GrafanaAlloyServiceDown
+      expr: 'count by (instance) (alloy_build_info offset 2h) unless count by (instance) (alloy_build_info)'
+      for: 0m
+      labels:
+        severity: critical
+      annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
+        summary: Grafana Alloy service down (instance {{ $labels.instance }})
+        description: "Alloy on instance {{ $labels.instance }} is not responding or has stopped running.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+
+    - alert: GrafanaAlloyUnhealthyComponents
+      expr: 'sum by (job) (alloy_component_controller_running_components{health_type!="healthy"}) > 0'
+      for: 15m
+      labels:
+        severity: warning
+      annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
+        summary: Grafana Alloy unhealthy components (instance {{ $labels.instance }})
+        description: "One or more Alloy pipeline components (receivers, exporters, processors, discovery, etc.) under job {{ $labels.job }} are reporting a non-healthy status, even though the Alloy process itself is still running.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"
+
+    - alert: GrafanaAlloySlowComponentEvaluations
+      expr: 'sum by (job, component_path, component_id) (rate(alloy_component_evaluation_slow_seconds[10m])) > 0'
+      for: 15m
+      labels:
+        severity: warning
+      annotations:
+        value: "{{ $value }}"
+        runbook: https://wiki.jooservices.local/runbooks/monitoring
+        summary: Grafana Alloy slow component evaluations (instance {{ $labels.instance }})
+        description: "Component {{ $labels.component_id }} at path {{ $labels.component_path }} under job {{ $labels.job }} is taking too long to evaluate, which can lead to stale scrape targets or delayed pipeline processing.\n  VALUE = {{ $value }}\n  LABELS = {{ $labels }}"

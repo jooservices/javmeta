@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueRepository;
 use App\Models\CrawlQueue;
 use App\Services\Crawl\CrawlQueueService;
 use Illuminate\Console\Command;
@@ -35,7 +36,7 @@ final class RetryRequeueCommand extends Command
             return self::FAILURE;
         }
 
-        $row = CrawlQueue::query()->find((int) $id);
+        $row = app(CrawlQueueRepository::class)->modelQuery(CrawlQueue::class)->find((int) $id);
         if (! $row instanceof CrawlQueue || ! $queue->requeuePermanentFailure($row)) {
             $this->error('The row is missing or its error is not retryable.');
 

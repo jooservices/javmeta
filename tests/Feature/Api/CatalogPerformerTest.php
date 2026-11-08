@@ -25,6 +25,8 @@ final class CatalogPerformerTest extends TestCase
         $this->assertSame([['name' => 'O', 'performer_count' => 4]], $this->getJson('/api/v1/meta/catalog/blood_types', $headers)->json('data'));
         $this->assertSame([['name' => 'O', 'performer_count' => 4], ['name' => 'Unknown', 'performer_count' => 2]], $this->getJson('/api/v1/meta/catalog/blood_types?include_unknown=1', $headers)->assertOk()->json('data'));
         $this->assertSame([['name' => '東京都', 'performer_count' => 4]], $this->getJson('/api/v1/meta/catalog/locations?q=tok', $headers)->json('data'));
+        Performer::factory()->create(['location' => 'Kyoto']);
+        $this->assertSame([['name' => '東京都', 'performer_count' => 4]], $this->getJson('/api/v1/meta/catalog/locations?q=tok', $headers)->json('data'));
         $this->assertSame(['D', 'E'], array_column($this->getJson('/api/v1/meta/catalog/cups?sort=name', $headers)->json('data'), 'name'));
     }
 }

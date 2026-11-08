@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Observability;
 
+use App\Repositories\ObservabilityServiceRepository;
 use App\Models\ApiUsageLog;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
@@ -29,6 +30,8 @@ use App\Services\Search\ElasticsearchRequestHealth;
 use App\Services\Health\SourceScheduleFreshness;
 use App\Services\Observability\NodeEgressProbe;
 use App\Services\Workers\HorizonLayoutSnapshot;
+use App\Services\Workers\HorizonWorkerLayout;
+use App\Services\Workers\PostgresConnectionBudget;
 use App\Services\Report\NodeSampleAggregator;
 use App\Services\Report\NodeSampleStore;
 use App\Services\Report\ReportMetrics;
@@ -71,6 +74,8 @@ final class PublishMetricsCommand extends Command
         NodeSampleAggregator $sampleAggregator,
         ReportMetrics $reportMetrics,
         NormalizationRejectionMetrics $normalizationMetrics,
+        HorizonWorkerLayout $workerLayout,
+        PostgresConnectionBudget $connectionBudget,
     ): int {
         try {
             $statsSampler->sample();
@@ -100,6 +105,7 @@ final class PublishMetricsCommand extends Command
             $this->catalogMetrics(),
             $this->failedJobMetrics(),
             $this->postgresCapacityMetrics(),
+            $this->postgresConnectionBudgetMetrics($workerLayout, $connectionBudget),
             $this->alertMetricPoints($alertMetrics),
             $this->horizonWorkerMetrics(),
             $this->nodeMetrics($nodeSamples, $sampleAggregator),
@@ -144,7 +150,7 @@ final class PublishMetricsCommand extends Command
         $points = [];
         $defaultStaleSeconds = (int) config('javmeta_alerts.watchdog.source_stale_seconds', 86400);
 
-        foreach (Source::query()->get() as $source) {
+        foreach (app(ObservabilityServiceRepository::class)->modelQuery(Source::class)->get() as $source) {
             $gapDetails = $gapPolicy->describe((string) $source->getKey(), $source);
             $labels = [
                 'source_slug' => (string) $source->getKey(),
@@ -249,7 +255,7 @@ final class PublishMetricsCommand extends Command
     private function queueMetrics(): array
     {
         $points = [];
-        $rows = CrawlQueue::query()
+        $rows = app(ObservabilityServiceRepository::class)->modelQuery(CrawlQueue::class)
             ->selectRaw('status, count(*) as c')
             ->groupBy('status')
             ->get();
@@ -262,7 +268,7 @@ final class PublishMetricsCommand extends Command
             ];
         }
 
-        $oldestClaimed = CrawlQueue::query()
+        $oldestClaimed = app(ObservabilityServiceRepository::class)->modelQuery(CrawlQueue::class)
             ->where('status', CrawlQueue::STATUS_CLAIMED)
             ->whereNotNull('claimed_at')
             ->orderBy('claimed_at')
@@ -272,7 +278,7 @@ final class PublishMetricsCommand extends Command
             'value' => $oldestClaimed !== null ? max(0, (int) now()->diffInSeconds($oldestClaimed)) : -1,
         ];
 
-        $avgAttempts = CrawlQueue::query()
+        $avgAttempts = app(ObservabilityServiceRepository::class)->modelQuery(CrawlQueue::class)
             ->whereIn('status', [CrawlQueue::STATUS_PENDING, CrawlQueue::STATUS_RETRY_PENDING, CrawlQueue::STATUS_FAILED])
             ->avg('attempts');
         $points[] = [
@@ -281,7 +287,7 @@ final class PublishMetricsCommand extends Command
         ];
 
         $egressLabel = (string) data_get(config('javmeta_queues.retry.fetch_profile', []), 'egress_label', 'default');
-        foreach (CrawlQueue::query()->where('status', CrawlQueue::STATUS_RETRY_PENDING)
+        foreach (app(ObservabilityServiceRepository::class)->modelQuery(CrawlQueue::class)->where('status', CrawlQueue::STATUS_RETRY_PENDING)
             ->select('source_slug', 'retry_round', 'retry_egress_label')
             ->selectRaw('COUNT(*) AS total')
             ->groupBy('source_slug', 'retry_round', 'retry_egress_label')->get() as $row) {
@@ -296,7 +302,7 @@ final class PublishMetricsCommand extends Command
             ];
         }
 
-        foreach (DB::table('crawl_retry_metrics')->get() as $row) {
+        foreach (app(ObservabilityServiceRepository::class)->tableQuery('crawl_retry_metrics')->get() as $row) {
             $name = match ((string) $row->outcome) {
                 'success' => 'retry_success_total',
                 'failed_permanent' => 'retry_failed_permanent_total',
@@ -324,7 +330,7 @@ final class PublishMetricsCommand extends Command
     private function crawlDispatchMetrics(CrawlDispatchHeartbeat $dispatchHeartbeat): array
     {
         $age = $dispatchHeartbeat->ageSeconds();
-        $hasDueWork = CrawlQueue::query()
+        $hasDueWork = app(ObservabilityServiceRepository::class)->modelQuery(CrawlQueue::class)
             ->whereIn('status', [CrawlQueue::STATUS_PENDING, CrawlQueue::STATUS_RETRY_PENDING])
             ->where(static function ($query): void {
                 $query->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', now());
@@ -361,7 +367,7 @@ final class PublishMetricsCommand extends Command
     {
         $points = [];
         $since = now()->subMinutes(5);
-        $rows = CrawlEvent::query()
+        $rows = app(ObservabilityServiceRepository::class)->modelQuery(CrawlEvent::class)
             ->where('created_at', '>=', $since)
             ->selectRaw('kind, count(*) as c')
             ->groupBy('kind')
@@ -388,7 +394,7 @@ final class PublishMetricsCommand extends Command
         $flaresolverrDurationMs = 0;
 
         if (Schema::hasTable('crawl_fetch_attempts')) {
-            $rows = DB::table('crawl_fetch_attempts')
+            $rows = app(ObservabilityServiceRepository::class)->tableQuery('crawl_fetch_attempts')
                 ->where('created_at', '>=', now()->subMinute())
                 ->selectRaw('source_slug, method, outcome, COUNT(*) AS attempts, COALESCE(SUM(duration_ms), 0) AS duration_ms')
                 ->groupBy('source_slug', 'method', 'outcome')
@@ -423,7 +429,7 @@ final class PublishMetricsCommand extends Command
             'value' => min(1.0, max(0.0, $flaresolverrDurationMs / ($slots * 60_000))),
         ];
 
-        foreach (Source::query()->get(['slug']) as $source) {
+        foreach (app(ObservabilityServiceRepository::class)->modelQuery(Source::class)->get(['slug']) as $source) {
             foreach ($fetchMethodPlan->preferenceValuesForSource((string) $source->slug) as $method => $preferred) {
                 $points[] = [
                     'name' => MetricStreams::NAMES['fetch_method_preference'],
@@ -444,7 +450,7 @@ final class PublishMetricsCommand extends Command
         }
 
         $since = now()->subMinute();
-        $rows = DB::table('crawl_fetch_attempts')
+        $rows = app(ObservabilityServiceRepository::class)->tableQuery('crawl_fetch_attempts')
             ->where('created_at', '>=', $since)
             ->selectRaw('source_slug, method, egress_ip, outcome, COUNT(*) AS attempts')
             ->groupBy('source_slug', 'method', 'egress_ip', 'outcome')
@@ -463,7 +469,7 @@ final class PublishMetricsCommand extends Command
             ];
         }
 
-        $egressRows = DB::table('crawl_fetch_attempts')
+        $egressRows = app(ObservabilityServiceRepository::class)->tableQuery('crawl_fetch_attempts')
             ->where('created_at', '>=', $since)
             ->selectRaw('egress_ip, SUM(CASE WHEN outcome <> ? THEN 1 ELSE 0 END) AS attempts', ['skipped'])
             ->selectRaw('SUM(CASE WHEN outcome <> ? AND (http_status IN (403, 429) OR NULLIF(cf_mitigated, ?) IS NOT NULL) THEN 1 ELSE 0 END) AS blocked', ['skipped', ''])
@@ -539,7 +545,7 @@ final class PublishMetricsCommand extends Command
     private function apiMetrics(): array
     {
         $since = now()->subMinute();
-        $rows = ApiUsageLog::query()
+        $rows = app(ObservabilityServiceRepository::class)->modelQuery(ApiUsageLog::class)
             ->where('created_at', '>=', $since)
             ->get(['endpoint', 'status_code', 'response_ms']);
 
@@ -592,14 +598,14 @@ final class PublishMetricsCommand extends Command
 
         $points[] = [
             'name' => MetricStreams::NAMES['movies_needs_review'],
-            'value' => Movie::query()->where('needs_review', true)->count(),
+            'value' => app(ObservabilityServiceRepository::class)->modelQuery(Movie::class)->where('needs_review', true)->count(),
         ];
         $points[] = [
             'name' => MetricStreams::NAMES['review_flags_open'],
-            'value' => ReviewFlag::query()->whereNull('resolved_at')->count(),
+            'value' => app(ObservabilityServiceRepository::class)->modelQuery(ReviewFlag::class)->whereNull('resolved_at')->count(),
         ];
 
-        $tiers = Movie::query()
+        $tiers = app(ObservabilityServiceRepository::class)->modelQuery(Movie::class)
             ->selectRaw('completeness_tier, count(*) as c')
             ->groupBy('completeness_tier')
             ->get();
@@ -612,32 +618,7 @@ final class PublishMetricsCommand extends Command
         }
 
         // Conflict rate per field: movies with >=2 distinct value_hash / movies with observations for field.
-        $driver = DB::connection()->getDriverName();
-        if ($driver === 'pgsql') {
-            $conflicts = DB::select(<<<'SQL'
-                SELECT field,
-                       COUNT(*) FILTER (WHERE distinct_hashes >= 2)::float
-                         / NULLIF(COUNT(*), 0) AS conflict_rate
-                FROM (
-                    SELECT movie_id, field, COUNT(DISTINCT value_hash) AS distinct_hashes
-                    FROM movie_observations
-                    GROUP BY movie_id, field
-                ) per_movie
-                GROUP BY field
-            SQL);
-        } else {
-            $conflicts = DB::select(<<<'SQL'
-                SELECT field,
-                       CAST(SUM(CASE WHEN distinct_hashes >= 2 THEN 1 ELSE 0 END) AS REAL)
-                         / NULLIF(COUNT(*), 0) AS conflict_rate
-                FROM (
-                    SELECT movie_id, field, COUNT(DISTINCT value_hash) AS distinct_hashes
-                    FROM movie_observations
-                    GROUP BY movie_id, field
-                ) per_movie
-                GROUP BY field
-            SQL);
-        }
+        $conflicts = app(ObservabilityServiceRepository::class)->observationConflictRates();
 
         foreach ($conflicts as $row) {
             $points[] = [
@@ -657,7 +638,7 @@ final class PublishMetricsCommand extends Command
     {
         $points = [];
         $since = now()->subHour();
-        $rows = CrawlRun::query()
+        $rows = app(ObservabilityServiceRepository::class)->modelQuery(CrawlRun::class)
             ->where('started_at', '>=', $since)
             ->selectRaw('source_slug,
                 COALESCE(SUM(pages_fetched),0) as pages_fetched,
@@ -690,11 +671,11 @@ final class PublishMetricsCommand extends Command
     private function catalogMetrics(): array
     {
         return [
-            ['name' => MetricStreams::NAMES['movies_total'], 'value' => Movie::query()->count()],
-            ['name' => MetricStreams::NAMES['performers_total'], 'value' => Performer::query()->whereNull('canonical_performer_id')->count()],
+            ['name' => MetricStreams::NAMES['movies_total'], 'value' => app(ObservabilityServiceRepository::class)->modelQuery(Movie::class)->count()],
+            ['name' => MetricStreams::NAMES['performers_total'], 'value' => app(ObservabilityServiceRepository::class)->modelQuery(Performer::class)->whereNull('canonical_performer_id')->count()],
             [
                 'name' => MetricStreams::NAMES['observations_1d'],
-                'value' => DB::table('movie_observations')->where('crawled_at', '>=', now()->subDay())->count(),
+                'value' => app(ObservabilityServiceRepository::class)->tableQuery('movie_observations')->where('crawled_at', '>=', now()->subDay())->count(),
             ],
         ];
     }
@@ -709,10 +690,10 @@ final class PublishMetricsCommand extends Command
         }
 
         return [
-            ['name' => MetricStreams::NAMES['failed_jobs'], 'value' => DB::table('failed_jobs')->count()],
+            ['name' => MetricStreams::NAMES['failed_jobs'], 'value' => app(ObservabilityServiceRepository::class)->tableQuery('failed_jobs')->count()],
             [
                 'name' => MetricStreams::NAMES['failed_jobs_1h'],
-                'value' => DB::table('failed_jobs')->where('failed_at', '>=', now()->subHour())->count(),
+                'value' => app(ObservabilityServiceRepository::class)->tableQuery('failed_jobs')->where('failed_at', '>=', now()->subHour())->count(),
             ],
         ];
     }
@@ -724,11 +705,11 @@ final class PublishMetricsCommand extends Command
      */
     private function postgresCapacityMetrics(): array
     {
-        if (DB::connection()->getDriverName() !== 'pgsql') {
+        $row = app(ObservabilityServiceRepository::class)->postgresConnectionCapacity();
+        if ($row === null) {
             return [];
         }
 
-        $row = DB::selectOne("SELECT COUNT(*)::int AS used, current_setting('max_connections')::int AS maximum FROM pg_stat_activity WHERE backend_type = 'client backend'");
         $used = max(0, (int) ($row->used ?? 0));
         $maximum = max(1, (int) ($row->maximum ?? 1));
 
@@ -736,6 +717,20 @@ final class PublishMetricsCommand extends Command
             ['name' => MetricStreams::NAMES['postgres_connections_used'], 'value' => $used],
             ['name' => MetricStreams::NAMES['postgres_connections_max'], 'value' => $maximum],
             ['name' => MetricStreams::NAMES['postgres_connection_utilization'], 'value' => $used / $maximum],
+        ];
+    }
+
+    /** @return list<array{name: string, value: float|int}> */
+    private function postgresConnectionBudgetMetrics(HorizonWorkerLayout $layout, PostgresConnectionBudget $budget): array
+    {
+        $summary = $budget->summary($layout->configuredFleetWorkerCount());
+
+        return [
+            ['name' => MetricStreams::NAMES['postgres_connection_demand'], 'value' => $summary['demand']],
+            ['name' => MetricStreams::NAMES['postgres_connection_role_limit'], 'value' => $summary['role_limit']],
+            ['name' => MetricStreams::NAMES['postgres_connection_budget_limit'], 'value' => $summary['budget_limit']],
+            ['name' => MetricStreams::NAMES['postgres_connection_demand_warning_threshold'], 'value' => $summary['warning_threshold']],
+            ['name' => MetricStreams::NAMES['postgres_connection_demand_warning'], 'value' => $summary['warning'] ? 1 : 0],
         ];
     }
 

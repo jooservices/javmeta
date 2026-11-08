@@ -50,11 +50,24 @@
     .metric b { display: block; margin-top: 5px; font-size: 21px; font-variant-numeric: tabular-nums; }
     .metric span { color: var(--muted); font-size: 11px; }
     .rows { display: grid; gap: 0; }
-    .row { display: grid; grid-template-columns: 104px 110px minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px 0; border-top: 1px solid #2e424a; font-size: 12px; }
+    .row { display: grid; grid-template-columns: 104px minmax(110px, 1.3fr) minmax(0, 1fr); gap: 10px; align-items: start; padding: 10px 0; border-top: 1px solid #2e424a; font-size: 12px; }
     .row b { color: #f3d1a5; }
-    .row span:last-child { color: var(--muted); overflow-wrap: anywhere; }
+    .row span { min-width: 0; overflow-wrap: anywhere; }
+    .row span:last-child { color: var(--muted); }
     .empty { color: var(--muted); padding: 15px 0; font-size: 13px; }
     .error-box { border: 1px solid #a75658; border-radius: 10px; background: #4a242b; color: #ffd8d9; padding: 15px; margin-bottom: 18px; }
+    .nodes-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 14px; }
+    .nodes-form label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
+    .nodes-form input, .nodes-form select { background: #0d141b; color: #edf4f2; border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; font: inherit; min-width: 200px; }
+    .nodes-form input:focus, .nodes-form select:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(103,207,186,.18); }
+    .action { border: 1px solid var(--accent); background: var(--accent); color: #09241f; border-radius: 8px; padding: 9px 14px; font-weight: 700; }
+    .action:disabled { opacity: .5; cursor: default; }
+    .action.ghost { background: transparent; color: var(--accent); }
+    .join-box { border: 1px dashed var(--accent); border-radius: 10px; padding: 14px; margin-bottom: 14px; background: #102029; }
+    .join-box code { display: block; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 12.5px; margin: 8px 0 10px; color: #dff7f1; }
+    .join-box .steps { margin: 0 0 10px 18px; padding: 0; color: var(--muted); font-size: 13px; }
+    .node-row { display: grid; grid-template-columns: minmax(0, 1.2fr) 90px 100px minmax(0, 1fr); gap: 10px; padding: 10px 0; border-top: 1px solid #2e424a; font-size: 12px; align-items: center; }
+    .badge-used { color: var(--accent); } .badge-expired { color: var(--muted); } .badge-pending { color: var(--warn); }
     a { color: var(--accent); }
     @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
     @media (max-width: 550px) { header, main { padding-left: 15px; padding-right: 15px; } .metrics { grid-template-columns: repeat(2, 1fr); } .row { grid-template-columns: 82px 78px minmax(0, 1fr); } }
@@ -89,6 +102,23 @@
       <section class="panel"><h2>Activity</h2><p class="hint">Recent crawl events</p><div id="events" class="rows"></div></section>
     </div>
   </div>
+  <section class="panel" id="nodes" aria-labelledby="nodes-title">
+    <h2 id="nodes-title">Nodes</h2>
+    <p class="hint">Add a worker node: you only need an Ubuntu 24.04 virtual machine. Create a one-time command here and run it on that machine.</p>
+    <form class="nodes-form" id="node-form">
+      <label>Node name<input id="node-name" name="node_name" required minlength="3" maxlength="64" pattern="[a-z][a-z0-9\-]*" placeholder="worker-3" autocomplete="off"></label>
+      <label>Role<select id="node-role" name="role"><option value="worker">Worker</option></select></label>
+      <button class="action" id="node-create" type="submit">Create join command</button>
+    </form>
+    <div id="node-error" class="error-box" role="alert" hidden></div>
+    <div id="join-box" class="join-box" hidden aria-live="polite">
+      <strong>Run this on the new VM as a user with sudo.</strong>
+      <ol class="steps"><li>The command works once and expires <span id="join-expiry">soon</span>.</li><li>It installs the worker and connects it to this installation.</li><li>The node appears below as <em>used</em>.</li></ol>
+      <code id="join-command"></code>
+      <button class="action ghost" id="join-copy" type="button">Copy command</button> <span id="join-copied" class="hint" role="status"></span>
+    </div>
+    <div id="node-list" class="rows"><div class="empty">Loading nodes…</div></div>
+  </section>
 </main>
 <script>
 (() => {
@@ -129,6 +159,41 @@
     }
   }
   refresh(); setInterval(refresh, 15000);
+
+  const csrf = @json(csrf_token());
+  const nodesEndpoint = @json(route('operations.nodes.index'));
+  async function loadNodes() {
+    try {
+      const response = await fetch(nodesEndpoint, {credentials: 'same-origin', cache: 'no-store', headers: {Accept: 'application/json'}});
+      if (!response.ok) throw new Error(`Nodes request returned ${response.status}`);
+      const rows = (await response.json()).data;
+      $('node-list').innerHTML = rows.map(row => `<div class="node-row"><b>${esc(row.node_name)}</b><span>${esc(row.role)}</span><span class="badge-${esc(row.status)}">${esc(row.status)}</span><span>${row.status === 'used' ? 'used ' + esc(time(row.used_at)) : 'expires ' + esc(time(row.expires_at))}</span></div>`).join('') || '<div class="empty">No node has been added yet.</div>';
+    } catch (error) {
+      $('node-list').innerHTML = `<div class="empty">Could not load nodes: ${esc(error.message)}</div>`;
+    }
+  }
+  $('node-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = $('node-create'); button.disabled = true; $('node-error').hidden = true;
+    try {
+      const response = await fetch(nodesEndpoint, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf}, body: JSON.stringify({node_name: $('node-name').value.trim(), role: $('node-role').value})});
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(Object.values(body.errors || {}).flat().join(' ') || body.message || `Request returned ${response.status}`);
+      $('join-command').textContent = body.data.command;
+      $('join-expiry').textContent = `at ${time(body.data.expires_at)}`;
+      $('join-copied').textContent = '';
+      $('join-box').hidden = false;
+      loadNodes();
+    } catch (error) {
+      $('node-error').textContent = error.message; $('node-error').hidden = false;
+    } finally { button.disabled = false; }
+  });
+  $('join-copy').addEventListener('click', async () => {
+    const text = $('join-command').textContent;
+    try { await navigator.clipboard.writeText(text); $('join-copied').textContent = 'Copied'; }
+    catch { const range = document.createRange(); range.selectNodeContents($('join-command')); const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range); $('join-copied').textContent = 'Press Ctrl+C to copy'; }
+  });
+  loadNodes(); setInterval(loadNodes, 15000);
 })();
 </script>
 </body>

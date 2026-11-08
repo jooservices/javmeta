@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Repositories\PerformerRepository;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 
 final class PerformerIdentityReportCommand extends Command
 {
@@ -20,7 +20,7 @@ final class PerformerIdentityReportCommand extends Command
             'Review', 'Source performer', 'Source name', 'Candidate', 'Candidate name', 'Reason', 'Similarity',
         ]));
 
-        $rows = DB::table('performer_identity_reviews as reviews')
+        $rows = app(PerformerRepository::class)->tableQuery('performer_identity_reviews as reviews')
             ->join('performers as source', 'source.id', '=', 'reviews.source_performer_id')
             ->join('performers as candidate', 'candidate.id', '=', 'reviews.candidate_performer_id')
             ->where('reviews.status', (string) $this->option('status'))

@@ -23,7 +23,7 @@ final class QueueAttemptLifecycleTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_a_claim_left_in_the_buffer_past_timeout_is_reclaimed_without_counting_an_attempt(): void
+    public function test_a_claim_left_in_the_buffer_waits_for_the_backlog_window_before_reclaiming(): void
     {
         Carbon::setTestNow('2026-10-20 10:00:00');
 
@@ -43,6 +43,15 @@ final class QueueAttemptLifecycleTest extends TestCase
             self::assertNull($claim?->started_at);
 
             Carbon::setTestNow(now()->addSeconds(901));
+            self::assertSame(0, $queue->reclaimStaleClaimed(900));
+            self::assertSame(CrawlQueue::STATUS_CLAIMED, $row->refresh()->status);
+
+            $backlogWindow = max(
+                (int) config('javmeta_queues.depth_limit', 100),
+                (int) config('javmeta_queues.browser_depth_limit', 100),
+                (int) config('javmeta_queues.retry.depth_limit', 10),
+            ) * max(1, (int) config('javmeta_queues.worker_timeout', 180));
+            Carbon::setTestNow(now()->addSeconds($backlogWindow));
 
             self::assertSame(1, $queue->reclaimStaleClaimed(900));
             $row->refresh();

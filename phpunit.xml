@@ -16,12 +16,6 @@
         <include>
             <directory>app</directory>
         </include>
-        <exclude>
-            <!-- CLI orchestration is verified through smoke/integration runs. -->
-            <directory>app/Console/Commands</directory>
-            <!-- CrawlerX is an external process boundary; jobs use a fixture-backed adapter in unit tests. -->
-            <file>app/Services/Crawler/CrawlerxClient.php</file>
-        </exclude>
     </source>
     <php>
         <!-- The suite parses large live-captured pages; 128M (PHP default) is too tight with Xdebug loaded. -->

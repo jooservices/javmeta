@@ -6,8 +6,7 @@ namespace App\Services\Crawl;
 
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
+use App\Repositories\CrawlStatsServiceRepository;
 use InvalidArgumentException;
 
 final class CrawlStatsRollup
@@ -16,7 +15,10 @@ final class CrawlStatsRollup
     public const GLOBAL_LANE = '__global__';
     public const GLOBAL_METHOD = '__global__';
 
-    public function __construct(private readonly CrawlStatsAggregator $aggregator) {}
+    public function __construct(
+        private readonly CrawlStatsAggregator $aggregator,
+        private readonly ?CrawlStatsServiceRepository $repository = null,
+    ) {}
 
     /**
      * @return array{hours: int, attempt_rows: int, elapsed_ms: float}
@@ -27,7 +29,7 @@ final class CrawlStatsRollup
         $from = CarbonImmutable::instance($from)->utc()->startOfHour();
         $until = CarbonImmutable::instance($until)->utc();
 
-        if (! Schema::hasTable('crawl_fetch_attempts') || $until <= $from) {
+        if (! $this->repository()->hasFetchAttemptsTable() || $until <= $from) {
             return ['hours' => 0, 'attempt_rows' => 0, 'elapsed_ms' => $this->elapsedMs($started)];
         }
 
@@ -35,10 +37,7 @@ final class CrawlStatsRollup
             throw new InvalidArgumentException('Crawl statistics backfill is outside the retention window.');
         }
 
-        if ($backfill && ! DB::table('crawl_fetch_attempts')
-            ->where('started_at', '>=', $this->bound($from))
-            ->where('started_at', '<', $this->bound($until))
-            ->exists()) {
+        if ($backfill && ! $this->repository()->attemptsExist($from, $until)) {
             return ['hours' => 0, 'attempt_rows' => 0, 'elapsed_ms' => $this->elapsedMs($started)];
         }
 
@@ -62,19 +61,14 @@ final class CrawlStatsRollup
             $hourUntil = $until;
         }
 
-        $attempts = DB::table('crawl_fetch_attempts')
-            ->select(['source_slug', 'lane', 'method', 'started_at', 'duration_ms', 'http_status', 'cf_mitigated', 'outcome', 'error_code'])
-            ->where('started_at', '>=', $this->bound($hour))
-            ->where('started_at', '<', $this->bound($hourUntil))
-            ->orderBy('started_at')
-            ->cursor();
+        $attempts = $this->repository()->attemptsForHour($hour, $hourUntil);
         $aggregates = $this->aggregator->aggregate($attempts);
         $details = [];
         foreach ($aggregates['groups'] as $row) {
             $details[] = $this->databaseRow($row);
         }
 
-        $counts = $this->globalData($hour, $hourUntil)[$hour->toDateTimeString()] ?? [];
+        $counts = $this->repository()->globalData($hour, $hourUntil)[$hour->toDateTimeString()] ?? [];
         $aggregate = $aggregates['hours'][0] ?? $this->emptyAggregate($hour);
         $global = $this->databaseRow(array_merge(
             $aggregate,
@@ -93,31 +87,12 @@ final class CrawlStatsRollup
         $now = now()->utc();
         if ($details !== []) {
             foreach ($details as &$detail) {
-                $detail['created_at'] = $this->bound($now);
+                $detail['created_at'] = $this->repository()->bound($now);
             }
             unset($detail);
         }
-        $global['created_at'] = $this->bound($now);
-
-        DB::transaction(function () use ($details, $global): void {
-            if ($details !== []) {
-                DB::table('crawl_stats_hourly')->upsert(
-                    $details,
-                    ['hour_at', 'source_slug', 'lane', 'method'],
-                    ['attempts', 'ok', 'blocked', 'timeout', 'other_error', 'skipped', 'avg_duration_ms', 'p90_duration_ms', 'bytes_total', 'updated_at'],
-                );
-            }
-
-            DB::table('crawl_stats_hourly')->upsert(
-                [$global],
-                ['hour_at', 'source_slug', 'lane', 'method'],
-                [
-                    'attempts', 'ok', 'blocked', 'timeout', 'other_error', 'skipped', 'avg_duration_ms',
-                    'p90_duration_ms', 'bytes_total', 'movies_new', 'movies_updated', 'performers_new',
-                    'jobs_failed', 'updated_at',
-                ],
-            );
-        });
+        $global['created_at'] = $this->repository()->bound($now);
+        $this->repository()->storeHour($details, $global);
 
         return count($details);
     }
@@ -133,79 +108,9 @@ final class CrawlStatsRollup
         return $hours;
     }
 
-    /** @return array<string, array<string, int|null>> */
-    private function globalData(CarbonImmutable $from, CarbonImmutable $until): array
+    private function repository(): CrawlStatsServiceRepository
     {
-        $expression = $this->hourExpression('started_at');
-        $data = [];
-        $runs = DB::table('crawl_runs')
-            ->selectRaw("{$expression} AS hour_at, SUM(movies_new) AS movies_new, SUM(movies_updated) AS movies_updated, SUM(proxy_bytes) AS bytes_total")
-            ->where('started_at', '>=', $this->bound($from))
-            ->where('started_at', '<', $this->bound($until))
-            ->groupByRaw($expression)
-            ->get();
-
-        foreach ($runs as $row) {
-            $key = $this->hourKey($row->hour_at);
-            $data[$key] = [
-                'movies_new' => (int) $row->movies_new,
-                'movies_updated' => (int) $row->movies_updated,
-                'performers_new' => 0,
-                'jobs_failed' => 0,
-                'bytes_total' => (int) $row->bytes_total,
-            ];
-        }
-
-        $performerExpression = $this->hourExpression('first_seen_at');
-        $performers = DB::table('performers')
-            ->selectRaw("{$performerExpression} AS hour_at, COUNT(*) AS total")
-            ->whereNotNull('first_seen_at')
-            ->where('first_seen_at', '>=', $this->bound($from))
-            ->where('first_seen_at', '<', $this->bound($until))
-            ->groupByRaw($performerExpression)
-            ->get();
-        foreach ($performers as $row) {
-            $key = $this->hourKey($row->hour_at);
-            $data[$key] ??= ['movies_new' => 0, 'movies_updated' => 0, 'performers_new' => 0, 'jobs_failed' => 0, 'bytes_total' => null];
-            $data[$key]['performers_new'] = (int) $row->total;
-        }
-
-        if (Schema::hasTable('failed_jobs')) {
-            $failureExpression = $this->hourExpression('failed_at', false);
-            $failures = DB::table('failed_jobs')
-                ->selectRaw("{$failureExpression} AS hour_at, COUNT(*) AS total")
-                ->where('failed_at', '>=', $from)
-                ->where('failed_at', '<', $until)
-                ->groupByRaw($failureExpression)
-                ->get();
-            foreach ($failures as $row) {
-                $key = $this->hourKey($row->hour_at);
-                $data[$key] ??= ['movies_new' => 0, 'movies_updated' => 0, 'performers_new' => 0, 'jobs_failed' => 0, 'bytes_total' => null];
-                $data[$key]['jobs_failed'] = (int) $row->total;
-            }
-        }
-
-        return $data;
-    }
-
-    /** Bind a moment so a PostgreSQL session time zone other than UTC cannot shift the window of timestamptz columns. */
-    private function bound(\DateTimeInterface $moment): CarbonImmutable|string
-    {
-        $moment = CarbonImmutable::instance($moment);
-
-        return DB::connection()->getDriverName() === 'pgsql' ? $moment->utc()->format('Y-m-d H:i:s.uP') : $moment;
-    }
-
-    private function hourExpression(string $column, bool $withTimeZone = true): string
-    {
-        return DB::connection()->getDriverName() === 'pgsql'
-            ? ($withTimeZone ? "date_trunc('hour', {$column}, 'UTC')" : "date_trunc('hour', {$column})")
-            : "strftime('%Y-%m-%d %H:00:00', {$column})";
-    }
-
-    private function hourKey(mixed $hour): string
-    {
-        return CarbonImmutable::parse((string) $hour)->utc()->startOfHour()->toDateTimeString();
+        return $this->repository ?? app(CrawlStatsServiceRepository::class);
     }
 
     private function emptyAggregate(CarbonImmutable $hour): array
@@ -228,7 +133,7 @@ final class CrawlStatsRollup
     private function databaseRow(array $row): array
     {
         return [
-            'hour_at' => $this->bound($row['hour_at']),
+            'hour_at' => $this->repository()->bound($row['hour_at']),
             'source_slug' => (string) ($row['source_slug'] ?? self::GLOBAL_SOURCE),
             'lane' => (string) ($row['lane'] ?? self::GLOBAL_LANE),
             'method' => (string) ($row['method'] ?? self::GLOBAL_METHOD),
@@ -245,7 +150,7 @@ final class CrawlStatsRollup
             'movies_updated' => $row['movies_updated'] ?? null,
             'performers_new' => $row['performers_new'] ?? null,
             'jobs_failed' => $row['jobs_failed'] ?? null,
-            'updated_at' => $this->bound(now()->utc()->toImmutable()),
+            'updated_at' => $this->repository()->bound(now()->utc()->toImmutable()),
         ];
     }
 

@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueRepository;
 use App\Services\Crawl\CrawlStatsRollup;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use LogicException;
 
 final class StatsReportCommand extends Command
@@ -46,7 +46,7 @@ final class StatsReportCommand extends Command
     /** @return array<string, array<string, int|float|bool|null>> */
     private function groupsFor(CarbonImmutable $from, CarbonImmutable $until, string $by, string $source): array
     {
-        $query = DB::table('crawl_stats_hourly')
+        $query = app(CrawlQueueRepository::class)->tableQuery('crawl_stats_hourly')
             ->where('hour_at', '>=', $from)
             ->where('hour_at', '<=', $until)
             ->where(static function ($query): void {
@@ -139,7 +139,7 @@ final class StatsReportCommand extends Command
 
     private function displayTrend(CarbonImmutable $from, CarbonImmutable $until): void
     {
-        $trend = DB::table('crawl_stats_hourly')
+        $trend = app(CrawlQueueRepository::class)->tableQuery('crawl_stats_hourly')
             ->where('source_slug', CrawlStatsRollup::GLOBAL_SOURCE)
             ->where('lane', CrawlStatsRollup::GLOBAL_LANE)
             ->where('method', CrawlStatsRollup::GLOBAL_METHOD)

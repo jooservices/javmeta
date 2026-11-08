@@ -37,6 +37,7 @@ return [
         'media' => 'Xử lý media',
         'capture' => 'Ghi luồng',
         'ui_security' => 'Bảo mật giao diện',
+        'nodes' => 'Thêm node',
         'startup_health' => 'Sức khỏe khi khởi động',
         'normalization' => 'Performer normalization',
     ],
@@ -64,6 +65,9 @@ return [
         'ui_security.login_required' => ['group' => 'ui_security', 'label' => 'Yêu cầu đăng nhập chủ sở hữu', 'description' => 'Bảo vệ giao diện và cấu hình quản trị bằng phiên đăng nhập chủ sở hữu.', 'type' => 'bool', 'legacy_env' => ['JAVMETA_UI_LOGIN_REQUIRED'], 'config' => ['javmeta.ui_login_required']],
         'ui_security.owner_admin_token' => ['group' => 'ui_security', 'label' => 'Token quản trị chủ sở hữu', 'description' => 'Được mã hóa trong cơ sở dữ liệu và không hiển thị lại.', 'type' => 'secret', 'legacy_env' => ['JAVMETA_OWNER_ADMIN_TOKEN'], 'config' => ['javmeta_auth.owner_admin_token']],
         'ui_security.mcp_api_key' => ['group' => 'ui_security', 'label' => 'API key MCP cũ', 'description' => 'Được mã hóa trong cơ sở dữ liệu và không hiển thị lại; API key mới nên dùng scope MCP.', 'type' => 'secret', 'legacy_env' => ['JAVMETA_MCP_API_KEY'], 'config' => ['javmeta_auth.mcp_api_key']],
+        'nodes.enrollment_ttl_minutes' => ['group' => 'nodes', 'label' => 'Thời hạn mã thêm node (phút)', 'description' => 'Mã dùng một lần để thêm node hết hạn sau số phút này.', 'type' => 'int', 'config' => ['javmeta_nodes.enrollment_ttl_minutes'], 'min' => 5, 'max' => 240],
+        'nodes.release_repo_url' => ['group' => 'nodes', 'label' => 'Kho mã nguồn cho node mới', 'description' => 'Địa chỉ Git mà node mới dùng để cài đặt; node phải đọc được kho này.', 'type' => 'string', 'config' => ['javmeta_nodes.release_repo_url']],
+        'nodes.release_ref' => ['group' => 'nodes', 'label' => 'Nhánh, tag hoặc commit cho node mới', 'description' => 'Bản phát hành mà node mới cài đặt; nên trùng bản đang chạy.', 'type' => 'string', 'config' => ['javmeta_nodes.release_ref']],
         'dataset.allowed_databases' => ['group' => 'dataset', 'label' => 'Cơ sở dữ liệu cho phép nạp dữ liệu mẫu', 'description' => 'Chỉ cho phép nạp và xóa dữ liệu mẫu trên các cơ sở dữ liệu này; ngoài kiểm thử luôn cần --force.', 'type' => 'string_list', 'config' => ['javmeta_dataset.allowed_databases']],
         'perf.warm_enabled' => ['group' => 'search', 'label' => 'Làm ấm bộ nhớ đệm', 'description' => 'Tự làm mới trạng thái và bộ lọc toàn bộ danh mục theo lịch, giảm thời gian chờ khi bộ nhớ đệm hết hạn.', 'type' => 'bool', 'config' => ['javmeta_perf.warm_enabled']],
 
@@ -158,7 +162,7 @@ return [
         'crawl.lane_browser_pins' => ['group' => 'browser', 'label' => 'Ghim nguồn vào làn trình duyệt', 'description' => 'Mỗi dòng là một mã nguồn ưu tiên dùng trình duyệt.', 'type' => 'string_list', 'config' => ['javmeta_queues.lane_browser_pins']],
         'queue.worker_timeout' => ['group' => 'timeouts', 'label' => 'Timeout client fetch (giây)', 'description' => 'Thời gian tối đa worker chờ fetch; phải dài hơn timeout của dịch vụ fetch.', 'type' => 'int', 'config' => ['javmeta_queues.worker_timeout'], 'legacy_env' => ['JAVMETA_QUEUE_TIMEOUT'], 'bootstrap_only' => true, 'min' => 10, 'max' => 3600, 'restart' => 'javmeta-horizon', 'apply_after_seconds' => 900],
 
-        'crawl.stale_claim_timeout_seconds' => ['group' => 'cleanup', 'label' => 'Việc kẹt được giải phóng sau (giây)', 'description' => 'Việc ở trạng thái claimed lâu hơn mức này được trả lại hàng đợi.', 'type' => 'int', 'config' => ['javmeta_sources.defaults.queue.stale_claim_timeout_seconds'], 'min' => 60, 'max' => 86400],
+        'crawl.stale_claim_timeout_seconds' => ['group' => 'cleanup', 'label' => 'Việc kẹt được giải phóng sau (giây)', 'description' => 'Việc đã bắt đầu được thu hồi sau mức này; việc chưa bắt đầu còn được chờ theo giới hạn hàng đợi và timeout worker.', 'type' => 'int', 'config' => ['javmeta_sources.defaults.queue.stale_claim_timeout_seconds'], 'min' => 60, 'max' => 86400],
         'crawl.block_delays_seconds' => ['group' => 'crawl', 'label' => 'Thời gian chờ khi bị chặn (giây, cách nhau bằng dấu phẩy)', 'description' => 'Các lần chặn/challenge trong luồng thường dùng thời gian chờ theo danh sách này trước khi chuyển sang làn retry.', 'type' => 'int_list', 'config' => ['javmeta_sources.defaults.queue.block_delays_seconds'], 'legacy_env' => ['JAVMETA_BLOCK_DELAYS']],
         'crawl.retry_backoff_seconds' => ['group' => 'crawl', 'label' => 'Backoff giữa các lần thử crawl (giây)', 'description' => 'Khoảng nghỉ theo số lần thử trước khi chuyển sang vòng retry riêng.', 'type' => 'int_list', 'min_item' => 1, 'max_item' => 86400, 'max_items' => 10, 'config' => ['javmeta_sources.defaults.queue.retry_backoff_seconds']],
         'crawl.fresh_interval_minutes' => ['group' => 'crawl', 'label' => 'Đọc lại trang đầu mỗi (phút)', 'description' => 'Chu kỳ đọc lại trang đầu danh sách để bắt phim mới.', 'type' => 'int', 'config' => ['javmeta_sources.defaults.loop.fresh_interval_minutes'], 'legacy_env' => ['JAVMETA_FRESH_INTERVAL_MINUTES'], 'min' => 1, 'max' => 10080],
@@ -294,6 +298,7 @@ return [
         'domains.command_center_host' => ['group' => 'domains', 'label' => 'Tên miền Command Center', 'description' => 'Trang vận hành (/ops). Đăng nhập ở tên miền này vào thẳng /ops; giao diện XCrawler trỏ nút Vận hành về đây. Để trống nếu không tách tên miền.', 'type' => 'string', 'config' => ['javmeta_domains.command_center_host']],
         'backup.manifest_path' => ['group' => 'backup', 'label' => 'Đường dẫn manifest sao lưu', 'description' => 'Tệp trạng thái được lệnh backup cập nhật sau khi hoàn tất.', 'type' => 'string', 'legacy_env' => ['JAVMETA_BACKUP_MANIFEST'], 'config' => ['backup.manifest_path']],
         'backup.stale_after_seconds' => ['group' => 'cleanup', 'label' => 'Bản sao lưu coi là cũ sau (giây)', 'description' => 'Dùng cho cảnh báo sao lưu hằng phút.', 'type' => 'int', 'legacy_env' => ['JAVMETA_BACKUP_STALE_AFTER_SECONDS'], 'config' => ['backup.stale_after_seconds'], 'min' => 3600, 'max' => 2592000],
+        'backup.monitoring_enabled' => ['group' => 'backup', 'label' => 'Bật giám sát sao lưu', 'description' => 'Tắt mặc định. Khi bật, hệ thống kiểm tra tuổi bản sao lưu mỗi phút, gửi cảnh báo nếu quá cũ và tính vào báo cáo sẵn sàng.', 'type' => 'bool', 'config' => ['backup.monitoring_enabled']],
 
         'normalization.blood_types' => ['group' => 'normalization', 'label' => 'Nhóm máu hợp lệ', 'description' => 'Các nhóm máu chuẩn mà bộ chuẩn hóa chấp nhận: A, B, O và AB.', 'type' => 'string_list', 'item_options' => ['A', 'B', 'O', 'AB'], 'config' => ['javmeta_normalization.blood_types']],
         'normalization.cups' => ['group' => 'normalization', 'label' => 'Cỡ cúp hợp lệ', 'description' => 'Các cỡ cúp chuẩn mà bộ chuẩn hóa chấp nhận, từ A đến K.', 'type' => 'string_list', 'item_options' => ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'], 'config' => ['javmeta_normalization.cups']],

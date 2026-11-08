@@ -76,6 +76,11 @@ environment.
 | `javmeta_postgres_connections_used` | - | Active PostgreSQL sessions across the instance. |
 | `javmeta_postgres_connections_max` | - | Configured PostgreSQL max_connections. |
 | `javmeta_postgres_connection_utilization` | - | Active sessions divided by max_connections; alert threshold is 85% sustained for five minutes. |
+| `javmeta_postgres_connection_demand` | — | Configured maximum PostgreSQL slots for all Horizon worker profiles across the primary and worker nodes. It is a capacity estimate, not a live session count. |
+| `javmeta_postgres_connection_role_limit` | — | Configured PostgreSQL application-role connection limit. |
+| `javmeta_postgres_connection_budget_limit` | — | Maximum worker demand after subtracting the configured non-worker reserve from the role limit. |
+| `javmeta_postgres_connection_demand_warning_threshold` | — | Warning threshold in PostgreSQL slots; 75% of the role limit by default. |
+| `javmeta_postgres_connection_demand_warning` | — | `1` when configured worker demand meets or exceeds the warning threshold, otherwise `0`. |
 | `javmeta_alert_firing` | `rule` | Unitless 0/1 gauge while a rule is firing. Source rules use `source_success_rate:<slug>` and `backlog_depth:<slug>`. |
 | `javmeta_alert_event_count` | `state`, `severity` | Episode count, split into `firing` or `resolved` and `warning`, `critical` or `info`. Retention follows `alerts.history_retention_days`. |
 | `javmeta_mongo_archive_write_failures` | — | Cumulative count of failed Mongo archive writes since the cache counter was created. |
@@ -125,8 +130,9 @@ complete minute's Redis bucket. Budget, started and waiting are the latest
 per-source snapshot in that minute; dispatched and stop reasons are summed for
 the minute. `javmeta_feed_run_ms` is the average duration across runs in that
 minute. Buckets use the database-configured diagnostics retention and TTL. The
-application has no Prometheus text endpoint; these metrics use the existing
-OpenObserve OTLP metrics path.
+`GET /metrics` also exposes Prometheus text gauges for the PostgreSQL worker
+connection budget only. Other application metrics use the existing OpenObserve
+OTLP metrics path.
 
 Retry metrics are emitted by `obs:publish-metrics`. Pending is a point-in-time
 gauge; the two `_total` metrics are cumulative counters stored in
@@ -177,6 +183,11 @@ ratio uses the same configured browser slot count as the Playwright estimate.
 | Application metrics | OTLP `/api/{org}/v1/metrics`; each point includes `environment` and `role` labels | `PublishMetricsCommand`, normally run by the scheduler. |
 | HTTP and crawl spans | OTLP `/api/{org}/v1/traces` | `TraceHttpRequest` and `TraceCrawlJob`. |
 | Watchdog notifications | Application alert events, not a separate metric stream | `WatchdogCommand` dispatches `WorkerHeartbeatStale` and `CrawlSourceUnhealthy`; listeners use `AlertDispatcher` for Telegram/activity-log fan-out. |
+
+The worker heartbeat index is bounded: an instance is forgotten one hour after
+its last beat, and the index keeps at most 200 instances. The owner's status
+summary lists at most 50 workers and reports the real count in `workers_total`
+with `workers_truncated`. Guests never receive worker data.
 
 The crawl dispatch age and severity series are exported by the existing
 `obs:publish-metrics` command. The stale series is active only while due crawl
@@ -242,6 +253,8 @@ when it clears. Follow messages and bot replies use product-specific templates.
 | Stuck queue | Claimed items older than `JAVMETA_WATCHDOG_QUEUE_STUCK_SECONDS` | `crawler:watchdog` |
 | Due pending backlog | Due pending items reach `JAVMETA_WATCHDOG_PENDING_QUEUE_LIMIT` (default 1,000); a recovery message follows below the limit | `crawler:watchdog` |
 | Old backup | Last backup older than `backup.stale_after_seconds` (26 hours) or missing | `javmeta:backup-status` |
+
+Backup monitoring is OFF by default (setting `backup.monitoring_enabled`). When off, `javmeta:backup-status` is not scheduled, no metric or alert is sent and the readiness report ignores backups. Turn it on in Settings > Sao lưu.
 
 `OPENOBSERVE_STREAM_METRICS` is retained in configuration for compatibility;
 the current metrics client sends OTLP metric names and does not route them into

@@ -17,7 +17,7 @@ final class LoginController
             return redirect()->route($this->homeRoute($request));
         }
 
-        return view('operations.login')->with('email', 'soulevilx@gmail.com');
+        return view('operations.login');
     }
 
     public function store(Request $request): RedirectResponse
@@ -28,13 +28,13 @@ final class LoginController
         ]);
 
         if (! Auth::attempt($credentials)) {
-            return back()->withErrors(['email' => 'Invalid email or password.'])->onlyInput('email');
+            return back()->withErrors(['email' => 'Email hoặc mật khẩu không đúng.'])->onlyInput('email');
         }
 
         if ($request->user()?->role !== 'super_administrator') {
             Auth::logout();
 
-            return back()->withErrors(['email' => 'This account cannot access operations.'])->onlyInput('email');
+            return back()->withErrors(['email' => 'Tài khoản này không được vào XCrawler.'])->onlyInput('email');
         }
 
         $request->session()->regenerate();

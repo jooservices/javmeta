@@ -8,7 +8,7 @@ Xem quy mô và hình dạng bộ sưu tập: tổng phim, diễn viên, phim m�
 
 ## Cách dùng
 
-Xem Phim theo năm phát hành, Maker nhiều phim nhất, Thể loại phổ biến và Series lớn nhất. Bấm tên hoặc năm để xem các phim được tính. Tất cả → mở danh mục đầy đủ.
+Xem Phim theo năm phát hành, Hãng nhiều phim nhất, Thể loại phổ biến và Loạt phim lớn nhất. Bấm tên hoặc năm để xem các phim được tính. Tất cả → mở danh mục đầy đủ.
 
 ## Nếu có vẻ sai
 

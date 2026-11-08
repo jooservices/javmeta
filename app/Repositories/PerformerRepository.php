@@ -11,22 +11,9 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
-use JOOservices\LaravelRepository\Contracts\RepositoryInterface;
-use JOOservices\LaravelRepository\Repositories\EloquentRepository;
-use JOOservices\LaravelRepository\Traits\HasCrud;
-use JOOservices\LaravelRepository\Traits\HasFilter;
-use JOOservices\LaravelRepository\Traits\HasOrder;
-use JOOservices\LaravelRepository\Traits\HasRead;
-use JOOservices\LaravelRepository\Traits\HasRequestQuery;
 
-final class PerformerRepository extends EloquentRepository implements RepositoryInterface
+final class PerformerRepository extends BusinessQueryRepository
 {
-    use HasCrud;
-    use HasFilter;
-    use HasOrder;
-    use HasRead;
-    use HasRequestQuery;
-
     private readonly PerformerAttributeNormalizer $attributeNormalizer;
     /** @var list<string> */
     public const SORTS = ['name', 'updated_at', 'linked_title_count'];
@@ -35,6 +22,23 @@ final class PerformerRepository extends EloquentRepository implements Repository
     {
         parent::__construct($model);
         $this->attributeNormalizer = $attributeNormalizer ?? new PerformerAttributeNormalizer();
+    }
+
+    /** @return \Illuminate\Support\Collection<int, \stdClass> */
+    public function facetGroups(string $column): \Illuminate\Support\Collection
+    {
+        return DB::table('performers')->whereNull('canonical_performer_id')->whereNotNull($column)->where($column, '<>', '')
+            ->selectRaw('LOWER(' . $column . ') AS raw_name, COUNT(*) AS performer_count')
+            ->groupByRaw('LOWER(' . $column . ')')
+            ->get();
+    }
+
+    public function unknownBloodTypeCount(): int
+    {
+        return (int) DB::table('performers')->whereNull('canonical_performer_id')
+            ->where(static function ($query): void {
+                $query->whereNull('blood_type')->orWhere('blood_type', '=', '');
+            })->count();
     }
 
     /**
