@@ -19,7 +19,7 @@ export default {
   async render() {
     let st;
     try { st = (await admin('/ui-me/downloads/status')).data; } catch (e) { return { html: `<div class="wrap">${head('Tải về', '')}${errorBox(e)}</div>` }; }
-    if (!st.enabled) return { html: `<div class="wrap">${head('Tải về', 'qBittorrent')}${emptyBox('Tải về đang tắt', 'Bật trong Cài đặt → Tải về sau khi đã duyệt văn bản quyết định (JOOXCR-223).', a('#/settings', 'Mở Cài đặt', 'btn'))}</div>` };
+    if (!st.enabled) return { html: `<div class="wrap">${head('Tải về', 'qBittorrent')}${emptyBox('Tải về đang tắt', 'Bật tải về trong Cài đặt → Thư viện & media.', a('#/settings', 'Mở Cài đặt', 'btn'))}</div>` };
     let items;
     try { items = (await admin('/ui-me/downloads')).data.items; } catch (e) { return { html: `<div class="wrap">${head('Tải về', 'qBittorrent')}${errorBox(e)}</div>` }; }
     const html = `<div class="wrap">${head('Tải về', `${fmt(items.length)} mục`)}<div class="panel" id="dlist">${items.map(row).join('') || '<div class="row-i muted">Chưa có mục nào. Mở một phim và bấm “Tải về”.</div>'}</div></div>`;

@@ -62,7 +62,7 @@ export default {
             ['Cup', v(p.cup)], ['Debut', v(p.debut_date)],
             ['Số phim', `<span class="mono">${fmt(p.linked_title_count)}</span>`],
           ])}
-          <div><div class="muted" style="display:flex;justify-content:space-between"><span>Độ đầy đủ hồ sơ</span><span class="mono">${complete}%</span></div><div class="bar ${complete < 60 ? 'warn' : 'ok'}"><i style="width:${complete}%"></i></div>${missing.length ? `<div class="dim" style="margin-top:4px">Đang chờ crawl: ${esc(missing.join(', '))}</div>` : ''}</div></div></div></div>
+          <div><div class="muted" style="display:flex;justify-content:space-between"><span>Độ đầy đủ hồ sơ</span><span class="mono">${complete}%</span></div><div class="bar ${complete < 60 ? 'warn' : 'ok'}"><i style="width:${complete}%"></i></div>${missing.length ? `<div class="dim" style="margin-top:4px">Chưa có: ${esc(missing.join(', '))}</div>` : ''}</div></div></div></div>
       <div class="col">${tabsHtml}${bodyHtml}</div></div></div>`;
     return { html, mount };
   },

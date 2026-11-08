@@ -1,0 +1,10 @@
+{
+  "source_url": "https://s1s1s1.com/actress/detail/22486",
+  "final_url": "https://s1s1s1.com/actress/detail/22486",
+  "captured_at": "2026-11-02T22:43:50.802236+00:00",
+  "http_status": 200,
+  "content_hash": "047f6cd568d12a23022a60c781b7703bce531649b84b4f38f88a76bc463407e1",
+  "target_type": "performer_detail",
+  "fetch_method": "http",
+  "sanitized": false
+}

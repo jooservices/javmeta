@@ -1,0 +1,10 @@
+{
+  "source_url": "https://fitch-av.com/actress/detail/869733",
+  "final_url": "https://fitch-av.com/actress/detail/869733",
+  "captured_at": "2026-11-03T06:16:52.929905+00:00",
+  "http_status": 200,
+  "content_hash": "a937db6093f4d4e8426d2c3d0f6aaefe4d02ec4d7893346765422edc558fdc9f",
+  "target_type": "performer_detail",
+  "fetch_method": "http",
+  "sanitized": false
+}

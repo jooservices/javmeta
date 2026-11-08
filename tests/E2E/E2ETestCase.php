@@ -326,7 +326,7 @@ abstract class E2ETestCase extends TestCase
         $appEnvironment['APP_ENV'] = 'local';
         $appEnvironment['APP_KEY'] = (string) config('app.key');
         self::$appProcess = proc_open(
-            [PHP_BINARY, 'artisan', 'serve', '--host=127.0.0.1', '--port=' . $appPort],
+            [PHP_BINARY, 'artisan', 'serve', '--no-reload', '--host=127.0.0.1', '--port=' . $appPort],
             [0 => ['pipe', 'r'], 1 => ['file', self::$appLog, 'a'], 2 => ['file', self::$appLog, 'a']],
             $pipes,
             null,

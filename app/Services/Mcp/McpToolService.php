@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Services\Mcp;
 
+use App\Repositories\MovieRepository;
 use App\Exceptions\InvalidFilterException;
 use App\Exceptions\MovieNotFoundException;
-use App\Http\Controllers\CatalogController;
-use App\Http\Controllers\MovieCalendarController;
+use App\Data\Catalog\CatalogQuery;
 use App\Http\Controllers\MovieRelatedController;
-use App\Http\Controllers\SuggestController;
+use App\Data\Suggest\SuggestQuery;
 use Illuminate\Http\JsonResponse;
 use App\Http\Resources\MovieResource;
 use App\Http\Resources\MovieSummaryResource;
@@ -19,6 +19,9 @@ use App\Models\Movie;
 use App\Models\Performer;
 use App\Repositories\PerformerRepository;
 use App\Services\Crawl\CrawlStatusService;
+use App\Services\Catalog\CatalogService;
+use App\Services\Calendar\MovieCalendarService;
+use App\Services\Suggest\SuggestService;
 use App\Services\Health\SystemStatusService;
 use App\Services\Miss\ConsumerMissReporter;
 use App\Services\Movies\MovieLookupService;
@@ -41,6 +44,8 @@ final class McpToolService
         private readonly ConsumerMissReporter $misses,
         private readonly CrawlStatusService $crawlStatusService,
         private readonly SystemStatusService $systemStatusService,
+        private readonly CatalogService $catalogService,
+        private readonly MovieCalendarService $calendarService,
     ) {}
 
     /** @return list<array<string, mixed>> */
@@ -239,10 +244,10 @@ final class McpToolService
                 'lookup_performers' => $this->lookupPerformers($arguments),
                 'get_performer' => $this->getPerformer($arguments),
                 'get_counts' => $this->getCounts($arguments),
-                'get_catalog' => $this->viaController(fn() => app(CatalogController::class)->index($this->request($arguments), (string) ($arguments['kind'] ?? ''))),
-                'suggest' => $this->viaController(fn() => app(SuggestController::class)->index($this->request($arguments))),
+                'get_catalog' => $this->getCatalog($arguments),
+                'suggest' => $this->suggest($arguments),
                 'get_related_movies' => $this->viaController(fn() => app(MovieRelatedController::class)->show((string) ($arguments['code'] ?? ''), $this->movieLookup, $this->movieSearch)),
-                'get_release_calendar' => $this->viaController(fn() => app(MovieCalendarController::class)->index($this->request($arguments))),
+                'get_release_calendar' => $this->releaseCalendar($arguments),
                 'crawl_status' => $this->crawlStatus(),
                 'system_status' => $this->systemStatus(),
                 'search_scenes' => $this->searchScenes($arguments),
@@ -263,6 +268,56 @@ final class McpToolService
             throw new InvalidFilterException('Scene q must be 3–200 characters and per_page 1–50.');
         }
         return ['items' => app(\App\Services\Media\SceneSearchService::class)->search($q, $limit)];
+    }
+
+    /** @param array<string, mixed> $arguments @return array{items: array<string, mixed>, meta: array{}} */
+    private function suggest(array $arguments): array
+    {
+        $query = SuggestQuery::from((string) ($arguments['q'] ?? ''), (int) ($arguments['limit'] ?? 5));
+
+        return ['items' => app(SuggestService::class)->suggest($query)->toArray(), 'meta' => []];
+    }
+
+    /** @param array<string, mixed> $arguments @return array<string, mixed> */
+    private function releaseCalendar(array $arguments): array
+    {
+        $month = $arguments['month'] ?? null;
+        if ($month !== null && ! is_string($month)) {
+            throw new InvalidFilterException('Invalid month.', ['month' => ['YYYY-MM']]);
+        }
+
+        $snapshot = $this->calendarService->get($month);
+
+        return ['items' => $snapshot->days, 'meta' => $snapshot->meta()];
+    }
+
+    /** @param array<string, mixed> $arguments @return array<string, mixed> */
+    private function getCatalog(array $arguments): array
+    {
+        $request = $this->request($arguments);
+        $kind = (string) ($arguments['kind'] ?? '');
+        if (! in_array($kind, CatalogQuery::KINDS, true)) {
+            throw new InvalidFilterException('Unknown catalog.');
+        }
+
+        $query = trim((string) $request->query('q', ''));
+        $sort = (string) $request->query('sort', $kind === 'years' ? 'name' : 'movie_count');
+        $perPage = (int) $request->query('per_page', 50);
+        $page = max(1, (int) $request->query('page', 1));
+        if (! in_array($sort, CatalogQuery::SORTS, true) || $perPage < 1 || $perPage > 200) {
+            throw new InvalidFilterException('Invalid sort or per_page.', ['sort' => ['movie_count or name'], 'per_page' => ['1 to 200']]);
+        }
+
+        $result = $this->catalogService->index(new CatalogQuery(
+            $kind,
+            $query,
+            $sort,
+            $perPage,
+            $page,
+            $request->boolean('include_unknown'),
+        ));
+
+        return ['items' => $result->items, 'meta' => ['pagination' => $result->pagination]];
     }
 
     /** @param array<string, mixed> $arguments */
@@ -455,8 +510,8 @@ final class McpToolService
         unset($arguments);
 
         return [
-            'movies' => (int) Movie::query()->count(),
-            'performers' => (int) Performer::query()->whereNull('canonical_performer_id')->count(),
+            'movies' => (int) app(MovieRepository::class)->modelQuery(Movie::class)->count(),
+            'performers' => (int) app(MovieRepository::class)->modelQuery(Performer::class)->whereNull('canonical_performer_id')->count(),
         ];
     }
 
@@ -525,9 +580,9 @@ final class McpToolService
     {
         return [
             'name' => 'get_release_calendar',
-            'description' => 'Movies released in one month, grouped by day.',
+            'description' => 'Movies released in one month, grouped by day; defaults to the latest month with a release.',
             'inputSchema' => ['type' => 'object', 'properties' => [
-                'month' => ['type' => 'string', 'description' => 'YYYY-MM; default the current month.'],
+                'month' => ['type' => 'string', 'pattern' => '^\\d{4}-(0[1-9]|1[0-2])$', 'description' => 'YYYY-MM; defaults to the latest month with a release.'],
             ]],
         ];
     }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Auth;
 
+use App\Repositories\ApiKeyServiceRepository;
 use App\Models\ApiKey;
 use App\Support\Auth\CreatedApiKey;
 use Illuminate\Support\Facades\Cache;
@@ -23,7 +24,7 @@ final class ApiKeyService
         $keyHash = $this->hashPlaintext($plaintext);
         $prefix = substr($plaintext, 0, 12);
 
-        $model = ApiKey::query()->create([
+        $model = app(ApiKeyServiceRepository::class)->modelQuery(ApiKey::class)->create([
             'prefix' => $prefix,
             'key_hash' => $keyHash,
             'label' => $label,
@@ -39,8 +40,8 @@ final class ApiKeyService
 
     public function revoke(int $id): void
     {
-        $keyHash = ApiKey::query()->whereKey($id)->value('key_hash');
-        ApiKey::query()
+        $keyHash = app(ApiKeyServiceRepository::class)->modelQuery(ApiKey::class)->whereKey($id)->value('key_hash');
+        app(ApiKeyServiceRepository::class)->modelQuery(ApiKey::class)
             ->whereKey($id)
             ->update([
                 'status' => ApiKey::STATUS_REVOKED,
@@ -84,7 +85,7 @@ final class ApiKeyService
             }
         }
 
-        $apiKey = ApiKey::query()
+        $apiKey = app(ApiKeyServiceRepository::class)->modelQuery(ApiKey::class)
             ->where('key_hash', $keyHash)
             ->where('status', ApiKey::STATUS_ACTIVE)
             ->first();

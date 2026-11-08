@@ -5,17 +5,11 @@ declare(strict_types=1);
 namespace App\Repositories;
 
 use App\Models\Movie;
+use DateTimeImmutable;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
-use JOOservices\LaravelRepository\Contracts\RepositoryInterface;
-use JOOservices\LaravelRepository\Repositories\EloquentRepository;
-use JOOservices\LaravelRepository\Traits\HasCrud;
-use JOOservices\LaravelRepository\Traits\HasFilter;
-use JOOservices\LaravelRepository\Traits\HasOrder;
-use JOOservices\LaravelRepository\Traits\HasRead;
-use JOOservices\LaravelRepository\Traits\HasRequestQuery;
 
 /**
  * Movie search (REQ-4, AD-11): filtered, sorted, keyset-paginated reads.
@@ -35,14 +29,8 @@ use JOOservices\LaravelRepository\Traits\HasRequestQuery;
  *   (release_date DESC, id DESC), (updated_at DESC, id DESC) and
  *   (community_score DESC NULLS LAST, id DESC).
  */
-final class MovieRepository extends EloquentRepository implements RepositoryInterface
+final class MovieRepository extends BusinessQueryRepository
 {
-    use HasCrud;
-    use HasFilter;
-    use HasOrder;
-    use HasRead;
-    use HasRequestQuery;
-
     /** @var array<string, string> cursor sort => movies column */
     private const SORT_COLUMNS = [
         'release_date' => 'release_date',
@@ -53,6 +41,117 @@ final class MovieRepository extends EloquentRepository implements RepositoryInte
     public function __construct(Movie $model)
     {
         parent::__construct($model);
+    }
+
+    /** @return array{items: list<array{name: string, movie_count: int}>, total: int} */
+    public function movieCatalog(string $kind, string $query, string $sort, int $perPage, int $page): array
+    {
+        $nameColumn = match ($kind) {
+            'genres' => 'COALESCE(genres.label_raw, genres.label_normalized)',
+            'years' => $this->yearExpression(),
+            default => $this->catalogColumn($kind),
+        };
+        $base = match ($kind) {
+            'genres' => DB::table('genres')->join('movie_genres', 'movie_genres.genre_id', '=', 'genres.id')
+                ->selectRaw($nameColumn . ' AS name, COUNT(DISTINCT movie_genres.movie_id) AS movie_count')
+                ->groupByRaw($nameColumn),
+            'years' => DB::table('movies')->whereNotNull('release_date')
+                ->selectRaw($nameColumn . ' AS name, COUNT(*) AS movie_count')
+                ->groupByRaw($nameColumn),
+            default => DB::table('movies')->whereNotNull($nameColumn)->where($nameColumn, '<>', '')
+                ->selectRaw($nameColumn . ' AS name, COUNT(*) AS movie_count')
+                ->groupBy($nameColumn),
+        };
+
+        if ($query !== '') {
+            $pattern = '%' . mb_strtolower(str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $query)) . '%';
+            $kind === 'years'
+                ? $base->whereRaw('CAST(' . $nameColumn . ' AS TEXT) LIKE ?', [$pattern])
+                : $base->whereRaw('LOWER(' . $nameColumn . ') LIKE ?', [$pattern]);
+        }
+
+        $total = (int) DB::query()->fromSub(clone $base, 'c')->count();
+        $order = $sort === 'name' ? ($kind === 'years' ? 'name DESC' : 'name ASC') : 'movie_count DESC, name ASC';
+        $rows = DB::query()->fromSub($base, 'c')->orderByRaw($order)->forPage($page, $perPage)->get(['name', 'movie_count']);
+
+        /** @var list<array{name: string, movie_count: int}> $items */
+        $items = $rows->map(static fn(object $row): array => ['name' => (string) $row->name, 'movie_count' => (int) $row->movie_count])->all();
+
+        return ['items' => $items, 'total' => $total];
+    }
+
+    public function countAll(): int
+    {
+        return $this->newQuery()->count();
+    }
+
+    public function latestReleaseDate(): ?string
+    {
+        $latest = $this->tableQuery('movies')->whereNull('delisted_at')->whereNotNull('release_date')->max('release_date');
+
+        return is_string($latest) ? $latest : null;
+    }
+
+    /**
+     * @return list<array{
+     *     release_date: string,
+     *     display_code: ?string,
+     *     title_en: ?string,
+     *     title_jp: ?string,
+     *     cover_thumb_url: ?string,
+     *     cover_url: ?string,
+     *     maker: ?string
+     * }>
+     */
+    public function releaseCalendarRows(string $month): array
+    {
+        $from = new DateTimeImmutable($month . '-01');
+        $until = $from->modify('+1 month')->format('Y-m-d');
+        $rows = $this->tableQuery('movies')
+            ->where('release_date', '>=', $from->format('Y-m-d'))
+            ->where('release_date', '<', $until)
+            ->whereNull('delisted_at')
+            ->orderBy('release_date')
+            ->orderByDesc('community_score')
+            ->orderBy('id')
+            ->get(['release_date', 'display_code', 'title_en', 'title_jp', 'cover_thumb_url', 'cover_url', 'maker']);
+
+        return $rows->map(static fn(object $row): array => [
+            'release_date' => (string) $row->release_date,
+            'display_code' => $row->display_code === null ? null : (string) $row->display_code,
+            'title_en' => $row->title_en === null ? null : (string) $row->title_en,
+            'title_jp' => $row->title_jp === null ? null : (string) $row->title_jp,
+            'cover_thumb_url' => $row->cover_thumb_url === null ? null : (string) $row->cover_thumb_url,
+            'cover_url' => $row->cover_url === null ? null : (string) $row->cover_url,
+            'maker' => $row->maker === null ? null : (string) $row->maker,
+        ])->all();
+    }
+
+    public function countFirstSeenSince(DateTimeInterface $since): int
+    {
+        return $this->newQuery()->where('first_seen_at', '>=', $since)->count();
+    }
+
+    public function libraryMovieByCode(string $normalizedCode): ?object
+    {
+        return DB::table('movie_codes')
+            ->join('movies', 'movies.id', '=', 'movie_codes.movie_id')
+            ->where('movie_codes.code_normalized', $normalizedCode)
+            ->first(['movies.id', 'movies.display_code']);
+    }
+
+    private function catalogColumn(string $kind): string
+    {
+        return match ($kind) {
+            'makers' => 'maker',
+            'labels' => 'label',
+            default => 'series',
+        };
+    }
+
+    private function yearExpression(): string
+    {
+        return DB::getDriverName() === 'sqlite' ? "CAST(strftime('%Y', release_date) AS INTEGER)" : 'EXTRACT(YEAR FROM release_date)::int';
     }
 
     /**

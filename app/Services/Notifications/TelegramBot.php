@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace App\Services\Notifications;
 
 use App\Exceptions\InvalidFilterException;
-use App\Http\Controllers\SuggestController;
+use App\Data\Suggest\SuggestQuery;
+use App\Repositories\TelegramBotServiceRepository;
 use App\Services\Crawl\CrawlStatusService;
 use App\Services\Downloads\DownloadService;
 use App\Services\Settings\SettingsService;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use App\Services\Suggest\SuggestService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -19,13 +19,16 @@ use Throwable;
 /**
  * The owner's Telegram bot: ask for movies and performers, read the status, follow and list follows. It reads updates with
  * short polling (every minute from the scheduler), so no inbound port is opened, and it answers only the owner's chat id.
- * Every switch is a setting in the database. Download commands are not part of it until downloads exist.
+ * Feature switches are database settings; the bot token and chat id come from runtime secrets.
  */
 final class TelegramBot
 {
-    private const OFFSET_KIND = 'tg_offset';
-
-    public function __construct(private readonly SettingsService $settings, private readonly CrawlStatusService $status, private readonly DownloadService $downloads) {}
+    public function __construct(
+        private readonly SettingsService $settings,
+        private readonly CrawlStatusService $status,
+        private readonly DownloadService $downloads,
+        private readonly TelegramBotServiceRepository $repository,
+    ) {}
 
     /** @return array{handled: int, ignored: int, skipped: string|null} */
     public function poll(): array
@@ -33,12 +36,12 @@ final class TelegramBot
         if (! (bool) $this->settings->get('telegram.bot_enabled')) {
             return ['handled' => 0, 'ignored' => 0, 'skipped' => 'disabled'];
         }
-        $token = (string) $this->settings->get('telegram.bot_token');
-        if ($token === '' || (string) $this->settings->get('telegram.chat_id') === '') {
+        $token = $this->telegramToken();
+        if ($token === '' || $this->telegramChatId() === '') {
             return ['handled' => 0, 'ignored' => 0, 'skipped' => 'telegram is not configured'];
         }
 
-        $offset = (int) DB::table('user_marks')->where(['user_id' => 0, 'kind' => self::OFFSET_KIND])->value('key');
+        $offset = $this->repository->offset();
         try {
             $response = Http::timeout(max(1, (int) $this->settings->get('telegram.timeout')) + 5)->get($this->url($token, 'getUpdates'), ['offset' => $offset + 1, 'timeout' => 0, 'allowed_updates' => json_encode(['message', 'callback_query'])]);
         } catch (Throwable) {
@@ -70,7 +73,7 @@ final class TelegramBot
 
                 return ['handled' => $handled, 'ignored' => $ignored, 'skipped' => 'telegram update failed'];
             }
-            DB::table('user_marks')->updateOrInsert(['user_id' => 0, 'kind' => self::OFFSET_KIND, 'subject' => 'telegram'], ['key' => (string) $id, 'created_at' => now()]);
+            $this->repository->saveOffset($id);
             $offset = $id;
         }
 
@@ -106,7 +109,7 @@ final class TelegramBot
         }
         $reply = $this->download(substr($data, 3));
         try {
-            Http::timeout(max(1, (int) $this->settings->get('telegram.timeout')))->asJson()->post($this->url((string) $this->settings->get('telegram.bot_token'), 'answerCallbackQuery'), ['callback_query_id' => (string) ($query['id'] ?? ''), 'text' => $reply]);
+            Http::timeout(max(1, (int) $this->settings->get('telegram.timeout')))->asJson()->post($this->url($this->telegramToken(), 'answerCallbackQuery'), ['callback_query_id' => (string) ($query['id'] ?? ''), 'text' => $reply]);
         } catch (Throwable) {
             // The text answer below still reaches the owner.
         }
@@ -121,7 +124,7 @@ final class TelegramBot
     private function authorized(array $chat, array $sender): bool
     {
         $chatId = (string) ($chat['id'] ?? '');
-        if ($chatId === '' || $chatId !== (string) $this->settings->get('telegram.chat_id')) {
+        if ($chatId === '' || $chatId !== $this->telegramChatId()) {
             return false;
         }
         // Positive chat IDs identify private chats when an older update omits type.
@@ -210,21 +213,21 @@ final class TelegramBot
             return ['Gõ ít nhất 2 ký tự để tìm.', []];
         }
         $limit = max(1, min(10, (int) $this->settings->get('telegram.bot_max_results')));
-        $data = app(SuggestController::class)->index(Request::create('/', 'GET', ['q' => $q, 'limit' => $limit]))->getData(true)['data'] ?? [];
+        $data = app(SuggestService::class)->suggest(SuggestQuery::from($q, $limit))->toArray();
 
         $lines = [];
         $buttons = [];
-        foreach ((array) ($data['movies'] ?? []) as $m) {
+        foreach ($data['movies'] as $m) {
             $lines[] = '🎬 ' . $m['code'] . ' · ' . ($m['title'] ?? '') . (($m['maker'] ?? null) ? ' (' . $m['maker'] . ')' : '');
             if (count($buttons) < 3) {
                 $buttons[] = ['text' => $m['code'], 'url' => $this->appUrl('/movie/' . rawurlencode($m['code']))];
             }
         }
-        foreach ((array) ($data['performers'] ?? []) as $p) {
+        foreach ($data['performers'] as $p) {
             $lines[] = '👤 ' . ($p['name'] ?? '#' . $p['id']);
         }
         foreach (['genres' => '🏷', 'makers' => '🏢', 'series' => '📁'] as $key => $icon) {
-            foreach ((array) ($data[$key] ?? []) as $x) {
+            foreach ($data[$key] as $x) {
                 $lines[] = $icon . ' ' . $x['name'] . ' (' . $x['movie_count'] . ' phim)';
             }
         }
@@ -238,14 +241,14 @@ final class TelegramBot
         if ($code === '') {
             return ['Gõ /movie <mã phim>, ví dụ /movie SSIS-001.', []];
         }
-        $row = DB::table('movies')->whereRaw('UPPER(display_code) = ?', [strtoupper($code)])->first(['display_code', 'title_en', 'title_jp', 'maker', 'series', 'release_date', 'runtime_minutes', 'community_score']);
+        $row = $this->repository->movie($code);
         if ($row === null) {
             return ['Chưa có phim ' . $code . '.', []];
         }
-        $text = $row->display_code . ' · ' . ($row->title_en ?? $row->title_jp ?? '') . "\nPhát hành: " . ($row->release_date ? substr((string) $row->release_date, 0, 10) : 'chưa rõ')
-            . "\nMaker: " . ($row->maker ?? 'chưa rõ') . ($row->series ? "\nSeries: " . $row->series : '') . ($row->runtime_minutes ? "\nThời lượng: {$row->runtime_minutes} phút" : '') . ($row->community_score !== null ? "\nĐiểm: {$row->community_score}" : '');
+        $text = $row['display_code'] . ' · ' . ($row['title_en'] ?? $row['title_jp'] ?? '') . "\nPhát hành: " . ($row['release_date'] ? substr((string) $row['release_date'], 0, 10) : 'chưa rõ')
+            . "\nMaker: " . ($row['maker'] ?? 'chưa rõ') . ($row['series'] ? "\nSeries: " . $row['series'] : '') . ($row['runtime_minutes'] ? "\nThời lượng: {$row['runtime_minutes']} phút" : '') . ($row['community_score'] !== null ? "\nĐiểm: {$row['community_score']}" : '');
 
-        return [$text, [['text' => 'Mở', 'url' => $this->appUrl('/movie/' . rawurlencode((string) $row->display_code))]]];
+        return [$text, [['text' => 'Mở', 'url' => $this->appUrl('/movie/' . rawurlencode((string) $row['display_code']))]]];
     }
 
     private function follow(bool $on, string $argument): string
@@ -256,13 +259,13 @@ final class TelegramBot
         if (! in_array($subject, ['maker', 'series', 'performer'], true) || $name === '') {
             return 'Cú pháp: /' . ($on ? 'follow' : 'unfollow') . ' maker|series|performer <tên>.';
         }
-        $owner = DB::table('users')->where('role', 'super_administrator')->orderBy('id')->value('id');
+        $owner = $this->repository->ownerId();
         if ($owner === null) {
             return 'Chưa có tài khoản chủ sở hữu.';
         }
         $key = $name;
         if ($subject === 'performer') {
-            $id = DB::table('performers')->whereRaw('LOWER(name_romaji) = ?', [mb_strtolower($name)])->orWhereRaw('LOWER(name_kanji) = ?', [mb_strtolower($name)])->value('id');
+            $id = $this->repository->performerId($name);
             if ($id === null) {
                 return 'Không tìm thấy diễn viên “' . $name . '”.';
             }
@@ -270,9 +273,9 @@ final class TelegramBot
         }
         $row = ['user_id' => $owner, 'kind' => 'follow', 'subject' => $subject, 'key' => $key];
         if ($on) {
-            DB::table('user_marks')->insertOrIgnore([...$row, 'created_at' => now()]);
+            $this->repository->addFollow($row);
         } else {
-            DB::table('user_marks')->where($row)->delete();
+            $this->repository->removeFollow($row);
         }
 
         return ($on ? 'Đang theo dõi ' : 'Đã bỏ theo dõi ') . $subject . ' ' . $name . '.';
@@ -280,14 +283,15 @@ final class TelegramBot
 
     private function follows(): string
     {
-        $owner = DB::table('users')->where('role', 'super_administrator')->orderBy('id')->value('id');
-        $rows = DB::table('user_marks')->where('user_id', $owner)->where('kind', 'follow')->orderBy('subject')->get(['subject', 'key']);
-        if ($rows->isEmpty()) {
+        $owner = $this->repository->ownerId();
+        $rows = $this->repository->follows($owner);
+        if ($rows === []) {
             return 'Chưa theo dõi gì. Dùng /follow.';
         }
-        $names = DB::table('performers')->whereIn('id', $rows->where('subject', 'performer')->pluck('key')->map(static fn($k): int => (int) $k)->all())->pluck(DB::raw('COALESCE(name_romaji, name_kanji)'), 'id');
+        $performerIds = array_values(array_map(static fn(array $row): int => (int) $row['key'], array_filter($rows, static fn(array $row): bool => $row['subject'] === 'performer')));
+        $names = $this->repository->performerNames($performerIds);
 
-        return $rows->map(static fn($r): string => $r->subject . ' · ' . ($r->subject === 'performer' ? ($names[(int) $r->key] ?? '#' . $r->key) : $r->key))->implode("\n");
+        return implode("\n", array_map(static fn(array $row): string => $row['subject'] . ' · ' . ($row['subject'] === 'performer' ? ($names[(int) $row['key']] ?? '#' . $row['key']) : $row['key']), $rows));
     }
 
     private function appUrl(string $path): string
@@ -302,6 +306,20 @@ final class TelegramBot
         return "{$base}/bot{$token}/{$method}";
     }
 
+    private function telegramToken(): string
+    {
+        $token = config('laravel-notifications.channels.telegram.bot_token', '');
+
+        return is_string($token) ? $token : '';
+    }
+
+    private function telegramChatId(): string
+    {
+        $chatId = config('laravel-notifications.channels.telegram.chat_id', '');
+
+        return is_string($chatId) ? $chatId : '';
+    }
+
     /** @param list<array{text: string, url: string}> $buttons */
     private function send(string $chat, string $text, array $buttons): void
     {
@@ -309,7 +327,7 @@ final class TelegramBot
         if ($buttons !== []) {
             $payload['reply_markup'] = ['inline_keyboard' => [$buttons]];
         }
-        $response = Http::timeout(max(1, (int) $this->settings->get('telegram.timeout')))->asJson()->post($this->url((string) $this->settings->get('telegram.bot_token'), 'sendMessage'), $payload);
+        $response = Http::timeout(max(1, (int) $this->settings->get('telegram.timeout')))->asJson()->post($this->url($this->telegramToken(), 'sendMessage'), $payload);
         if (! $response->successful() || $response->json('ok') !== true) {
             throw new RuntimeException('Telegram send failed.');
         }

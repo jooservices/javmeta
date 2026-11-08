@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Settings;
 
+use App\Models\Source;
 use App\Models\User;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Monolog\Logger;
@@ -92,6 +93,38 @@ final class SettingsTest extends TestCase
         $this->assertFalse(config('javmeta_alerts.enabled'));
     }
 
+    public function test_success_rate_critical_threshold_cannot_exceed_the_warning_threshold(): void
+    {
+        $settings = app(SettingsService::class);
+        $settings->set('alerts.success_rate_min_percent', 85);
+        $settings->set('alerts.success_rate_critical_percent', 70);
+
+        try {
+            $settings->set('alerts.success_rate_critical_percent', 90);
+            self::fail('The critical threshold must not be higher than the warning threshold.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame(70, $settings->get('alerts.success_rate_critical_percent'));
+        }
+
+        try {
+            $settings->set('alerts.success_rate_min_percent', 60);
+            self::fail('The warning threshold must not be lower than the critical threshold.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame(85, $settings->get('alerts.success_rate_min_percent'));
+        }
+    }
+
+    public function test_saving_an_unrelated_setting_ignores_an_existing_invalid_success_rate_pair(): void
+    {
+        $this->store->set('settings.alerts.success_rate_min_percent', 60);
+        $settings = app(SettingsService::class);
+
+        $settings->set('alerts.enabled', false);
+
+        self::assertSame(60, $settings->get('alerts.success_rate_min_percent'));
+        self::assertFalse($settings->get('alerts.enabled'));
+    }
+
     public function test_feed_interval_accepts_only_supported_values_and_can_be_rolled_back(): void
     {
         $settings = app(SettingsService::class);
@@ -112,6 +145,68 @@ final class SettingsTest extends TestCase
         $this->assertSame(60, $setting['value']);
         $this->assertSame([5, 10, 15, 30, 60], $setting['options']);
         $this->assertSame('Chu kỳ nạp hàng đợi (giây)', $setting['label']);
+    }
+
+    public function test_retry_fetch_profile_is_database_backed_validated_and_applied(): void
+    {
+        $settings = app(SettingsService::class);
+        $profile = [
+            'flaresolverr_url' => 'http://retry-browser.internal:8191',
+            'playwright_url' => 'http://retry-playwright.internal:3000',
+            'http_proxy_url' => 'http://retry-egress.internal:8080',
+            'egress_label' => 'clean-egress',
+            'preferred_methods' => ['http', 'playwright'],
+        ];
+        $settings->set('retry.fetch_profile', $profile);
+
+        self::assertSame($profile, config('javmeta_queues.retry.fetch_profile'));
+        self::assertSame($profile, $settings->get('retry.fetch_profile'));
+        try {
+            $settings->set('retry.fetch_profile', ['http_proxy_url' => 'ftp://invalid.test']);
+            self::fail('Retry profile must reject non-HTTP proxy URLs.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame($profile, config('javmeta_queues.retry.fetch_profile'));
+        }
+        try {
+            $settings->set('retry.fetch_profile', ['preferred_methods' => ['unknown']]);
+            self::fail('Retry profile must reject unknown fetch methods.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame($profile, config('javmeta_queues.retry.fetch_profile'));
+        }
+    }
+
+    public function test_retry_fetch_profile_reads_ignore_invalid_stored_values(): void
+    {
+        $default = config('javmeta_queues.retry.fetch_profile');
+        $this->store->set(
+            'settings.retry.fetch_profile',
+            json_encode(['http_proxy_url' => 'https://retry-egress.internal?x=1'], JSON_THROW_ON_ERROR),
+        );
+        $settings = app(SettingsService::class);
+
+        self::assertSame($default, $settings->get('retry.fetch_profile'));
+        $setting = collect($settings->all())->firstWhere('key', 'retry.fetch_profile');
+        self::assertSame($default, $setting['value']);
+        self::assertSame('default', $setting['source']);
+        self::assertNotNull($setting['warning']);
+        self::assertStringNotContainsString('?x=1', json_encode($setting, JSON_THROW_ON_ERROR));
+    }
+
+    public function test_retry_fetch_profile_endpoints_reject_queries_and_fragments(): void
+    {
+        $settings = app(SettingsService::class);
+        $default = config('javmeta_queues.retry.fetch_profile');
+
+        foreach (['flaresolverr_url', 'playwright_url', 'http_proxy_url'] as $field) {
+            foreach (['?mode=test', '#fragment'] as $suffix) {
+                try {
+                    $settings->set('retry.fetch_profile', [$field => 'https://retry-service.internal' . $suffix]);
+                    self::fail("{$field} must reject a query or fragment.");
+                } catch (\InvalidArgumentException) {
+                    self::assertSame($default, config('javmeta_queues.retry.fetch_profile'));
+                }
+            }
+        }
     }
 
     public function test_crawl_dispatch_alert_thresholds_are_saved_database_settings(): void
@@ -148,7 +243,7 @@ final class SettingsTest extends TestCase
     {
         $settings = app(SettingsService::class);
         $settings->set('worker.queue_names', ['listing', 'detail', 'browser_detail', 'observability']);
-        $this->assertSame(['listing', 'detail', 'browser_detail', 'observability', 'browser_listing'], config('javmeta_queues.horizon_names'));
+        $this->assertSame(['listing', 'detail', 'browser_detail', 'observability', 'browser_listing', 'retry_listing', 'retry_detail'], config('javmeta_queues.horizon_names'));
         $settings->set('worker.queue_overrides', ['listing' => 2, 'browser_detail' => 1]);
         $this->assertSame(['listing' => 2, 'browser_detail' => 1], config('javmeta_queues.worker_queue_overrides'));
         foreach ([
@@ -172,6 +267,139 @@ final class SettingsTest extends TestCase
         $this->assertSame(['main' => ['default' => 2, 'queues' => ['listing' => 3]]], config('javmeta_queues.worker_node_overrides'));
     }
 
+    public function test_source_gap_override_map_accepts_valid_values_and_rejects_invalid_bounds(): void
+    {
+        $settings = app(SettingsService::class);
+        $overrides = ['javdb' => ['min' => 1.25, 'default' => 8, 'max' => 60]];
+
+        $settings->set('crawl.source_gap_overrides', $overrides);
+
+        self::assertSame($overrides, config('javmeta_queues.source_gap_overrides'));
+        self::assertSame($overrides, $settings->get('crawl.source_gap_overrides'));
+        foreach ([
+            ['javdb' => ['min' => 1, 'default' => 8]],
+            ['javdb' => ['min' => 8, 'default' => 1, 'max' => 60]],
+            ['javdb' => ['min' => 0.1, 'default' => 1, 'max' => 60]],
+            ['javdb' => ['min' => 1, 'default' => 8, 'max' => 601]],
+            ['bad slug!' => ['min' => 1, 'default' => 8, 'max' => 60]],
+            ['javd' => ['min' => 1, 'default' => 8, 'max' => 60]],
+            ['javdb' => ['min' => '1', 'default' => 8, 'max' => 60]],
+            '{' . str_repeat(' ', 10000) . '}',
+        ] as $invalid) {
+            try {
+                $settings->set('crawl.source_gap_overrides', $invalid);
+                self::fail('Invalid source gap overrides must be rejected.');
+            } catch (\InvalidArgumentException) {
+                self::assertSame($overrides, config('javmeta_queues.source_gap_overrides'));
+            }
+        }
+
+        Source::factory()->create(['slug' => 'persisted-site']);
+        $persistedOverride = ['persisted-site' => ['min' => 2, 'default' => 5, 'max' => 10]];
+        $settings->set('crawl.source_gap_overrides', $persistedOverride);
+        self::assertSame($persistedOverride, $settings->get('crawl.source_gap_overrides'));
+    }
+
+    public function test_performer_normalization_ranges_and_japan_location_aliases_are_editable_database_settings(): void
+    {
+        $settings = app(SettingsService::class);
+        $bloodTypes = config('javmeta_normalization.blood_types');
+        $cups = config('javmeta_normalization.cups');
+        $junkTokens = config('javmeta_normalization.junk_tokens');
+        $ranges = config('javmeta_normalization.field_ranges');
+        $backfillChunkSize = config('javmeta_normalization.backfill_chunk_size');
+        $settings->set('normalization.blood_types', $bloodTypes);
+        $settings->set('normalization.cups', $cups);
+        $settings->set('normalization.junk_tokens', $junkTokens);
+        $settings->set('normalization.field_ranges', $ranges);
+        $settings->set('normalization.backfill_chunk_size', $backfillChunkSize);
+
+        self::assertSame($bloodTypes, $settings->get('normalization.blood_types'));
+        self::assertSame($cups, $settings->get('normalization.cups'));
+        self::assertSame($junkTokens, $settings->get('normalization.junk_tokens'));
+        self::assertSame($ranges, $settings->get('normalization.field_ranges'));
+        self::assertSame($backfillChunkSize, $settings->get('normalization.backfill_chunk_size'));
+        self::assertSame($ranges, config('javmeta_normalization.field_ranges'));
+
+        try {
+            $settings->set('normalization.blood_types', ['Trans']);
+            self::fail('Blood types outside A, B, O, and AB must be rejected.');
+        } catch (\InvalidArgumentException) {
+            self::assertSame(['A', 'B', 'O', 'AB'], $settings->get('normalization.blood_types'));
+        }
+
+        $aliases = ['tokyo' => '東京都', '東京都' => '東京都'];
+        $settings->set('normalization.location_aliases', $aliases);
+        self::assertSame($aliases, $settings->get('normalization.location_aliases'));
+        self::assertSame($aliases, config('javmeta_normalization.location_aliases'));
+
+        foreach ([
+            ['normalization.blood_types', ['A', 'X']],
+            ['normalization.blood_types', []],
+            ['normalization.cups', ['A', 'Z']],
+            ['normalization.cups', []],
+            ['normalization.backfill_chunk_size', 0],
+            ['normalization.backfill_chunk_size', 5001],
+        ] as [$key, $value]) {
+            try {
+                $settings->set($key, $value);
+                self::fail("Invalid canonical allow-list {$key} must be rejected.");
+            } catch (\InvalidArgumentException) {
+                self::assertSame($bloodTypes, $settings->get('normalization.blood_types'));
+                self::assertSame($cups, $settings->get('normalization.cups'));
+            }
+        }
+
+        foreach ([['unknown' => ['–']], ['blood_type' => ['']]] as $invalidJunkTokens) {
+            try {
+                $settings->set('normalization.junk_tokens', $invalidJunkTokens);
+                self::fail('Junk tokens must use known fields and non-empty values.');
+            } catch (\InvalidArgumentException) {
+                self::assertSame($junkTokens, $settings->get('normalization.junk_tokens'));
+            }
+        }
+
+        foreach ([
+            ['height_cm' => ['min' => 1, 'max' => 500]],
+            ['' => '東京都'],
+            [...$ranges, 'birth_date' => ['min' => '2024-02-30', 'max' => 'today']],
+        ] as $invalid) {
+            try {
+                $key = array_key_exists('height_cm', $invalid) ? 'normalization.field_ranges' : 'normalization.location_aliases';
+                if (array_key_exists('birth_date', $invalid)) {
+                    $key = 'normalization.field_ranges';
+                }
+                $settings->set($key, $invalid);
+                self::fail('Incomplete normalization settings must be rejected.');
+            } catch (\InvalidArgumentException) {
+                self::assertSame($ranges, $settings->get('normalization.field_ranges'));
+            }
+        }
+    }
+
+    public function test_malformed_stored_source_gap_json_uses_the_code_default(): void
+    {
+        $this->store->set('settings.crawl.source_gap_overrides', '{');
+        $settings = app(SettingsService::class);
+
+        self::assertTrue($settings->apply());
+        self::assertSame([], config('javmeta_queues.source_gap_overrides'));
+    }
+
+    public function test_json_settings_without_a_declared_max_length_keep_their_existing_limit(): void
+    {
+        $settings = app(SettingsService::class);
+        $overrides = [];
+        for ($index = 0; $index < 50; $index++) {
+            $overrides['worker@' . str_repeat('a', 180) . $index] = ['default' => 2];
+        }
+        self::assertGreaterThan(10000, mb_strlen(json_encode($overrides, JSON_THROW_ON_ERROR)));
+
+        $settings->set('worker.node_overrides', $overrides);
+
+        self::assertSame($overrides, $settings->get('worker.node_overrides'));
+    }
+
     public function test_startup_health_settings_are_database_backed_and_validate_role_members(): void
     {
         $settings = app(SettingsService::class);
@@ -192,17 +420,27 @@ final class SettingsTest extends TestCase
         $this->assertContains('health.startup.primary.web', array_column($settings->all(), 'key'));
     }
 
-    public function test_env_import_dry_run_lists_current_values_and_redacts_secrets_without_writing(): void
+    public function test_env_import_dry_run_keeps_every_table_cell_short(): void
+    {
+        Artisan::call('settings:import-env', ['--dry-run' => true]);
+        $longest = 0;
+        foreach (explode("\n", Artisan::output()) as $line) {
+            $longest = max($longest, mb_strlen($line));
+        }
+
+        $this->assertLessThan(400, $longest, 'a long default must not widen the whole preview table');
+    }
+
+    public function test_env_import_dry_run_omits_telegram_credentials_without_writing(): void
     {
         $previous = $_ENV['NOTIFICATION_TELEGRAM_BOT_TOKEN'] ?? null;
         $_ENV['NOTIFICATION_TELEGRAM_BOT_TOKEN'] = 'test-secret-value';
         try {
             $preview = collect(app(SettingsService::class)->importPreview())->firstWhere('key', 'telegram.bot_token');
-            $this->assertSame('[redacted]', $preview['display'] ?? null);
+            $this->assertNull($preview);
             Artisan::call('settings:import-env', ['--dry-run' => true]);
             $output = Artisan::output();
-            $this->assertStringContainsString('telegram.bot_token', $output);
-            $this->assertStringContainsString('redacted', $output);
+            $this->assertStringNotContainsString('telegram.bot_token', $output);
             $this->assertStringNotContainsString('test-secret-value', $output);
             $this->assertNull($this->store->get('settings.telegram.bot_token'));
         } finally {
@@ -245,18 +483,20 @@ final class SettingsTest extends TestCase
         $this->assertSame(10, $settings->get('media.job_timeout_sec'));
     }
 
-    public function test_a_secret_is_stored_encrypted_and_never_returned(): void
+    public function test_telegram_credentials_are_not_registered_or_saved_as_settings(): void
     {
         $settings = app(SettingsService::class);
-        $result = $settings->set('telegram.bot_token', '123:secret-token');
-
-        $this->assertNull($result['new']);
-        $this->assertSame('123:secret-token', config('javmeta_alerts.telegram.bot_token'));
-        $this->assertSame('123:secret-token', config('laravel-notifications.channels.telegram.bot_token'), 'every config key of the setting is updated');
-        $row = collect($settings->all())->firstWhere('key', 'telegram.bot_token');
-        $this->assertNull($row['value']);
-        $this->assertTrue($row['is_set']);
-        $this->assertStringNotContainsString('secret-token', json_encode($settings->all(), JSON_THROW_ON_ERROR));
+        foreach (['telegram.bot_token', 'telegram.chat_id'] as $key) {
+            $this->assertArrayNotHasKey($key, $settings->definitions());
+            $this->assertNotContains($key, array_column($settings->all(), 'key'));
+            try {
+                $settings->set($key, 'test-secret-value');
+                $this->fail("{$key} must remain a runtime secret, not an editable setting.");
+            } catch (\InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+        $this->assertStringNotContainsString('test-secret-value', json_encode($settings->all(), JSON_THROW_ON_ERROR));
     }
 
     public function test_import_env_stores_the_current_values_once(): void
@@ -376,24 +616,24 @@ final class SettingsTest extends TestCase
     {
         config([
             'backup.manifest_path' => '/srv/javmeta/releases/20261102/storage/manifest.json',
-            'javmeta_alerts.hourly_report.state_path' => '/srv/javmeta/current/storage/report-state.json',
+            'javmeta_report.node_volume_path' => '/srv/javmeta/current',
         ]);
         SettingsService::forgetDefaults();
 
         $settings = app(SettingsService::class);
         $skipped = $settings->importSkippedPreview();
 
-        $this->assertSame(['report.state_path', 'backup.manifest_path'], array_column($skipped, 'key'));
+        $this->assertSame(['report.node_volume_path', 'backup.manifest_path'], array_column($skipped, 'key'));
         $this->assertSame('code default', $skipped[0]['environment']);
         $this->assertNotContains('backup.manifest_path', array_column($settings->importPreview(), 'key'));
         $settings->importDefaults();
         $this->assertNull($this->store->get('settings.backup.manifest_path'));
-        $this->assertNull($this->store->get('settings.report.state_path'));
+        $this->assertNull($this->store->get('settings.report.node_volume_path'));
     }
 
     public function test_import_env_skips_release_and_current_deployment_paths_and_reports_them(): void
     {
-        $names = ['JAVMETA_BACKUP_MANIFEST', 'JAVMETA_REPORT_STATE_PATH'];
+        $names = ['JAVMETA_BACKUP_MANIFEST'];
         $previous = [];
         foreach ($names as $name) {
             $previous[$name] = [$_ENV[$name] ?? null, $_SERVER[$name] ?? null, getenv($name)];
@@ -401,28 +641,21 @@ final class SettingsTest extends TestCase
         $_ENV['JAVMETA_BACKUP_MANIFEST'] = '/srv/javmeta/releases/20261102/storage/manifest.json';
         $_SERVER['JAVMETA_BACKUP_MANIFEST'] = $_ENV['JAVMETA_BACKUP_MANIFEST'];
         putenv('JAVMETA_BACKUP_MANIFEST=' . $_ENV['JAVMETA_BACKUP_MANIFEST']);
-        $_ENV['JAVMETA_REPORT_STATE_PATH'] = '/srv/javmeta/current/storage/report-state.json';
-        $_SERVER['JAVMETA_REPORT_STATE_PATH'] = $_ENV['JAVMETA_REPORT_STATE_PATH'];
-        putenv('JAVMETA_REPORT_STATE_PATH=' . $_ENV['JAVMETA_REPORT_STATE_PATH']);
-
         try {
             $settings = app(SettingsService::class);
             $skipped = $settings->importSkippedPreview();
-            $this->assertSame(['report.state_path', 'backup.manifest_path'], array_column($skipped, 'key'));
+            $this->assertSame(['backup.manifest_path'], array_column($skipped, 'key'));
             $this->assertSame('deploy-specific path', $skipped[0]['reason']);
 
             Artisan::call('settings:import-env', ['--dry-run' => true]);
             $dryRun = Artisan::output();
             $this->assertStringContainsString('JAVMETA_BACKUP_MANIFEST', $dryRun);
-            $this->assertStringContainsString('JAVMETA_REPORT_STATE_PATH', $dryRun);
             $this->assertStringNotContainsString('/srv/javmeta/releases/', $dryRun);
-            $this->assertStringNotContainsString('/srv/javmeta/current/', $dryRun);
 
             Artisan::call('settings:import-env');
             $import = Artisan::output();
             $this->assertStringContainsString('JAVMETA_BACKUP_MANIFEST', $import);
             $this->assertNull($this->store->get('settings.backup.manifest_path'));
-            $this->assertNull($this->store->get('settings.report.state_path'));
         } finally {
             foreach ($previous as $name => [$env, $server, $process]) {
                 if ($env === null) {
@@ -568,21 +801,34 @@ final class SettingsTest extends TestCase
         $page = $this->getJson('/ui-admin/settings')->assertOk();
         $this->assertArrayHasKey('queue', $page->json('data.groups'));
         $this->assertNotEmpty($page->json('data.settings'));
+        $sourceGapSetting = collect($page->json('data.settings'))->firstWhere('key', 'crawl.source_gap_overrides');
+        $this->assertSame('json', $sourceGapSetting['type']);
+        $this->assertSame(10000, $sourceGapSetting['max_length']);
+        $bloodTypes = collect($page->json('data.settings'))->firstWhere('key', 'normalization.blood_types');
+        $this->assertSame(['A', 'B', 'O', 'AB'], $bloodTypes['item_options']);
+        $chunkSize = collect($page->json('data.settings'))->firstWhere('key', 'normalization.backfill_chunk_size');
+        $this->assertSame('int', $chunkSize['type']);
+        $this->assertSame(5000, $chunkSize['max']);
+        $locationAliases = collect($page->json('data.settings'))->firstWhere('key', 'normalization.location_aliases');
+        $this->assertSame(500000, $locationAliases['max_length']);
 
         $this->putJson('/ui-admin/settings', ['settings' => ['queue.feed_pool_limit' => 120, 'alerts.enabled' => false]])->assertOk()->assertJsonPath('data.applied.0', 'queue.feed_pool_limit')->assertJsonPath('data.apply_after_seconds', 30);
         $this->assertSame(120, collect($this->getJson('/ui-admin/settings')->json('data.settings'))->firstWhere('key', 'queue.feed_pool_limit')['value']);
 
         $this->putJson('/ui-admin/settings', ['settings' => ['queue.feed_pool_limit' => -5]])->assertStatus(422)->assertJsonStructure(['data' => ['errors' => ['queue.feed_pool_limit']]]);
+        $this->putJson('/ui-admin/settings', ['settings' => ['crawl.source_gap_overrides' => ['javdb' => ['min' => 5, 'default' => 2, 'max' => 60]]]])
+            ->assertStatus(422)
+            ->assertJsonStructure(['data' => ['errors' => ['crawl.source_gap_overrides']]]);
         $this->putJson('/ui-admin/settings', [])->assertStatus(422);
     }
 
-    public function test_a_secret_default_comes_from_the_first_config_key_that_has_a_value(): void
+    public function test_telegram_credentials_are_not_imported_from_runtime_config(): void
     {
         config(["javmeta_alerts.telegram.bot_token" => "", "laravel-notifications.channels.telegram.bot_token" => "123:live"]);
         $settings = app(SettingsService::class);
 
-        $this->assertContains("telegram.bot_token", $settings->importDefaults());
-        $this->assertSame("123:live", $this->store->get("settings.telegram.bot_token"));
+        $this->assertNotContains("telegram.bot_token", $settings->importDefaults());
+        $this->assertNull($this->store->get("settings.telegram.bot_token"));
     }
     public static function invalidUrls(): array
     {
@@ -646,7 +892,8 @@ final class SettingsTest extends TestCase
         $this->assertSame($default, $row['value']);
         $this->assertSame('default', $row['source']);
         $this->assertNotEmpty($row['warning']);
-        $this->assertStringNotContainsString('legacy', $page->getContent());
+        $response = json_encode($page->json(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        $this->assertDoesNotMatchRegularExpression('~https?://legacy(?::[^@/]+)?@~i', $response);
         $this->assertStringNotContainsString('hidden', $page->getContent());
         $audit = $settings->set('downloads.qbittorrent_url', 'https://new.test');
         $this->assertStringNotContainsString('password', json_encode($audit));

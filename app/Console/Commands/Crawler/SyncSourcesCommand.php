@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Crawler;
 
+use App\Repositories\CrawlQueueRepository;
 use App\Models\Source;
+use App\Services\Crawl\SourceGapPolicy;
 use Illuminate\Console\Command;
 use Illuminate\Support\Arr;
 
@@ -14,38 +16,44 @@ final class SyncSourcesCommand extends Command
 
     protected $description = 'Synchronize configured JAVMeta sources.';
 
-    public function handle(): int
+    public function handle(SourceGapPolicy $gapPolicy): int
     {
-        $sources = config('javmeta_sources.sources', []);
-        if (! is_array($sources) || $sources === []) {
-            return self::SUCCESS;
-        }
+        $configuredSources = config('javmeta_sources.sources', []);
+        $sources = is_array($configuredSources) ? $configuredSources : [];
 
         foreach ($sources as $slug => $source) {
             if (! is_string($slug) || ! is_array($source)) {
                 continue;
             }
 
-            $defaultGap = (float) Arr::get($source, 'gap_seconds_default', config('javmeta_sources.defaults.fallback_gap_seconds.default', 30));
-            $existing = Source::query()->find($slug);
+            $gaps = $gapPolicy->describe($slug)['effective'];
+            $defaultGap = $gaps['default'];
+            $existing = app(CrawlQueueRepository::class)->modelQuery(Source::class)->find($slug);
             $attributes = [
                 'name' => (string) Arr::get($source, 'name'),
                 'base_url' => (string) Arr::get($source, 'base_url'),
                 'priority' => (int) Arr::get($source, 'priority'),
                 'needs_proxy' => (bool) Arr::get($source, 'needs_proxy', config('javmeta_sources.defaults.needs_proxy', false)),
-                'gap_seconds_default' => $defaultGap,
-                'gap_seconds_min' => (float) Arr::get($source, 'gap_seconds_min', config('javmeta_sources.defaults.fallback_gap_seconds.min', 30)),
-                'gap_seconds_max' => (float) Arr::get($source, 'gap_seconds_max', config('javmeta_sources.defaults.fallback_gap_seconds.max', 120)),
+                'gap_seconds_default' => $gaps['default'],
+                'gap_seconds_min' => $gaps['min'],
+                'gap_seconds_max' => $gaps['max'],
             ];
 
             if ($existing instanceof Source) {
+                if ($gapPolicy->isOverridden($slug)) {
+                    $attributes['gap_seconds_current'] = $gapPolicy->clamp(
+                        (float) $existing->gap_seconds_current,
+                        $gaps,
+                    );
+                }
+
                 // The database is the only on/off switch: an existing row is never given an `enabled` value here.
                 $existing->forceFill($attributes)->save();
 
                 continue;
             }
 
-            Source::query()->create($attributes + [
+            app(CrawlQueueRepository::class)->modelQuery(Source::class)->create($attributes + [
                 'slug' => $slug,
                 // A new source starts on unless it needs a login first.
                 'enabled' => ! (bool) Arr::get($source, 'requires_login', false)
@@ -55,6 +63,26 @@ final class SyncSourcesCommand extends Command
                 'last_error_at' => null,
                 'last_error' => null,
             ]);
+        }
+
+        $overrides = (array) config('javmeta_queues.source_gap_overrides', []);
+        foreach ($overrides as $slug => $override) {
+            if (! is_string($slug) || array_key_exists($slug, $sources) || ! is_array($override)) {
+                continue;
+            }
+
+            $existing = app(CrawlQueueRepository::class)->modelQuery(Source::class)->find($slug);
+            if (! $existing instanceof Source) {
+                continue;
+            }
+
+            $gaps = $gapPolicy->describe($slug, $existing)['effective'];
+            $existing->forceFill([
+                'gap_seconds_default' => $gaps['default'],
+                'gap_seconds_min' => $gaps['min'],
+                'gap_seconds_max' => $gaps['max'],
+                'gap_seconds_current' => $gapPolicy->clamp((float) $existing->gap_seconds_current, $gaps),
+            ])->save();
         }
 
         return self::SUCCESS;

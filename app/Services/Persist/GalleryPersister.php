@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Persist;
 
+use App\Repositories\MovieRepository;
 use App\Models\Performer;
 use App\Models\PerformerMedia;
 use App\Models\PerformerSource;
@@ -14,7 +15,6 @@ use App\Models\MoviePerformer;
 use App\Services\Identity\PerformerIdentityService;
 use App\Support\Code\NormalizedCode;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use JOOservices\CrawlerX\Dto\Entity\GalleryDto;
@@ -32,7 +32,7 @@ final class GalleryPersister
     {
         $crawledAt = CarbonImmutable::now();
 
-        DB::transaction(function () use ($sourceSlug, $url, $gallery, $crawledAt): void {
+        app(MovieRepository::class)->transaction(function () use ($sourceSlug, $url, $gallery, $crawledAt): void {
             $movie = $this->resolveMovie($gallery->title, $gallery->metadata);
 
             if ($movie instanceof Movie) {
@@ -42,7 +42,7 @@ final class GalleryPersister
                         continue;
                     }
 
-                    MovieMedia::query()->updateOrCreate(
+                    app(MovieRepository::class)->modelQuery(MovieMedia::class)->updateOrCreate(
                         [
                             'movie_id' => (int) $movie->id,
                             'kind' => MovieMedia::KIND_GALLERY,
@@ -81,7 +81,7 @@ final class GalleryPersister
             $externalId = 'name:' . mb_strtolower($trimmed);
         }
 
-        $performer = Performer::query()->firstOrCreate(
+        $performer = app(MovieRepository::class)->modelQuery(Performer::class)->firstOrCreate(
             ['source_slug' => $sourceSlug, 'external_id' => $externalId],
             [
                 'name_romaji' => $trimmed,
@@ -93,7 +93,7 @@ final class GalleryPersister
             ],
         );
 
-        $source = PerformerSource::query()->firstOrNew([
+        $source = app(MovieRepository::class)->modelQuery(PerformerSource::class)->firstOrNew([
             'site_slug' => $sourceSlug,
             'external_id' => $externalId,
         ]);
@@ -116,7 +116,7 @@ final class GalleryPersister
                 continue;
             }
 
-            PerformerMedia::query()->updateOrCreate(
+            app(MovieRepository::class)->modelQuery(PerformerMedia::class)->updateOrCreate(
                 [
                     'performer_id' => $canonicalId,
                     'source_performer_id' => (int) $performer->id,
@@ -134,7 +134,7 @@ final class GalleryPersister
         if ($movie instanceof Movie) {
             // Link the canonical record for the API and the source record so a later split can restore it.
             foreach (array_unique([$canonicalId, (int) $performer->id]) as $linkedId) {
-                MoviePerformer::query()->upsert(
+                app(MovieRepository::class)->modelQuery(MoviePerformer::class)->upsert(
                     [[
                         'movie_id' => (int) $movie->id,
                         'performer_id' => $linkedId,
@@ -180,19 +180,19 @@ final class GalleryPersister
             return null;
         }
 
-        $movieId = MovieCode::query()
+        $movieId = app(MovieRepository::class)->modelQuery(MovieCode::class)
             ->where('code_normalized', $normalized->value())
             ->value('movie_id');
 
         if (! is_numeric($movieId)) {
-            $movieId = Movie::query()->where('code_normalized', $normalized->value())->value('id');
+            $movieId = app(MovieRepository::class)->modelQuery(Movie::class)->where('code_normalized', $normalized->value())->value('id');
         }
 
         if (! is_numeric($movieId)) {
             return null;
         }
 
-        $movie = Movie::query()->find((int) $movieId);
+        $movie = app(MovieRepository::class)->modelQuery(Movie::class)->find((int) $movieId);
 
         return $movie instanceof Movie ? $movie : null;
     }

@@ -1,0 +1,75 @@
+# Selected rules adapted from samber/awesome-prometheus-alerts Elasticsearch rules (CC BY 4.0):
+# https://samber.github.io/awesome-prometheus-alerts/rules/databases/elasticsearch/
+groups:
+  - name: elasticsearch-exporter
+    rules:
+      - alert: ElasticsearchExporterDown
+        expr: up{job="elasticsearch_exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          value: "{{ $value }}"
+          summary: Elasticsearch exporter target is down
+          description: "Prometheus cannot scrape the Elasticsearch exporter.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/elasticsearch#availability
+      - alert: ElasticsearchClusterRed
+        expr: elasticsearch_cluster_health_status{color="red"} == 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          value: "{{ $value }}"
+          summary: Elasticsearch cluster is red
+          description: "Elasticsearch reports a red cluster health status.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/elasticsearch#cluster-health
+      - alert: ElasticsearchClusterYellow
+        expr: elasticsearch_cluster_health_status{color="yellow"} == 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          value: "{{ $value }}"
+          summary: Elasticsearch cluster is yellow
+          description: "Elasticsearch has remained yellow for 10 minutes.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/elasticsearch#cluster-health
+      - alert: ElasticsearchHeapUsageHigh
+        expr: '(elasticsearch_jvm_memory_used_bytes{area="heap"} / elasticsearch_jvm_memory_max_bytes{area="heap"}) * 100 > 90 and elasticsearch_jvm_memory_max_bytes{area="heap"} > 0'
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          value: "{{ $value }}"
+          summary: Elasticsearch heap usage is high
+          description: "JVM heap usage has remained above 90% for five minutes.\n  VALUE = {{ $value }}%"
+          runbook: https://wiki.jooservices.local/runbooks/elasticsearch#jvm-heap
+      - alert: ElasticsearchDiskSpaceLow
+        expr: '(elasticsearch_filesystem_data_available_bytes / elasticsearch_filesystem_data_size_bytes) < 0.10 and elasticsearch_filesystem_data_size_bytes > 0'
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          value: "{{ $value }}"
+          summary: Elasticsearch data path is nearly full
+          description: "Less than 10% of the Elasticsearch data path is available.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/elasticsearch#disk-space
+      - alert: ElasticsearchThreadPoolRejected
+        expr: increase(elasticsearch_thread_pool_rejected_count[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          value: "{{ $value }}"
+          summary: Elasticsearch thread pool rejected work
+          description: "Elasticsearch has rejected thread-pool work for at least five minutes.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/elasticsearch#thread-pools
+      - alert: ElasticsearchCircuitBreakerTripped
+        expr: increase(elasticsearch_breakers_tripped[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          value: "{{ $value }}"
+          summary: Elasticsearch circuit breaker tripped
+          description: "An Elasticsearch circuit breaker tripped in the last five minutes.\n  VALUE = {{ $value }}"
+          runbook: https://wiki.jooservices.local/runbooks/elasticsearch#circuit-breakers

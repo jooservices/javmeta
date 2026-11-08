@@ -16,6 +16,8 @@ use App\Services\Health\CrawlDispatchHeartbeat;
 use App\Services\Settings\SettingsService;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Console\Scheduling\Event;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -28,6 +30,13 @@ use Tests\TestCase;
 final class FeedPoolCommandTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->travelTo('2026-11-02T12:34:00Z');
+    }
 
     public function test_feed_pool_command_has_legacy_dispatch_alias_and_limit_default(): void
     {
@@ -42,6 +51,19 @@ final class FeedPoolCommandTest extends TestCase
         $this->assertNull($commands['crawler:feed-pool']->getDefinition()->getOption('limit')->getDefault());
         $this->assertFalse($commands['crawler:feed-pool']->getDefinition()->getOption('scheduled')->getDefault());
         $this->assertSame(50, config('javmeta_queues.feed_pool_limit'));
+    }
+
+    public function test_registered_schedule_uses_the_feed_pool_scheduled_flag(): void
+    {
+        app(Kernel::class)->bootstrap();
+        app()->detectEnvironment(static fn(): string => 'production');
+        require base_path('routes/console.php');
+
+        $commands = array_map(static fn(Event $event): ?string => $event->command, app(Schedule::class)->events());
+        $feedPoolCommands = array_values(array_filter($commands, static fn(?string $command): bool => $command !== null && str_contains($command, 'crawler:feed-pool')));
+
+        self::assertCount(1, $feedPoolCommands);
+        self::assertStringEndsWith('crawler:feed-pool --scheduled', $feedPoolCommands[0]);
     }
 
     public function test_feed_pool_claims_and_dispatches_only_up_to_the_requested_limit(): void
@@ -82,7 +104,7 @@ final class FeedPoolCommandTest extends TestCase
     public function test_scheduled_feed_pool_reads_the_current_database_interval_without_scheduler_restart(): void
     {
         config(['cache.default' => 'array']);
-        $settings = new SettingsService(new FakeConfigStore());
+        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class));
         $settings->set('queue.feed_interval_seconds', 15);
         Cache::store('array')->flush();
         $row = CrawlQueue::factory()->create([
@@ -123,6 +145,38 @@ final class FeedPoolCommandTest extends TestCase
         ] as $jobClass) {
             Queue::assertPushed($jobClass, 1);
         }
+    }
+
+    public function test_retry_dispatch_uses_its_own_budget_and_queue(): void
+    {
+        config([
+            'javmeta_queues.feed_interval_seconds' => 60,
+            'javmeta_queues.feed_pool_limit' => 1,
+            'javmeta_queues.retry.feed_pool_limit' => 2,
+        ]);
+        $source = Source::factory()->create(['slug' => 'retry-budget-site']);
+        $normal = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'kind' => CrawlQueue::KIND_LISTING,
+            'status' => CrawlQueue::STATUS_PENDING,
+            'next_attempt_at' => null,
+        ]);
+        $retry = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'kind' => CrawlQueue::KIND_LISTING,
+            'status' => CrawlQueue::STATUS_RETRY_PENDING,
+            'retry_round' => 1,
+            'next_attempt_at' => null,
+        ]);
+        Queue::fake();
+
+        $this->artisan('crawler:feed-pool')->assertSuccessful();
+
+        Queue::assertPushed(FetchListingJob::class, 2);
+        Queue::assertPushedOn('listing', FetchListingJob::class);
+        Queue::assertPushedOn('retry_listing', FetchListingJob::class);
+        self::assertSame('direct', $normal->refresh()->claimed_lane);
+        self::assertSame('retry', $retry->refresh()->claimed_lane);
     }
 
     public function test_search_is_in_the_feed_pool_queue_list_but_is_not_claimed_as_crawl_work(): void
@@ -325,6 +379,26 @@ final class FeedPoolCommandTest extends TestCase
         $delays = Queue::pushed(FetchDetailJob::class)->map(static fn(FetchDetailJob $job): int => (int) $job->delay)->values()->all();
         $this->assertSame([0, 10, 20, 30, 40, 50], $delays);
         $this->assertSame(4, CrawlQueue::query()->where('status', CrawlQueue::STATUS_PENDING)->count());
+    }
+
+    public function test_feed_pool_uses_an_override_when_calculating_source_budget_and_delays(): void
+    {
+        config([
+            'javmeta_queues.pacing_horizon_seconds' => 60,
+            'javmeta_queues.per_source_inflight' => 50,
+            'javmeta_queues.source_gap_overrides' => [
+                'paced' => ['min' => 20.0, 'default' => 20.0, 'max' => 40.0],
+            ],
+        ]);
+        $this->pacedSource('paced', 5.0);
+        CrawlQueue::factory()->count(6)->create(['source_slug' => 'paced', 'kind' => CrawlQueue::KIND_DETAIL]);
+        Queue::fake();
+
+        $this->artisan('crawler:feed-pool')->assertSuccessful();
+
+        Queue::assertPushed(FetchDetailJob::class, 3);
+        $delays = Queue::pushed(FetchDetailJob::class)->map(static fn(FetchDetailJob $job): int => (int) $job->delay)->values()->all();
+        self::assertSame([0, 20, 40], $delays);
     }
 
     public function test_six_feed_runs_share_the_source_budget_and_keep_waiting_delays_contiguous(): void

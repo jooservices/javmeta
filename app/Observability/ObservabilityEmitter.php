@@ -117,6 +117,29 @@ final class ObservabilityEmitter
         ]);
     }
 
+    public function emitEgressChange(
+        string $node,
+        ?string $oldIp,
+        ?string $newIp,
+        ?string $changedAt,
+        ?string $host = null,
+        string $egressKind = 'node',
+    ): void {
+        $record = $this->timestampedRecord([
+            'event' => 'egress_ip_changed',
+            'node' => $node,
+            'host' => $host,
+            'egress_kind' => $egressKind,
+            'old_ip' => $oldIp,
+            'new_ip' => $newIp,
+            'changed_at' => $changedAt,
+        ]);
+        $this->client->ingestLogsToStream(
+            [$record],
+            (string) config('javmeta_observability.egress_changes_stream', 'xcrawler_logs'),
+        );
+    }
+
     /**
      * @param  array<string, mixed>  $fields
      */

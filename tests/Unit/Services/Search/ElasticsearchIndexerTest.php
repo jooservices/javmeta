@@ -208,7 +208,7 @@ final class ElasticsearchIndexerTest extends TestCase
     public function test_index_performer_embeds_rich_profile_and_uses_performer_field(): void
     {
         $bio = fake()->paragraph();
-        $location = fake()->city();
+        $location = '東京都';
         $performer = Performer::factory()->create([
             'bio_text' => $bio,
             'location' => $location,
@@ -242,6 +242,45 @@ final class ElasticsearchIndexerTest extends TestCase
             }
 
             return array_key_exists('embedding_performer', $request->data());
+        });
+    }
+
+    public function test_index_performer_normalizes_legacy_profile_values_before_writing_elasticsearch(): void
+    {
+        config(['elasticsearch.embedder_enabled' => false]);
+        $performer = Performer::factory()->create([
+            'source_slug' => 'xcity',
+            'birth_date' => '1899-12-31',
+            'height_cm' => 99,
+            'bust' => 251,
+            'waist' => 29,
+            'hip' => 251,
+            'cup' => 'FANZA',
+            'blood_type' => 'A型',
+            'blood_rh' => null,
+            'debut_date' => '1939-12-31',
+            'location' => '–',
+        ]);
+        $performerIndex = (string) config('elasticsearch.performers_index');
+        Http::fake(['*' => Http::response(['result' => 'created'])]);
+
+        self::assertTrue(app(ElasticsearchIndexer::class)->indexPerformer($performer));
+
+        Http::assertSent(static function (ClientRequest $request) use ($performer, $performerIndex): bool {
+            if (! str_ends_with($request->url(), "/{$performerIndex}/_doc/" . $performer->uuid)) {
+                return false;
+            }
+
+            return $request->data()['blood_type'] === 'A'
+                && $request->data()['blood_rh'] === null
+                && $request->data()['cup'] === null
+                && $request->data()['location'] === null
+                && $request->data()['height_cm'] === null
+                && $request->data()['bust'] === null
+                && $request->data()['waist'] === null
+                && $request->data()['hip'] === null
+                && $request->data()['birth_date'] === null
+                && $request->data()['debut_date'] === null;
         });
     }
 

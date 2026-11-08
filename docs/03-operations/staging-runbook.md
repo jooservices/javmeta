@@ -52,7 +52,7 @@ and `JAVMETA_SKIP_READINESS` staging overrides do not apply to the wizard.
 - `$A crawler:sources`: one row per source with the switch, the current gap and the last success.
 - `$A crawler:failures`: the latest failed jobs with their reason.
 - The Operations, Data quality and Crawl debug dashboards in OpenObserve (stream `javmeta_logs` and the metric streams); alerts go to Telegram.
-- The hourly Telegram report shows total movies and performers and the change since the previous report. No report for two hours means the scheduler is down.
+- The periodic Telegram report shows movie and performer totals plus server and worker samples. No default report for more than two hours means the scheduler or Telegram delivery may be down; inspect the last result on Cài đặt → Báo cáo.
 - https://jav.soulevil.com/app (owner login) shows counts, ingest per hour and every source.
 
 ## Failures and recovery

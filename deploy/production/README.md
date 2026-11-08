@@ -103,7 +103,8 @@ It does not make migrations reversible. Preserve PostgreSQL and Mongo backups
 and review forward compatibility before each release.
 
 Matching units are enabled/restarted, including the per-node Horizon reconcile
-timer; scheduler starts last **only** when `--start-scheduler` is supplied.
+timer and worker node-sample timer; the primary scheduler samples its own node.
+Scheduler starts last **only** when `--start-scheduler` is supplied.
 `--no-start` installs without unit actions or
 claiming process readiness; `--no-systemd` prints actions without calling
 systemctl. Horizon, scheduler and embedder units run the startup health check
@@ -118,10 +119,17 @@ The Horizon and scheduler units use `Restart=on-failure`, so clean exits from
 `systemctl restart <unit-prefix>-horizon` or
 `systemctl restart <unit-prefix>-scheduler` for maintenance reloads.
 
+The installed per-node `*-horizon-reconcile.service` runs
+`node:egress-probe` in `ExecStartPost` after worker reconciliation. The same
+unit template is synchronized for primary and worker roles, so every Horizon
+node refreshes its own cached WAN IP without starting another scheduler. The
+probe is application telemetry; the optional node_exporter textfile probe is
+independent.
+
 ## Adding a worker node
 
 Use a new target/service account/node name with `--role worker`. Horizon, the
-Horizon reconcile timer, embedder and node exporter are enabled. Nginx and
+Horizon reconcile timer, node-sample timer, embedder and node exporter are enabled. Nginx and
 scheduler remain installed but disabled and blocked by a systemd condition
 drop-in. Workers never run migrations or shared setup and never rotate the
 owner; copy the primary shared env to `<TARGET_DIR>/shared/.env` before adding
@@ -130,11 +138,16 @@ worker refuses a missing APP_KEY. Point
 `media.api_url` at the primary API. Shared service answers must select the same
 application databases/indexes but the appropriate scoped Redis prefix.
 
-Only **one scheduler** may run across the fleet: scheduled jobs do not use
-`onOneServer`. Stop the old scheduler before deliberately starting the new one
-with `--start-scheduler` on a primary node. The PostgreSQL application role's
-connection limit **60** and shared `max_connections` **150** limit scale. Size
-worker counts against both limits. Browser capacity on vm-tools is **global**,
+Only **one scheduler** may run across the fleet. The periodic report also uses
+`onOneServer` and a per-slot cache lock. Stop the old scheduler before
+deliberately starting the new one with `--start-scheduler` on a primary node.
+The PostgreSQL application role's connection limit defaults to **120** through
+`JAVMETA_POSTGRES_ROLE_CONNECTION_LIMIT`; the shared `max_connections` remains
+**150**. The application reserves 30 role slots for non-Horizon clients, so
+configured Horizon demand is capped at 90 by default. Keep the role limit and
+primary/worker node counts aligned with the live deployment. See
+[`docs/03-operations/postgres-connections.md`](../../docs/03-operations/postgres-connections.md)
+for the calculation and metrics. Browser capacity on vm-tools is **global**,
 not per worker; adding nodes does not add browser capacity.
 
 ## Local verification

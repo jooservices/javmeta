@@ -56,6 +56,7 @@ assert.ok(!suggestionsHtml([{ label: evil, total: 8 }], 'performers').includes(e
 class Node {
   constructor() { this.listeners = {}; this.dataset = {}; this.attrs = {}; this.innerHTML = ''; this.textContent = ''; this.value = ''; this.hidden = true; this.classList = { add() {}, remove() {} }; }
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
+  removeEventListener(type, fn) { this.listeners[type] = (this.listeners[type] || []).filter(f => f !== fn); }
   emit(type, event = {}) { for (const fn of this.listeners[type] || []) fn({ target: this, preventDefault() {}, ...event }); }
   setAttribute(k, v) { this.attrs[k] = v; }
   removeAttribute(k) { delete this.attrs[k]; }
@@ -101,10 +102,16 @@ savedNodes['[data-save-form]'].elements = { search_name: Object.assign(new Node(
 const savedRoot = { querySelector: s => savedNodes[s] };
 let savedRows = [], writes = [];
 globalThis.document.querySelector = () => ({ content: 'csrf-test' });
+globalThis.document.addEventListener ||= () => {};
+globalThis.document.removeEventListener ||= () => {};
 globalThis.fetch = async (url, opt = {}) => {
   if (opt.method === 'POST') { const body = JSON.parse(opt.body); writes.push({ body, headers: opt.headers }); savedRows = body.on ? [{ ...body }] : []; }
   return { ok: true, headers: { get: () => 'application/json' }, json: async () => ({ data: savedRows }) };
 };
+const confirmYes = new Node(), confirmNo = new Node(), confirmDlg = new Node(), confirmOv = new Node();
+confirmDlg.querySelector = sel => sel.includes('confirm-yes') ? confirmYes : confirmNo;
+confirmDlg.getAttribute = () => null; confirmDlg.removeAttribute = () => {};
+globalThis.document.getElementById = id => (id === 'dlg' ? confirmDlg : confirmOv);
 const savedLife = new AbortController(); mountSavedSearches(savedRoot, 'movies', { actress_id: '1,2', genre: 'Drama' }, savedLife.signal); await delay(0);
 savedNodes['[data-save-search]'].emit('click'); assert.equal(savedNodes['[data-save-form]'].hidden, false);
 savedNodes['[data-save-form]'].emit('submit'); await delay(0);
@@ -112,9 +119,10 @@ assert.equal(writes.length, 1); assert.equal(writes[0].headers['X-CSRF-TOKEN'], 
 assert.deepEqual(JSON.parse(writes[0].body.key), { name: 'My search', query: 'actress_id=1%2C2&genre=Drama' });
 assert.match(savedNodes['[data-saved-list]'].innerHTML, /#\/movies\?actress_id=1%2C2&amp;genre=Drama/);
 const deleteButton = Object.assign(new Node(), { dataset: { deleteSearch: '0' } });
-savedNodes['[data-saved-list]'].emit('click', { target: { closest: s => s === '[data-delete-search]' ? deleteButton : null } }); await delay(0);
+savedNodes['[data-saved-list]'].emit('click', { target: { closest: s => s === '[data-delete-search]' ? deleteButton : null } });
+confirmYes.emit('click'); await delay(0);
 assert.equal(writes[1].body.on, false); assert.match(savedNodes['[data-saved-list]'].innerHTML, /Chưa có/);
-savedLife.abort(); globalThis.document.querySelector = () => null; globalThis.fetch = originalFetch;
+savedLife.abort(); globalThis.document.querySelector = () => null; globalThis.document.getElementById = () => null; globalThis.fetch = originalFetch;
 globalThis.innerWidth = 375;
 assert.match(searchBrowser('movies', {}).html, /brmain nof/);
 assert.match(searchBrowser('performers', {}).html, /brmain nof/);

@@ -16,8 +16,8 @@ use Throwable;
 /**
  * Generated failure responses go through the real crawlerx stack and the
  * javmeta detail job. The expectations pin the crawlerx 1.3 contract: terminal
- * codes (not_found, gone, auth_required) fail the row at once; retryable codes
- * put it back to pending with crawlerx's Retry-After hint or javmeta's backoff.
+ * codes (not_found, gone, auth_required) fail the row at once; transient codes
+ * use normal-lane backoff and move to retry_pending after the normal attempts are exhausted.
  */
 final class CrawlerxFailureContractTest extends CrawlerxContractTestCase
 {
@@ -73,7 +73,7 @@ final class CrawlerxFailureContractTest extends CrawlerxContractTestCase
     #[DataProvider('retryableFailures')]
     public function test_retryable_failure_reschedules_the_row(\Closure $response, string $errorCode, string $eventKind, int $delaySeconds): void
     {
-        $this->freezeSecond();
+        $this->travelTo('2026-11-02T12:34:00Z');
         $row = $this->detailRow(attempts: 1);
         $this->respondWith(self::URL, $response(), $response(), $response());
 
@@ -92,8 +92,10 @@ final class CrawlerxFailureContractTest extends CrawlerxContractTestCase
      * @param \Closure(): (ResponseInterface|Throwable) $response
      */
     #[DataProvider('retryableFailures')]
-    public function test_retryable_failure_at_max_attempts_fails_the_row(\Closure $response, string $errorCode, string $eventKind, int $delaySeconds): void
+    public function test_retryable_failure_at_max_attempts_moves_to_the_retry_lane(\Closure $response, string $errorCode, string $eventKind, int $delaySeconds): void
     {
+        $this->travelTo('2026-11-02T12:34:00Z');
+
         // A block has three delayed retries (60, 120, 180 s) so it fails on the fourth attempt.
         $attempts = $errorCode === 'challenge' ? 4 : 3;
         $row = $this->detailRow(attempts: $attempts);
@@ -102,8 +104,10 @@ final class CrawlerxFailureContractTest extends CrawlerxContractTestCase
         $this->dispatchFor($row);
 
         $row->refresh();
-        self::assertSame(CrawlQueue::STATUS_FAILED, $row->status);
-        self::assertSame($attempts, $row->attempts);
+        self::assertSame(CrawlQueue::STATUS_RETRY_PENDING, $row->status);
+        self::assertSame(1, $row->retry_round);
+        self::assertSame(0, $row->attempts);
+        self::assertSame(now()->addSeconds(1800)->getTimestamp(), $row->next_attempt_at?->getTimestamp());
         $this->assertNothingStored($errorCode, $eventKind);
     }
 

@@ -1,0 +1,13 @@
+{
+  "name": "javmeta-ui-qa",
+  "private": true,
+  "type": "module",
+  "description": "Browser QA walk of every UI view against the docker/qa stack.",
+  "scripts": {
+    "walk": "node walk.mjs",
+    "settings": "node settings.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.56.1"
+  }
+}

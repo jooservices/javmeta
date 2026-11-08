@@ -5,32 +5,40 @@ declare(strict_types=1);
 namespace App\Repositories;
 
 use App\Models\Performer;
+use App\Services\Normalize\PerformerAttributeNormalizer;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
-use JOOservices\LaravelRepository\Contracts\RepositoryInterface;
-use JOOservices\LaravelRepository\Repositories\EloquentRepository;
-use JOOservices\LaravelRepository\Traits\HasCrud;
-use JOOservices\LaravelRepository\Traits\HasFilter;
-use JOOservices\LaravelRepository\Traits\HasOrder;
-use JOOservices\LaravelRepository\Traits\HasRead;
-use JOOservices\LaravelRepository\Traits\HasRequestQuery;
 
-final class PerformerRepository extends EloquentRepository implements RepositoryInterface
+final class PerformerRepository extends BusinessQueryRepository
 {
-    use HasCrud;
-    use HasFilter;
-    use HasOrder;
-    use HasRead;
-    use HasRequestQuery;
+    private readonly PerformerAttributeNormalizer $attributeNormalizer;
     /** @var list<string> */
     public const SORTS = ['name', 'updated_at', 'linked_title_count'];
 
-    public function __construct(Performer $model)
+    public function __construct(Performer $model, ?PerformerAttributeNormalizer $attributeNormalizer = null)
     {
         parent::__construct($model);
+        $this->attributeNormalizer = $attributeNormalizer ?? new PerformerAttributeNormalizer();
+    }
+
+    /** @return \Illuminate\Support\Collection<int, \stdClass> */
+    public function facetGroups(string $column): \Illuminate\Support\Collection
+    {
+        return DB::table('performers')->whereNull('canonical_performer_id')->whereNotNull($column)->where($column, '<>', '')
+            ->selectRaw('LOWER(' . $column . ') AS raw_name, COUNT(*) AS performer_count')
+            ->groupByRaw('LOWER(' . $column . ')')
+            ->get();
+    }
+
+    public function unknownBloodTypeCount(): int
+    {
+        return (int) DB::table('performers')->whereNull('canonical_performer_id')
+            ->where(static function ($query): void {
+                $query->whereNull('blood_type')->orWhere('blood_type', '=', '');
+            })->count();
     }
 
     /**
@@ -185,13 +193,69 @@ final class PerformerRepository extends EloquentRepository implements Repository
         // Several values separated by commas mean any of them (cups B and C, blood types A or O).
         foreach (['cup', 'blood_type', 'location'] as $column) {
             $values = array_values(array_filter(array_map('trim', explode(',', (string) ($filters[$column] ?? ''))), static fn(string $v): bool => $v !== ''));
-            if ($values !== []) {
-                $query->where(static function (Builder $any) use ($values, $column, $like): void {
-                    foreach ($values as $value) {
-                        $any->orWhere($column, $like, '%' . $value . '%');
-                    }
-                });
+            if ($values === []) {
+                continue;
             }
+
+            $canonicalValues = [];
+            $partialValues = [];
+            $includeUnknown = false;
+            foreach ($values as $value) {
+                if ($column === 'blood_type' && mb_strtoupper($value, 'UTF-8') === 'UNKNOWN') {
+                    $includeUnknown = true;
+
+                    continue;
+                }
+                $canonical = $this->attributeNormalizer->facetValue($column, $value);
+                if ($canonical !== null) {
+                    $canonicalValues[$canonical] = true;
+                } elseif ($column === 'location') {
+                    $partialValues[] = $value;
+                }
+            }
+            if ($canonicalValues === [] && ! $includeUnknown && $partialValues === []) {
+                $query->whereRaw('1 = 0');
+
+                continue;
+            }
+
+            $canonicalRawValues = [];
+            $unknownRawValues = [];
+            if ($canonicalValues !== [] || $includeUnknown) {
+                $rawValues = DB::table('performers')->whereNotNull($column)->where($column, '<>', '')
+                    ->distinct()->pluck($column);
+                foreach ($rawValues as $rawValue) {
+                    if (! is_string($rawValue)) {
+                        continue;
+                    }
+                    $canonical = $this->attributeNormalizer->facetValue($column, $rawValue);
+                    if ($canonical === null) {
+                        if ($includeUnknown) {
+                            $unknownRawValues[] = $rawValue;
+                        }
+
+                        continue;
+                    }
+                    if (isset($canonicalValues[$canonical])) {
+                        $canonicalRawValues[] = $rawValue;
+                    }
+                }
+            }
+
+            $query->where(static function (Builder $any) use ($canonicalValues, $canonicalRawValues, $includeUnknown, $unknownRawValues, $partialValues, $column, $like): void {
+                if ($canonicalValues !== []) {
+                    $any->orWhereIn($column, $canonicalRawValues);
+                }
+                if ($includeUnknown) {
+                    $any->orWhereNull($column)->orWhere($column, '=', '');
+                    if ($unknownRawValues !== []) {
+                        $any->orWhereIn($column, $unknownRawValues);
+                    }
+                }
+                foreach ($partialValues as $value) {
+                    $any->orWhere($column, $like, '%' . $value . '%');
+                }
+            });
         }
 
         if (isset($filters['has_image'])) {
@@ -235,14 +299,15 @@ final class PerformerRepository extends EloquentRepository implements Repository
         $this->applyFilters($query, $filters);
         $ids = $query->toBase()->select('performers.id');
         $count = static fn($rows): array => $rows->map(static fn($r): array => ['name' => (string) $r->name, 'count' => (int) $r->c])->all();
-        $by = static fn(string $column) => $count(DB::table('performers')->whereIn('id', clone $ids)->whereNotNull($column)->where($column, '<>', '')->selectRaw($column . ' AS name, COUNT(*) AS c')->groupBy($column)->orderByDesc('c')->orderBy($column)->limit(15)->get());
+        $includeUnknown = filter_var($filters['include_unknown'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $by = fn(string $column, string $field): array => $this->canonicalFacetCounts($ids, $column, $field, $includeUnknown);
         $decade = DB::getDriverName() === 'sqlite' ? "(CAST(strftime('%Y', birth_date) AS INTEGER) / 10) * 10" : '(EXTRACT(YEAR FROM birth_date)::int / 10) * 10';
 
         return [
             'total' => (int) DB::table('performers')->whereIn('id', clone $ids)->count(),
-            'cups' => $by('cup'),
-            'blood_types' => $by('blood_type'),
-            'locations' => $by('location'),
+            'cups' => $by('cup', 'cup'),
+            'blood_types' => $by('blood_type', 'blood_type'),
+            'locations' => $by('location', 'location'),
             'birth_decades' => $count(DB::table('performers')->whereIn('id', clone $ids)->whereNotNull('birth_date')->selectRaw($decade . ' AS name, COUNT(*) AS c')->groupByRaw($decade)->orderByDesc('name')->limit(10)->get()),
             'sources' => $count(DB::table('performer_sources')->whereIn('performer_id', clone $ids)->selectRaw('site_slug AS name, COUNT(DISTINCT performer_id) AS c')->groupBy('site_slug')->orderByDesc('c')->limit(15)->get()),
             'status' => [
@@ -252,6 +317,39 @@ final class PerformerRepository extends EloquentRepository implements Repository
             'with_image' => (int) DB::table('performers')->whereIn('id', clone $ids)->whereNotNull('image_url')->where('image_url', '<>', '')->count(),
             'with_bio' => (int) DB::table('performers')->whereIn('id', clone $ids)->whereNotNull('bio_text')->where('bio_text', '<>', '')->count(),
         ];
+    }
+
+    /** @param \Illuminate\Database\Query\Builder $ids
+     *  @return list<array{name: string, count: int}>
+     */
+    private function canonicalFacetCounts(\Illuminate\Database\Query\Builder $ids, string $column, string $field, bool $includeUnknown): array
+    {
+        $normalizedColumn = 'LOWER(' . $column . ')';
+        $groups = DB::table('performers')->whereIn('id', clone $ids)->whereNotNull($column)->where($column, '<>', '')
+            ->selectRaw($normalizedColumn . ' AS raw_name, COUNT(*) AS c')->groupByRaw($normalizedColumn)->get();
+        $counts = [];
+        $unknownCount = $field === 'blood_type' && $includeUnknown
+            ? (int) DB::table('performers')->whereIn('id', clone $ids)->where(function ($query): void {
+                $query->whereNull('blood_type')->orWhere('blood_type', '=', '');
+            })->count()
+            : 0;
+        foreach ($groups as $group) {
+            $name = $this->attributeNormalizer->facetValue($field, $group->raw_name);
+            if ($name !== null) {
+                $counts[$name] = ($counts[$name] ?? 0) + (int) $group->c;
+            } elseif ($field === 'blood_type') {
+                $unknownCount += (int) $group->c;
+            }
+        }
+        if ($field === 'blood_type' && $includeUnknown) {
+            $counts['Unknown'] = $unknownCount;
+        }
+
+        uksort($counts, static function (string $left, string $right) use (&$counts): int {
+            return $counts[$right] <=> $counts[$left] ?: strcmp($left, $right);
+        });
+
+        return array_map(fn(string $name): array => ['name' => $name, 'count' => $counts[$name]], array_slice(array_keys($counts), 0, 15));
     }
 
     /**

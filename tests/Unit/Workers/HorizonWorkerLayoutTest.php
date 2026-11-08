@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Workers;
 
 use App\Services\Workers\HorizonWorkerLayout;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 final class HorizonWorkerLayoutTest extends TestCase
@@ -20,7 +21,7 @@ final class HorizonWorkerLayoutTest extends TestCase
             'javmeta_queues.worker_queue_overrides' => ['listing' => 5],
             'javmeta_queues.worker_node_overrides' => [
                 'main' => ['default' => 6, 'browser' => 7, 'queues' => ['search' => 8]],
-                'main@node.one' => ['direct' => 9, 'queues' => ['observability' => 3]],
+                'main@node.one' => ['direct' => 9, 'retry' => 10, 'queues' => ['observability' => 3]],
             ],
         ]);
 
@@ -30,6 +31,7 @@ final class HorizonWorkerLayoutTest extends TestCase
         $this->assertSame(7, $supervisors['crawler-browser_listing']['maxProcesses']);
         $this->assertSame(8, $supervisors['crawler-search']['maxProcesses']);
         $this->assertSame(9, $supervisors['crawler-detail']['maxProcesses']);
+        $this->assertSame(10, $supervisors['crawler-retry_listing']['maxProcesses']);
         $this->assertSame(3, $supervisors['api-observability']['maxProcesses']);
     }
 
@@ -67,5 +69,57 @@ final class HorizonWorkerLayoutTest extends TestCase
 
         $this->assertNotEmpty($counts);
         $this->assertSame([1], array_values(array_unique($counts)));
+    }
+
+    public function test_configured_fleet_worker_count_sums_role_and_node_specific_overrides(): void
+    {
+        config([
+            'javmeta_queues.workers_per_queue' => 1,
+            'javmeta_queues.browser_workers_per_queue' => 2,
+            'javmeta_queues.retry.workers_per_queue' => 1,
+            'javmeta_queues.worker_queue_overrides' => [],
+            'javmeta_queues.worker_node_overrides' => [
+                'main' => ['default' => 2],
+                'worker' => ['default' => 2],
+                'worker@node.one' => ['default' => 3],
+                'worker@node-two' => ['queues' => ['listing' => 4]],
+            ],
+            'javmeta_queues.postgres_connection_budget.worker_nodes' => 3,
+            'javmeta_queues.postgres_connection_budget.primary_nodes' => 1,
+        ]);
+
+        $workerCount = app(HorizonWorkerLayout::class)->configuredFleetWorkerCount();
+
+        self::assertSame(125, $workerCount);
+    }
+
+    public function test_apply_keeps_code_defaults_when_database_layout_exceeds_connection_budget(): void
+    {
+        $defaults = (array) config('horizon.defaults');
+        config([
+            'javmeta_workers.role' => 'worker',
+            'javmeta_queues.workers_per_queue' => 32,
+            'javmeta_queues.direct_workers_per_queue' => null,
+            'javmeta_queues.browser_workers_per_queue' => 32,
+            'javmeta_queues.retry.workers_per_queue' => 32,
+            'javmeta_queues.worker_queue_overrides' => [],
+            'javmeta_queues.worker_node_overrides' => [],
+            'javmeta_queues.postgres_connection_budget' => [
+                'role_limit' => 120,
+                'reserve' => 30,
+                'worker_nodes' => 3,
+                'primary_nodes' => 1,
+            ],
+            'database.connections' => ['pgsql' => ['driver' => 'pgsql']],
+        ]);
+        Log::shouldReceive('warning')->once()->withArgs(static function (string $message, array $context): bool {
+            return $message === 'Horizon worker settings exceed the PostgreSQL connection budget; keeping the code default layout.'
+                && ($context['configured_demand'] ?? null) > ($context['budget_limit'] ?? PHP_INT_MAX);
+        })->andReturnNull();
+
+        $snapshot = app(HorizonWorkerLayout::class)->apply();
+
+        self::assertSame($defaults, $snapshot['supervisors']);
+        self::assertSame($defaults, config('horizon.defaults'));
     }
 }

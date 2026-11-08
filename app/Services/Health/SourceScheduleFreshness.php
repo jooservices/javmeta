@@ -51,6 +51,6 @@ final class SourceScheduleFreshness
             return true;
         }
 
-        return $timestamp < time() - $this->maximumSuccessAgeSeconds($slug, $defaultSeconds);
+        return $timestamp < now()->getTimestamp() - $this->maximumSuccessAgeSeconds($slug, $defaultSeconds);
     }
 }

@@ -36,4 +36,12 @@ export const queryString = o => {
 };
 
 /* the stable title of a movie: English, else Japanese, else its code */
-export const titleOf = m => m.title_en || m.title_jp || m.code;
+export const titleOf = m => m.title_en || m.title_jp || codeLabel(m.code);
+
+/* Codes like JAVBTC-DERIVED-<64 hex> are stable identity keys made when a source gives no product code (JOOXCR-283); users see a short internal label instead of the hash. */
+const DERIVED_CODE = /^([A-Za-z0-9_]+)-DERIVED-([0-9A-Fa-f]{8,})$/;
+export const isDerivedCode = code => DERIVED_CODE.test(String(code || ''));
+export const codeLabel = code => {
+  const m = DERIVED_CODE.exec(String(code || ''));
+  return m ? `${m[1].toUpperCase()} · #${m[2].slice(0, 6).toUpperCase()}` : String(code || '');
+};

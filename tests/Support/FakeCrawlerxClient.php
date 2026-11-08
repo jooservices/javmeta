@@ -6,6 +6,7 @@ namespace Tests\Support;
 
 use App\Services\Crawler\CrawlerxClient;
 use App\Services\Crawler\CrawlerxFetchResult;
+use App\Models\CrawlQueue;
 
 final class FakeCrawlerxClient extends CrawlerxClient
 {
@@ -52,5 +53,17 @@ final class FakeCrawlerxClient extends CrawlerxClient
         $this->calls++;
 
         return $this->gallery ?? CrawlerxFetchResult::failure(self::ERROR_PARSE_FAILED, 'No gallery fixture.');
+    }
+
+    public function fetchQueueRow(CrawlQueue $row): CrawlerxFetchResult
+    {
+        return match ($row->kind) {
+            CrawlQueue::KIND_LISTING => $this->fetchListing($row->source_slug, $row->url),
+            CrawlQueue::KIND_DETAIL => $this->fetchDetail($row->source_slug, $row->url),
+            CrawlQueue::KIND_PERFORMER_LISTING => $this->fetchPerformerListing($row->source_slug, $row->url),
+            CrawlQueue::KIND_PERFORMER_DETAIL => $this->fetchPerformerDetail($row->source_slug, $row->url),
+            CrawlQueue::KIND_GALLERY => $this->fetchGallery($row->source_slug, $row->url),
+            default => CrawlerxFetchResult::failure(self::ERROR_PARSE_FAILED, 'No fixture for queue row.'),
+        };
     }
 }

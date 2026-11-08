@@ -153,7 +153,7 @@ final class FetchPerformerAndGalleryJobTest extends TestCase
             'height_cm' => 158,
             'cup' => 'E',
             'blood_type' => 'A',
-            'location' => 'Tokyo',
+            'location' => '東京都',
         ]);
         $this->assertDatabaseHas('performer_media', [
             'kind' => PerformerMedia::KIND_IMAGE,
