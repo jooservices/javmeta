@@ -70,8 +70,7 @@
             "@lint:phpcs",
             "@lint:phpmd",
             "@lint:phpstan",
-            "@lint:cs",
-            "@lint:i18n"
+            "@lint:cs"
         ],
         "lint:fix": [
             "@lint:pint:fix",

@@ -14,14 +14,14 @@ use InvalidArgumentException;
 /** Owner-only editor for notification templates and their revision history. */
 final class UiNotificationTemplateController
 {
-    public function index(Request $request, NotificationTemplateService $templates): JsonResponse
+    public function index(NotificationTemplateService $templates): JsonResponse
     {
-        return response()->json(['data' => $templates->all($request->query('locale'))]);
+        return response()->json(['data' => $templates->all()]);
     }
 
-    public function show(string $key, Request $request, NotificationTemplateService $templates): JsonResponse
+    public function show(string $key, NotificationTemplateService $templates): JsonResponse
     {
-        $template = $templates->get($key, $request->query('locale'));
+        $template = $templates->get($key);
         if ($template === null) {
             return response()->json(['message' => __('notifications.not_found')], 404);
         }
@@ -36,7 +36,6 @@ final class UiNotificationTemplateController
             'body_template' => ['required', 'string', 'max:30000'],
             'enabled' => ['required', 'boolean'],
             'default_severity' => ['required', 'in:critical,warning,notice,info'],
-            'locale' => ['sometimes', 'in:en,vi'],
             'tier' => ['sometimes', 'required', 'in:critical,warning,notice,info'],
             'cooldown_minutes' => ['sometimes', 'required', 'integer', 'min:0', 'max:10080'],
             'escalation_minutes' => ['sometimes', 'required', 'integer', 'min:0', 'max:10080'],
@@ -63,7 +62,6 @@ final class UiNotificationTemplateController
                 $data['default_severity'],
                 $request->user()?->id,
                 $policy === [] ? null : $policy,
-                $data['locale'] ?? $request->query('locale'),
             );
         } catch (InvalidArgumentException $error) {
             return response()->json(['message' => $error->getMessage()], 422);
@@ -76,7 +74,7 @@ final class UiNotificationTemplateController
     {
         $current = $templates->get($key);
         if ($current === null) {
-            return response()->json(['message' => 'Không tìm thấy loại thông báo.'], 404);
+            return response()->json(['message' => __('notifications.not_found')], 404);
         }
         $data = $request->validate([
             'title_template' => ['sometimes', 'string', 'max:10000'],
@@ -102,7 +100,7 @@ final class UiNotificationTemplateController
     {
         $current = $templates->get($key);
         if ($current === null) {
-            return response()->json(['message' => 'Không tìm thấy loại thông báo.'], 404);
+            return response()->json(['message' => __('notifications.not_found')], 404);
         }
         $data = $request->validate([
             'title_template' => ['sometimes', 'string', 'max:10000'],
@@ -148,7 +146,7 @@ final class UiNotificationTemplateController
     public function revisions(string $key, NotificationTemplateService $templates): JsonResponse
     {
         if ($templates->get($key) === null) {
-            return response()->json(['message' => 'Không tìm thấy loại thông báo.'], 404);
+            return response()->json(['message' => __('notifications.not_found')], 404);
         }
 
         return response()->json(['data' => $templates->revisions($key)]);

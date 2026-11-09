@@ -32,7 +32,7 @@
   @if ($errors->any())
     <div class="error" role="alert">{{ $errors->first() }}</div>
   @endif
-  <form method="post" action="{{ route('login') }}">
+  <form method="post" action="{{ route('login', array_filter(['lang' => request()->query('lang')])) }}">
     @csrf
     <label for="email">{{ __('auth.email') }}</label>
     <input id="email" name="email" type="email" value="{{ old('email') }}" autocomplete="username" required autofocus>

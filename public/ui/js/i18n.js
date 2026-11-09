@@ -3,14 +3,35 @@
  * Catalogs: /ui/i18n/{locale}.json — loaded before first render.
  * Keys are namespaced `view.section.item`. Plural forms use `{one,other}` objects (vi uses `other`).
  */
-import en from '../i18n/en.json' with { type: 'json' };
-import vi from '../i18n/vi.json' with { type: 'json' };
-
 export const SUPPORTED = Object.freeze(['vi', 'en']);
 export const DEFAULT_LOCALE = 'vi';
 export const STORAGE_KEY = 'xc-locale';
 
-const catalogs = { en, vi };
+/* Catalogs are fetched as plain JSON: JSON import attributes are not supported by every browser (Firefox before 138). */
+const catalogs = { en: null, vi: null };
+const loading = {};
+
+async function readCatalog(locale) {
+  const url = new URL(`../i18n/${locale}.json`, import.meta.url);
+  if (url.protocol === 'file:') {
+    const { readFile } = await import('node:fs/promises');
+    return JSON.parse(await readFile(url, 'utf8'));
+  }
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not load the ${locale} catalog (${response.status}).`);
+  return response.json();
+}
+
+/** Loads one catalog once; a failed load is retried on the next call and never blocks the interface. */
+export function loadCatalog(locale) {
+  if (!SUPPORTED.includes(locale)) return Promise.resolve({});
+  if (catalogs[locale]) return Promise.resolve(catalogs[locale]);
+  loading[locale] ??= readCatalog(locale)
+    .then(data => { catalogs[locale] = data; return data; })
+    .catch(error => { warn(String(error.message || error)); return {}; })
+    .finally(() => { delete loading[locale]; });
+  return loading[locale];
+}
 const listeners = new Set();
 let active = DEFAULT_LOCALE;
 let ready = false;
@@ -191,6 +212,7 @@ export function onLocaleChange(fn) {
 export async function setLocale(locale, { persist = true, notify = true } = {}) {
   if (!SUPPORTED.includes(locale)) return active;
   if (locale === active && ready) return active;
+  await Promise.all([loadCatalog(locale), loadCatalog('en')]); // en backs up any key a catalog lacks
   active = locale;
   if (persist) writeStored(locale);
   syncDocument();
@@ -203,7 +225,7 @@ export async function setLocale(locale, { persist = true, notify = true } = {}) 
   return active;
 }
 
-/** Load catalogs (already statically imported) and apply the resolved locale before first paint. */
+/** Load the catalog of the resolved locale and apply it before first paint. */
 export async function initI18n(preferred) {
   const locale = SUPPORTED.includes(preferred) ? preferred : detectLocale();
   await setLocale(locale, { persist: Boolean(readStored()) || preferred != null, notify: false });

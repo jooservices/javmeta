@@ -49,4 +49,21 @@ final class SetLocaleMiddlewareTest extends TestCase
         // Without an authenticated user the owner setting is ignored; default stays vi.
         $this->assertSame('vi', $middleware->resolve($request));
     }
+
+    public function test_accept_language_quality_values_decide_and_zero_means_refused(): void
+    {
+        $middleware = new SetLocale();
+
+        $refused = Request::create('/app', 'GET');
+        $refused->headers->set('Accept-Language', 'en;q=0,vi;q=1');
+        $this->assertSame('vi', $middleware->resolve($refused));
+
+        $preferred = Request::create('/app', 'GET');
+        $preferred->headers->set('Accept-Language', 'vi;q=0.4, en;q=0.9');
+        $this->assertSame('en', $middleware->resolve($preferred));
+
+        $tie = Request::create('/app', 'GET');
+        $tie->headers->set('Accept-Language', 'en, vi');
+        $this->assertSame('en', $middleware->resolve($tie), 'The first listed language wins a tie.');
+    }
 }

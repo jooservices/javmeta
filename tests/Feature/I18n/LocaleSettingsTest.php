@@ -8,17 +8,15 @@ use Tests\TestCase;
 
 final class LocaleSettingsTest extends TestCase
 {
-    public function test_ui_and_notification_locale_settings_are_registered(): void
+    public function test_ui_locale_setting_is_registered_and_notification_text_has_no_locale_setting(): void
     {
         $definitions = config('javmeta_settings.definitions');
         $this->assertArrayHasKey('ui.locale', $definitions);
         $this->assertSame(['vi', 'en'], $definitions['ui.locale']['options']);
         $this->assertSame(['javmeta.ui_locale'], $definitions['ui.locale']['config']);
 
-        $this->assertArrayHasKey('notifications.locale', $definitions);
-        $this->assertSame(['en', 'vi'], $definitions['notifications.locale']['options']);
-        $this->assertSame(['javmeta_notifications.locale'], $definitions['notifications.locale']['config']);
-        $this->assertSame('en', config('javmeta_notifications.locale'));
+        // Notification message text stays the single editable English template; only its name and usage are translated.
+        $this->assertArrayNotHasKey('notifications.locale', $definitions);
         $this->assertSame('vi', config('javmeta.ui_locale'));
     }
 

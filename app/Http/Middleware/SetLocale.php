@@ -64,25 +64,30 @@ final class SetLocale
         return $this->normalize($stored);
     }
 
+    /** The supported language with the highest non-zero quality value; the first one listed wins a tie. */
     private function fromAcceptLanguage(string $header): ?string
     {
-        if ($header === '') {
-            return null;
-        }
+        $best = null;
+        $bestQuality = 0.0;
         foreach (explode(',', $header) as $part) {
             $segments = explode(';', $part);
-            $tag = strtolower(trim($segments[0]));
-            if ($tag === '') {
+            $normalized = $this->normalize($segments[0]);
+            if ($normalized === null) {
                 continue;
             }
-            $base = explode('-', $tag)[0];
-            $normalized = $this->normalize($base);
-            if ($normalized !== null) {
-                return $normalized;
+            $quality = 1.0;
+            foreach (array_slice($segments, 1) as $parameter) {
+                if (preg_match('/^\s*q\s*=\s*([0-9.]+)\s*$/i', $parameter, $match) === 1) {
+                    $quality = (float) $match[1];
+                }
+            }
+            if ($quality > $bestQuality) {
+                $best = $normalized;
+                $bestQuality = $quality;
             }
         }
 
-        return null;
+        return $best;
     }
 
     private function normalize(string $value): ?string

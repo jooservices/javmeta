@@ -136,4 +136,17 @@ final class LocaleCatalogParityTest extends TestCase
 
         return $names;
     }
+
+    public function test_every_registered_setting_has_a_label_and_description_in_both_languages(): void
+    {
+        foreach (['en', 'vi'] as $locale) {
+            $catalog = require base_path("lang/{$locale}/settings.php");
+            foreach (array_keys((array) config('javmeta_settings.definitions')) as $key) {
+                $entry = $catalog['definitions'][str_replace('.', '__', (string) $key)] ?? null;
+                $this->assertIsArray($entry, "The {$locale} settings catalog lacks {$key}.");
+                $this->assertNotSame('', trim((string) ($entry['label'] ?? '')), "{$locale} label of {$key}");
+                $this->assertNotSame('', trim((string) ($entry['description'] ?? '')), "{$locale} description of {$key}");
+            }
+        }
+    }
 }

@@ -53,6 +53,10 @@ jobs:
           JAVMETA_CI_SKIP_BUILD: '1'
         run: docker/ci/run composer lint
 
+      # The PHP quality image has no Node on purpose, so the UI string ratchet runs on the runner's own Node.
+      - name: UI hardcoded-string ratchet
+        run: node tools/quality/i18n-hardcoded-ratchet.mjs
+
       - name: Test with coverage
         env:
           JAVMETA_CI_SKIP_BUILD: '1'

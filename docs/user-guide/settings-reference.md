@@ -678,12 +678,6 @@ Số nguyên; từ 30 đến 3600. Mã mục: `alerts.crawl_dispatch_critical_se
 
 ## Chính sách thông báo
 
-### Ngôn ngữ mẫu thông báo
-
-Ngôn ngữ mẫu Telegram/Alertmanager khi gửi. Mặc định English; đổi sang tiếng Việt chỉ khi chủ sở hữu chọn.
-
-Văn bản; chọn: en, vi. Mã mục: `notifications.locale`.
-
 ### Chế độ yên lặng
 
 Chỉ gửi cảnh báo CRITICAL và sự kiện bảo mật; các mức khác được giữ cho báo cáo.

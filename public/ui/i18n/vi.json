@@ -789,5 +789,14 @@
   "topbar.shortcuts": "Phím tắt",
   "topbar.theme": "Đổi giao diện sáng/tối",
   "util.copied": "Đã sao chép",
-  "report.preview_error": "Không tải được bản xem trước."
+  "report.preview_error": "Không tải được bản xem trước.",
+  "mark.toast.favourite_on": "Đã thêm vào yêu thích",
+  "mark.toast.favourite_off": "Đã bỏ yêu thích",
+  "mark.toast.watch_later_on": "Đã thêm vào xem sau",
+  "mark.toast.watch_later_off": "Đã bỏ khỏi xem sau",
+  "mark.toast.seen_on": "Đã đánh dấu đã xem",
+  "mark.toast.seen_off": "Đã bỏ đánh dấu đã xem",
+  "mark.toast.follow_on": "Đã theo dõi",
+  "mark.toast.follow_off": "Đã bỏ theo dõi",
+  "mark.toast.updated": "Đã cập nhật"
 }

@@ -806,5 +806,14 @@
   "topbar.shortcuts": "Keyboard shortcuts",
   "topbar.theme": "Switch light/dark theme",
   "util.copied": "Copied",
-  "report.preview_error": "Could not load the preview."
+  "report.preview_error": "Could not load the preview.",
+  "mark.toast.favourite_on": "Added to favourites",
+  "mark.toast.favourite_off": "Removed from favourites",
+  "mark.toast.watch_later_on": "Added to watch later",
+  "mark.toast.watch_later_off": "Removed from watch later",
+  "mark.toast.seen_on": "Marked as seen",
+  "mark.toast.seen_off": "Unmarked as seen",
+  "mark.toast.follow_on": "Following",
+  "mark.toast.follow_off": "Unfollowed",
+  "mark.toast.updated": "Updated"
 }

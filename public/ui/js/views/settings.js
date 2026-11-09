@@ -3,7 +3,7 @@ import { head, ic } from '../components.js';
 import { admin, send } from '../api.js';
 import { askConfirm } from '../confirm.js';
 import { applyTheme, applyDensity, currentTheme, currentDensity } from '../theme.js';
-import { t, html as tHtml, currentLocale } from '../i18n.js';
+import { t, html as tHtml, currentLocale, setLocale, SUPPORTED } from '../i18n.js';
 import { optionLabel } from './report.js';
 
 const shortcutMod = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '') ? '⌘' : 'Ctrl';
@@ -152,6 +152,8 @@ function mountSystem(root) {
     b.disabled = true; msg.textContent = t('common.saving');
     try {
       const result = await send('PUT', '/ui-admin/settings', { settings });
+      // The saved owner language also becomes this browser's choice, so the reload below shows it.
+      if (SUPPORTED.includes(settings['ui.locale'])) await setLocale(settings['ui.locale'], { notify: false });
       const delay = Number(result.data?.apply_after_seconds || 30);
       msg.textContent = t('settings.saved_apply', { count: delay, n: delay });
       setTimeout(() => location.reload(), 1500);

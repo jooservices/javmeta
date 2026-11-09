@@ -88,10 +88,6 @@ return [
             'label' => 'Interface language',
             'description' => 'Vietnamese or English for the owner interface; guest browsers still choose their own language locally.',
         ],
-        'notifications__locale' => [
-            'label' => 'Notification template language',
-            'description' => 'Language of Telegram/Alertmanager templates when sending. English by default; switch to Vietnamese only if the owner chooses.',
-        ],
         'ui_guest__rate_limit_per_minute' => [
             'label' => 'Guest UI requests per minute per IP',
             'description' => 'Maximum requests per minute from one IP address to the public read-only UI bridge.',
@@ -991,6 +987,10 @@ return [
         'backup__manifest_path' => [
             'label' => 'Backup manifest path',
             'description' => 'State file updated by the backup command when it finishes.',
+        ],
+        'backup__monitoring_enabled' => [
+            'label' => 'Enable backup monitoring',
+            'description' => 'Off by default. When on, the system checks the age of the latest backup every minute, sends an alert when it is too old and counts it in the readiness report.',
         ],
         'backup__stale_after_seconds' => [
             'label' => 'Backup considered stale after (seconds)',

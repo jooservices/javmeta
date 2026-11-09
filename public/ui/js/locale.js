@@ -3,6 +3,9 @@ import { send } from './api.js';
 
 const guestMode = () => document.body?.dataset.guestMode === 'true';
 
+/* Saves run one after the other, so quick switches always end with the last choice stored. */
+let saving = Promise.resolve();
+
 /**
  * Switch the UI language without a reload.
  * setLocale() persists the choice in localStorage and notifies the listeners registered by app.js,
@@ -13,5 +16,7 @@ export async function switchLocale(locale) {
   if (locale === currentLocale()) return;
   await setLocale(locale);
   if (guestMode()) return;
-  send('PUT', '/ui-admin/settings', { settings: { 'ui.locale': locale } }).catch(() => { /* the local choice already applies */ });
+  saving = saving
+    .then(() => send('PUT', '/ui-admin/settings', { settings: { 'ui.locale': locale } }))
+    .catch(() => { /* the local choice already applies */ });
 }

@@ -1,7 +1,7 @@
 import { admin, send } from './api.js';
 import { esc, queryString, toast } from './util.js';
 import { askConfirm } from './confirm.js';
-import { t } from './i18n.js';
+import { t, html as tHtml } from './i18n.js';
 
 export const savedSearchesHtml = () => document.body.dataset.guestMode === 'true'
   ? `<p class="guest-login-hint"><a href="/login">${t('saved.login_hint')}</a></p>`
@@ -33,7 +33,7 @@ export function mountSavedSearches(root, kind, query, signal) {
     const button = e.target.closest('[data-delete-search]'); if (!button) return;
     const row = rows[Number(button.dataset.deleteSearch)];
     if (!row) return;
-    if (!await askConfirm({ title: t('saved.delete_title'), body: t('saved.delete_body', { name: row.name }), confirmLabel: t('common.delete'), danger: true })) return;
+    if (!await askConfirm({ title: t('saved.delete_title'), body: tHtml('saved.delete_body', { name: row.name }), confirmLabel: t('common.delete'), danger: true })) return;
     button.disabled = true; error.textContent = '';
     try { await send('POST', '/ui-me/marks', { kind: 'saved_search', subject: kind, key: row.key, on: false }); await load(); toast(t('saved.deleted_toast')); }
     catch (e) { if (!signal.aborted) error.textContent = e.message; }

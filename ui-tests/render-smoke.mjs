@@ -32,6 +32,9 @@ globalThis.document = {
 globalThis.requestAnimationFrame = () => 0;
 globalThis.IntersectionObserver = class { observe() {} disconnect() {} };
 
+// The shell loads the catalog before its first render; the smoke test does the same.
+await (await import('../public/ui/js/i18n.js')).initI18n('vi');
+
 const movie = (code, extra = {}) => ({
   uuid: 'u-' + code, code, title_jp: null, title_en: 'Title of ' + code, cover_url: 'https://img.test/' + code + '.jpg', release_date: '2026-10-01', runtime_minutes: 120,
   maker: 'Mankitsu', label: null, series: 'Series One', genres: ['Drama', 'School'], censored: null, community_score: 4.2, completeness_tier: 2, needs_review: false,

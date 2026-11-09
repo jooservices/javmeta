@@ -27,30 +27,28 @@ final class NotificationTemplateService
     }
 
     /** @return list<array<string, mixed>> */
-    public function all(?string $locale = null): array
+    public function all(): array
     {
-        $locale = $this->normalizeLocale($locale);
-        $stored = $this->repository->templatesByKey($locale);
+        $stored = $this->repository->templatesByKey();
         $rows = [];
         foreach ($this->registry->all() as $key => $definition) {
             $row = $stored[$key] ?? null;
-            $rows[] = $row === null ? $this->defaultRow($key, $definition, $locale) : $this->hydrate($row, $definition);
+            $rows[] = $row === null ? $this->defaultRow($key, $definition) : $this->hydrate($row, $definition);
         }
 
         return $rows;
     }
 
     /** @return array<string, mixed>|null */
-    public function get(string $key, ?string $locale = null): ?array
+    public function get(string $key): ?array
     {
         $definition = $this->registry->get($key);
         if ($definition === null) {
             return null;
         }
 
-        $locale = $this->normalizeLocale($locale);
-        $row = $this->repository->template($key, $locale);
-        $template = $row === null ? $this->defaultRow($key, $definition, $locale) : $this->hydrate($row, $definition);
+        $row = $this->repository->template($key);
+        $template = $row === null ? $this->defaultRow($key, $definition) : $this->hydrate($row, $definition);
         $this->rememberEnabled($key, (bool) $template['enabled'], (int) $template['version']);
 
         return $template;
@@ -72,10 +70,9 @@ final class NotificationTemplateService
     }
 
     /** @return array<string, mixed>|null */
-    public function findStored(string $key, ?string $locale = null): ?array
+    public function findStored(string $key): ?array
     {
-        $locale = $this->normalizeLocale($locale ?? $this->sendingLocale());
-        $row = $this->repository->template($key, $locale);
+        $row = $this->repository->template($key);
         if ($row === null) {
             return null;
         }
@@ -84,15 +81,8 @@ final class NotificationTemplateService
         return $definition === null ? null : $this->hydrate($row, $definition);
     }
 
-    private function normalizeLocale(?string $locale): string
-    {
-        $locale = strtolower((string) ($locale ?? 'en'));
-
-        return in_array($locale, ['en', 'vi'], true) ? $locale : 'en';
-    }
-
     /** @return array<string, mixed> */
-    public function save(string $key, string $title, string $body, bool $enabled, string $severity, ?int $updatedBy, ?array $policy = null, ?string $locale = null): array
+    public function save(string $key, string $title, string $body, bool $enabled, string $severity, ?int $updatedBy, ?array $policy = null): array
     {
         $definition = $this->registry->get($key);
         if ($definition === null) {
@@ -105,11 +95,10 @@ final class NotificationTemplateService
         if ($policy !== null) {
             $this->validatePolicy($policy);
         }
-        $locale = $this->normalizeLocale($locale);
 
-        $this->repository->saveTemplate($key, $definition, $title, $body, $enabled, $severity, $updatedBy, $policy === null ? [] : $this->repository->policyFields($policy), $locale);
+        $this->repository->saveTemplate($key, $definition, $title, $body, $enabled, $severity, $updatedBy, $policy === null ? [] : $this->repository->policyFields($policy));
 
-        return $this->get($key, $locale) ?? throw new RuntimeException('The saved notification template could not be reloaded.');
+        return $this->get($key) ?? throw new RuntimeException('The saved notification template could not be reloaded.');
     }
 
     /** @return list<array<string, mixed>> */
@@ -188,12 +177,11 @@ final class NotificationTemplateService
     /** @param array<string, mixed> $definition
      *  @return array<string, mixed>
      */
-    private function defaultRow(string $key, array $definition, string $locale = 'en'): array
+    private function defaultRow(string $key, array $definition): array
     {
         return [
             'id' => null,
             'key' => $key,
-            'locale' => $locale,
             'name' => $this->localizedName($key, $definition['name']),
             'usage' => $this->localizedUsage($key, $definition['usage']),
             'channel' => $definition['channel'],
@@ -220,7 +208,6 @@ final class NotificationTemplateService
         return [
             'id' => (int) $row['id'],
             'key' => (string) $row['key'],
-            'locale' => (string) ($row['locale'] ?? 'en'),
             'name' => $this->localizedName((string) $row['key'], $definition['name']),
             'usage' => $this->localizedUsage((string) $row['key'], $definition['usage']),
             'channel' => $definition['channel'],
@@ -243,6 +230,20 @@ final class NotificationTemplateService
         ];
     }
 
+    /** @param array<string, mixed> $policy */
+    private function validatePolicy(array $policy): void
+    {
+        if (! in_array($policy['tier'] ?? null, ['critical', 'warning', 'notice', 'info'], true)
+            || ! is_int($policy['cooldown_minutes'] ?? null) || $policy['cooldown_minutes'] < 0 || $policy['cooldown_minutes'] > 10080
+            || (isset($policy['escalation_minutes']) && (! is_int($policy['escalation_minutes']) || $policy['escalation_minutes'] < 1 || $policy['escalation_minutes'] > 10080))
+            || ! is_bool($policy['include_in_periodic_report'] ?? null)
+            || ! is_bool($policy['include_in_daily_report'] ?? null)
+            || ! is_bool($policy['send_resolved'] ?? null)) {
+            throw new InvalidArgumentException('The notification policy values are invalid.');
+        }
+    }
+
+    /** The editor shows the name in the language of the interface; the message text stays the single editable template. */
     private function localizedName(string $key, string $fallback): string
     {
         $line = __('notifications.registry.' . str_replace('.', '__', $key) . '.name');
@@ -255,26 +256,5 @@ final class NotificationTemplateService
         $line = __('notifications.registry.' . str_replace('.', '__', $key) . '.usage');
 
         return $line === 'notifications.registry.' . str_replace('.', '__', $key) . '.usage' ? $fallback : $line;
-    }
-
-    /** Locale used when sending Telegram/Alertmanager text (owner setting; default English). */
-    public function sendingLocale(): string
-    {
-        $locale = strtolower((string) config('javmeta_notifications.locale', 'en'));
-
-        return in_array($locale, ['en', 'vi'], true) ? $locale : 'en';
-    }
-
-    /** @param array<string, mixed> $policy */
-    private function validatePolicy(array $policy): void
-    {
-        if (! in_array($policy['tier'] ?? null, ['critical', 'warning', 'notice', 'info'], true)
-            || ! is_int($policy['cooldown_minutes'] ?? null) || $policy['cooldown_minutes'] < 0 || $policy['cooldown_minutes'] > 10080
-            || (isset($policy['escalation_minutes']) && (! is_int($policy['escalation_minutes']) || $policy['escalation_minutes'] < 1 || $policy['escalation_minutes'] > 10080))
-            || ! is_bool($policy['include_in_periodic_report'] ?? null)
-            || ! is_bool($policy['include_in_daily_report'] ?? null)
-            || ! is_bool($policy['send_resolved'] ?? null)) {
-            throw new InvalidArgumentException('The notification policy values are invalid.');
-        }
     }
 }

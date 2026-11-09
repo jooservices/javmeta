@@ -88,10 +88,6 @@ return [
             'label' => 'Ngôn ngữ giao diện',
             'description' => 'Tiếng Việt hoặc English cho giao diện chủ sở hữu; trình duyệt khách vẫn chọn riêng trên máy.',
         ],
-        'notifications__locale' => [
-            'label' => 'Ngôn ngữ mẫu thông báo',
-            'description' => 'Ngôn ngữ mẫu Telegram/Alertmanager khi gửi. Mặc định English; đổi sang tiếng Việt chỉ khi chủ sở hữu chọn.',
-        ],
         'ui_guest__rate_limit_per_minute' => [
             'label' => 'Giới hạn yêu cầu giao diện khách mỗi phút theo IP',
             'description' => 'Số yêu cầu tối đa mỗi phút từ một địa chỉ IP đến cầu nối giao diện công khai chỉ đọc.',
@@ -991,6 +987,10 @@ return [
         'backup__manifest_path' => [
             'label' => 'Đường dẫn manifest sao lưu',
             'description' => 'Tệp trạng thái được lệnh backup cập nhật sau khi hoàn tất.',
+        ],
+        'backup__monitoring_enabled' => [
+            'label' => 'Bật giám sát sao lưu',
+            'description' => 'Tắt mặc định. Khi bật, hệ thống kiểm tra tuổi bản sao lưu mỗi phút, gửi cảnh báo nếu quá cũ và tính vào báo cáo sẵn sàng.',
         ],
         'backup__stale_after_seconds' => [
             'label' => 'Bản sao lưu coi là cũ sau (giây)',

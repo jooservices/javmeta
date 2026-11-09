@@ -5,6 +5,9 @@ import { facetHtml, choiceHtml, relaxationSuggestions, suggestionsHtml, mountFac
 import { optionsHtml, performerNames, mountPicker } from '../public/ui/js/pickers.js';
 import { savedItemsHtml, parseSaved, mountSavedSearches } from '../public/ui/js/savedSearches.js';
 import { searchBrowser } from '../public/ui/js/searchBrowser.js';
+import { initI18n } from '../public/ui/js/i18n.js';
+
+await initI18n('vi'); // the shell loads the catalog before rendering
 
 const movieQuery = Object.fromEntries(movieKeys.map(k => [k, '1']));
 Object.assign(movieQuery, { q: 'Movie', actress_id: '1,2', genre: 'Drama,School', source: 'javdb,javbus', has_cover: '0', released_from: '2020', released_to: '2025' });
