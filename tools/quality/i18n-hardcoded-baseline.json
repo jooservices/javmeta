@@ -1,0 +1,8 @@
+{
+  "total": 6,
+  "byFile": {
+    "public/ui/index.html": 5,
+    "resources/views/operations/dashboard.blade.php": 1
+  },
+  "updated_at": "2026-11-07T03:46:52.797Z"
+}

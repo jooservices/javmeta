@@ -678,6 +678,12 @@ Số nguyên; từ 30 đến 3600. Mã mục: `alerts.crawl_dispatch_critical_se
 
 ## Chính sách thông báo
 
+### Ngôn ngữ mẫu thông báo
+
+Ngôn ngữ mẫu Telegram/Alertmanager khi gửi. Mặc định English; đổi sang tiếng Việt chỉ khi chủ sở hữu chọn.
+
+Văn bản; chọn: en, vi. Mã mục: `notifications.locale`.
+
 ### Chế độ yên lặng
 
 Chỉ gửi cảnh báo CRITICAL và sự kiện bảo mật; các mức khác được giữ cho báo cáo.
@@ -1401,6 +1407,14 @@ Thông tin bí mật. Mã mục: `ui_security.owner_admin_token`.
 Được mã hóa trong cơ sở dữ liệu và không hiển thị lại; API key mới nên dùng scope MCP.
 
 Thông tin bí mật. Mã mục: `ui_security.mcp_api_key`.
+
+## Giao diện người dùng
+
+### Ngôn ngữ giao diện
+
+Tiếng Việt hoặc English cho giao diện chủ sở hữu; trình duyệt khách vẫn chọn riêng trên máy.
+
+Văn bản; chọn: vi, en. Mã mục: `ui.locale`.
 
 ## Thêm node
 

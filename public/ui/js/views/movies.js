@@ -1,4 +1,5 @@
 import { head } from '../components.js';
+import { t } from '../i18n.js';
 import { movieParams } from '../filterState.js';
 import { searchBrowser, movieSorts } from '../searchBrowser.js';
 
@@ -8,6 +9,6 @@ export const moviesBrowser = (query, options) => searchBrowser('movies', query, 
 export default {
   async render({ query }) {
     const browser = moviesBrowser(query);
-    return { html: `<div class="wrap">${head('Phim', 'toàn bộ phim đã crawl, cuộn để tải thêm')}${browser.html}</div>`, mount: browser.mount };
+    return { html: `<div class="wrap">${head(t('movies.title'), t('movies.sub'))}${browser.html}</div>`, mount: browser.mount };
   },
 };

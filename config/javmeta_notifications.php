@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 // Defaults only: the values are settings in the database (docs/03-operations/settings.md) and are edited in the UI.
 return [
+    /** Language of Telegram/Alertmanager templates when sending (en|vi). Default en keeps current English text. */
+    'locale' => 'en',
     'policy' => [
         'quiet_mode' => false,
     ],

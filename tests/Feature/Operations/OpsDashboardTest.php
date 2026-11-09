@@ -94,7 +94,7 @@ final class OpsDashboardTest extends TestCase
 
     public function test_the_login_page_is_vietnamese_xcrawler(): void
     {
-        $this->get('/login')
+        $this->get('/login?lang=vi')
             ->assertOk()
             ->assertSee('lang="vi"', false)
             ->assertSee('Đăng nhập · XCrawler', false)

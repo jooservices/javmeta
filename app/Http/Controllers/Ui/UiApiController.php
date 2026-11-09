@@ -47,7 +47,11 @@ final class UiApiController
             $request->query(),
             [],
             [],
-            ['REMOTE_ADDR' => $request->ip() ?? '127.0.0.1', 'HTTP_ACCEPT' => 'application/json'],
+            [
+                'REMOTE_ADDR' => $request->ip() ?? '127.0.0.1',
+                'HTTP_ACCEPT' => 'application/json',
+                'HTTP_ACCEPT_LANGUAGE' => (string) $request->header('Accept-Language', ''),
+            ],
         );
         $internal->attributes->set('javmeta.internal_ui', true);
 

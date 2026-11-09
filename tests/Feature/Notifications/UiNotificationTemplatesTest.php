@@ -22,6 +22,8 @@ final class UiNotificationTemplatesTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // The framework test client sends Accept-Language en-us; these assertions read the Vietnamese catalog.
+        $this->withHeader('Accept-Language', 'vi');
         $this->app->instance(ReportChannel::class, new class ($this) implements ReportChannel {
             public function __construct(private readonly UiNotificationTemplatesTest $test) {}
 

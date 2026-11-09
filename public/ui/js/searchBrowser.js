@@ -6,9 +6,11 @@ import { filterControls } from './filterControls.js';
 import { mountPicker, performerNames, fillCatalogs } from './pickers.js';
 import { mountFacets, relaxationSuggestions, suggestionsHtml } from './facets.js';
 import { savedSearchesHtml, mountSavedSearches } from './savedSearches.js';
+import { t } from './i18n.js';
 
-export const movieSorts = [['release_date', 'Mới phát hành'], ['update_date', 'Mới cập nhật'], ['rating', 'Điểm cao'], ['relevance', 'Liên quan (cần từ khoá)']];
-const performerSorts = [['name', 'Tên A–Z'], ['updated_at', 'Mới cập nhật'], ['linked_title_count', 'Nhiều phim nhất']];
+/* [value, i18n key]: translated where rendered so a locale switch is picked up */
+export const movieSorts = [['release_date', 'sort.movies.release_date'], ['update_date', 'sort.movies.update_date'], ['rating', 'sort.movies.rating'], ['relevance', 'sort.movies.relevance']];
+const performerSorts = [['name', 'sort.performers.name'], ['updated_at', 'sort.performers.updated_at'], ['linked_title_count', 'sort.performers.linked_title_count']];
 const prefs = key => { try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch { return {}; } };
 const writePrefs = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Private mode may disable storage. */ } };
 let focusPicker = false;
@@ -27,14 +29,14 @@ export function searchBrowser(kind, inputQuery, { fixed = {}, apiExtra = {}, clo
   const sort = query.sort || (movies ? (query.q ? 'relevance' : 'release_date') : 'name');
   const baseParams = q => ({ ...convert(q), ...apiExtra, ...Object.fromEntries(Object.entries(fixed).filter(([k]) => k !== 'year')) });
   const open = drawerState.get(kind) ?? (!closed && innerWidth > 900);
-  const html = `<div class="br search-browser" data-key="${kind}"><div class="brbar"><button class="btn ${open ? 'on' : ''}" data-act="toggleside" aria-expanded="${open}">${ic('filter')} Bộ lọc</button><b class="mono" data-count></b><span class="muted">${movies ? 'phim' : 'diễn viên'}</span><span class="sp"></span><label>Xếp theo <select data-sort>${(movies ? movieSorts : performerSorts).map(([v, l]) => `<option value="${v}" ${sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label><label>Mỗi trang <select data-page-size>${[24, 48, 96].map(n => `<option ${perPage === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label><div class="seg">${movies && mode === 'grid' ? ['S', 'M', 'L'].map(s => `<button class="${size === s ? 'on' : ''}" data-act="size" data-v="${s}" aria-label="Cỡ ảnh ${s}">${s}</button>`).join('') : ''}${['grid', 'table'].map(m => `<button class="${mode === m ? 'on' : ''}" data-act="mode" data-v="${m}" aria-label="${m === 'grid' ? 'Lưới' : 'Bảng'}">${ic(m === 'grid' ? 'grid' : 'list')}</button>`).join('')}</div></div><div class="parsed" aria-label="Bộ lọc đang dùng"><div data-active>${chipsHtml(query)}</div><button class="btn sm" data-act="clearfilters">Xoá tất cả</button></div>${savedSearchesHtml()}<div class="brmain ${open ? '' : 'nof'}"><div class="brscrim" data-act="toggleside"></div><aside class="brside panel"><button class="btn sm brclose" data-act="toggleside">Đóng bộ lọc</button><form data-filter-form autocomplete="off">${filterControls(kind, formQuery, fixed)}<button type="submit" class="btn sm">Áp dụng</button></form></aside><div class="search-results"><div data-list></div><div data-relax role="status"></div></div></div></div>`;
+  const html = `<div class="br search-browser" data-key="${kind}"><div class="brbar"><button class="btn ${open ? 'on' : ''}" data-act="toggleside" aria-expanded="${open}">${ic('filter')} ${t('browser.filters')}</button><b class="mono" data-count></b><span class="muted">${t(movies ? 'browser.unit.movies' : 'browser.unit.performers')}</span><span class="sp"></span><label>${t('browser.sort_by')} <select data-sort>${(movies ? movieSorts : performerSorts).map(([v, l]) => `<option value="${v}" ${sort === v ? 'selected' : ''}>${t(l)}</option>`).join('')}</select></label><label>${t('browser.per_page')} <select data-page-size>${[24, 48, 96].map(n => `<option ${perPage === n ? 'selected' : ''}>${n}</option>`).join('')}</select></label><div class="seg">${movies && mode === 'grid' ? ['S', 'M', 'L'].map(s => `<button class="${size === s ? 'on' : ''}" data-act="size" data-v="${s}" aria-label="${t('browser.size_aria', { size: s })}">${s}</button>`).join('') : ''}${['grid', 'table'].map(m => `<button class="${mode === m ? 'on' : ''}" data-act="mode" data-v="${m}" aria-label="${t(m === 'grid' ? 'browser.mode.grid' : 'browser.mode.table')}">${ic(m === 'grid' ? 'grid' : 'list')}</button>`).join('')}</div></div><div class="parsed" aria-label="${t('browser.active_filters')}"><div data-active>${chipsHtml(query)}</div><button class="btn sm" data-act="clearfilters">${t('browser.clear_all')}</button></div>${savedSearchesHtml()}<div class="brmain ${open ? '' : 'nof'}"><div class="brscrim" data-act="toggleside"></div><aside class="brside panel"><button class="btn sm brclose" data-act="toggleside">${t('browser.close_filters')}</button><form data-filter-form autocomplete="off">${filterControls(kind, formQuery, fixed)}<button type="submit" class="btn sm">${t('browser.apply')}</button></form></aside><div class="search-results"><div data-list></div><div data-relax role="status"></div></div></div></div>`;
   return { html, mount(root) {
     const lifetime = new AbortController(), signal = lifetime.signal;
     const list = root.querySelector('[data-list]');
     let timer, names = {}, suggestions = [];
     const path = location.hash.slice(2).split('?')[0] || kind;
     const go = q => { clearTimeout(timer); drawerState.set(kind, !root.querySelector('.brmain').classList.contains('nof')); location.hash = '#/' + path + queryString(q); };
-    const grid = mode === 'grid' ? `<div class="${movies ? 'mgrid ' + size : 'agrid'}" data-h></div><div data-e></div><div class="brfoot" data-f></div>` : `<div class="panel tbl-wrap"><table><thead>${movies ? movieHead : performerHead}</thead><tbody data-h></tbody></table></div><div data-e></div><div class="brfoot" data-f></div>`;
+    const grid = mode === 'grid' ? `<div class="${movies ? 'mgrid ' + size : 'agrid'}" data-h></div><div data-e></div><div class="brfoot" data-f></div>` : `<div class="panel tbl-wrap"><table><thead>${movies ? movieHead() : performerHead()}</thead><tbody data-h></tbody></table></div><div data-e></div><div class="brfoot" data-f></div>`;
     const ctl = infiniteList(list, {
       fetchPage: async state => {
         const body = await api(kind, { ...baseParams(query), sort, per_page: perPage, ...(movies ? (state.cursor ? { cursor: state.cursor } : {}) : { page: state.page }) }, { signal });
@@ -43,7 +45,7 @@ export function searchBrowser(kind, inputQuery, { fixed = {}, apiExtra = {}, clo
       },
       renderItems: (items, off) => items.map((item, i) => movies ? (mode === 'grid' ? movieCard(item, off + i) : movieRow(item)) : (mode === 'grid' ? performerCard(item, off + i) : performerRow(item))).join(''),
       wrapGrid: grid, countEl: root.querySelector('[data-count]'),
-      emptyHtml: emptyBox(movies ? 'Không có phim khớp' : 'Không có diễn viên khớp', 'Nới điều kiện hoặc bỏ bớt bộ lọc.', '<button class="btn" data-act="clearfilters">Xoá bộ lọc</button>'),
+      emptyHtml: emptyBox(t(movies ? 'browser.empty.movies' : 'browser.empty.performers'), t('browser.empty.hint'), `<button class="btn" data-act="clearfilters">${t('browser.clear_filters')}</button>`),
     });
     const form = root.querySelector('[data-filter-form]');
     const read = () => {
@@ -94,9 +96,9 @@ export function searchBrowser(kind, inputQuery, { fixed = {}, apiExtra = {}, clo
     mountSavedSearches(root, kind, baseParams(query), signal);
     const stopFacets = mountFacets(root, kind, query, baseParams, async data => {
       if (data.total !== 0) return;
-      const host = root.querySelector('[data-relax]'); host.textContent = 'Đang tìm cách nới bộ lọc…';
+      const host = root.querySelector('[data-relax]'); host.textContent = t('browser.relaxing');
       suggestions = await relaxationSuggestions(kind, query, baseParams, signal, names);
-      if (!signal.aborted) host.innerHTML = suggestionsHtml(suggestions, kind) || 'Thử xoá tất cả hoặc đổi từ khoá.';
+      if (!signal.aborted) host.innerHTML = suggestionsHtml(suggestions, kind) || t('browser.relax_empty');
     }, signal);
     return () => { clearTimeout(timer); ctl.destroy(); lifetime.abort(); stopPicker(); stopFacets(); };
   } };

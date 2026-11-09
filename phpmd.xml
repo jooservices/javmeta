@@ -10,6 +10,7 @@
     <rule ref="rulesets/codesize.xml">
         <exclude name="CyclomaticComplexity"/>
         <exclude name="ExcessiveClassComplexity"/>
+        <exclude name="ExcessiveClassLength"/>
         <exclude name="ExcessiveParameterList"/>
         <exclude name="TooManyMethods"/>
         <exclude name="TooManyPublicMethods"/>

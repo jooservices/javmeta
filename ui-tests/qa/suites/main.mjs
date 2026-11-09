@@ -4,6 +4,7 @@ import * as s from '../scenarios/index.mjs';
 export default defineSuite('javmeta browser E2E', [
   s.signInFormHasNoPrefilledEmail,
   s.frontDoorIsVietnameseXCrawler,
+  s.languageSwitcherChangesUiAndPersists,
   s.loginRejectsAWrongPassword,
   s.everyViewRendersOnDesktop,
   s.everyViewRendersOnPhone,

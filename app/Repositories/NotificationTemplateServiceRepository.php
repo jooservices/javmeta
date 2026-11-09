@@ -43,10 +43,10 @@ final class NotificationTemplateServiceRepository extends EloquentRepository imp
     }
 
     /** @return array<string, array<string, mixed>> */
-    public function templatesByKey(): array
+    public function templatesByKey(string $locale = 'en'): array
     {
         $rows = [];
-        foreach (DB::table('notification_templates')->get() as $row) {
+        foreach (DB::table('notification_templates')->where('locale', $locale)->get() as $row) {
             $data = (array) $row;
             $rows[(string) $data['key']] = $data;
         }
@@ -55,9 +55,12 @@ final class NotificationTemplateServiceRepository extends EloquentRepository imp
     }
 
     /** @return array<string, mixed>|null */
-    public function template(string $key): ?array
+    public function template(string $key, string $locale = 'en'): ?array
     {
-        $row = DB::table('notification_templates')->where('key', $key)->first();
+        $row = DB::table('notification_templates')->where('key', $key)->where('locale', $locale)->first();
+        if ($row === null && $locale !== 'en') {
+            $row = DB::table('notification_templates')->where('key', $key)->where('locale', 'en')->first();
+        }
 
         return $row === null ? null : (array) $row;
     }
@@ -96,11 +99,11 @@ final class NotificationTemplateServiceRepository extends EloquentRepository imp
     /** @param array<string, mixed> $definition
      *  @param array<string, mixed> $policyFields
      */
-    public function saveTemplate(string $key, array $definition, string $title, string $body, bool $enabled, string $severity, ?int $updatedBy, array $policyFields): void
+    public function saveTemplate(string $key, array $definition, string $title, string $body, bool $enabled, string $severity, ?int $updatedBy, array $policyFields, string $locale = 'en'): void
     {
-        DB::transaction(function () use ($key, $definition, $title, $body, $enabled, $severity, $updatedBy, $policyFields): void {
-            DB::table('notification_templates')->insertOrIgnore($this->templateValues($key, $definition, now()));
-            $current = DB::table('notification_templates')->where('key', $key)->lockForUpdate()->first();
+        DB::transaction(function () use ($key, $definition, $title, $body, $enabled, $severity, $updatedBy, $policyFields, $locale): void {
+            DB::table('notification_templates')->insertOrIgnore($this->templateValues($key, $definition, now(), $locale));
+            $current = DB::table('notification_templates')->where('key', $key)->where('locale', $locale)->lockForUpdate()->first();
             if ($current === null) {
                 throw new RuntimeException('The notification template could not be loaded.');
             }
@@ -209,9 +212,10 @@ final class NotificationTemplateServiceRepository extends EloquentRepository imp
     /** @param array<string, mixed> $definition
      *  @return array<string, mixed>
      */
-    private function templateValues(string $key, array $definition, mixed $now): array
+    /** A null locale leaves the column out, so older migrations can seed before the locale column exists (its default is en). */
+    private function templateValues(string $key, array $definition, mixed $now, ?string $locale = null): array
     {
-        return [
+        $values = [
             'key' => $key,
             'name' => $definition['name'],
             'usage' => $definition['usage'],
@@ -226,6 +230,11 @@ final class NotificationTemplateServiceRepository extends EloquentRepository imp
             'created_at' => $now,
             'updated_at' => $now,
         ];
+        if ($locale !== null) {
+            $values['locale'] = $locale;
+        }
+
+        return $values;
     }
 
     private function recordRevision(object $current): void

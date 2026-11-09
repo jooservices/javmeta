@@ -1,28 +1,29 @@
 import { esc, fmt, debounce, queryString } from '../util.js';
 import { api, pagination } from '../api.js';
 import { head, a, href, emptyBox, infiniteList } from '../components.js';
+import { t } from '../i18n.js';
 
 const n = x => x.movie_count ?? x.performer_count ?? 0;
 export const KINDS = {
-  genres: { title: 'Thể loại', facet: 'genre', unit: 'phim' },
-  makers: { title: 'Hãng', facet: 'maker', unit: 'phim' },
-  series: { title: 'Loạt phim', facet: 'series', unit: 'phim' },
-  labels: { title: 'Nhãn', facet: 'label', unit: 'phim' },
-  years: { title: 'Năm phát hành', facet: 'year', unit: 'phim' },
-  cups: { title: 'Cup', perf: 'cup', unit: 'diễn viên' },
-  blood_types: { title: 'Nhóm máu', perf: 'blood_type', unit: 'diễn viên' },
-  locations: { title: 'Nơi sống', perf: 'location', unit: 'diễn viên' },
+  genres: { title: 'catalog.kind.genres', facet: 'genre', unit: 'catalog.unit.movies' },
+  makers: { title: 'catalog.kind.makers', facet: 'maker', unit: 'catalog.unit.movies' },
+  series: { title: 'catalog.kind.series', facet: 'series', unit: 'catalog.unit.movies' },
+  labels: { title: 'catalog.kind.labels', facet: 'label', unit: 'catalog.unit.movies' },
+  years: { title: 'catalog.kind.years', facet: 'year', unit: 'catalog.unit.movies' },
+  cups: { title: 'catalog.kind.cups', perf: 'cup', unit: 'catalog.unit.performers' },
+  blood_types: { title: 'catalog.kind.blood_types', perf: 'blood_type', unit: 'catalog.unit.performers' },
+  locations: { title: 'catalog.kind.locations', perf: 'location', unit: 'catalog.unit.performers' },
 };
 
 /* a list of every genre, maker, series, label or year with its number of movies; each value is a link to its page */
 export default {
   async render({ params, query }) {
     const k = KINDS[params.kind];
-    if (!k) return { html: `<div class="wrap">${emptyBox('Danh mục không tồn tại', esc(params.kind), a('#/movies', 'Về danh sách phim', 'btn'))}</div>` };
+    if (!k) return { html: `<div class="wrap">${emptyBox(t('catalog.unknown'), esc(params.kind), a('#/movies', t('common.back_to_movies'), 'btn'))}</div>` };
     const sort = query.sort || (params.kind === 'years' ? 'name' : 'movie_count');
-    const html = `<div class="wrap">${head(k.title, 'đếm theo số ' + k.unit)}
-      <div class="brbar" style="margin-bottom:8px"><form id="cf" class="omni" style="max-width:360px;flex:1"><input type="text" name="q" value="${esc(query.q || '')}" placeholder="Tìm trong ${esc(k.title.toLowerCase())}…" autocomplete="off" style="padding-left:12px"></form><b class="mono" data-count></b> <span class="muted">mục</span><span class="sp"></span>
-        <label class="muted">Xếp theo <select id="csort"><option value="movie_count" ${sort === 'movie_count' ? 'selected' : ''}>Nhiều phim</option><option value="name" ${sort === 'name' ? 'selected' : ''}>Tên</option></select></label></div>
+    const html = `<div class="wrap">${head(t(k.title), t('catalog.sub', { unit: t(k.unit) }))}
+      <div class="brbar" style="margin-bottom:8px"><form id="cf" class="omni" style="max-width:360px;flex:1"><input type="text" name="q" value="${esc(query.q || '')}" placeholder="${t('catalog.search_in', { title: t(k.title).toLowerCase() })}" autocomplete="off" style="padding-left:12px"></form><b class="mono" data-count></b> <span class="muted">${t('catalog.items')}</span><span class="sp"></span>
+        <label class="muted">${t('browser.sort_by')} <select id="csort"><option value="movie_count" ${sort === 'movie_count' ? 'selected' : ''}>${t('catalog.sort.movie_count')}</option><option value="name" ${sort === 'name' ? 'selected' : ''}>${t('catalog.sort.name')}</option></select></label></div>
       <div class="panel" data-list></div></div>`;
     return { html, mount: root => mount(root, params.kind, k, query, sort) };
   },
@@ -41,7 +42,7 @@ function mount(root, kind, k, query, sort) {
     fetchPage,
     renderItems: items => items.map(x => `<div class="row-i"><div class="grow ell">${a(k.perf ? href.performers({ [k.perf]: x.name }) : href.facet(k.facet, x.name), esc(x.name))}</div><div class="bar" style="width:140px"><i style="width:${Math.max(2, n(x) / max * 100)}%"></i></div><span class="mono muted" style="width:70px;text-align:right">${fmt(n(x))}</span></div>`).join(''),
     wrapGrid: '<div data-h></div><div data-e></div><div class="brfoot" data-f></div>',
-    emptyHtml: emptyBox('Không có mục nào', 'Thử từ khoá khác.'),
+    emptyHtml: emptyBox(t('catalog.empty'), t('catalog.empty_hint')),
     countEl: root.querySelector('[data-count]'),
   });
   const go = v => { location.hash = '#/catalog/' + kind + queryString(v); };

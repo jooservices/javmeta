@@ -51,3 +51,34 @@ export const expectFrontDoorIsXCrawlerInVietnamese = defineStep('expectFrontDoor
   if (!/riêng tư/.test(info.text)) throw new Error('Sign-in does not explain that the catalog is private.');
   if (/Operations sign in|JavMeta Operations|Command Center/.test(info.text + info.title)) throw new Error('Sign-in still uses operations jargon.');
 });
+
+/** Switch the UI language from the top-bar VI|EN control without a full navigation. */
+export const switchUiLanguage = defineStep('switchUiLanguage', async (ctx, locale) => {
+  const btn = ctx.page.locator(`#langsw button[data-v="${locale}"]`);
+  if (await btn.count() === 0) throw new Error(`Language switcher has no ${locale} button.`);
+  await btn.click();
+  await ctx.page.waitForFunction(code => document.documentElement.lang === code, locale, { timeout: 5000 })
+    .catch(() => { throw new Error(`lang attribute did not become ${locale}.`); });
+});
+
+/** Visible chrome texts and <html lang> match the requested locale. */
+export const expectUiLanguage = defineStep('expectUiLanguage', async (ctx, locale) => {
+  const info = await ctx.page.evaluate(() => ({
+    lang: document.documentElement.lang,
+    settings: [...document.querySelectorAll('#side a.nav span, #bnav a')].map(el => el.textContent || '').join(' | '),
+  }));
+  if (info.lang !== locale) throw new Error(`html lang is "${info.lang}", expected ${locale}.`);
+  if (locale === 'en') {
+    if (!/Settings/.test(info.settings)) throw new Error(`English chrome missing Settings: ${info.settings}`);
+  } else if (!/Cài đặt/.test(info.settings)) {
+    throw new Error(`Vietnamese chrome missing Cài đặt: ${info.settings}`);
+  }
+});
+
+/** Reload the app shell and confirm the language choice survived. */
+export const expectLanguagePersistsAfterReload = defineStep('expectLanguagePersistsAfterReload', async (ctx, locale) => {
+  await ctx.page.reload({ waitUntil: 'load' });
+  await ctx.page.waitForSelector('#langsw', { timeout: 8000 });
+  const lang = await ctx.page.evaluate(() => document.documentElement.lang);
+  if (lang !== locale) throw new Error(`After reload lang is "${lang}", expected ${locale}.`);
+});

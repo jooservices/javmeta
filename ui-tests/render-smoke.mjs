@@ -6,8 +6,29 @@ const store = {};
 globalThis.localStorage = { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); } };
 globalThis.location = { hash: '#/', href: '', reload() {} };
 globalThis.innerWidth = 1280;
-globalThis.document = { querySelector: () => null, getElementById: () => null, body: { contains: () => true, dataset: { guestMode: 'false' } }, documentElement: { dataset: {} }, addEventListener() {}, createElement: () => ({ append() {}, remove() {} }) };
 globalThis.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+const fakeEl = () => {
+  const attrs = {};
+  const kids = [];
+  const el = {
+    className: '', hidden: false, style: {}, dataset: {}, innerHTML: '', textContent: '',
+    append() {}, remove() {}, focus() {}, blur() {},
+    setAttribute(k, v) { attrs[k] = String(v); }, getAttribute(k) { return attrs[k] ?? null; },
+    addEventListener() {}, querySelector() { return fakeEl(); }, querySelectorAll() { return []; },
+    closest() { return null; }, contains() { return false; },
+  };
+  kids.push(el);
+  return el;
+};
+globalThis.document = {
+  querySelector: () => null,
+  getElementById: () => null,
+  body:{ contains: () => true, dataset: { guestMode: 'false' }, appendChild() {}, style: {} },
+  documentElement: { dataset: {}, lang: 'vi', dir: 'ltr' },
+  addEventListener() {},
+  createElement: () => fakeEl(),
+  activeElement: null,
+};
 globalThis.requestAnimationFrame = () => 0;
 globalThis.IntersectionObserver = class { observe() {} disconnect() {} };
 
@@ -303,14 +324,18 @@ assert.equal(components.notKnown(), '<span class="dim">chưa có</span>', 'U-20:
 assert.doesNotMatch(components.notKnown(), /chờ crawl/);
 await import('./search-filters.mjs');
 
-// Keep user instructions tied to the current menus and filter labels.
+// Keep user instructions tied to the current menus and filter labels (resolved via i18n catalogs).
 const docsRoot = new URL('../docs/', import.meta.url);
 const guideIndex = await readFile(new URL('user-guide/README.md', docsRoot), 'utf8');
 const shellSource = await readFile(new URL('../public/ui/js/app.js', import.meta.url), 'utf8');
 const navSource = shellSource.split('const NAV = [')[1].split('let cleanup')[0];
-const menuLabels = [...navSource.matchAll(/\['[^']+', '([^']+)', '[^']+',/g)].map(m => m[1]);
-assert.ok(menuLabels.length >= 20, 'read the full current NAV');
-for (const label of menuLabels) assert.ok(guideIndex.includes(label), 'user index covers menu: ' + label);
+const menuKeys = [...navSource.matchAll(/\['[^']+', '([^']+)', '[^']+',/g)].map(m => m[1]);
+assert.ok(menuKeys.length >= 20, 'read the full current NAV');
+const { initI18n, setLocale, t } = await import('../public/ui/js/i18n.js');
+await initI18n('vi');
+await setLocale('vi'); // earlier suites may have left another locale active
+const menuLabels = menuKeys.map(key => t(key));
+for (const text of menuLabels) assert.ok(guideIndex.includes(text), 'user index covers menu: ' + text);
 const { movieKeys, performerKeys, labels } = await import('../public/ui/js/filterState.js');
 for (const [file, keys] of [['movies.md', movieKeys], ['performers.md', performerKeys]]) {
   const guide = await readFile(new URL('user-guide/' + file, docsRoot), 'utf8');
@@ -473,7 +498,7 @@ assert.match(guestStyles, /body\[data-guest-mode="true"\].*\[data-mark\]/);
   const mk = () => {
     const nodes = {};
     const el = {
-      hidden: false, className: '', style: {}, attrs: {}, children: {}, focused: false, innerHTML: '', textContent: '', href: '', alt: '', src: 'x',
+      hidden: false, className: '', style: {}, dataset: {}, attrs: {}, children: {}, focused: false, innerHTML: '', textContent: '', href: '', alt: '', src: 'x',
       setAttribute(k, v) { this.attrs[k] = v; }, addEventListener() {}, focus() { this.focused = true; },
       removeAttribute(k) { if (k === 'src') this.src = ''; },
       querySelector(sel) { return nodes[sel] ??= { ...mk.leaf(), src: 'x' }; },
@@ -533,12 +558,19 @@ assert.match(notifySource, /askConfirm/, 'U-06: notification test/reset ask for 
 const appSource = await readFile(new URL('../public/ui/js/app.js', import.meta.url), 'utf8');
 assert.match(appSource, /data-dlg-close/, 'U-13: the help dialog has a close button');
 assert.match(appSource, /me-favourite/, 'U-10: Yêu thích is on the phone bar');
-assert.match(appSource, /\['home', 'Khám phá'/, 'U-15: Discover is labelled Khám phá');
-assert.match(appSource, /\['catalog-makers', 'Hãng'/, 'U-15: Maker is labelled Hãng');
-assert.match(appSource, /\['catalog-series', 'Loạt phim'/, 'U-15: Series is labelled Loạt phim');
-assert.match(appSource, /\['catalog-labels', 'Nhãn'/, 'U-15: Label is labelled Nhãn');
-assert.match(appSource, /\['crawl', 'Thu thập & nguồn'/, 'U-15: crawl nav is Vietnamese');
-assert.match(appSource, /\['ops', 'Vận hành'/, 'U-15: operations nav drops Command Center jargon');
+const viCatalog = JSON.parse(await readFile(new URL('../public/ui/i18n/vi.json', import.meta.url), 'utf8'));
+assert.equal(viCatalog['nav.discover'], 'Khám phá', 'U-15: Discover is labelled Khám phá');
+assert.match(appSource, /\['home', 'nav.discover'/, 'U-15: Discover is labelled Khám phá'.replace(/:.*/, ': the menu uses its translated label'));
+assert.equal(viCatalog['nav.makers'], 'Hãng', 'U-15: Maker is labelled Hãng');
+assert.match(appSource, /\['catalog-makers', 'nav.makers'/, 'U-15: Maker is labelled Hãng'.replace(/:.*/, ': the menu uses its translated label'));
+assert.equal(viCatalog['nav.series'], 'Loạt phim', 'U-15: Series is labelled Loạt phim');
+assert.match(appSource, /\['catalog-series', 'nav.series'/, 'U-15: Series is labelled Loạt phim'.replace(/:.*/, ': the menu uses its translated label'));
+assert.equal(viCatalog['nav.labels'], 'Nhãn', 'U-15: Label is labelled Nhãn');
+assert.match(appSource, /\['catalog-labels', 'nav.labels'/, 'U-15: Label is labelled Nhãn'.replace(/:.*/, ': the menu uses its translated label'));
+assert.equal(viCatalog['nav.crawl'], 'Thu thập & nguồn', 'U-15: crawl nav is Vietnamese');
+assert.match(appSource, /\['crawl', 'nav.crawl'/, 'U-15: crawl nav is Vietnamese'.replace(/:.*/, ': the menu uses its translated label'));
+assert.equal(viCatalog['nav.ops'], 'Vận hành', 'U-15: operations nav drops Command Center jargon');
+assert.match(appSource, /\['ops', 'nav.ops'/, 'U-15: operations nav drops Command Center jargon'.replace(/:.*/, ': the menu uses its translated label'));
 const marksSource = await readFile(new URL('../public/ui/js/marks.js', import.meta.url), 'utf8');
 assert.match(marksSource, /toast\(/, 'U-14: toggleMark toasts the result');
 const savedSource = await readFile(new URL('../public/ui/js/savedSearches.js', import.meta.url), 'utf8');
@@ -560,10 +592,29 @@ assert.doesNotMatch(loginController, /soulevilx@gmail\.com/, 'U-01: the sign-in 
 assert.doesNotMatch(loginController, /->with\('email'/, 'U-01: the sign-in view is not given a default email');
 assert.doesNotMatch(loginBlade, /old\('email',\s*\$email\)/, 'U-01: the email field is not prefilled from a controller default');
 assert.match(loginBlade, /value="\{\{\s*old\('email'\)\s*\}\}"/, 'U-01: the email field uses only flashed old input');
-assert.match(loginBlade, /lang="vi"/, 'U-02: the sign-in page is Vietnamese');
-assert.match(loginBlade, /<title>Đăng nhập · XCrawler<\/title>/, 'U-02: the sign-in tab names XCrawler');
-assert.match(loginBlade, /<h1>Đăng nhập<\/h1>/, 'U-02: the sign-in heading is Vietnamese');
+assert.match(loginBlade, /lang="\{\{\s*str_replace\('_', '-', app\(\)->getLocale\(\)\)\s*\}\}"/, 'U-02: the sign-in page follows the active locale');
+assert.match(loginBlade, /__\('auth\.title'\)/, 'U-02: the sign-in tab title is translated');
+assert.match(loginBlade, /__\('auth\.heading'\)/, 'U-02: the sign-in heading is translated');
 assert.doesNotMatch(loginBlade, /Operations sign in|JavMeta Operations|Command Center/, 'U-02: operations jargon stays off the front door');
-assert.match(loginBlade, /riêng tư/, 'U-02: the front door explains that the catalog is private');
+assert.match(loginBlade, /__\('auth\.intro'\)/, 'U-02: the front door explains that the catalog is private');
 assert.match(loginBlade, /id="pw-toggle"/, 'U-02: the password can be revealed');
-assert.match(loginController, /Email hoặc mật khẩu không đúng/, 'U-02: a wrong password is explained in Vietnamese');
+assert.match(loginController, /__\('auth\.failed'\)/, 'U-02: a wrong password uses a translated message');
+const authVi = await readFile(new URL('../lang/vi/auth.php', import.meta.url), 'utf8');
+assert.match(authVi, /riêng tư/, 'U-02: Vietnamese auth copy still explains privacy');
+assert.match(authVi, /Đăng nhập · XCrawler/, 'U-02: Vietnamese auth title names XCrawler');
+
+// Bilingual render smoke (JOOXCR-410)
+{
+  const { initI18n, setLocale, t, currentLocale } = await import('../public/ui/js/i18n.js');
+  await initI18n('vi');
+  assert.equal(currentLocale(), 'vi');
+  assert.match(t('nav.settings'), /Cài đặt/);
+  const homeVi = await (await load('views/home.js')).render({ params: {}, query: {} });
+  assert.match(homeVi.html, /phim trong kho/);
+  await setLocale('en');
+  assert.equal(document.documentElement.lang, 'en');
+  assert.match(t('nav.settings'), /Settings/);
+  const homeEn = await (await load('views/home.js')).render({ params: {}, query: {} });
+  assert.match(homeEn.html, /movies in the collection/);
+  console.log('Bilingual render smoke: vi and en home views OK');
+}

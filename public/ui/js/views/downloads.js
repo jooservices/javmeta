@@ -1,35 +1,37 @@
 import { esc, fmt } from '../util.js';
 import { admin, send } from '../api.js';
 import { head, a, href, errorBox, emptyBox } from '../components.js';
+import { t } from '../i18n.js';
 
 const size = b => b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : b >= 1e6 ? (b / 1e6).toFixed(0) + ' MB' : fmt(b) + ' B';
 const eta = s => s == null ? '—' : s >= 3600 ? Math.floor(s / 3600) + 'h ' + Math.floor(s % 3600 / 60) + 'm' : s >= 60 ? Math.floor(s / 60) + 'm ' + (s % 60) + 's' : s + 's';
-const STATE = { downloading: ['đang tải', 'ok'], paused: ['tạm dừng', 'warn'], completed: ['xong', 'ok'], error: ['lỗi', 'bad'], waiting: ['chờ', ''] };
+const STATE = { downloading: ['downloads.state.downloading', 'ok'], paused: ['downloads.state.paused', 'warn'], completed: ['downloads.state.completed', 'ok'], error: ['downloads.state.error', 'bad'], waiting: ['downloads.state.waiting', ''] };
 
-const row = t => {
-  const [label, cls] = STATE[t.state] || [t.state, ''];
-  return `<div class="row-i" style="flex-wrap:wrap" data-hash="${esc(t.hash)}"><div class="grow" style="min-width:240px"><div class="ell">${t.movie_code ? a(href.movie(t.movie_code), esc(t.movie_code)) + ' · ' : ''}<span title="${esc(t.name)}">${esc(t.name)}</span></div>
-    <div class="bar" style="margin-top:4px"><i style="width:${Math.max(1, t.progress)}%"></i></div></div>
-    <span class="chip ${cls}">${esc(label)}</span><span class="mono" style="width:60px;text-align:right">${t.progress}%</span><span class="mono muted" style="width:110px;text-align:right">${t.completed ? size(t.size) : size(t.speed) + '/s'}</span><span class="mono muted" style="width:70px;text-align:right">${t.completed ? '' : eta(t.eta)}</span>
-    <span>${t.completed ? '<button class="btn sm" data-links>Liên kết</button>' : (t.state === 'paused' ? '<button class="btn sm" data-resume>Tiếp tục</button>' : '<button class="btn sm" data-pause>Tạm dừng</button>')} <button class="btn sm" data-remove>Xoá</button></span><div class="muted" data-out style="width:100%"></div></div>`;
+const row = tor => {
+  const [labelKey, cls] = STATE[tor.state] || [null, ''];
+  const label = labelKey ? t(labelKey) : tor.state;
+  return `<div class="row-i" style="flex-wrap:wrap" data-hash="${esc(tor.hash)}"><div class="grow" style="min-width:240px"><div class="ell">${tor.movie_code ? a(href.movie(tor.movie_code), esc(tor.movie_code)) + ' · ' : ''}<span title="${esc(tor.name)}">${esc(tor.name)}</span></div>
+    <div class="bar" style="margin-top:4px"><i style="width:${Math.max(1, tor.progress)}%"></i></div></div>
+    <span class="chip ${cls}">${esc(label)}</span><span class="mono" style="width:60px;text-align:right">${tor.progress}%</span><span class="mono muted" style="width:110px;text-align:right">${tor.completed ? size(tor.size) : size(tor.speed) + '/s'}</span><span class="mono muted" style="width:70px;text-align:right">${tor.completed ? '' : eta(tor.eta)}</span>
+    <span>${tor.completed ? `<button class="btn sm" data-links>${t('downloads.links')}</button>` : (tor.state === 'paused' ? `<button class="btn sm" data-resume>${t('downloads.resume')}</button>` : `<button class="btn sm" data-pause>${t('downloads.pause')}</button>`)} <button class="btn sm" data-remove>${t('common.delete')}</button></span><div class="muted" data-out style="width:100%"></div></div>`;
 };
 
 /* downloads started from the movie pages: progress, speed, ETA, pause, resume, remove, links to finished files */
 export default {
   async render() {
     let st;
-    try { st = (await admin('/ui-me/downloads/status')).data; } catch (e) { return { html: `<div class="wrap">${head('Tải về', '')}${errorBox(e)}</div>` }; }
-    if (!st.enabled) return { html: `<div class="wrap">${head('Tải về', 'qBittorrent')}${emptyBox('Tải về đang tắt', 'Bật tải về trong Cài đặt → Thư viện & media.', a('#/settings', 'Mở Cài đặt', 'btn'))}</div>` };
+    try { st = (await admin('/ui-me/downloads/status')).data; } catch (e) { return { html: `<div class="wrap">${head(t('downloads.title'), '')}${errorBox(e)}</div>` }; }
+    if (!st.enabled) return { html: `<div class="wrap">${head(t('downloads.title'), 'qBittorrent')}${emptyBox(t('downloads.disabled'), t('downloads.disabled_hint'), a('#/settings', t('common.open_settings'), 'btn'))}</div>` };
     let items;
-    try { items = (await admin('/ui-me/downloads')).data.items; } catch (e) { return { html: `<div class="wrap">${head('Tải về', 'qBittorrent')}${errorBox(e)}</div>` }; }
-    const html = `<div class="wrap">${head('Tải về', `${fmt(items.length)} mục`)}<div class="panel" id="dlist">${items.map(row).join('') || '<div class="row-i muted">Chưa có mục nào. Mở một phim và bấm “Tải về”.</div>'}</div></div>`;
+    try { items = (await admin('/ui-me/downloads')).data.items; } catch (e) { return { html: `<div class="wrap">${head(t('downloads.title'), 'qBittorrent')}${errorBox(e)}</div>` }; }
+    const html = `<div class="wrap">${head(t('downloads.title'), t('downloads.count', { count: items.length, n: fmt(items.length) }))}<div class="panel" id="dlist">${items.map(row).join('') || `<div class="row-i muted">${t('downloads.empty_hint')}</div>`}</div></div>`;
     return { html, mount };
   },
 };
 
 function mount(root) {
   const list = root.querySelector('#dlist');
-  const refresh = async () => { try { list.innerHTML = (await admin('/ui-me/downloads')).data.items.map(row).join('') || '<div class="row-i muted">Chưa có mục nào.</div>'; } catch { /* keep the last view */ } };
+  const refresh = async () => { try { list.innerHTML = (await admin('/ui-me/downloads')).data.items.map(row).join('') || `<div class="row-i muted">${t('downloads.empty')}</div>`; } catch { /* keep the last view */ } };
   const timer = setInterval(refresh, 5000);
   list.addEventListener('click', async e => {
     const r = e.target.closest('[data-hash]'); if (!r) return;
@@ -37,10 +39,10 @@ function mount(root) {
     try {
       if (e.target.closest('[data-pause]')) { await send('POST', `/ui-me/downloads/${h}/pause`); refresh(); }
       if (e.target.closest('[data-resume]')) { await send('POST', `/ui-me/downloads/${h}/resume`); refresh(); }
-      if (e.target.closest('[data-remove]') && confirm('Xoá mục này? Chọn OK để giữ tệp, Hủy để dừng.')) { const files = confirm('Xoá luôn cả tệp đã tải?'); await send('DELETE', `/ui-me/downloads/${h}${files ? '?files=1' : ''}`); refresh(); }
+      if (e.target.closest('[data-remove]') && confirm(t('downloads.remove_confirm'))) { const files = confirm(t('downloads.remove_files_confirm')); await send('DELETE', `/ui-me/downloads/${h}${files ? '?files=1' : ''}`); refresh(); }
       if (e.target.closest('[data-links]')) {
         const d = (await admin(`/ui-me/downloads/${h}/links`)).data;
-        out.innerHTML = d.links.length ? d.links.map(l => `<a class="lnk" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)}</a> <button class="btn sm" data-act="copy" data-v="${esc(l.url)}">Sao chép liên kết</button>`).join('<br>') + ' <span class="dim">(hết hạn sau ít phút)</span>' : 'Không có tệp.';
+        out.innerHTML = d.links.length ? d.links.map(l => `<a class="lnk" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name)}</a> <button class="btn sm" data-act="copy" data-v="${esc(l.url)}">${t('downloads.copy_link')}</button>`).join('<br>') + ` <span class="dim">${t('downloads.links_expire')}</span>` : t('downloads.no_files');
       }
     } catch (err) { out.innerHTML = `<span class="err">${esc(err.message)}</span>`; }
   });

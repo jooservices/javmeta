@@ -18,7 +18,7 @@ export async function openBrowser(options = {}) {
   return {
     base, email, password, shots, browser,
     async newScenarioContext(viewport = { width: 1440, height: 900 }) {
-      const context = await browser.newContext({ viewport });
+      const context = await browser.newContext({ viewport, locale: 'vi-VN' });
       const page = await context.newPage();
       const issues = [];
       page.on('pageerror', e => issues.push('pageerror ' + String(e).slice(0, 200)));

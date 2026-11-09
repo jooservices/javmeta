@@ -1,6 +1,7 @@
 import { api } from './api.js';
 import { esc } from './util.js';
 import { values } from './filterState.js';
+import { t } from './i18n.js';
 
 const names = new Map();
 export const performerLabel = p => p.name || p.name_romaji || p.name_kanji || p.name_kana || '#' + p.id;
@@ -11,15 +12,15 @@ export async function performerNames(ids, signal) {
   }));
   return Object.fromEntries(names);
 }
-export const pickerHtml = () => `<div class="performer-picker"><label class="f">Diễn viên<input data-performer-input role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="performer-options" autocomplete="off" placeholder="Nhập ít nhất 2 ký tự"></label><div id="performer-options" role="listbox" aria-label="Gợi ý diễn viên" hidden></div><div data-performer-chips></div><p class="dim">Chọn nhiều diễn viên để tìm phim họ đóng chung.</p></div>`;
-export const optionsHtml = (items, active) => items.map((p, i) => `<button type="button" id="performer-option-${i}" role="option" aria-selected="${i === active}" data-pick="${i}" tabindex="-1">${esc(performerLabel(p))}${p.movie_count !== undefined || p.linked_title_count !== undefined ? ` <small>${esc(p.movie_count ?? p.linked_title_count)} phim</small>` : ''}</button>`).join('');
+export const pickerHtml = () => `<div class="performer-picker"><label class="f">${t('picker.label')}<input data-performer-input role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="performer-options" autocomplete="off" placeholder="${t('picker.placeholder')}"></label><div id="performer-options" role="listbox" aria-label="${t('picker.suggestions')}" hidden></div><div data-performer-chips></div><p class="dim">${t('picker.hint')}</p></div>`;
+export const optionsHtml = (items, active) => items.map((p, i) => `<button type="button" id="performer-option-${i}" role="option" aria-selected="${i === active}" data-pick="${i}" tabindex="-1">${esc(performerLabel(p))}${p.movie_count !== undefined || p.linked_title_count !== undefined ? ` <small>${t('picker.movie_count', { count: p.movie_count ?? p.linked_title_count, n: p.movie_count ?? p.linked_title_count })}</small>` : ''}</button>`).join('');
 export function mountPicker(root, selected, onPick, signal) {
   const input = root.querySelector('[data-performer-input]');
   if (!input) return () => {};
   const box = root.querySelector('[role=listbox]');
   let timer, request, items = [], active = -1, generation = 0;
   const close = () => { box.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); };
-  const draw = () => { box.hidden = false; input.setAttribute('aria-expanded', 'true'); box.innerHTML = items.length ? optionsHtml(items, active) : '<p role="status">Không có diễn viên khớp.</p>'; if (active >= 0) input.setAttribute('aria-activedescendant', 'performer-option-' + active); };
+  const draw = () => { box.hidden = false; input.setAttribute('aria-expanded', 'true'); box.innerHTML = items.length ? optionsHtml(items, active) : `<p role="status">${t('picker.none')}</p>`; if (active >= 0) input.setAttribute('aria-activedescendant', 'performer-option-' + active); };
   const pick = i => { const p = items[i]; if (!p) return; names.set(String(p.id), performerLabel(p)); close(); input.value = ''; input.focus(); onPick(String(p.id)); };
   input.addEventListener('input', () => {
     clearTimeout(timer); request?.abort(); const gen = ++generation;
@@ -27,7 +28,7 @@ export function mountPicker(root, selected, onPick, signal) {
     if (q.length < 2) { close(); return; }
     timer = setTimeout(async () => {
       request = new AbortController();
-      box.hidden = false; input.setAttribute('aria-expanded', 'true'); box.innerHTML = '<p role="status">Đang tìm…</p>';
+      box.hidden = false; input.setAttribute('aria-expanded', 'true'); box.innerHTML = `<p role="status">${t('common.searching')}</p>`;
       try {
         const { data } = await api('suggest', { q }, { signal: request.signal });
         if (gen !== generation || signal.aborted) return;
@@ -51,6 +52,6 @@ export async function fillCatalogs(root, signal) {
     try {
       const { data } = await api('meta/catalog/' + input.dataset.catalog, { per_page: 200 }, { ttl: 120000, signal });
       if (!signal.aborted) list.innerHTML = (data || []).map(x => `<option value="${esc(x.name)}">${esc(x.movie_count ?? x.performer_count ?? '')}</option>`).join('');
-    } catch (e) { if (e.name !== 'AbortError') input.title = 'Không tải được gợi ý; vẫn có thể nhập trực tiếp.'; }
+    } catch (e) { if (e.name !== 'AbortError') input.title = t('picker.catalog_failed'); }
   }));
 }
