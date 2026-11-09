@@ -17,7 +17,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use App\Support\Code\NormalizedCode;
-use InvalidArgumentException;
 
 /**
  * Movie search (REQ-4, AD-11): filtered, sorted, keyset-paginated reads.
