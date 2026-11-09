@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 $queueConfig = require __DIR__ . '/javmeta_queues.php';
 $queueNames = $queueConfig['horizon_names'];
+$searchQueueName = (string) ($queueConfig['search_queue'] ?? 'search');
+$downloadSearchQueueName = (string) ($queueConfig['download_search_queue'] ?? 'download_search');
 $workersPerQueue = max(1, (int) $queueConfig['workers_per_queue']);
 $workerTimeout = max(1, (int) $queueConfig['worker_timeout']);
 $queueTries = (int) $queueConfig['queue_tries'];
@@ -11,10 +13,20 @@ $supervisors = [];
 $waits = [];
 
 foreach ($queueNames as $queueName) {
+    $waits['redis:' . $queueName] = 60;
+    if ($queueName === $downloadSearchQueueName && in_array($searchQueueName, $queueNames, true)) {
+        continue;
+    }
+
+    $supervisorQueues = [$queueName];
+    if ($queueName === $searchQueueName && in_array($downloadSearchQueueName, $queueNames, true)) {
+        $supervisorQueues[] = $downloadSearchQueueName;
+    }
+
     $supervisorName = $queueName === 'observability' ? 'api-observability' : 'crawler-' . $queueName;
     $supervisors[$supervisorName] = [
         'connection' => 'redis',
-        'queue' => [$queueName],
+        'queue' => $supervisorQueues,
         'balance' => false,
         'maxProcesses' => in_array($queueName, $queueConfig['browser_names'], true)
             ? $queueConfig['browser_workers_per_queue']
@@ -28,7 +40,6 @@ foreach ($queueNames as $queueName) {
         'timeout' => $workerTimeout,
         'nice' => 0,
     ];
-    $waits['redis:' . $queueName] = 60;
 }
 
 $environments = array_fill_keys(['production', 'staging', 'local', 'testing'], $supervisors);

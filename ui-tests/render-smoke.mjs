@@ -59,7 +59,7 @@ const route = url => {
   if (p === 'status/summary') return { data: summary };
   if (p === 'status/sources') return { data: sources };
   if (p === 'movies') return { data: [movie('AAA-001'), movie('BBB-002', { title_en: '<script>alert(1)</script>' })], ...pg(2) };
-  if (p.startsWith('movies/') && !p.endsWith('/related') && p !== 'movies/calendar') return { data: { ...movie(decodeURIComponent(p.slice(7))), codes: [{ code: 'AAA-001', kind: 'display' }], directors: [], description: 'A story', attrs: { k: 'v' }, magnets: [{ url: 'magnet:?xt=1' }], hls_stream_urls: [], gallery: [], photos: {}, crawled_at: '2026-10-24T00:00:00Z', delisted_at: null } };
+  if (p.startsWith('movies/') && !p.endsWith('/related') && p !== 'movies/calendar') return { data: { ...movie(decodeURIComponent(p.slice(7))), codes: [{ code: 'AAA-001', kind: 'display' }], directors: [], description: 'A story', attrs: { k: 'v' }, magnets: [{ url: 'magnet:?xt=1' }], downloads: { available: true, count: 1, last_checked_at: null, state: 'found', search_enabled: true }, hls_stream_urls: [], gallery: [], photos: {}, crawled_at: '2026-10-24T00:00:00Z', delisted_at: null } };
   if (['cups', 'blood_types', 'locations'].includes(p.replace('meta/catalog/', ''))) return { data: [{ name: 'D', performer_count: 30 }, { name: 'E', performer_count: 9 }], meta: { pagination: { total: 2, per_page: 24, page: 1, last_page: 1 } } };
   if (p.startsWith('meta/catalog/')) return { data: [{ name: '2025', movie_count: 40 }, { name: 'School', movie_count: 12 }], meta: { pagination: { total: 2, per_page: 60, page: 1, last_page: 1, sort: 'movie_count' } } };
   if (p === 'search') return { data: { movies: [movie('AAA-001'), movie('BBB-002')], performers: [performer(1)], interpretation: { keywords: 'night', filters: { maker: 'Mankitsu', released_from: '2024-01-01' }, by: 'rules', used_vectors: false }, totals: { movies: 480, performers: 12 } } };
@@ -141,6 +141,9 @@ const detail = await run('movie', await load('views/movie.js'), { params: { code
 assert.match(detail, /Title of AAA-001/); assert.match(detail, /class="cols detail"/, 'detail uses the fluid cover column'); assert.match(detail, /data-zoom="https:\/\/img\.test\/AAA-001\.jpg"/, 'cover opens the zoom viewer'); assert.match(detail, /role="button"[^>]*aria-label="Phóng to ảnh bìa AAA-001"/); assert.match(detail, /Eimi Fukada/); assert.match(detail, /#\/facet\/genre\/Drama/);
 assert.doesNotMatch(detail, /chờ crawl/, 'U-20: missing fields do not promise a crawl');
 assert.match(detail, />Thông tin</, 'U-15: movie tabs are Vietnamese');
+assert.match(detail, /id="movie-downloads"/, 'movie detail exposes the downloads panel');
+assert.match(detail, /magnet:\?xt=1/, 'downloads panel lists magnets');
+assert.match(detail, /data-download-search|data-act="copy"/, 'downloads panel exposes magnet actions or search');
 globalThis.innerWidth = 375;
 for (const code of ['JAVBTC-DERIVED-' + 'A'.repeat(64), 'TOKYOHOT-SLUG-JAPANESE_INVASION_2_AMERICA_SC4']) {
   const longDetail = await (await load('views/movie.js')).render({ params: { code }, query: {} });
@@ -466,7 +469,8 @@ globalThis.fetch = normalFetch;
     calls.push(url);
     if (url.startsWith('/ui-api/search')) return jsonResponse({ data: { movies: [movie('AAA-001')], performers: [], interpretation: { filters: {}, keywords: 'public', by: 'none' } } });
     if (url.startsWith('/ui-api/suggest')) return jsonResponse({ data: { genres: [], makers: [], series: [] } });
-    if (url.startsWith('/ui-api/movies/')) return jsonResponse({ data: { ...movie('AAA-001'), magnets: [{ url: 'magnet:?private' }], hls_stream_urls: ['https://cdn.example.com/video?signature=private'], gallery: ['https://cdn.example.com/image?signature=private'] } });
+    if (String(url).includes('/downloads/search')) return { ok: true, status: 202, redirected: false, headers: { get: () => 'application/json' }, json: async () => ({ message: 'ok', data: { queued: true, downloads: { state: 'searching', available: false, count: 0 } } }) };
+    if (url.startsWith('/ui-api/movies/')) return jsonResponse({ data: { ...movie('AAA-001'), magnets: [{ url: 'magnet:?xt=urn:btih:publicguestmagnet' }], downloads: { available: true, count: 1, state: 'found', search_enabled: true }, hls_stream_urls: ['https://cdn.example.com/video?signature=private'], gallery: ['https://cdn.example.com/image?signature=private'] } });
     throw new Error('unexpected guest request: ' + url);
   };
 
@@ -478,13 +482,19 @@ globalThis.fetch = normalFetch;
   const callCount = calls.length;
   await assert.rejects(guestApi.admin('/ui-me/marks'), /Đăng nhập để dùng tính năng này/);
   await assert.rejects(guestApi.send('POST', '/ui-me/marks'), /Đăng nhập để dùng tính năng này/);
-  assert.equal(calls.length, callCount, 'guest requests do not call personal reads or write endpoints');
+  await guestApi.send('POST', '/ui-api/movies/AAA-001/downloads/search', {});
+  assert.ok(calls.some(url => String(url).includes('/downloads/search')), 'guests may start on-demand download search');
+  assert.equal(calls.length, callCount + 1, 'guest personal writes stay blocked while download search is allowed');
 
   globalThis.location.hash = '#/movie/AAA-001?tab=media';
   const mediaHtml = (await guestMovie.render({ params: { code: 'AAA-001' }, query: { tab: 'media' } })).html;
   assert.match(mediaHtml, /Đăng nhập để dùng liên kết và nội dung media/);
-  assert.ok(!mediaHtml.includes('magnet:?private'));
   assert.ok(!mediaHtml.includes('signature=private'));
+  globalThis.location.hash = '#/movie/AAA-001';
+  const guestDetail = (await guestMovie.render({ params: { code: 'AAA-001' }, query: {} })).html;
+  assert.match(guestDetail, /magnet:\?xt=urn:btih:publicguestmagnet/, 'guests see magnet links on the downloads panel');
+  assert.match(guestDetail, /id="movie-downloads"/);
+  assert.doesNotMatch(guestDetail, /data-magnet=|Gửi tới qBittorrent|Send to qBittorrent/, 'guest downloads panel has no send-to-client control');
   document.body.dataset.guestMode = 'false';
   globalThis.location.hash = '#/';
   globalThis.innerWidth = 1280;

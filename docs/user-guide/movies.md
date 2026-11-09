@@ -31,7 +31,7 @@ Mở Bộ lọc, chọn điều kiện rồi bấm Áp dụng; phần lớn thay
 
 Chọn Lưới hoặc Bảng, cỡ ảnh S/M/L và Mỗi trang 24/48/96. Cuộn xuống để tải tiếp. Bộ lọc nằm trong địa chỉ trang: sao chép để mở lại; nút Quay lại của trình duyệt khôi phục lần lọc trước. Kiểu hiển thị lưu trên trình duyệt. Lưu bộ lọc → đặt Tên bộ lọc → Lưu để dùng lại trong Bộ lọc đã lưu; bấm × cạnh tên để xoá.
 
-Bấm phim để xem tên, ngày phát hành, maker, series, thể loại, diễn viên, ảnh, liên kết nguồn và phim liên quan. Các mục chỉ hiện khi đã có dữ liệu. Dùng Yêu thích, Xem sau, Đã xem để ghi nhớ; Tải về chỉ dùng khi đã bật tính năng.
+Bấm phim để xem tên, ngày phát hành, maker, series, thể loại, diễn viên, ảnh, liên kết nguồn và phim liên quan. Panel **Tải về** trên trang phim liệt kê magnet/torrent (khách cũng xem được) và nút **Tìm link tải** khi chưa có link; **Gửi tới qBittorrent** chỉ hiện khi đã đăng nhập và bật tải về. Các mục chỉ hiện khi đã có dữ liệu. Dùng Yêu thích, Xem sau, Đã xem để ghi nhớ.
 
 ## Nếu có vẻ sai
 

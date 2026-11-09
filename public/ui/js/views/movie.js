@@ -1,8 +1,8 @@
-import { esc, fmt, titleOf, codeLabel, isDerivedCode } from '../util.js';
-import { api } from '../api.js';
+import { esc, fmt, titleOf, codeLabel, isDerivedCode, toast } from '../util.js';
+import { api, send } from '../api.js';
 import { myMarks, markBtn, downloadsStatus } from '../marks.js';
 import { crumbs, cover, a, href, disk, facetLink, facetChip, performerCard, movieCard, kv, notKnown, errorBox, emptyBox, ic, performerName } from '../components.js';
-import { t } from '../i18n.js';
+import { t, formatDate } from '../i18n.js';
 
 export default {
   async render({ params }) {
@@ -22,6 +22,7 @@ export default {
       ? [['meta', t('movie.tab.meta')], ['codes', t('movie.tab.codes')]]
       : [['meta', t('movie.tab.meta')], ['media', t('movie.tab.media')], ['codes', t('movie.tab.codes')]];
     const tabsHtml = `<div class="tabs">${tabs.map(tb => `<a class="tab ${tab === tb[0] ? 'on' : ''}" href="#/movie/${encodeURIComponent(m.code)}?tab=${tb[0]}">${tb[1]}</a>`).join('')}</div>`;
+    const downloadsPanel = renderDownloadsPanel(m, { guestMode, qbEnabled: Boolean(dl.enabled) });
     let content = '';
     if (tab === 'meta') {
       content = kv([
@@ -60,17 +61,103 @@ export default {
       <div class="col"><div><div class="mono muted">${esc(codeLabel(m.code))}${m.release_date ? ' · ' + esc(m.release_date) : ''}${m.needs_review ? ` · <span class="chip warn">${t('movie.needs_review')}</span>` : ''}${m.delisted_at ? ` · <span class="chip bad">${t('movie.delisted')}</span>` : ''}</div><h1 style="font-size:22px">${esc(titleOf(m))}</h1></div>
         <div class="chips">${(m.genres || []).map(g => facetChip('genre', g)).join('')}${m.series ? facetChip('series', m.series) : ''}${m.maker ? facetChip('maker', m.maker) : ''}${m.runtime_minutes ? `<span class="chip mono">${m.runtime_minutes}′</span>` : ''}${m.community_score !== null ? `<span class="chip mono">★ ${esc(m.community_score)}</span>` : ''}</div>
         <div class="agrid S">${performers.map((p, i) => performerCard(p, i)).join('') || `<span class="muted">${t('movie.no_performers_yet')}</span>`}</div>
-        <div class="ibtns">${disk.codes.has(m.code) ? `<a class="btn pri" href="#/player/${encodeURIComponent(m.code)}">${t('movie.play')}</a>` : ''}<button class="btn" data-act="copy" data-v="${esc(m.code)}">${ic('copy')} ${t(isDerivedCode(m.code) ? 'movie.copy_internal_code' : 'movie.copy_code')}</button>${markBtn(marks, 'favourite', 'movie', m.code, t('movie.mark.favourite_on'), t('movie.mark.favourite_off'))}${markBtn(marks, 'watch_later', 'movie', m.code, t('movie.mark.watch_later_on'), t('movie.mark.watch_later_off'))}${markBtn(marks, 'seen', 'movie', m.code, t('movie.mark.seen_on'), t('movie.mark.seen_off'))}${dl.enabled && (m.magnets || []).length ? `<button class="btn sm" data-dl="${esc(m.code)}">${t('movie.download')}</button>` : ''}</div>
+        <div class="ibtns">${disk.codes.has(m.code) ? `<a class="btn pri" href="#/player/${encodeURIComponent(m.code)}">${t('movie.play')}</a>` : ''}<button class="btn" data-act="copy" data-v="${esc(m.code)}">${ic('copy')} ${t(isDerivedCode(m.code) ? 'movie.copy_internal_code' : 'movie.copy_code')}</button>${markBtn(marks, 'favourite', 'movie', m.code, t('movie.mark.favourite_on'), t('movie.mark.favourite_off'))}${markBtn(marks, 'watch_later', 'movie', m.code, t('movie.mark.watch_later_on'), t('movie.mark.watch_later_off'))}${markBtn(marks, 'seen', 'movie', m.code, t('movie.mark.seen_on'), t('movie.mark.seen_off'))}${!guestMode && dl.enabled && (m.magnets || []).length ? `<button class="btn sm" data-dl="${esc(m.code)}" aria-label="${esc(t('movie.downloads.send_qb'))}">${t('movie.download')}</button>` : ''}</div>
+        ${downloadsPanel}
         <div class="panel">${tabsHtml}<div class="bd">${content}</div></div></div></div>
       <div class="panel" id="related"><div class="hd"><h2>${t('movie.related')}</h2><span class="dim">${t('movie.related_sub')}</span></div><div class="bd"><div class="strip" id="relstrip"><span class="loader"><i></i><i></i><i></i></span></div></div></div></div>`;
     return {
       html,
       mount: root => {
         loadRelated(m, root);
+        wireDownloadsPanel(root, m);
       },
     };
   },
 };
+
+function magnetUrl(item) {
+  return typeof item === 'string' ? item : (item?.url || '');
+}
+
+function downloadsStatusLine(movie) {
+  const summary = movie.downloads || {};
+  const magnets = movie.magnets || [];
+  const count = summary.count ?? magnets.length;
+  const state = summary.state || (count > 0 ? 'found' : 'idle');
+  if (state === 'searching') return t('movie.downloads.searching');
+  if (state === 'failed') return t('movie.downloads.failed');
+  if (state === 'not_found') {
+    return t('movie.downloads.not_found', {
+      checked: formatDate(summary.last_checked_at) || '—',
+      retry: formatDate(summary.cooldown_until) || '—',
+    });
+  }
+  if (count > 0) return t('movie.downloads.available_count', { count });
+  return t('movie.downloads.empty');
+}
+
+function renderDownloadsPanel(movie, { guestMode, qbEnabled }) {
+  const magnets = (movie.magnets || []).map(magnetUrl).filter(Boolean);
+  const summary = movie.downloads || {};
+  const searchEnabled = summary.search_enabled !== false;
+  const state = summary.state || (magnets.length ? 'found' : 'idle');
+  const rows = magnets.map(url => `<div class="row-i"><div class="grow ell mono" title="${esc(url)}">${esc(url)}</div>
+    <button class="btn sm" data-act="copy" data-v="${esc(url)}" aria-label="${esc(t('movie.downloads.copy'))}">${ic('copy')} ${esc(t('movie.downloads.copy'))}</button>
+    <a class="btn sm" href="${esc(url)}">${esc(t('movie.downloads.open'))}</a>
+    ${!guestMode && qbEnabled ? `<button class="btn sm" data-dl="${esc(movie.code)}" data-magnet="${esc(url)}" aria-label="${esc(t('movie.downloads.send_qb'))}">${esc(t('movie.downloads.send_qb'))}</button>` : ''}
+  </div>`).join('');
+  const findButton = searchEnabled && state !== 'searching'
+    ? `<button class="btn sm" data-download-search="${esc(movie.code)}" aria-label="${esc(t('movie.downloads.find'))}">${esc(t('movie.downloads.find'))}</button>`
+    : '';
+  const guestHint = guestMode ? `<p class="muted">${esc(t('movie.downloads.login_hint'))}</p>` : '';
+
+  return `<div class="panel" id="movie-downloads" role="region" aria-label="${esc(t('movie.downloads.panel_aria'))}">
+    <div class="hd"><h2>${esc(t('movie.downloads.title'))}</h2><span class="chip mono" data-download-count>${magnets.length}</span></div>
+    <div class="bd">
+      <p data-download-status>${esc(downloadsStatusLine(movie))}</p>
+      ${rows || `<div class="row-i muted">${esc(t('movie.downloads.empty'))}</div>`}
+      <div class="ibtns">${findButton}</div>
+      ${guestHint}
+    </div>
+  </div>`;
+}
+
+function wireDownloadsPanel(root, movie) {
+  const panel = root.querySelector('#movie-downloads');
+  if (!panel) return;
+  panel.addEventListener('click', async event => {
+    const button = event.target.closest('[data-download-search]');
+    if (!button) return;
+    button.disabled = true;
+    const status = panel.querySelector('[data-download-status]');
+    if (status) status.textContent = t('movie.downloads.searching');
+    try {
+      const result = await send('POST', '/ui-api/movies/' + encodeURIComponent(movie.code) + '/downloads/search');
+      const summary = result?.data?.downloads || {};
+      if (status) {
+        if (summary.state === 'searching') status.textContent = t('movie.downloads.searching');
+        else if (summary.state === 'not_found') status.textContent = t('movie.downloads.not_found', {
+          checked: formatDate(summary.last_checked_at) || '—',
+          retry: formatDate(summary.cooldown_until) || '—',
+        });
+        else if (result?.data?.reason === 'budget' || result?.data?.reason === 'cooldown') status.textContent = t('movie.downloads.budget');
+        else if (summary.count > 0) status.textContent = t('movie.downloads.available_count', { count: summary.count });
+        else status.textContent = result?.message || t('movie.downloads.empty');
+      }
+      if (summary.state === 'searching') {
+        // Soft refresh so found magnets appear once the job finishes.
+        setTimeout(() => { location.hash = location.hash; }, 2500);
+      } else if ((summary.count || 0) > 0) {
+        location.hash = location.hash;
+      }
+    } catch (error) {
+      if (status) status.textContent = error.status === 429 ? t('movie.downloads.budget') : (error.message || t('movie.downloads.failed'));
+      toast(error.message || t('movie.downloads.failed'));
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
 
 async function loadRelated(m, root) {
   const strip = root.querySelector('#relstrip');

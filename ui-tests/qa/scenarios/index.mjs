@@ -15,8 +15,9 @@ import { filterCatalog, sortCatalogWithKeyboard, expectFirstCatalogEntry, expect
 import { armSavedSearchCleanup, searchFor, expectSearchPrompt, expectSearchEmpty, openMeaningSearch, expectMeaningMode, submitSearchWithKeyboard, expectKeywordMode, rememberResultCount, expectRememberedCount, chooseMovieChoice, filterMovieField, expectMovieListEmpty, saveCurrentSearch, cancelSaveSearch, applySavedSearch, deleteSavedSearch } from '../steps/searchpage.mjs';
 import { expectFeedHasNoActions, expectLibraryUnconfigured, expectDownloadsOff, openSettingsFromEmptyState, openSettingsWithKeyboard, expectMediaCaptureOff, refreshMedia, submitDisabledCapture, openMediaLibrary, expectCrawlReadOnly } from '../steps/ownerpages.mjs';
 import { expectReportPreview, refreshReportPreview, expectReportSwitchInView, expectReportStartsEnabled, toggleReportEnabled, toggleReportEnabledWithKeyboard, expectReportSwitchLabel, saveReportSettings, expectReportEnabledSaved, expectNotificationList, rememberNotificationForm, toggleNotificationEnabled, expectNotificationSwitchLabel, saveNotificationEdits, expectFirstNotificationEnabled, markNotificationRestored, toggleQuietMode } from '../steps/reports.mjs';
-import { enableGuestMode, browseAsGuest, expectGuestShell, expectGuestBannerSentence, openGuestLoginWithKeyboard, expectGuestPrompt, openGuestLogin, expectPathRequiresLogin, togglePhoneMenu, choosePhoneNav, expectPhoneMenuDismisses, openBottomNav, openFirstGuestMovie, expectGuestMovie, openGuestMovieCodes, expectGuestMediaBlocked, expectGuestHasNoFollow, expectGuestSavedSearchHidden, restoreLoginRequired } from '../steps/guest.mjs';
+import { enableGuestMode, browseAsGuest, expectGuestShell, expectGuestBannerSentence, openGuestLoginWithKeyboard, expectGuestPrompt, openGuestLogin, expectPathRequiresLogin, togglePhoneMenu, choosePhoneNav, expectPhoneMenuDismisses, openBottomNav, openFirstGuestMovie, expectGuestMovie, openGuestMovieCodes, expectGuestMediaBlocked, expectGuestDownloadsPanel, expectGuestHasNoFollow, expectGuestSavedSearchHidden, restoreLoginRequired } from '../steps/guest.mjs';
 import { expectToast, expectDiscoverHeading, expectVietnameseNav, expectOneMovieLinkPerCard, expectNoChoCrawl, expectPlayerEmptyState, filterSettings, expectSettingsFilterHidesRows, expectCrawlSubtabs, confirmLogout, cancelLogout, expectReducedMotionCounters, keyboardWalkDiscoverToMovie, openMovieTab, expectMovieTab, copyMovieCode, toggleWatchLater, openBioValue, openStatsLink } from '../steps/ux.mjs';
+import { enableQbForOwner, restoreQbForOwner, expectOwnerCanSendToQbittorrent, openMovieWithDownloads, openMovieWithoutDownloads, expectDownloadsPanelWithLinks, expectDownloadsPanelEmptyWithSearch } from '../steps/downloads.mjs';
 
 export const VIEWS = [
   '#/', '#/search', '#/stats', '#/movies', '#/performers', '#/bio', '#/movies?sort=update_date',
@@ -192,6 +193,11 @@ export const calendarDayHoverChangesTheCell = defineScenario('hovering a calenda
   login(), openView('#/calendar'), expectHoverChanges('#view .calcell:not(.off):not(.has)', 'backgroundColor'),
 ]);
 
+export const movieDownloadsPanelShowsLinksAndSearch = defineScenario('the movie downloads panel shows links and on-demand search', [
+  login(), openMovieWithDownloads(), expectDownloadsPanelWithLinks(),
+  openMovieWithoutDownloads(), expectDownloadsPanelEmptyWithSearch(),
+]);
+
 export const featurePagesShowTheirRealState = defineScenario('feed, library, downloads, media and crawl show their real state', [
   login(),
   openView('#/feed'), expectFeedState(0), expectFeedHasNoActions(), expectViewHealthy(),
@@ -247,7 +253,7 @@ export const guestCanBrowsePublicPages = defineScenario('a guest can browse publ
   openGuestLoginWithKeyboard(), expectOnLoginPage(),
   openView('#/search'), expectGuestShell(), expectSearchPrompt(), searchFor('SMP-0520'), expectSearchFound('SMP-0520'),
   searchFor('zzzz-no-such-movie-xyz'), expectSearchEmpty(),
-  openView('#/movies'), expectViewHealthy(), expectGuestSavedSearchHidden(), openFirstGuestMovie(), expectGuestMovie(), openGuestMovieCodes(), expectGuestMediaBlocked(),
+  openView('#/movies'), expectViewHealthy(), expectGuestSavedSearchHidden(), openFirstGuestMovie(), expectGuestMovie(), expectGuestDownloadsPanel(), openGuestMovieCodes(), expectGuestMediaBlocked(),
   openView('#/performers'), expectViewHealthy(), openFirstPerformer(), expectGuestHasNoFollow(), openPerformerTab('Hồ sơ chi tiết'),
   openView('#/catalog/genres'), expectCatalogRow('Sample Genre 01'), openCatalogEntry('Sample Genre 01'), expectFacetCountMatchesCatalog(),
   openView('#/calendar'), expectCalendarUsesLatestReleaseMonth(),
@@ -301,6 +307,17 @@ export const movieTabsCopyAndWatchLater = defineScenario('movie tabs, copy and w
 export const bioAndStatsLinksOpenLists = defineScenario('bio and stats links open matching lists', [
   login(), openView('#/bio'), expectViewHealthy(), openBioValue(), expectViewHealthy(),
   openView('#/stats'), expectViewHealthy(), openStatsLink(), expectViewHealthy(),
+]);
+
+export const guestSeesMovieDownloadsWithoutQbittorrent = defineScenario('a guest sees movie download links without qBittorrent', [
+  login(), enableGuestMode(), browseAsGuest(),
+  openMovieWithDownloads(), expectDownloadsPanelWithLinks(), expectGuestDownloadsPanel(),
+  restoreLoginRequired(),
+]);
+
+export const ownerSeesQbittorrentDownloadAction = defineScenario('the owner can send a movie download to qBittorrent', [
+  login(), enableQbForOwner(), openMovieWithDownloads(), expectDownloadsPanelWithLinks(),
+  expectOwnerCanSendToQbittorrent(), restoreQbForOwner(),
 ]);
 
 export const ownerEditsAndResetsANotificationTemplate = defineScenario('the owner edits, saves and resets a notification template', [

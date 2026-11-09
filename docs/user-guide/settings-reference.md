@@ -1208,6 +1208,48 @@ Giới hạn thời gian mỗi yêu cầu tới qBittorrent.
 
 Số nguyên; từ 1 đến 120. Mã mục: `downloads.timeout`.
 
+### Bật tìm link tải theo yêu cầu
+
+Cho phép mọi người (kể cả khách) bấm Tìm link tải trên trang phim. Tắt khi cần bảo vệ địa chỉ egress.
+
+Bật/tắt. Mã mục: `downloads.link_search_enabled`.
+
+### Nghỉ sau khi không tìm thấy (giờ)
+
+Sau kết quả không có link, cùng một phim không tìm lại cho đến hết khoảng này.
+
+Số nguyên; từ 1 đến 168. Mã mục: `downloads.link_search_cooldown_hours`.
+
+### Ngân sách tìm toàn cục mỗi giờ
+
+Số lần tìm link tải tối đa trên toàn hệ thống mỗi giờ (bảo vệ IP egress chung).
+
+Số nguyên; từ 1 đến 1000. Mã mục: `downloads.link_search_global_budget_per_hour`.
+
+### Ngân sách tìm mỗi nguồn mỗi giờ
+
+Số lần tìm tối đa tới một nguồn tải mỗi giờ.
+
+Số nguyên; từ 1 đến 500. Mã mục: `downloads.link_search_per_source_budget_per_hour`.
+
+### Ngân sách tìm mỗi máy khách mỗi giờ
+
+Số lần tìm tối đa mỗi địa chỉ IP/phiên mỗi giờ.
+
+Số nguyên; từ 1 đến 100. Mã mục: `downloads.link_search_client_budget_per_hour`.
+
+### Thời gian chờ mỗi nguồn (giây)
+
+Giới hạn thời gian ngắn cho mỗi job tìm link trên một nguồn.
+
+Số nguyên; từ 10 đến 180. Mã mục: `downloads.link_search_timeout_seconds`.
+
+### Số nguồn tối đa mỗi lần tìm
+
+Mỗi lần bấm tìm chỉ hỏi tuần tự tối đa số nguồn này (không quạt đồng loạt).
+
+Số nguyên; từ 1 đến 10. Mã mục: `downloads.link_search_max_sources_per_run`.
+
 ## Máy chủ tệp
 
 ### Bật máy chủ tệp

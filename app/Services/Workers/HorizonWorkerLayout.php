@@ -56,6 +56,8 @@ final class HorizonWorkerLayout
     {
         $queueConfig = (array) config('javmeta_queues');
         $queues = (array) ($queueConfig['horizon_names'] ?? []);
+        $searchQueue = (string) ($queueConfig['search_queue'] ?? 'search');
+        $downloadSearchQueue = (string) ($queueConfig['download_search_queue'] ?? 'download_search');
         $browserQueues = (array) ($queueConfig['browser_names'] ?? []);
         $retryQueues = (array) ($queueConfig['retry_names'] ?? []);
         $default = max(1, (int) ($queueConfig['workers_per_queue'] ?? 1));
@@ -72,14 +74,26 @@ final class HorizonWorkerLayout
 
         $supervisors = [];
         foreach ($queues as $queue) {
+            if ($queue === $downloadSearchQueue && in_array($searchQueue, $queues, true)) {
+                continue;
+            }
+
+            $supervisorQueues = [$queue];
+            if ($queue === $searchQueue && in_array($downloadSearchQueue, $queues, true)) {
+                $supervisorQueues[] = $downloadSearchQueue;
+            }
+
             $isBrowser = in_array($queue, $browserQueues, true);
             $isRetry = in_array($queue, $retryQueues, true);
-            $workers = $isRetry ? $retry : ($isBrowser ? $browser : ($direct === null ? $default : max(1, (int) $direct)));
-            $workers = max(1, min(32, (int) ($queueOverrides[$queue] ?? $workers)));
+            $defaultWorkers = $isRetry ? $retry : ($isBrowser ? $browser : ($direct === null ? $default : max(1, (int) $direct)));
+            $workers = 0;
+            foreach ($supervisorQueues as $supervisorQueue) {
+                $workers = max($workers, max(1, min(32, (int) ($queueOverrides[$supervisorQueue] ?? $defaultWorkers))));
+            }
             $supervisorName = $queue === 'observability' ? 'api-observability' : 'crawler-' . $queue;
             $supervisors[$supervisorName] = [
                 'connection' => 'redis',
-                'queue' => [$queue],
+                'queue' => $supervisorQueues,
                 'balance' => false,
                 'maxProcesses' => $workers,
                 'maxTime' => (int) $queueConfig['queue_max_time'],

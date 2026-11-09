@@ -9,9 +9,11 @@ use App\Contracts\ReportChannel;
 use App\Http\Middleware\EnsureSuperAdministrator;
 use App\Http\Middleware\GuestSafeStatusResponse;
 use App\Logging\ArrayLogStore;
+use App\Events\DownloadLinkSearchUpdated;
 use App\Events\SourceCircuitOpened;
 use App\Listeners\DisconnectIdlePostgresConnections;
 use App\Listeners\Nodes\NodeEnrollmentSubscriber;
+use App\Listeners\RecordDownloadLinkSearchUpdate;
 use App\Listeners\SendSourceCircuitAlert;
 use App\Listeners\WorkerBusyStateListener;
 use App\Notifications\ActivityLogAlertNotifier;
@@ -62,6 +64,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Event::subscribe(NodeEnrollmentSubscriber::class);
+        Event::listen(DownloadLinkSearchUpdated::class, [RecordDownloadLinkSearchUpdate::class, 'handle']);
         Event::listen(JobProcessing::class, [WorkerBusyStateListener::class, 'processing']);
         Event::listen(JobProcessed::class, [WorkerBusyStateListener::class, 'processed']);
         Event::listen(JobFailed::class, [WorkerBusyStateListener::class, 'processed']);

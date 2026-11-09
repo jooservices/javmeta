@@ -66,7 +66,7 @@ final class MovieFiltersTest extends TestCase
         $this->assertSame([], $this->codes('has_cover=1'), 'the sample has no covers');
         $this->assertNotEmpty($this->codes('has_cover=0'));
         $this->assertNotEmpty($this->codes('has_performers=1'));
-        $this->assertSame([], $this->codes('has_magnet=1'));
+        $this->assertNotEmpty($this->codes('has_magnet=1'));
     }
 
     public function test_facets_count_inside_the_current_result_and_respect_the_filters(): void

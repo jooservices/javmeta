@@ -5,11 +5,16 @@ declare(strict_types=1);
 namespace App\Repositories;
 
 use App\Models\Movie;
+use App\Models\MovieCode;
+use App\Models\MovieMedia;
+use App\Models\MovieSource;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use App\Support\Code\NormalizedCode;
+use InvalidArgumentException;
 
 /**
  * Movie search (REQ-4, AD-11): filtered, sorted, keyset-paginated reads.
@@ -83,6 +88,46 @@ final class MovieRepository extends BusinessQueryRepository
     public function countAll(): int
     {
         return $this->newQuery()->count();
+    }
+
+    public function downloadSearchIdByCode(string $rawCode): ?int
+    {
+        try {
+            $code = NormalizedCode::from($rawCode);
+        } catch (InvalidArgumentException) {
+            return null;
+        }
+
+        $movieId = $this->modelQuery(MovieCode::class)
+            ->where('code_normalized', $code->value())
+            ->value('movie_id');
+
+        return is_numeric($movieId) ? (int) $movieId : null;
+    }
+
+    public function downloadSearchDisplayCode(int $movieId): ?string
+    {
+        $code = $this->newQuery()->whereKey($movieId)->value('display_code');
+
+        return is_string($code) && trim($code) !== '' ? trim($code) : null;
+    }
+
+    public function downloadSearchSourceUrl(int $movieId, string $sourceSlug): ?string
+    {
+        $url = $this->modelQuery(MovieSource::class)
+            ->where('movie_id', $movieId)
+            ->where('site_slug', $sourceSlug)
+            ->value('source_url');
+
+        return is_string($url) && trim($url) !== '' ? trim($url) : null;
+    }
+
+    public function downloadSearchMagnetCount(int $movieId): int
+    {
+        return $this->modelQuery(MovieMedia::class)
+            ->where('movie_id', $movieId)
+            ->where('kind', MovieMedia::KIND_MAGNET)
+            ->count();
     }
 
     public function latestReleaseDate(): ?string

@@ -76,6 +76,8 @@ final class SampleDataset
                 app(MovieRepository::class)->tableQuery('movie_performers')->whereIn('movie_id', $chunk)->delete();
                 app(MovieRepository::class)->tableQuery('movie_observations')->whereIn('movie_id', $chunk)->delete();
                 app(MovieRepository::class)->tableQuery('movie_codes')->whereIn('movie_id', $chunk)->delete();
+                app(MovieRepository::class)->tableQuery('movie_media')->whereIn('movie_id', $chunk)->where('kind', 'magnet')->delete();
+                app(MovieRepository::class)->tableQuery('movie_download_searches')->whereIn('movie_id', $chunk)->delete();
                 app(MovieRepository::class)->tableQuery('movies')->whereIn('id', $chunk)->delete();
             }
             foreach (array_chunk($performerIds, 500) as $chunk) {
@@ -227,6 +229,31 @@ final class SampleDataset
         $fresh = array_values(array_filter($observations, static fn(array $o): bool => ! isset($have[$o['movie_id']])));
         foreach (array_chunk($fresh, 200) as $chunk) {
             app(MovieRepository::class)->tableQuery('movie_observations')->insert($chunk);
+        }
+
+        // Every 10th sample movie ships with a deterministic magnet for downloads QA (SMP-0010, …).
+        $magnets = [];
+        for ($i = 10; $i <= self::MOVIES; $i += 10) {
+            $code = sprintf('SMP-%04d', $i);
+            $id = $movies[$code] ?? null;
+            if ($id === null) {
+                continue;
+            }
+            $magnets[] = [
+                'movie_id' => $id,
+                'kind' => 'magnet',
+                'url' => 'magnet:?xt=urn:btih:' . str_repeat(sprintf('%02x', $i % 256), 20),
+                'meta' => null,
+                'source_slug' => self::SOURCE,
+                'crawled_at' => $now,
+            ];
+        }
+        foreach (array_chunk($magnets, 100) as $chunk) {
+            app(MovieRepository::class)->tableQuery('movie_media')->upsert(
+                $chunk,
+                ['movie_id', 'kind', 'url'],
+                ['source_slug', 'crawled_at'],
+            );
         }
     }
 

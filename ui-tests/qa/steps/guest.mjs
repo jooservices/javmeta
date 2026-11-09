@@ -207,12 +207,16 @@ export const expectGuestMovie = defineStep('expectGuestMovie', async ctx => {
       tabs: [...view.querySelectorAll('a.tab')].map(tab => tab.textContent.trim()),
       favourite: [...view.querySelectorAll('button')].some(button => /yêu thích/i.test(button.innerText)),
       code: (view.innerText.match(/SMP-\d+/) || [])[0] || '',
+      downloads: !!view.querySelector('#movie-downloads'),
+      qbittorrent: [...view.querySelectorAll('button')].some(button => /qBittorrent/i.test(button.innerText)),
     };
   });
   if (!info.code) throw new Error('The guest movie page shows no sample code.');
   if (info.favourite) throw new Error('A guest can see the favourite button.');
   if (!info.tabs.includes('Thông tin') || !info.tabs.includes('Mã & nguồn')) throw new Error(`Guest movie tabs are ${info.tabs.join(', ') || 'missing'}.`);
   if (info.tabs.some(tab => tab.includes('Liên kết'))) throw new Error('A guest can see the media tab.');
+  if (!info.downloads) throw new Error('The guest movie page has no downloads panel.');
+  if (info.qbittorrent) throw new Error('A guest can see the qBittorrent button.');
 });
 
 export const openGuestMovieCodes = defineStep('openGuestMovieCodes', async ctx => {
@@ -229,6 +233,18 @@ export const expectGuestMediaBlocked = defineStep('expectGuestMediaBlocked', asy
   await ctx.page.evaluate(c => { location.hash = `#/movie/${encodeURIComponent(c)}?tab=media`; }, code);
   await ctx.page.waitForFunction(() => (document.querySelector('#view')?.innerText || '').includes('Đăng nhập để dùng liên kết và nội dung media.'), null, { timeout: 12000 })
     .catch(() => { throw new Error('The media tab does not ask a guest to log in.'); });
+});
+
+/** Guest movie detail shows the downloads panel (magnets/search) but never qBittorrent. */
+export const expectGuestDownloadsPanel = defineStep('expectGuestDownloadsPanel', async ctx => {
+  const panel = ctx.page.locator('#movie-downloads');
+  await panel.waitFor({ state: 'visible', timeout: 8000 });
+  const text = (await panel.innerText()).replace(/\s+/g, ' ');
+  if (!/Tải về|Downloads/i.test(text)) throw new Error(`Guest downloads panel is missing a title: "${text.slice(0, 120)}".`);
+  if (await panel.locator('button[data-dl]').count()) throw new Error('A guest can see the qBittorrent send control.');
+  if (await panel.locator('[data-magnet]').count() > 0) throw new Error('A guest can see the send-to-client control.');
+  if (await panel.locator('[data-download-search]').count() !== 1) throw new Error('A guest cannot search for download links.');
+  if (await panel.locator('button[data-act="copy"]').count() < 1) throw new Error('A guest cannot copy a visible download link.');
 });
 
 export const expectGuestHasNoFollow = defineStep('expectGuestHasNoFollow', async ctx => {

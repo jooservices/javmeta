@@ -29,7 +29,8 @@ final class HorizonWorkerLayoutTest extends TestCase
 
         $this->assertSame(5, $supervisors['crawler-listing']['maxProcesses']);
         $this->assertSame(7, $supervisors['crawler-browser_listing']['maxProcesses']);
-        $this->assertSame(8, $supervisors['crawler-search']['maxProcesses']);
+        $this->assertSame(9, $supervisors['crawler-search']['maxProcesses']);
+        $this->assertSame(['search', 'download_search'], $supervisors['crawler-search']['queue']);
         $this->assertSame(9, $supervisors['crawler-detail']['maxProcesses']);
         $this->assertSame(10, $supervisors['crawler-retry_listing']['maxProcesses']);
         $this->assertSame(3, $supervisors['api-observability']['maxProcesses']);
