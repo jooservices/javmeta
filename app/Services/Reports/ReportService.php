@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Reports;
 
 use App\Repositories\OwnerReportServiceRepository;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 
 /** Read-only numbers for the owner: data quality, crawl cost and source freshness. */
@@ -14,6 +15,10 @@ final class ReportService
     public const CORE_FIELDS = ['code', 'title_jp', 'title_en', 'actresses', 'cover_url', 'release_date', 'runtime', 'maker', 'label', 'series', 'genres'];
 
     public const PROJECTION_TITLES = [100_000, 400_000];
+
+    public const FIELD_CONFLICTS_CACHE_KEY = 'javmeta:report:field-conflicts';
+
+    private const FIELD_CONFLICTS_CACHE_TTL_SECONDS = 10_800;
 
     public function __construct(private readonly OwnerReportServiceRepository $repository) {}
 
@@ -134,21 +139,30 @@ final class ReportService
         return ['sources' => $rows];
     }
 
-    /** @return array{movies_with_a_conflict: int, rate_percent: float, by_field: array<string, int>} by_field: field => number of movies where the sources gave different values */
+    /** @return array{movies_with_a_conflict: int, by_field: array<string, int>} by_field: field => number of movies where the sources gave different values */
+    public function refreshFieldConflicts(): array
+    {
+        $summary = $this->repository->fieldConflictSummary();
+        Cache::put(self::FIELD_CONFLICTS_CACHE_KEY, $summary, self::FIELD_CONFLICTS_CACHE_TTL_SECONDS);
+
+        return $summary;
+    }
+
+    /** @return array{movies_with_a_conflict: int, rate_percent: float, by_field: array<string, int>} */
     private function fieldConflicts(int $movies): array
     {
-        $byField = [];
-        $movieIds = [];
-        $rows = $this->repository->movieFieldConflicts();
-        foreach ($rows as $row) {
-            $byField[$row['field']] = ($byField[$row['field']] ?? 0) + 1;
-            $movieIds[$row['movie_id']] = true;
-        }
-        ksort($byField);
+        /** @var array{movies_with_a_conflict: int, by_field: array<string, int>} $summary */
+        $summary = Cache::remember(
+            self::FIELD_CONFLICTS_CACHE_KEY,
+            self::FIELD_CONFLICTS_CACHE_TTL_SECONDS,
+            fn(): array => $this->repository->fieldConflictSummary(),
+        );
 
-        $conflictMovies = count($movieIds);
-
-        return ['movies_with_a_conflict' => $conflictMovies, 'rate_percent' => $this->percent($conflictMovies, $movies)] + ['by_field' => $byField];
+        return [
+            'movies_with_a_conflict' => $summary['movies_with_a_conflict'],
+            'rate_percent' => $this->percent($summary['movies_with_a_conflict'], $movies),
+            'by_field' => $summary['by_field'],
+        ];
     }
 
     /** @return array<string, string> source slug => worst verdict from the last source health report */
