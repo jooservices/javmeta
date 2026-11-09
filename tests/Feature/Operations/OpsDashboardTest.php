@@ -7,6 +7,7 @@ namespace Tests\Feature\Operations;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 final class OpsDashboardTest extends TestCase
@@ -37,14 +38,54 @@ final class OpsDashboardTest extends TestCase
         $this->actingAs($viewer)->getJson('/ops/data')->assertForbidden();
     }
 
-    public function test_the_super_administrator_sees_the_dashboard_and_its_data(): void
+    /** @return list<array{0: string, 1: string, 2: string}> */
+    public static function dashboardLocales(): array
+    {
+        return [
+            ['en', 'Command Center', 'Sources'],
+            ['vi', 'Trung tâm điều hành', 'Nguồn'],
+        ];
+    }
+
+    #[DataProvider('dashboardLocales')]
+    public function test_the_dashboard_translates_visible_copy_and_declares_the_selected_locale(string $locale, string $heading, string $sources): void
     {
         $admin = $this->admin();
+        $response = $this->actingAs($admin)
+            ->withHeader('Accept-Language', $locale === 'en' ? 'vi' : 'en')
+            ->get('/ops?lang=' . $locale);
 
-        $this->actingAs($admin)->get('/ops')->assertOk();
-        // The Command Center text is English only, so its language attribute stays honest whatever ?lang asks for.
-        $this->actingAs($admin)->get('/ops?lang=vi')->assertOk()->assertSee('<html lang="en">', false);
-        $this->actingAs($admin)->getJson('/ops/data')->assertOk()->assertJsonStructure(['as_of', 'totals' => ['movies']]);
+        $response->assertOk()
+            ->assertSee('<html lang="' . $locale . '">', false)
+            ->assertSee($heading)
+            ->assertSee($sources)
+            ->assertSee('/ops?lang=' . ($locale === 'en' ? 'vi' : 'en'), false);
+
+        $this->actingAs($admin)->getJson('/ops/data')
+            ->assertOk()
+            ->assertJsonStructure(['as_of', 'totals' => ['movies']]);
+    }
+
+    public function test_the_dashboard_uses_the_authenticated_owner_language_setting(): void
+    {
+        config(['javmeta.ui_locale' => 'en']);
+
+        $this->actingAs($this->admin())
+            ->withHeader('Accept-Language', 'fr')
+            ->get('/ops')
+            ->assertOk()
+            ->assertSee('<html lang="en">', false)
+            ->assertSee('Command Center');
+    }
+
+    public function test_the_dashboard_uses_accept_language_when_no_query_language_is_selected(): void
+    {
+        $this->actingAs($this->admin())
+            ->withHeader('Accept-Language', 'vi')
+            ->get('/ops')
+            ->assertOk()
+            ->assertSee('<html lang="vi">', false)
+            ->assertSee('Trung tâm điều hành');
     }
 
     public function test_the_command_center_displays_the_guest_mode_state(): void

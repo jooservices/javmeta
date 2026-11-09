@@ -1,11 +1,10 @@
 <!doctype html>
-{{-- The Command Center is not translated yet: its text is English, so the page says so whatever ?lang asks for. --}}
-<html lang="en">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
-  <title>JavMeta · Operations</title>
+  <title>{{ __('operations.title') }}</title>
   <style>
     :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #0d141b; color: #edf4f2; --bg:#0d141b; --panel:#17242b; --line:#315059; --muted:#9eb2b7; --accent:#67cfba; --warn:#f4bd67; --bad:#f48282; }
     * { box-sizing: border-box; }
@@ -21,6 +20,10 @@
     .live.bad { color: var(--bad); }
     .live::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: currentColor; }
     .logout { border: 1px solid var(--line); background: transparent; color: #edf4f2; border-radius: 8px; padding: 8px 12px; }
+    .locale-switch { display: flex; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; }
+    .locale-switch a { padding: 8px 10px; color: var(--muted); text-decoration: none; font-size: 12px; font-weight: 800; }
+    .locale-switch a[aria-current="true"] { color: #09241f; background: var(--accent); }
+    .locale-switch a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
     main { max-width: 1480px; margin: auto; padding: 30px 28px 60px; }
     .title { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: end; gap: 12px; margin-bottom: 22px; }
     .eyebrow { color: var(--accent); text-transform: uppercase; letter-spacing: .15em; font-size: 11px; font-weight: 800; }
@@ -77,86 +80,120 @@
 <body>
 <header>
   <div class="brand"><span class="brand-mark">J</span><strong>JavMeta</strong></div>
-  <span class="eyebrow">Operations</span>
+  <span class="eyebrow">{{ __('operations.operations') }}</span>
   <span class="spacer"></span>
-  <span id="live" class="live warn" role="status">Connecting</span>
-  <form method="post" action="{{ route('logout') }}">@csrf<button class="logout" type="submit">Sign out</button></form>
+  <span id="live" class="live warn" role="status">{{ __('operations.live.connecting') }}</span>
+  <div class="locale-switch" role="group" aria-label="{{ __('operations.language.switcher') }}">
+    @foreach (['vi', 'en'] as $language)
+      <a href="{{ request()->fullUrlWithQuery(['lang' => $language]) }}" lang="{{ $language }}" title="{{ __('operations.language.' . $language) }}" @if (app()->getLocale() === $language) aria-current="true" @endif>{{ strtoupper($language) }}</a>
+    @endforeach
+  </div>
+  <form method="post" action="{{ route('logout') }}">@csrf<button class="logout" type="submit">{{ __('operations.sign_out') }}</button></form>
 </header>
 <main>
-  <div class="title"><div><div class="eyebrow">Command Center</div><h1>Crawl operations</h1><p>Live progress, source health, performance and issues.</p></div><div id="asof" class="asof">Waiting for data</div></div>
+  <div class="title"><div><div class="eyebrow">{{ __('operations.command_center') }}</div><h1>{{ __('operations.crawl_operations') }}</h1><p>{{ __('operations.intro') }}</p></div><time id="asof" class="asof">{{ __('operations.live.waiting') }}</time></div>
   <div id="error" class="error-box" role="alert" hidden></div>
-  <section class="kpis" aria-label="Catalogue and queue totals">
-    <div class="kpi"><span class="label">Videos</span><strong id="movies">—</strong><small id="movies-hour">— added in 1 hour</small></div>
-    <div class="kpi"><span class="label">Performers</span><strong id="performers">—</strong><small>Unique records</small></div>
-    <div class="kpi"><span class="label">Queue complete</span><strong id="done">—</strong><small>All time</small></div>
-    <div class="kpi" lang="vi"><span class="label">Quyền truy cập giao diện</span><strong id="ui-login-mode">—</strong><small id="ui-login-detail">—</small></div>
-    <div class="kpi"><span class="label">Queue pending</span><strong id="pending">—</strong><small id="claimed">— in progress</small></div>
-    <div class="kpi problem"><span class="label">Failed items</span><strong id="failed">—</strong><small id="failed-jobs">— failed jobs</small></div>
+  <section class="kpis" aria-label="{{ __('operations.totals.aria_label') }}">
+    <div class="kpi"><span class="label">{{ __('operations.totals.videos') }}</span><strong id="movies">—</strong><small id="movies-hour">—</small></div>
+    <div class="kpi"><span class="label">{{ __('operations.totals.performers') }}</span><strong id="performers">—</strong><small>{{ __('operations.totals.unique_records') }}</small></div>
+    <div class="kpi"><span class="label">{{ __('operations.totals.queue_complete') }}</span><strong id="done">—</strong><small>{{ __('operations.totals.all_time') }}</small></div>
+    <div class="kpi"><span class="label">{{ __('operations.totals.interface_access') }}</span><strong id="ui-login-mode">—</strong><small id="ui-login-detail">—</small></div>
+    <div class="kpi"><span class="label">{{ __('operations.totals.queue_pending') }}</span><strong id="pending">—</strong><small id="claimed">—</small></div>
+    <div class="kpi problem"><span class="label">{{ __('operations.totals.failed_items') }}</span><strong id="failed">—</strong><small id="failed-jobs">—</small></div>
   </section>
   <div class="grid">
     <div>
-      <section class="panel"><h2>Sources</h2><p class="hint">Successful crawl age and backlog for enabled sources</p><div id="sources" class="source-grid"><div class="empty">Loading sources…</div></div></section>
-      <section class="panel"><h2>Recent issues</h2><p class="hint">Latest failed crawl items</p><div id="issues" class="rows"><div class="empty">Loading issues…</div></div></section>
+      <section class="panel"><h2>{{ __('operations.source.title') }}</h2><p class="hint">{{ __('operations.source.hint') }}</p><div id="sources" class="source-grid"><div class="empty">{{ __('operations.source.loading') }}</div></div></section>
+      <section class="panel"><h2>{{ __('operations.issues.title') }}</h2><p class="hint">{{ __('operations.issues.hint') }}</p><div id="issues" class="rows"><div class="empty">{{ __('operations.issues.loading') }}</div></div></section>
     </div>
     <div>
-      <section class="panel"><h2>Performance · last hour</h2><p class="hint">Crawl work recorded by the application</p><div id="performance" class="metrics"></div></section>
-      <section class="panel"><h2>Activity</h2><p class="hint">Recent crawl events</p><div id="events" class="rows"></div></section>
+      <section class="panel"><h2>{{ __('operations.performance.title') }}</h2><p class="hint">{{ __('operations.performance.hint') }}</p><div id="performance" class="metrics"></div></section>
+      <section class="panel"><h2>{{ __('operations.activity.title') }}</h2><p class="hint">{{ __('operations.activity.hint') }}</p><div id="events" class="rows"></div></section>
     </div>
   </div>
   <section class="panel" id="nodes" aria-labelledby="nodes-title">
-    <h2 id="nodes-title">Nodes</h2>
-    <p class="hint">Add a worker node: you only need an Ubuntu 24.04 virtual machine. Create a one-time command here and run it on that machine.</p>
+    <h2 id="nodes-title">{{ __('operations.nodes.title') }}</h2>
+    <p class="hint">{{ __('operations.nodes.hint') }}</p>
     <form class="nodes-form" id="node-form">
-      <label>Node name<input id="node-name" name="node_name" required minlength="3" maxlength="64" pattern="[a-z][a-z0-9\-]*" placeholder="worker-3" autocomplete="off"></label>
-      <label>Role<select id="node-role" name="role"><option value="worker">Worker</option></select></label>
-      <button class="action" id="node-create" type="submit">Create join command</button>
+      <label>{{ __('operations.nodes.name') }}<input id="node-name" name="node_name" required minlength="3" maxlength="64" pattern="[a-z][a-z0-9\-]*" placeholder="{{ __('operations.nodes.name_placeholder') }}" autocomplete="off"></label>
+      <label>{{ __('operations.nodes.role') }}<select id="node-role" name="role"><option value="worker">{{ __('operations.nodes.role_worker') }}</option></select></label>
+      <button class="action" id="node-create" type="submit">{{ __('operations.nodes.create_join_command') }}</button>
     </form>
     <div id="node-error" class="error-box" role="alert" hidden></div>
     <div id="join-box" class="join-box" hidden aria-live="polite">
-      <strong>Run this on the new VM as a user with sudo.</strong>
-      <ol class="steps"><li>The command works once and expires <span id="join-expiry">soon</span>.</li><li>It installs the worker and connects it to this installation.</li><li>The node appears below as <em>used</em>.</li></ol>
+      <strong>{{ __('operations.nodes.join_as_sudo') }}</strong>
+      <ol class="steps"><li>{{ __('operations.nodes.step_single_use', ['when' => '']) }}<span id="join-expiry">{{ __('operations.nodes.expiry_soon') }}</span>.</li><li>{{ __('operations.nodes.step_installs') }}</li><li>{{ __('operations.nodes.step_appears', ['status' => __('operations.nodes.status.used')]) }}</li></ol>
       <code id="join-command"></code>
-      <button class="action ghost" id="join-copy" type="button">Copy command</button> <span id="join-copied" class="hint" role="status"></span>
+      <button class="action ghost" id="join-copy" type="button">{{ __('operations.copy_command') }}</button> <span id="join-copied" class="hint" role="status"></span>
     </div>
-    <div id="node-list" class="rows"><div class="empty">Loading nodes…</div></div>
+    <div id="node-list" class="rows"><div class="empty">{{ __('operations.nodes.loading') }}</div></div>
   </section>
 </main>
 <script>
 (() => {
   const endpoint = @json(route('operations.data'));
+  const loginUrl = @json(route('login', ['lang' => app()->getLocale()]));
+  const messages = @json(__('operations'));
+  const locale = @json(app()->getLocale());
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-  const number = value => Number(value || 0).toLocaleString();
-  const age = seconds => seconds == null ? 'Never' : seconds < 60 ? `${seconds}s ago` : seconds < 3600 ? `${Math.floor(seconds / 60)}m ago` : `${Math.floor(seconds / 3600)}h ago`;
-  const time = value => value ? new Date(value).toLocaleString() : '—';
+  const t = (key, values = {}) => {
+    const message = key.split('.').reduce((value, part) => value?.[part], messages);
+    if (typeof message !== 'string') return key;
+    return Object.entries(values).reduce((result, [name, value]) => result.replaceAll(`:${name}`, String(value)), message);
+  };
+  const numberFormat = new Intl.NumberFormat(locale);
+  const dateTimeFormat = new Intl.DateTimeFormat(locale, {dateStyle: 'medium', timeStyle: 'short'});
+  const number = value => numberFormat.format(Number(value || 0));
+  const age = seconds => {
+    if (seconds == null) return t('time.never');
+    if (seconds < 60) return t('time.seconds_ago', {count: number(Math.floor(seconds))});
+    if (seconds < 3600) return t('time.minutes_ago', {count: number(Math.floor(seconds / 60))});
+    return t('time.hours_ago', {count: number(Math.floor(seconds / 3600))});
+  };
+  const time = value => value ? dateTimeFormat.format(new Date(value)) : '—';
+  const translated = (key, fallback) => {
+    const value = t(key);
+    return value === key ? fallback : value;
+  };
   let previous = null;
   async function refresh() {
     try {
       const response = await fetch(endpoint, {credentials: 'same-origin', cache: 'no-store'});
-      if (response.status === 401 || response.redirected) { window.location.href = @json(route('login')); return; }
-      if (!response.ok) throw new Error(`Data request returned ${response.status}`);
+      if (response.status === 401 || response.redirected) { window.location.href = loginUrl; return; }
+      if (!response.ok) throw new Error(t('errors.data_request', {status: response.status}));
       const data = await response.json();
       $('error').hidden = true;
-      $('live').className = 'live'; $('live').textContent = 'Live';
-      $('asof').textContent = `Updated ${time(data.as_of)} · refreshes every 15 seconds`;
+      $('live').className = 'live'; $('live').textContent = t('live.live');
+      $('asof').dateTime = data.as_of;
+      $('asof').textContent = t('live.updated', {time: time(data.as_of), seconds: number(15)});
       ['movies','performers'].forEach(key => { $(key).textContent = number(data.totals[key]); });
-      $('movies-hour').textContent = `${number(data.totals.movies_first_seen_1h)} added in 1 hour`;
-      $('ui-login-mode').textContent = data.ui_login_required ? 'Yêu cầu đăng nhập' : 'Chế độ khách';
-      $('ui-login-detail').textContent = data.ui_login_required ? 'Chủ sở hữu phải đăng nhập' : 'Giao diện công khai chỉ đọc';
+      $('movies-hour').textContent = t('totals.added_one_hour', {count: number(data.totals.movies_first_seen_1h)});
+      $('ui-login-mode').textContent = data.ui_login_required ? t('login.required') : t('login.guest');
+      $('ui-login-detail').textContent = data.ui_login_required ? t('login.owner_required') : t('login.public_read_only');
       ['done','pending','failed'].forEach(key => { $(key).textContent = number(data.queue[key]); });
-      $('claimed').textContent = `${number(data.queue.claimed)} in progress`;
-      $('failed-jobs').textContent = `${number(data.totals.failed_jobs)} failed jobs`;
-      $('sources').innerHTML = data.sources.map(source => `<article class="source"><div class="source-head"><strong>${esc(source.name || source.slug)}</strong><span class="pill ${source.status === 'healthy' ? '' : 'attention'}">${esc(source.status)}</span></div><p>Last success: ${esc(age(source.last_success_age_seconds))}</p><div class="counts">${number(source.queue.done)} done · ${number(source.queue.pending)} pending · ${number(source.queue.claimed)} active · ${number(source.queue.failed)} failed</div>${source.last_error ? `<p title="${esc(source.last_error)}">Latest error: ${esc(source.last_error)}</p>` : ''}</article>`).join('') || '<div class="empty">No source is enabled.</div>';
+      $('claimed').textContent = t('totals.in_progress', {count: number(data.queue.claimed)});
+      $('failed-jobs').textContent = t('totals.failed_jobs', {count: number(data.totals.failed_jobs)});
+      $('sources').innerHTML = data.sources.map(source => {
+        const statusKey = `source.status.${source.status}`;
+        const status = translated(statusKey, source.status);
+        const queueCounts = t('source.queue_counts', {
+          done: number(source.queue.done), pending: number(source.queue.pending),
+          active: number(source.queue.claimed), failed: number(source.queue.failed),
+        });
+        const latestError = source.last_error ? t('source.latest_error', {error: source.last_error}) : '';
+        return `<article class="source"><div class="source-head"><strong>${esc(source.name || source.slug)}</strong><span class="pill ${source.status === 'healthy' ? '' : 'attention'}">${esc(status)}</span></div><p>${esc(t('source.last_success', {age: age(source.last_success_age_seconds)}))}</p><div class="counts">${esc(queueCounts)}</div>${source.last_error ? `<p title="${esc(latestError)}">${esc(latestError)}</p>` : ''}</article>`;
+      }).join('') || `<div class="empty">${t('source.empty')}</div>`;
       const metric = (label, value) => `<div class="metric"><span>${label}</span><b>${number(value)}</b></div>`;
-      $('performance').innerHTML = metric('Runs', data.hour.runs) + metric('Pages fetched', data.hour.pages) + metric('New videos', data.hour.movies_new) + metric('Updated videos', data.hour.movies_updated) + metric('Fetch failures', data.hour.failures) + metric('Failed jobs', data.totals.failed_jobs);
-      $('issues').innerHTML = data.issues.map(item => `<div class="row"><b>${esc(item.source)}</b><span>${esc(item.code)}</span><span>${esc(item.kind)} · ${number(item.attempts)} attempts${item.detail ? ' · ' + esc(item.detail) : ''}</span></div>`).join('') || '<div class="empty">No failed crawl items.</div>';
-      $('events').innerHTML = data.events.map(item => `<div class="row"><b>${esc(item.source)}</b><span>${esc(item.kind)}</span><span>${esc(time(item.at))}</span></div>`).join('') || '<div class="empty">No crawl events yet.</div>';
+      $('performance').innerHTML = metric(t('performance.runs'), data.hour.runs) + metric(t('performance.pages_fetched'), data.hour.pages) + metric(t('performance.new_videos'), data.hour.movies_new) + metric(t('performance.updated_videos'), data.hour.movies_updated) + metric(t('performance.fetch_failures'), data.hour.failures) + metric(t('performance.failed_jobs'), data.totals.failed_jobs);
+      $('issues').innerHTML = data.issues.map(item => `<div class="row"><b>${esc(item.source)}</b><span>${esc(item.code)}</span><span>${esc(item.kind)} · ${esc(t('issues.attempts', {count: number(item.attempts)}))}${item.detail ? ' · ' + esc(item.detail) : ''}</span></div>`).join('') || `<div class="empty">${t('issues.empty')}</div>`;
+      $('events').innerHTML = data.events.map(item => `<div class="row"><b>${esc(item.source)}</b><span>${esc(item.kind)}</span><span>${esc(time(item.at))}</span></div>`).join('') || `<div class="empty">${t('activity.empty')}</div>`;
       previous = data.as_of;
     } catch (error) {
-      $('live').className = 'live bad'; $('live').textContent = 'Data unavailable';
-      $('error').textContent = `Could not refresh crawl status: ${error.message}`;
+      $('live').className = 'live bad'; $('live').textContent = t('live.unavailable');
+      $('error').textContent = t('errors.refresh_failed', {error: error.message});
       $('error').hidden = false;
-      if (previous) $('asof').textContent = `Last good update ${time(previous)}`;
+      if (previous) { $('asof').dateTime = previous; $('asof').textContent = t('live.last_good_update', {time: time(previous)}); }
     }
   }
   refresh(); setInterval(refresh, 15000);
@@ -166,11 +203,18 @@
   async function loadNodes() {
     try {
       const response = await fetch(nodesEndpoint, {credentials: 'same-origin', cache: 'no-store', headers: {Accept: 'application/json'}});
-      if (!response.ok) throw new Error(`Nodes request returned ${response.status}`);
+      if (!response.ok) throw new Error(t('nodes.request_failed', {status: response.status}));
       const rows = (await response.json()).data;
-      $('node-list').innerHTML = rows.map(row => `<div class="node-row"><b>${esc(row.node_name)}</b><span>${esc(row.role)}</span><span class="badge-${esc(row.status)}">${esc(row.status)}</span><span>${row.status === 'used' ? 'used ' + esc(time(row.used_at)) : 'expires ' + esc(time(row.expires_at))}</span></div>`).join('') || '<div class="empty">No node has been added yet.</div>';
+      $('node-list').innerHTML = rows.map(row => {
+        const status = translated(`nodes.status.${row.status}`, row.status);
+        const role = row.role === 'worker' ? t('nodes.role_worker') : row.role;
+        const timing = row.status === 'used'
+          ? t('nodes.used_at', {time: time(row.used_at)})
+          : t('nodes.expires_at', {time: time(row.expires_at)});
+        return `<div class="node-row"><b>${esc(row.node_name)}</b><span>${esc(role)}</span><span class="badge-${esc(row.status)}">${esc(status)}</span><span>${esc(timing)}</span></div>`;
+      }).join('') || `<div class="empty">${t('nodes.empty')}</div>`;
     } catch (error) {
-      $('node-list').innerHTML = `<div class="empty">Could not load nodes: ${esc(error.message)}</div>`;
+      $('node-list').innerHTML = `<div class="empty">${esc(t('nodes.load_failed', {error: error.message}))}</div>`;
     }
   }
   $('node-form').addEventListener('submit', async event => {
@@ -179,9 +223,9 @@
     try {
       const response = await fetch(nodesEndpoint, {method: 'POST', credentials: 'same-origin', headers: {'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrf}, body: JSON.stringify({node_name: $('node-name').value.trim(), role: $('node-role').value})});
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(Object.values(body.errors || {}).flat().join(' ') || body.message || `Request returned ${response.status}`);
+      if (!response.ok) throw new Error(Object.values(body.errors || {}).flat().join(' ') || body.message || t('errors.request', {status: response.status}));
       $('join-command').textContent = body.data.command;
-      $('join-expiry').textContent = `at ${time(body.data.expires_at)}`;
+      $('join-expiry').textContent = t('time.at', {time: time(body.data.expires_at)});
       $('join-copied').textContent = '';
       $('join-box').hidden = false;
       loadNodes();
@@ -191,8 +235,8 @@
   });
   $('join-copy').addEventListener('click', async () => {
     const text = $('join-command').textContent;
-    try { await navigator.clipboard.writeText(text); $('join-copied').textContent = 'Copied'; }
-    catch { const range = document.createRange(); range.selectNodeContents($('join-command')); const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range); $('join-copied').textContent = 'Press Ctrl+C to copy'; }
+    try { await navigator.clipboard.writeText(text); $('join-copied').textContent = t('copied'); }
+    catch { const range = document.createRange(); range.selectNodeContents($('join-command')); const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range); $('join-copied').textContent = t('copy_shortcut'); }
   });
   loadNodes(); setInterval(loadNodes, 15000);
 })();

@@ -8,6 +8,7 @@ import { openNotificationEditor, typeInTitle, expectLivePreviewShows, insertVari
 import { createApiKey, expectApiKeyStatus, revokeApiKey, expectApiKeyRequiresAScope } from '../steps/admin.mjs';
 import { expectDiscoverForBrowsers, searchFromDiscover, expectSearchFound, expectDiscoverChipsAreRealGenres, expectSearchIsHonest, expectSearchTooShortMessage } from '../steps/discover.mjs';
 import { fillNodeName, submitNodeForm, expectBrowserRejectsNodeName, expectJoinCommand, copyJoinCommand, expectNodeListed } from '../steps/nodes.mjs';
+import { switchOperationsLanguage, expectOperationsDashboardLanguage } from '../steps/operations.mjs';
 import { expectHoverChanges, goBack } from '../steps/interact.mjs';
 import { toggleFilterDrawer, closeFilterDrawer, expectFilterField, clearFilters, expectResultCount, expectResultCountBetween, expectHashIncludes } from '../steps/browser.mjs';
 import { filterPerformersByName, choosePerformerOption, filterPerformersByLocation, chooseLocationFacet, filterPerformersByAge, expectPerformerNamed, expectPerformerAbsent, openPerformer, openFirstPerformer, expectPerformerField, openPerformerTab, openPerformerTabWithKeyboard, expectPerformerTab, setFollow, expectFeedState, expectFeedMovies, expectPerformerMissing } from '../steps/performers.mjs';
@@ -62,6 +63,13 @@ export const addNodeFromTheCommandCenter = defineScenario('the owner adds a node
   login(), openPath('/ops'), fillNodeName('Bad Name'), submitNodeForm(), expectBrowserRejectsNodeName(),
   fillNodeName('worker-e2e-' + Date.now().toString(36)), submitNodeForm(), expectJoinCommand('worker-e2e-[a-z0-9]+'), copyJoinCommand(),
   expectNodeListed('worker-e2e-', 'pending'), expectNoConsoleErrors(),
+]);
+
+export const commandCenterSupportsEnglishAndVietnamese = defineScenario('the Command Center supports English and Vietnamese', [
+  login(), openPath('/ops?lang=vi'),
+  expectOperationsDashboardLanguage('vi', {title: 'JavMeta · Vận hành', heading: 'Vận hành thu thập dữ liệu', source: 'Nguồn', aria: 'Tổng số phim và hàng đợi'}),
+  switchOperationsLanguage('en'),
+  expectOperationsDashboardLanguage('en', {title: 'JavMeta · Operations', heading: 'Crawl operations', source: 'Sources', aria: 'Catalogue and queue totals'}),
 ]);
 
 export const discoverIsForBrowsingAndSearchWorks = defineScenario('Discover is for browsing and its search finds a movie', [

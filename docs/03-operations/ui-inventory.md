@@ -165,14 +165,15 @@ QA sample limits: downloads and the file server are off; there are no library fi
 | NT-06 | `#/settings/notifications` | Gửi thử / Khôi phục | button | confirm | `expectTestSendAsksToConfirm`, `resetTemplate` | the owner edits… |
 | NT-07 | `#/settings/notifications` | daily time / timezone | input | | `saveNotificationEdits` path; schedule fields on the page | a notification can be disabled… |
 | NT-08 | `#/settings/notifications` | severity select | input | Vietnamese labels | render-smoke + editor in `openNotificationEditor` | the owner edits… |
-| OPS-01 | `/ops` | h1 Crawl operations | page | | `openPath('/ops')` | the owner adds a node… |
-| OPS-02 | `/ops` | live / KPIs / sources / issues / events | view | loading, live, error | `expectNoConsoleErrors` after load | the owner adds a node… |
+| OPS-01 | `/ops` | h1 Crawl operations | page | English, Vietnamese | `openPath('/ops?lang=vi')`, `expectOperationsDashboardLanguage` | the Command Center supports English and Vietnamese |
+| OPS-02 | `/ops` | live / KPIs / sources / issues / events | view | loading, live, error; localized number, date and relative-time formats | `expectOperationsDashboardLanguage`, `expectNoConsoleErrors` after load | the Command Center supports English and Vietnamese; the owner adds a node… |
 | OPS-03 | `/ops` | `#node-name` | input | invalid pattern, valid | `fillNodeName`, `expectBrowserRejectsNodeName` | the owner adds a node… |
 | OPS-04 | `/ops` | `#node-role` | select | worker | `submitNodeForm` | the owner adds a node… |
 | OPS-05 | `/ops` | Create join command | button | | `submitNodeForm`, `expectJoinCommand` | the owner adds a node… |
 | OPS-06 | `/ops` | Copy command | button | | `copyJoinCommand` | the owner adds a node… |
 | OPS-07 | `/ops` | node list | list | pending | `expectNodeListed` | the owner adds a node… |
 | OPS-08 | `/ops` | Sign out | button | | owner session; UI logout covered by `confirmLogout` | a mark toasts… |
+| OPS-09 | `/ops` | `.locale-switch` | language links | English / Vietnamese; selected language; `?lang` navigation | `switchOperationsLanguage`, `expectOperationsDashboardLanguage` | the Command Center supports English and Vietnamese |
 | G-01 | guest shell | banner | status | sentence wrap | `expectGuestShell`, `expectGuestBannerSentence` | a guest can browse…; the guest banner… |
 | G-02 | guest shell | public nav only | menu | | `expectGuestShell` | a guest can browse… |
 | G-03 | guest owner pages | login prompt | state | | `expectGuestPrompt`, `openGuestLogin`, `openGuestLoginWithKeyboard`, `expectPathRequiresLogin` | a guest can browse… |
@@ -187,10 +188,10 @@ QA sample limits: downloads and the file server are off; there are no library fi
 
 | | count |
 | --- | ---: |
-| Inventory rows | 128 |
-| Rows with a real click/type/hover/assert step | 128 |
+| Inventory rows | 129 |
+| Rows with a real click/type/hover/assert step | 129 |
 | Rows sample-off on QA (empty/disabled state still covered) | 5 (`MD-12`, `L-02`, `DL-02`, `PL-02`, media kind enqueue) |
-| Scenarios in `suites/main.mjs` | 38 |
+| Scenarios in `suites/main.mjs` | 41 |
 | Hash views opened by `everyViewRendersOnDesktop` | 26 |
 
 Settings keys (queue, worker, telegram, report, …) are not duplicated one-per-key: each tab’s rows are shown by `expectTabShowsControls`, narrowed by `filterSettings`, and a bool is saved by `toggleFirstSwitch`. The generated names live in [settings-reference.md](../user-guide/settings-reference.md).

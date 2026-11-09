@@ -17,9 +17,9 @@ export const expectJoinCommand = defineStep('expectJoinCommand', async (ctx, nam
 
 export const copyJoinCommand = defineStep('copyJoinCommand', async ctx => {
   await ctx.page.click('#join-copy');
-  await ctx.page.waitForFunction(() => /Copied|Ctrl\+C/.test(document.querySelector('#join-copied')?.textContent || ''), null, { timeout: 4000 });
+  await ctx.page.waitForFunction(() => Boolean(document.querySelector('#join-copied')?.textContent?.trim()), null, { timeout: 4000 });
 });
 
 export const expectNodeListed = defineStep('expectNodeListed', async (ctx, name, status) => {
-  await ctx.page.waitForFunction(([n, s]) => [...document.querySelectorAll('.node-row')].some(r => r.innerText.includes(n) && r.innerText.includes(s)), [name, status], { timeout: 8000 });
+  await ctx.page.waitForFunction(([n, s]) => [...document.querySelectorAll('.node-row')].some(r => r.innerText.includes(n) && r.querySelector(`.badge-${s}`)), [name, status], { timeout: 8000 });
 });
