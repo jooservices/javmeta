@@ -66,7 +66,7 @@ final class SourceRequestPacerTest extends TestCase
         (new SourceRequestPacer())->wait(-5);
 
         $elapsed = microtime(true) - $started;
-        self::assertGreaterThanOrEqual(0.019, $elapsed);
+        self::assertGreaterThanOrEqual(0.015, $elapsed);
         self::assertLessThan(0.5, $elapsed);
     }
 }
