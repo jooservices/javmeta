@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature\Crawl;
 
 use App\Enums\CrawlErrorCode;
+use App\Contracts\AlertNotifier;
 use App\Models\Source;
+use App\Services\Alerts\AlertDispatcher;
 use App\Services\Crawl\SourceCircuitBreaker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -68,6 +70,54 @@ final class SourceCircuitBreakerTest extends TestCase
         $this->assertSame(0, $source->circuit_open_count);
         $this->assertNull($source->circuit_cooldown_seconds);
         Event::assertDispatchedTimes(\App\Events\SourceCircuitOpened::class, 3);
+    }
+
+    public function test_every_opening_is_announced_and_closing_the_circuit_sends_one_recovery_notice(): void
+    {
+        config([
+            'javmeta_sources.defaults.circuit.failure_threshold' => 1,
+            'javmeta_sources.defaults.circuit.cooldown_seconds' => 10,
+            'javmeta_sources.defaults.circuit.max_cooldown_seconds' => 40,
+        ]);
+        $notifier = new class implements AlertNotifier {
+            /** @var list<string> */
+            public array $subjects = [];
+
+            public function notify(string $subject, string $body, array $context = []): bool
+            {
+                $this->subjects[] = $subject;
+
+                return true;
+            }
+        };
+        $this->app->instance(AlertDispatcher::class, new AlertDispatcher($notifier));
+        $source = Source::factory()->create(['slug' => 'javbus']);
+        $breaker = app(SourceCircuitBreaker::class);
+
+        $breaker->recordFailure('javbus', CrawlErrorCode::Blocked);
+        $this->assertCount(1, $notifier->subjects);
+        $this->assertStringContainsString('Source javbus has been paused', $notifier->subjects[0]);
+
+        // The cooldown elapses: the circuit closes on the next look and the matching alert is resolved once.
+        $this->travel(11)->seconds();
+        $this->assertSame([], $breaker->pausedSourceSlugs());
+        $this->assertCount(2, $notifier->subjects);
+        $this->assertStringContainsString('Source javbus resumed', $notifier->subjects[1]);
+        $this->assertSame([], $breaker->pausedSourceSlugs());
+        $this->assertCount(2, $notifier->subjects, 'The recovery notice is sent once.');
+
+        // A second opening minutes after the first is announced again, with its longer cooldown.
+        $breaker->recordFailure('javbus', CrawlErrorCode::Blocked);
+        $this->assertCount(3, $notifier->subjects);
+        $this->assertStringContainsString('Source javbus has been paused', $notifier->subjects[2]);
+
+        // A successful fetch closes the circuit and resolves that opening too.
+        $breaker->recordSuccess('javbus');
+        $this->assertCount(4, $notifier->subjects);
+        $this->assertStringContainsString('Source javbus resumed', $notifier->subjects[3]);
+        $breaker->recordSuccess('javbus');
+        $this->assertCount(4, $notifier->subjects, 'A success on a closed circuit sends nothing.');
+        $this->assertSame('closed', $source->refresh()->circuit_state);
     }
 
     public function test_non_block_failures_do_not_trip_the_block_circuit(): void

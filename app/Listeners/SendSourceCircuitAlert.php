@@ -11,10 +11,16 @@ final class SendSourceCircuitAlert
 {
     public function __construct(private readonly AlertDispatcher $alerts) {}
 
+    /** Every opening is its own notification cause, so a reopening with a longer cooldown is never held back by the cooldown of the previous alert. */
+    public static function causeKey(string $sourceSlug, int $openCount): string
+    {
+        return 'source:' . $sourceSlug . ':circuit_open:' . $openCount;
+    }
+
     public function handle(SourceCircuitOpened $event): void
     {
         $this->alerts->sendTemplate(
-            debounceKey: 'source:' . $event->sourceSlug . ':circuit_open',
+            debounceKey: self::causeKey($event->sourceSlug, $event->openCount),
             templateKey: 'crawl.source_circuit_open',
             context: [
                 'source_slug' => $event->sourceSlug,

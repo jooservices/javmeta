@@ -6,7 +6,9 @@ namespace App\Services\Crawl;
 
 use App\Enums\CrawlErrorCode;
 use App\Events\SourceCircuitOpened;
+use App\Listeners\SendSourceCircuitAlert;
 use App\Repositories\SourceCircuitBreakerRepository;
+use App\Services\Alerts\AlertDispatcher;
 use Illuminate\Support\Facades\Event;
 
 final class SourceCircuitBreaker
@@ -17,7 +19,10 @@ final class SourceCircuitBreaker
         CrawlErrorCode::Challenge,
     ];
 
-    public function __construct(private readonly SourceCircuitBreakerRepository $sources) {}
+    public function __construct(
+        private readonly SourceCircuitBreakerRepository $sources,
+        private readonly AlertDispatcher $alerts,
+    ) {}
 
     public function recordFailure(string $sourceSlug, CrawlErrorCode $errorCode): void
     {
@@ -42,22 +47,41 @@ final class SourceCircuitBreaker
             $state['consecutive_failures'],
             $state['cooldown_seconds'],
             $state['resume_at'],
+            $state['open_count'],
         ));
     }
 
     public function recordSuccess(string $sourceSlug): void
     {
-        $this->sources->reset($sourceSlug);
+        $openCount = $this->sources->reset($sourceSlug);
+        if ($openCount !== null) {
+            $this->resolveAlert($sourceSlug, $openCount);
+        }
     }
 
     /** @return list<string> */
     public function pausedSourceSlugs(): array
     {
-        return $this->sources->pausedSlugs();
+        $state = $this->sources->syncPaused();
+        foreach ($state['closed'] as $closed) {
+            $this->resolveAlert($closed['slug'], $closed['open_count']);
+        }
+
+        return $state['paused'];
     }
 
+    /** @phpstan-impure The circuit state lives in the database and can change between two calls. */
     public function isPaused(string $sourceSlug): bool
     {
         return in_array($sourceSlug, $this->pausedSourceSlugs(), true);
+    }
+
+    private function resolveAlert(string $sourceSlug, int $openCount): void
+    {
+        $this->alerts->resolveTemplate(
+            SendSourceCircuitAlert::causeKey($sourceSlug, $openCount),
+            'crawl.source_circuit_recovered',
+            ['source_slug' => $sourceSlug],
+        );
     }
 }

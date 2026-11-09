@@ -68,22 +68,45 @@ final class SourceCircuitBreakerRepository extends BusinessQueryRepository
         $this->modelQuery(Source::class)->whereKey($slug)->update(['consecutive_failures' => 0]);
     }
 
-    public function reset(string $slug): void
+    /** Closes the circuit and clears the streak; returns the opening count when the circuit was open, so its alert can be resolved. */
+    public function reset(string $slug): ?int
     {
-        $this->modelQuery(Source::class)->whereKey($slug)->update([
-            'consecutive_failures' => 0,
-            'circuit_state' => 'closed',
-            'circuit_opened_at' => null,
-            'circuit_open_count' => 0,
-            'circuit_cooldown_seconds' => null,
-        ]);
+        return $this->transaction(function () use ($slug): ?int {
+            $query = $this->modelQuery(Source::class)->whereKey($slug);
+            if ($this->driverName() === 'pgsql') {
+                $query->lockForUpdate();
+            }
+            $source = $query->first(['slug', 'circuit_state', 'circuit_open_count']);
+            if (! $source instanceof Source) {
+                return null;
+            }
+
+            $this->modelQuery(Source::class)->whereKey($slug)->update([
+                'consecutive_failures' => 0,
+                'circuit_state' => 'closed',
+                'circuit_opened_at' => null,
+                'circuit_open_count' => 0,
+                'circuit_cooldown_seconds' => null,
+            ]);
+
+            return $source->circuit_state === 'open' ? (int) $source->circuit_open_count : null;
+        });
     }
 
-    /** @return list<string> */
-    public function pausedSlugs(): array
+    /**
+     * Closes the circuits whose cooldown elapsed and lists the sources that are still paused.
+     *
+     * A circuit is closed only if it still carries the opening time that was read, so a block that reopened it
+     * in the meantime is never cleared by this older view of the row.
+     *
+     * @return array{paused: list<string>, closed: list<array{slug: string, open_count: int}>}
+     */
+    public function syncPaused(): array
     {
         $paused = [];
-        foreach ($this->modelQuery(Source::class)->where('circuit_state', 'open')->get(['slug', 'circuit_opened_at', 'circuit_cooldown_seconds']) as $source) {
+        $closed = [];
+        foreach ($this->modelQuery(Source::class)->where('circuit_state', 'open')->get(['slug', 'circuit_opened_at', 'circuit_cooldown_seconds', 'circuit_open_count']) as $source) {
+            $rawOpenedAt = $source->getRawOriginal('circuit_opened_at');
             $openedAt = $source->circuit_opened_at === null ? null : CarbonImmutable::parse($source->circuit_opened_at);
             $cooldown = max(1, (int) ($source->circuit_cooldown_seconds ?? config('javmeta_sources.defaults.circuit.cooldown_seconds', 300)));
             if ($openedAt === null || $openedAt->addSeconds($cooldown)->isFuture()) {
@@ -91,13 +114,17 @@ final class SourceCircuitBreakerRepository extends BusinessQueryRepository
                 continue;
             }
 
-            $this->modelQuery(Source::class)->whereKey($source->slug)->where('circuit_state', 'open')->update([
-                'circuit_state' => 'closed',
-                'circuit_opened_at' => null,
-            ]);
+            $affected = $this->modelQuery(Source::class)
+                ->whereKey($source->slug)
+                ->where('circuit_state', 'open')
+                ->where('circuit_opened_at', $rawOpenedAt)
+                ->update(['circuit_state' => 'closed', 'circuit_opened_at' => null]);
+            if ($affected > 0) {
+                $closed[] = ['slug' => (string) $source->slug, 'open_count' => (int) $source->circuit_open_count];
+            }
         }
 
-        return $paused;
+        return ['paused' => $paused, 'closed' => $closed];
     }
 
     /** @return array<string, array{consecutive_failures: int, circuit_state: string, circuit_opened_at: ?DateTimeInterface, circuit_open_count: int, circuit_cooldown_seconds: ?int}> */

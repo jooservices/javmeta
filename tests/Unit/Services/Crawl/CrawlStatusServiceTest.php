@@ -34,6 +34,7 @@ final class CrawlStatusServiceTest extends TestCase
 
     public function test_source_status_exposes_real_circuit_state_and_resume_time(): void
     {
+        $this->freezeTime();
         $source = Source::factory()->create([
             'slug' => 'javbus',
             'circuit_state' => 'open',

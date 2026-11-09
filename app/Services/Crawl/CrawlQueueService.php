@@ -240,6 +240,9 @@ final class CrawlQueueService
                         return null;
                     }
                     $this->sourceRequestPacer->wait($wait);
+                    if (app(SourceCircuitBreaker::class)->isPaused($sourceSlug)) {
+                        return null;
+                    }
                 }
             }
 

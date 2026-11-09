@@ -344,6 +344,13 @@ final class SmokeCommandTest extends TestCase
                 return Http::response(['message' => 'unavailable'], 503);
             }
 
+            $plaintext = (string) ($request->header('X-API-Key')[0] ?? '');
+            $key = \App\Models\ApiKey::query()->where('key_hash', hash('sha256', $plaintext))->first();
+            $scope = str_ends_with($request->url(), '/api/v1/mcp') ? 'mcp' : 'performers';
+            if (! $key instanceof \App\Models\ApiKey || ! $key->allows($scope)) {
+                return Http::response(['message' => 'The key does not allow this scope.'], 403);
+            }
+
             if (str_contains($request->url(), '/api/v1/performers')) {
                 return Http::response(['data' => [], 'meta' => ['pagination' => ['total' => 0]]]);
             }

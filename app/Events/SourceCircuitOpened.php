@@ -13,5 +13,6 @@ final class SourceCircuitOpened
         public readonly int $consecutiveBlocks,
         public readonly int $cooldownSeconds,
         public readonly DateTimeInterface $resumeAt,
+        public readonly int $openCount = 1,
     ) {}
 }
