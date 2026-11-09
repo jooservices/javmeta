@@ -18,6 +18,7 @@ use App\Http\Controllers\MovieRelatedController;
 use App\Http\Controllers\MovieLookupController;
 use App\Http\Controllers\MovieSearchController;
 use App\Http\Controllers\PerformerController;
+use App\Http\Controllers\PerformerPhotosController;
 use App\Http\Controllers\PerformerFacetsController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\SearchParseController;
@@ -57,6 +58,7 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
             Route::get('config/browser-services', \App\Http\Controllers\BrowserServicesConfigController::class);
             Route::get('performers', [PerformerController::class, 'index']);
             Route::get('performers/facets', [PerformerFacetsController::class, 'index']);
+            Route::get('performers/{id}/photos', PerformerPhotosController::class);
             Route::get('performers/{id}', [PerformerController::class, 'show']);
             Route::get('movies/calendar', [MovieCalendarController::class, 'index']);
             Route::get('movies/facets', [MovieFacetsController::class, 'index']);

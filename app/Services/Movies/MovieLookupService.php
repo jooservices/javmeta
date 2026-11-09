@@ -7,8 +7,10 @@ namespace App\Services\Movies;
 use App\Repositories\MovieRepository;
 use App\Models\Movie;
 use App\Models\MovieCode;
+use App\Models\MovieMedia;
 use App\Support\Code\NormalizedCode;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use InvalidArgumentException;
 
 /**
@@ -103,6 +105,17 @@ final class MovieLookupService
     /** @return Builder<Movie> */
     private function queryWithDisplayRelations(): Builder
     {
-        return app(MovieRepository::class)->modelQuery(Movie::class)->with(['codes', 'performers.aliases', 'performers.sources', 'genres', 'media', 'credits']);
+        return app(MovieRepository::class)->modelQuery(Movie::class)
+            ->with([
+                'codes',
+                'performers.aliases',
+                'performers.sources',
+                'genres',
+                'mediaNonGallery',
+                'galleryPreview' => static fn(HasMany $query) => $query->orderBy('id')->limit(100),
+                'coverMedia',
+                'credits',
+            ])
+            ->withCount(['media as gallery_total' => static fn(Builder $query) => $query->where('kind', MovieMedia::KIND_GALLERY)]);
     }
 }

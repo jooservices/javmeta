@@ -23,14 +23,14 @@ final class FieldCatalogContractTest extends TestCase
     private const MOVIE_FIELDS = [
         'uuid', 'code', 'codes', 'title_jp', 'title_en', 'description', 'performers', 'directors', 'cover_url',
         'cover_thumb_url', 'release_date', 'runtime_minutes', 'maker', 'label', 'series', 'genres', 'censored',
-        'community_score', 'completeness_tier', 'attrs', 'magnets', 'downloads', 'hls_stream_urls', 'gallery', 'photos',
-        'crawled_at', 'delisted_at', 'needs_review',
+        'community_score', 'completeness_tier', 'attrs', 'magnets', 'downloads', 'hls_stream_urls', 'gallery', 'gallery_total', 'photos',
+        'truncated', 'crawled_at', 'delisted_at', 'needs_review',
     ];
 
     private const PERFORMER_FIELDS = [
         'uuid', 'id', 'name_romaji', 'name_kanji', 'name_kana', 'aliases', 'sources', 'birth_date', 'height_cm', 'bust', 'waist',
         'hip', 'cup', 'blood_type', 'blood_rh', 'bio_text', 'debut_date', 'retired_date', 'location', 'attrs', 'linked_title_count',
-        'profile_url', 'image_url', 'photos',
+        'profile_url', 'image_url', 'photos', 'photos_total', 'truncated',
     ];
 
     public function test_movie_detail_has_the_same_documented_fields_over_rest_and_mcp(): void

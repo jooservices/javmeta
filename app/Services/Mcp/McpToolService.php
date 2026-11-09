@@ -501,6 +501,8 @@ final class McpToolService
             return ['error' => 'performer_not_found', 'id' => $id];
         }
 
+        $performer = $this->performers->withPhotoPreview($performer);
+
         return (new PerformerResource($performer))->toArray(Request::create('/'));
     }
 

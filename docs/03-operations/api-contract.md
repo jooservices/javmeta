@@ -16,6 +16,7 @@ Invalid filters return HTTP 400 with type `invalid_filter`, a `detail` message, 
 | `POST /api/v1/movies:bulk` | Accepts a `codes` array and returns one `found` or `not_found` entry for each unique normalized code, with the movie resource or `null`. | `400 invalid_filter` for an invalid `codes` value, `401 unauthorized`, `413 bulk_limit_exceeded` above 100 codes, `429 rate_limited` |
 | `GET /api/v1/performers` | Returns performer summaries in `data` and pagination metadata in `meta.pagination`. | `400 invalid_filter` for invalid filters, `401 unauthorized`, `429 rate_limited` |
 | `GET /api/v1/performers/{id}` | Returns one performer resource in `data`; `id` accepts the numeric identifier or UUID. | `401 unauthorized`, `404 performer_not_found`, `429 rate_limited` |
+| `GET /api/v1/performers/{id}/photos` | Returns one page of gallery photos in `data`; `per_page` defaults to 50 and is capped at 200, and `page` defaults to 1. `meta.pagination` includes total rows and `has_more`. | `400 invalid_filter`, `401 unauthorized`, `404 performer_not_found`, `429 rate_limited` |
 | `GET /api/v1/meta/genres` | Returns a sorted, deduplicated array containing the union of raw genre labels, falling back to normalized labels when no raw label exists. | `401 unauthorized`, `429 rate_limited` |
 | `GET /api/v1/auth/verify` | Returns `data.status: "ok"` for an active key. | `401 unauthorized`, `429 rate_limited` |
 | `GET /api/health` | Public health payload reports `ok`, `degraded`, or `down`; `ok` and `degraded` return HTTP 200, while `down` returns HTTP 503. | None |
@@ -48,6 +49,8 @@ empty array); keys are never omitted. Changes are additive: existing keys keep t
 | `magnets`, `hls_stream_urls`, `gallery` | array | Media links |
 | `downloads` | object | Link availability, result count, search state, cooldown and whether on-demand search is enabled |
 | `photos` | object | Images and galleries |
+| `gallery_total` | integer | Total gallery media rows available for the movie |
+| `truncated` | boolean | Whether gallery media was omitted from the bounded detail preview |
 | `crawled_at`, `delisted_at` | datetime or null | ISO 8601 |
 | `needs_review` | boolean | Flagged for manual review |
 
@@ -72,7 +75,9 @@ empty array); keys are never omitted. Changes are additive: existing keys keep t
 | `attrs` | object | Sparse source-specific extras |
 | `linked_title_count` | integer or null | Number of linked movies, when counted |
 | `profile_url`, `image_url` | string or null | Source profile and image |
-| `photos` | object | Images and galleries |
+| `photos` | object | Bounded preview of images and galleries; images and gallery rows are each capped at 24 |
+| `photos_total` | integer | Total gallery media rows available from the paginated photos endpoint |
+| `truncated` | boolean | Whether gallery media was omitted from the detail preview |
 
 ## OpenAPI
 

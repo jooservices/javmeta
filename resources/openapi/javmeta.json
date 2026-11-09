@@ -365,7 +365,8 @@
               "type": "string"
             }
           }
-        ]
+        ],
+        "description": "Returns movie details with at most 100 gallery previews. gallery_total reports the gallery size and truncated indicates whether more gallery items are available."
       }
     },
     "/api/v1/movies/{code}/related": {
@@ -772,6 +773,73 @@
             "description": "Numeric id or UUID",
             "schema": {
               "type": "string"
+            }
+          }
+        ],
+        "description": "Returns performer details with at most 24 gallery previews. photos_total reports the gallery size and truncated indicates whether more photos are available from the paginated photos endpoint."
+      }
+    },
+    "/api/v1/performers/{id}/photos": {
+      "get": {
+        "summary": "List a performer gallery page",
+        "description": "Returns one page of gallery photos. per_page defaults to 50 and must be between 1 and 200.",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "performers",
+        "responses": {
+          "200": {
+            "description": "Success; data contains photos and meta contains total and pagination information"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "422": {
+            "description": "Invalid pagination parameters"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Numeric id or UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "description": "Items per page (default 50, maximum 200)",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "One-based page number",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
             }
           }
         ]

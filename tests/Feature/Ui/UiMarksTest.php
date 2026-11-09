@@ -51,6 +51,28 @@ final class UiMarksTest extends TestCase
             ->assertJsonPath('meta.total', 1);
     }
 
+    public function test_ui_marks_movies_paginates_with_a_hard_max(): void
+    {
+        $user = User::factory()->create(['role' => 'super_administrator']);
+        $this->actingAs($user);
+        $movies = Movie::factory()->count(201)->create();
+        $timestamp = now()->toDateTimeString();
+        DB::table('user_marks')->insert($movies->map(static fn(Movie $movie): array => [
+            'user_id' => $user->id,
+            'kind' => 'favourite',
+            'subject' => 'movie',
+            'key' => $movie->display_code,
+            'created_at' => $timestamp,
+        ])->all());
+
+        $this->getJson('/ui-me/movies/favourite?per_page=500')->assertStatus(422);
+        $first = $this->getJson('/ui-me/movies/favourite?per_page=200&page=1')->assertOk()
+            ->assertJsonCount(200, 'data')->assertJsonPath('meta.total', 201)->assertJsonPath('meta.pagination.last_page', 2);
+        $second = $this->getJson('/ui-me/movies/favourite?per_page=200&page=2')->assertOk()->assertJsonCount(1, 'data');
+
+        self::assertNotSame($first->json('data.0.code'), $second->json('data.0.code'));
+    }
+
     public function test_the_feed_shows_new_movies_of_follows_and_remembers_the_last_visit(): void
     {
         $this->actingAs(User::factory()->create(['role' => 'super_administrator']));

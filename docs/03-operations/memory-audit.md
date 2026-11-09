@@ -104,14 +104,52 @@ Not read line by line (classified from the grep line and the file's context only
 
 Verdict key: HIGH, RISK, OK. "Context" is where the code runs: HTTP, queue job, scheduled command (cron), console (operator).
 
+### Implementation status (JOOXCR-435)
+
+| Finding | Status |
+|---|---|
+| M-001 | Fixed in this PR: SQL aggregate summary cached for 3 hours and refreshed hourly. |
+| M-002 | Fixed in this PR: performer detail has a 24-gallery-item preview; full photos use a paginated endpoint with default 50 and maximum 200. |
+| M-003 | Fixed in this PR: movie lists load only cover media; movie detail gallery is capped at 100; UI marks are paginated with maximum 200. |
+| M-004 | Fixed in this PR: Horizon registry is capped at 200 with one-day pruning and a seven-day TTL; egress index is capped at 200 with a seven-day TTL and metadata expires after 30 days. |
+| M-005 | Remaining; see finding row below. |
+| M-006 | Remaining; see finding row below. |
+| M-007 | Remaining; see finding row below. |
+| M-008 | Remaining; see finding row below. |
+| M-009 | Remaining; see finding row below. |
+| M-010 | Remaining; see finding row below. |
+| M-011 | Remaining; see finding row below. |
+| M-012 | Remaining; see finding row below. |
+| M-013 | Remaining; see finding row below. |
+| M-014 | Remaining; see finding row below. |
+| M-015 | Remaining; see finding row below. |
+| M-016 | Remaining; see finding row below. |
+| M-017 | Remaining; see finding row below. |
+| M-018 | Remaining; see finding row below. |
+| M-019 | Remaining; see finding row below. |
+| M-020 | Remaining; see finding row below. |
+| M-021 | Remaining; see finding row below. |
+| M-022 | Remaining; see finding row below. |
+| M-023 | Remaining; see finding row below. |
+| M-024 | Remaining; see finding row below. |
+| M-025 | Remaining; see finding row below. |
+| M-026 | Remaining; see finding row below. |
+| M-027 | Remaining; see finding row below. |
+| M-028 | Remaining; see finding row below. |
+| M-029 | Remaining; see finding row below. |
+
+The H-4 deploy note is automatic: on its first Horizon loop, this release applies a seven-day TTL to the legacy node SET when it has no expiry. The new v2 sorted-set registry is used immediately; no manual Redis migration is required.
+
+Peak-memory telemetry from section 5 is not included: the existing layer records request spans and periodic aggregates, but has no bounded request/job/command peak sampler. Adding lifecycle hooks and a retention-bounded sample store is not a small change.
+
 ### 3.1 Findings (HIGH and RISK)
 
 | id | file:line | loads | table (class) | context | bounded today | worst-case memory | verdict | fix pattern |
 |---|---|---|---|---|---|---|---|---|
 | M-001 | `app/Repositories/OwnerReportServiceRepository.php:136-140`; `app/Services/Reports/ReportService.php:69,138-150` | every conflicting (movie_id, field) pair as stdClass, then mapped to arrays | movie_observations 4.18M (LARGE) | HTTP: `GET /api/v1/admin/report/quality` (routes/api.php:45, Admin/ReportController.php:20 cache 60 s); `GET /ui-admin/report/{type}` (routes/web.php:70, UiAdminController::report) | none | ~240k pairs (probe: 768 of 10,000 groups conflict = 7.7%, of ~3.1M groups) x ~0.7 KB = **~165 MB peak**, over the 128 MB limit | **HIGH** | DB-side aggregate (count per field, count distinct movie) + precomputed snapshot |
 | M-002 | `app/Repositories/PerformerRepository.php:442,453`; `app/Http/Controllers/PerformerController.php:74`; `app/Http/Resources/PerformerResource.php:82`; `app/Http/Resources/Concerns/FormatsPhotos.php:19-57` | all `performer_media` rows of the performer (`with media`), each to a `PhotoDto`, all serialised | performer_media 1.32M (LARGE); heaviest performer 1624 = **45,014** gallery rows (measured) | HTTP: `GET /api/v1/performers/{id}` | none | 45k x ~2.0 KB = ~90 MB + JSON ~9 MB + baseline 20 MB = **~110-140 MB** (at or over 128 MB) | **HIGH** | preview with cap + `truncated` flag; paginated photos endpoint (per_page <= 200) |
-| M-003 | `app/Services/Search/MovieSearchService.php:47,109`; `app/Repositories/MovieRepository.php:178`; `app/Services/Movies/MovieLookupService.php:106`; `app/Repositories/UiMarksMovieRepository.php:61`; `app/Services/Ui/UiMarksService.php:45-49`; `app/Http/Resources/MovieResource.php:70-74,118-136`; `app/Http/Resources/MovieSummaryResource.php:83-89` | every `movie_media` row (gallery, magnet, hls) of each movie in the page; list resources need only the sample cover | movie_media 1.74M (LARGE); heaviest movie 25395 = **4,871** rows (measured); `pg_stats` tail confirms several movies above 500 | HTTP: `GET /api/v1/movies` (per_page <= 100), search, related (LIMIT 12 via search), detail `GET /movies/{code}`, `GET /ui-me/movies/{kind}` (up to 500 codes, no pagination) | per_page <= 100 and 500 codes; media per movie **unbounded** | typical page ~5 MB; 100 movies with ~1,000 media each ~150 MB; UI list with ~20 movies of ~4k media each ~125-130 MB | **HIGH** | constrained eager load (`coverMedia`) for list resources; gallery preview cap + `truncated` on detail; paginate UI list (<= 200) |
-| M-004 | `app/Services/Workers/HorizonLayoutSnapshot.php:61` (SADD, no expiry); `app/Console/Commands/Observability/PublishMetricsCommand.php:188` (SMEMBERS); `app/Services/Observability/NodeEgressProbe.php:226` (`Cache::forever` meta per node/host), `:561-590` (`Cache::forever(NODE_INDEX_KEY)`; prune only of the legacy hostname) | one entry per node identity: Redis set `javmeta:horizon:worker-layout:nodes`, cache index `NODE_INDEX_KEY`, forever meta keys | node identities (container hostnames churn per deploy; `app/Support/NodeIdentity.php`) | scheduled: `obs:publish-metrics` every minute (routes/console.php:68); `node:egress-probe` every 2 min | none: no TTL, no cap | ~60-100 B per identity; negligible today, unbounded by design | **HIGH** (rule: unbounded cache/Redis structure without TTL; practical impact low) | TTL + cap + prune by last-seen |
+| M-003 | `app/Services/Search/MovieSearchService.php:47,109`; `app/Repositories/MovieRepository.php:178`; `app/Services/Movies/MovieLookupService.php:106`; `app/Repositories/UiMarksMovieRepository.php:61`; `app/Services/Ui/UiMarksService.php:45-49`; `app/Http/Resources/MovieResource.php:70-74,118-136`; `app/Http/Resources/MovieSummaryResource.php:83-89` | every `movie_media` row (gallery, magnet, hls) of each movie in the page; list resources need only the sample cover | movie_media 1.74M (LARGE); heaviest movie 25395 = **4,871** rows (measured); `pg_stats` tail confirms several movies above 500 | HTTP: `GET /api/v1/movies` (per_page <= 100), search, related (LIMIT 12 via search), detail `GET /movies/{code}`, `GET /ui-me/movies/{kind}` (paginated, per_page <= 200) | per_page <= 100 and 200 UI marks; detail gallery capped at 100; media non-gallery remains per movie | typical page ~5 MB; list media is one sample cover per movie; detail gallery <= 100 + non-gallery media | **HIGH** | constrained eager load (`coverMedia`) for list resources; gallery preview cap + `truncated` on detail; paginate UI list (<= 200) |
+| M-004 | `app/Services/Workers/HorizonLayoutSnapshot.php` (v2 sorted set with cap, prune and TTL); `app/Console/Commands/Observability/PublishMetricsCommand.php` (last-seen nodes); `app/Services/Observability/NodeEgressProbe.php` (bounded index and expiring metadata) | one entry per node identity: Redis sorted set `javmeta:horizon:worker-layout:nodes:v2`, cache index `NODE_INDEX_KEY`, meta keys | node identities (container hostnames churn per deploy; `app/Support/NodeIdentity.php`) | scheduled: `obs:publish-metrics` every minute (routes/console.php:68); `node:egress-probe` every 2 min | v2 registry: 200 nodes, one-day stale prune, 7-day TTL; egress index: 200 nodes, 7-day TTL; metadata: 30-day TTL | each registry is capped at 200 identities; keys expire | **HIGH** (finding status is fixed by JOOXCR-435) | TTL + cap + prune by last-seen |
 | M-005 | `app/Repositories/MovieRepository.php:381-412` (facets, unfiltered branch); via `app/Services/Performance/PerformanceCache.php:37-47`; `perf:warm` every minute with refresh (routes/console.php:82) | GROUP BY / DISTINCT over whole `movie_genres` join `genres`, `movie_codes`, `movie_performers` | movie_genres 2.16M, movie_performers 564k, movie_codes 392k (LARGE) | HTTP cache miss on `GET /movies/facets`; scheduled every minute | cache 60 s; PHP output <= ~100 rows | PHP < 1 MB; DB does an O(table) aggregate per minute | RISK (DB) | precompute facet rollup on a schedule; serve unfiltered facets from the table |
 | M-006 | `app/Repositories/PerformerRepository.php:225-226` (DISTINCT cup / blood_type / location per filter), `:296-330` (facets); `app/Http/Controllers/PerformerFacetsController.php:21` (cache key from filters, 60 s) | `SELECT DISTINCT column` over all performers for every filtered search or facet request | performers 157k (LARGE); distinct location 47, cup 11, blood_type 4 | HTTP: performer search with cup/blood_type/location, facets | distinct cardinality tiny | < 0.1 MB PHP; **full scan per request** | RISK (DB) | canonical values in SQL or small lookup table; cache distinct values 1 h |
 | M-007 | `app/Services/Catalog/CatalogService.php:26-30,52-54`; `app/Repositories/PerformerRepository.php:28-34` (facetGroups) | GROUP BY `LOWER(col)` over performers; all groups to PHP, normalised, sorted, sliced | performers 157k (LARGE) | HTTP `GET /meta/catalog/{cups,blood_types,locations}` on cache miss (120 s). Cache key includes the free-text `query` (line 28) | groups = distinct values (small) | < 0.1 MB PHP; **full scan per miss** | RISK (DB) | precompute catalog rows; key by normalised query; cap query length |
@@ -201,21 +239,21 @@ Each spec names the files, the change, the tests that must fail before the chang
 
 **Acceptance**
 
-- [ ] Test 2 passes with peak growth < 32 MB on 100,000 seeded pairs.
-- [ ] Output JSON keys unchanged (test 1 and 5).
-- [ ] One aggregate query per refresh; the request path reads the cache.
-- [ ] `rg movieFieldConflicts app` is empty.
-- [ ] Scheduled in `routes/console.php` with `withoutOverlapping()`.
+- [x] Test 2 passes with peak growth < 32 MB on 100,000 seeded pairs.
+- [x] Output JSON keys unchanged (test 1 and 5).
+- [x] The refresh uses SQL aggregates; the request path reads a three-hour cache.
+- [x] `rg movieFieldConflicts app` is empty.
+- [x] Scheduled in `routes/console.php` with `withoutOverlapping()`.
 
 ### H-2 (M-002): Performer detail without the full gallery
 
 **Files**
 
 - `app/Repositories/PerformerRepository.php:441-443,452-453` (`findForDisplay`): remove `'media'` from both eager loads; keep `aliases`, `sources`, `withCount('movies')`.
-- `app/Repositories/PerformerRepository.php` (new method `galleryPreview(int $performerId, int $limit = 24): Collection`): `PerformerMedia::where('performer_id', $id)->where('kind', 'gallery')->orderBy('id')->limit($limit)->get()` and `count` for the total (index on `performer_id`).
-- `app/Http/Controllers/PerformerController.php:74` (`show`): call `galleryPreview` and `setRelation('mediaPreview', ...)`; pass the total.
+- `app/Repositories/PerformerRepository.php` (`findForDisplay`): remove `'media'` from both eager loads; keep `aliases`, `sources`, `withCount('movies')`. `withPhotoPreview()` loads at most 24 profile images and 24 gallery rows, then counts the full gallery (index on `performer_id`).
+- `app/Http/Controllers/PerformerController.php:74` (`show`) and `app/Services/Mcp/McpToolService.php`: call `withPhotoPreview()` before building the shared detail resource.
 - `app/Http/Resources/PerformerResource.php:82`: build `photos` from `mediaPreview`; add `photos_total` and `truncated`.
-- New `app/Http/Controllers/PerformerPhotosController.php` and `app/Http/Requests/PerformerPhotosRequest.php` (per_page 1..200, default 60): `GET /api/v1/performers/{id}/photos`, `simplePaginate` on `performer_media` where kind = gallery, ordered by `id`.
+- New `app/Http/Controllers/PerformerPhotosController.php` and `app/Http/Requests/PerformerPhotosRequest.php` (per_page 1..200, default 50): `GET /api/v1/performers/{id}/photos`, `simplePaginate` on `performer_media` where kind = gallery, ordered by `id`.
 - `routes/api.php`: register the route. `resources/openapi/javmeta.json`: document the new endpoint and the new fields.
 
 **Change**
@@ -232,16 +270,16 @@ The detail response keeps the first 24 gallery items, reports the total, and set
 
 **Acceptance**
 
-- [ ] Test 3 peak growth < 32 MB on 20,000 rows.
-- [ ] `GET /performers/{id}` cannot return more than 24 gallery items.
-- [ ] `photos_total` and `truncated` present; OpenAPI updated.
-- [ ] UI performer page renders with the preview and links to the paginated endpoint (UI change tracked separately if needed).
+- [x] Test 3 peak growth < 32 MB on 20,000 rows.
+- [x] `GET /performers/{id}` cannot return more than 24 gallery items.
+- [x] `photos_total` and `truncated` present; OpenAPI updated.
+- [x] The current performer UI has no gallery view; the API exposes the bounded preview and the documented paginated endpoint.
 
 ### H-3 (M-003): Movie lists load only the cover; detail caps the gallery
 
 **Files**
 
-- `app/Models/Movie.php`: add `coverMedia()` = `hasOne(MovieMedia::class)->where('kind', MovieMedia::KIND_SAMPLE)->orderBy('id')`.
+- `app/Models/Movie.php`: add `coverMedia()` = the earliest sample-media row by `id`.
 - `app/Repositories/MovieRepository.php:178` (`search`): replace `'media'` with `'coverMedia'`.
 - `app/Services/Search/MovieSearchService.php:47` and `:109`: replace `'media'` with `'coverMedia'`.
 - `app/Repositories/UiMarksMovieRepository.php:61` (`summaries`): replace `'media'` with `'coverMedia'`.
@@ -260,10 +298,10 @@ The detail response keeps the first 24 gallery items, reports the total, and set
 
 **Acceptance**
 
-- [ ] Test 2 peak growth < 32 MB.
-- [ ] Movie list resources never load gallery rows.
-- [ ] Detail response capped at 100 gallery items with `truncated`.
-- [ ] `/ui-me/movies/{kind}` paginated with a hard max of 200.
+- [x] Test 2 peak growth < 32 MB.
+- [x] Movie list resources never load gallery rows.
+- [x] Detail response capped at 100 gallery items with `truncated`.
+- [x] `/ui-me/movies/{kind}` paginated with a hard max of 200.
 
 ### H-4 (M-004): Node identity registries get a TTL and a cap
 
@@ -271,22 +309,22 @@ The detail response keeps the first 24 gallery items, reports the total, and set
 
 - `app/Services/Workers/HorizonLayoutSnapshot.php:61`: replace `sadd` with `zadd(NODE_REGISTRY_KEY, now()->timestamp, node)`; then `zremrangebyscore(key, '-inf', now()->subDay()->timestamp)`, `zremrangebyrank(key, 0, -201)`, and `expire(key, 604800)`. Use a new key name (`javmeta:horizon:worker-layout:nodes:v2`) so the old SET is left to expire.
 - `app/Console/Commands/Observability/PublishMetricsCommand.php:188`: read `zrangebyscore(v2, now()-180, '+inf')` instead of `smembers`.
-- `app/Services/Observability/NodeEgressProbe.php:587`: replace `Cache::forever(self::NODE_INDEX_KEY, $nodes)` with `Cache::put(..., now()->addDays(7))`; in `rememberNode` (line 575), keep the last 200 nodes after sort.
+- `app/Services/Observability/NodeEgressProbe.php:587`: replace `Cache::forever(self::NODE_INDEX_KEY, $nodes)` with `Cache::put(..., now()->addDays(7))`; in `rememberNode` (line 575), retain the 200 most recently touched node identities.
 - `app/Services/Observability/NodeEgressProbe.php:226`: replace `Cache::forever($metaKey, $storedMeta)` with `Cache::put(..., now()->addDays(30))`.
 
-**Tests** (`tests/Unit/Workers/HorizonNodeRegistryTest.php`, `tests/Unit/Observability/NodeEgressRegistryTest.php`; Redis via the test connection)
+**Tests** (`tests/Unit/Workers/HorizonNodeRegistryTest.php`, `tests/Unit/Services/Observability/NodeEgressRegistryTest.php`; Horizon Redis calls are mocked and egress TTLs use the array cache)
 
-1. `horizon_registry_is_capped_at_200`: call `handle()` for 300 distinct nodes; assert `zcard <= 200`. **Fails before** (SET of 300).
+1. `horizon_registry_is_capped_at_200_and_has_a_ttl`: call `handle()` for 300 distinct nodes; assert no more than 200 remain and the key has a TTL. **Fails before** (SET of 300, no TTL).
 2. `horizon_registry_prunes_nodes_older_than_one_day`: seed stale entries (2 days old); after `handle()`, they are gone. **Fails before.**
-3. `horizon_registry_key_has_ttl`: assert `ttl > 0`. **Fails before** (no TTL, `-1`).
-4. `egress_node_index_is_capped_and_expires`: `rememberNode` for 300 nodes; assert <= 200 entries and TTL > 0. **Fails before** (forever).
-5. `egress_meta_keys_have_ttl`: assert the meta key has a TTL. **Fails before.**
+3. `horizon_registry_applies_an_expiry_to_the_legacy_set`: a legacy SET without expiry receives the seven-day TTL. **Fails before.**
+4. `egress_node_index_is_capped_at_200_and_expires`: `rememberNode` for 300 nodes; assert no more than 200 entries, the latest node stays indexed, and the index expires. **Fails before** (forever).
+5. `egress_meta_keys_expire_after_30_days`: assert the meta key expires after 30 days. **Fails before.**
 
 **Acceptance**
 
-- [ ] No `Cache::forever` remains in `NodeEgressProbe`.
-- [ ] Horizon registry is a sorted set with a cap, a prune and a TTL.
-- [ ] Old SET key expires on its own (documented in the deploy note).
+- [x] No `Cache::forever` remains in `NodeEgressProbe`.
+- [x] Horizon registry is a sorted set with a cap, a prune and a TTL.
+- [x] Old SET key expires on its own (documented in the deploy note).
 
 ## 5. Permanent guardrails
 

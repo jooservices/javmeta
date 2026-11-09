@@ -46,6 +46,7 @@ session or API credential.
 | `GET, HEAD` | `api/v1/performers` | Login required | Requires a scoped API key. |
 | `GET, HEAD` | `api/v1/performers/facets` | Login required | Requires a scoped API key. |
 | `GET, HEAD` | `api/v1/performers/{id}` | Login required | Requires a scoped API key. |
+| `GET, HEAD` | `api/v1/performers/{id}/photos` | Login required | Requires a scoped API key. |
 | `GET, HEAD` | `api/v1/scenes/search` | Login required | Requires a scoped API key; may return local scene and file references. |
 | `GET, HEAD` | `api/v1/search` | Login required | Requires a scoped API key. |
 | `POST` | `api/v1/search/parse` | Login required | Requires a scoped API key. |

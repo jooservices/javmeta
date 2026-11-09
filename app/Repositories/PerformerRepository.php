@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Repositories;
 
 use App\Models\Performer;
+use App\Models\PerformerMedia;
 use App\Services\Normalize\PerformerAttributeNormalizer;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
@@ -439,7 +440,7 @@ final class PerformerRepository extends BusinessQueryRepository
     public function findForDisplay(string|int $id): ?Performer
     {
         $query = $this->newQuery()->whereNull('canonical_performer_id')
-            ->with(['aliases', 'media', 'sources'])->withCount('movies');
+            ->with(['aliases', 'sources'])->withCount('movies');
         $performer = ctype_digit((string) $id)
             ? $query->find((int) $id)
             : $query->where('uuid', (string) $id)->first();
@@ -450,11 +451,72 @@ final class PerformerRepository extends BusinessQueryRepository
                 : Performer::query()->where('uuid', (string) $id)->value('canonical_performer_id');
             if (is_numeric($canonicalId)) {
                 $performer = $this->newQuery()->whereNull('canonical_performer_id')
-                    ->with(['aliases', 'media', 'sources'])->withCount('movies')->find((int) $canonicalId);
+                    ->with(['aliases', 'sources'])->withCount('movies')->find((int) $canonicalId);
             }
         }
 
-        return $performer instanceof Performer ? $performer : null;
+        if (! $performer instanceof Performer) {
+            return null;
+        }
+
+        return $performer;
+    }
+
+    public function withPhotoPreview(Performer $performer): Performer
+    {
+        $galleryCount = $this->galleryCount((int) $performer->id);
+        $preview = $this->imagePreview((int) $performer->id)
+            ->concat($this->galleryPreview((int) $performer->id));
+        $performer->setRelation('mediaPreview', $preview);
+        $performer->setAttribute('photos_total', $galleryCount);
+        $performer->setAttribute('photos_truncated', $galleryCount > 24);
+
+        return $performer;
+    }
+
+    /** @return Collection<int, PerformerMedia> */
+    public function galleryPreview(int $performerId, int $limit = 24): Collection
+    {
+        return PerformerMedia::query()->where('performer_id', $performerId)
+            ->where('kind', PerformerMedia::KIND_GALLERY)
+            ->orderBy('id')
+            ->limit(max(1, min(24, $limit)))
+            ->get();
+    }
+
+    /** @return Collection<int, PerformerMedia> */
+    public function imagePreview(int $performerId, int $limit = 24): Collection
+    {
+        return PerformerMedia::query()->where('performer_id', $performerId)
+            ->where('kind', PerformerMedia::KIND_IMAGE)
+            ->orderBy('id')
+            ->limit(max(1, min(24, $limit)))
+            ->get();
+    }
+
+    public function galleryCount(int $performerId): int
+    {
+        return PerformerMedia::query()->where('performer_id', $performerId)
+            ->where('kind', PerformerMedia::KIND_GALLERY)
+            ->count();
+    }
+
+    /** @return array{items: Collection<int, PerformerMedia>, total: int, page: int, per_page: int, has_more: bool} */
+    public function galleryPage(int $performerId, int $perPage, int $page): array
+    {
+        $query = PerformerMedia::query()->where('performer_id', $performerId)
+            ->where('kind', PerformerMedia::KIND_GALLERY)
+            ->orderBy('id');
+        $total = (clone $query)->count();
+        $paginator = $query->simplePaginate($perPage, ['*'], 'page', $page);
+
+        return [
+            'items' => $paginator->getCollection(),
+            'total' => $total,
+            'page' => $paginator->currentPage(),
+            'per_page' => $paginator->perPage(),
+            'has_more' => $paginator->hasMorePages(),
+        ];
     }
 
     /**

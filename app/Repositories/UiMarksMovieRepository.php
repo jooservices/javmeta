@@ -58,7 +58,7 @@ final class UiMarksMovieRepository extends EloquentRepository implements ReadRep
             return [];
         }
 
-        $movies = $this->newQuery()->with(['codes', 'performers.aliases', 'performers.sources', 'genres', 'media', 'credits'])
+        $movies = $this->newQuery()->with(['codes', 'performers.aliases', 'performers.sources', 'genres', 'coverMedia', 'credits'])
             ->whereIn('display_code', $codes)->get()->keyBy('display_code');
         /** @var list<Movie> $ordered */
         $ordered = [];

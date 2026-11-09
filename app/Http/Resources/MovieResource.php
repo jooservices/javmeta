@@ -69,8 +69,10 @@ final class MovieResource extends JsonResource
             'downloads' => app(DownloadLinkSearchService::class)->summarize((int) $resource->id)->toArray(),
             'hls_stream_urls' => $this->media($resource, MovieMedia::KIND_HLS),
             'gallery' => $this->media($resource, MovieMedia::KIND_GALLERY),
+            'gallery_total' => (int) ($resource->getAttribute('gallery_total') ?? 0),
+            'truncated' => (int) ($resource->getAttribute('gallery_total') ?? 0) > 100,
             'photos' => $this->photos(
-                $resource->relationLoaded('media') ? $resource->media : new Collection(),
+                $this->photoMedia($resource),
                 [MovieMedia::KIND_SAMPLE],
                 MovieMedia::KIND_GALLERY,
             )->toArray(),
@@ -86,10 +88,13 @@ final class MovieResource extends JsonResource
             return $movie->cover_url;
         }
 
+        if ($movie->relationLoaded('coverMedia')) {
+            return is_string($movie->coverMedia?->url) ? $movie->coverMedia->url : null;
+        }
+
         if (! $movie->relationLoaded('media')) {
             return null;
         }
-
         $media = $movie->media->firstWhere('kind', MovieMedia::KIND_SAMPLE);
 
         return is_string($media?->url) ? $media->url : null;
@@ -113,11 +118,14 @@ final class MovieResource extends JsonResource
     /** @return list<array{url: string, crawled_at: string|null, thumbnail_url?: string|null}> */
     private function media(Movie $movie, string $kind): array
     {
-        if (! $movie->relationLoaded('media')) {
+        $media = $kind === MovieMedia::KIND_GALLERY
+            ? ($movie->relationLoaded('galleryPreview') ? $movie->getRelation('galleryPreview') : null)
+            : ($movie->relationLoaded('mediaNonGallery') ? $movie->getRelation('mediaNonGallery') : null);
+        if (! $media instanceof Collection && ! $movie->relationLoaded('media')) {
             return [];
         }
 
-        return $movie->media
+        return ($media instanceof Collection ? $media : $movie->media)
             ->where('kind', $kind)
             ->map(function ($media) use ($kind): array {
                 $item = [
@@ -136,5 +144,21 @@ final class MovieResource extends JsonResource
             })
             ->values()
             ->all();
+    }
+
+    /** @return Collection<int, \Illuminate\Database\Eloquent\Model> */
+    private function photoMedia(Movie $movie): Collection
+    {
+        $media = new Collection();
+        if ($movie->relationLoaded('mediaNonGallery')) {
+            $media = $media->concat($movie->getRelation('mediaNonGallery'));
+        } elseif ($movie->relationLoaded('media')) {
+            $media = $media->concat($movie->media);
+        }
+        if ($movie->relationLoaded('galleryPreview')) {
+            $media = $media->concat($movie->getRelation('galleryPreview'));
+        }
+
+        return $media;
     }
 }

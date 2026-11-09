@@ -220,7 +220,7 @@ final class MovieRepository extends BusinessQueryRepository
         // the deterministic fallback so a bare /movies call still sorts well.
         $effectiveSort = $sort === 'relevance' && $q === null ? 'release_date' : $sort;
 
-        $query = $this->newQuery()->with(['codes', 'performers.aliases', 'performers.sources', 'genres', 'media']);
+        $query = $this->newQuery()->with(['codes', 'performers.aliases', 'performers.sources', 'genres', 'coverMedia']);
         $this->applyFilters($query, $filters, $q);
         $total = $query->count();
 
