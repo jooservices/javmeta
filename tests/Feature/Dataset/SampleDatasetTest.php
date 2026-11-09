@@ -88,6 +88,21 @@ final class SampleDatasetTest extends TestCase
         $this->assertNotNull(DB::table('genres')->where('id', $foreignId)->first());
     }
 
+    public function test_reloading_keeps_a_stale_sample_genre_that_a_real_movie_is_linked_to(): void
+    {
+        $this->artisan('dataset:load', ['name' => 'sample'])->assertSuccessful();
+        $oldId = DB::table('genres')->insertGetId(['label_normalized' => 'sample-old-2', 'label_raw' => 'Old Sample Genre 2']);
+        DB::table('sample_dataset_rows')->insert(['genre_id' => $oldId]);
+        $real = Movie::factory()->create(['display_code' => 'REAL-777']);
+        DB::table('movie_genres')->insert(['movie_id' => $real->id, 'genre_id' => $oldId, 'source_slug' => 'javbus', 'crawled_at' => now()]);
+
+        $this->artisan('dataset:load', ['name' => 'sample'])->assertSuccessful();
+
+        $this->assertNotNull(DB::table('genres')->where('id', $oldId)->first(), 'a genre with a real link is kept');
+        $this->assertSame(1, DB::table('movie_genres')->where('genre_id', $oldId)->count(), 'the real link is kept');
+        $this->assertSame(0, DB::table('sample_dataset_rows')->where('genre_id', $oldId)->count(), 'it is no longer owned by the dataset');
+    }
+
     public function test_wipe_removes_exactly_the_sample_and_leaves_other_rows(): void
     {
         $real = Movie::factory()->create(['display_code' => 'REAL-001']);

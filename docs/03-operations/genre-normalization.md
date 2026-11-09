@@ -301,13 +301,15 @@ when it is off or when a label has no alias.
   movie_id)` so a movie tagged with both `Creampie` and `中出し` counts once. Unmapped genres are grouped by their own
   label as today. The row shows `display_vi` or `display_en` by UI language; `is_visible = false` and `kind <> 'genre'`
   rows are excluded from the genre facet.
-- **Search / filter** (`genre` and `genre_all` parameters): resolve the input with the alias key. A query `中出し`,
-  `Creampie` or the canonical key `creampie` yields the canonical id(s); the movie filter becomes
+- **Search / filter** (`genre` and `genre_all` parameters): resolve the input with the alias key **and** with the canonical
+  key (`canonical_genres.canonical_key`, because a canonical key such as `school_uniform` is not necessarily listed as an
+  alias). A query `中出し`, `Creampie` or the canonical key `creampie` yields the canonical id(s); the movie filter becomes
   `EXISTS (movie_genres JOIN genre_alias_genres JOIN genre_aliases ... WHERE canonical_genre_id IN (...))`, **combined with
   the existing `LIKE` on the label columns for each term** (`canonical match OR substring match`). The substring match is
   kept even when the term resolves to an alias, so a filter `Anal` still finds a movie tagged only `Anal Toy`, as it does
   today. For `genre_all=1` there is one such condition per term. A quoted term (an exact facet tick) uses the canonical
-  match only.
+  match when the value resolves to a canonical genre; when it resolves to none (an unmapped genre) it uses exact label
+  equality, as today, so a tick always returns the movies the facet counted.
 - **Suggest and autocomplete**: return canonical rows and show their aliases, so typing `中出` suggests `creampie`.
 - **Elasticsearch/embeddings**: the search document would need canonical keys in addition to raw labels, followed by a
   reindex. This is not verified against the current mapping; it requires its own change and is out of scope here.
@@ -321,7 +323,10 @@ when it is off or when a label has no alias.
 2. Turn off `genres.use_canonical` and every read path returns to current behavior immediately; no deploy is needed.
 3. Remove one bad seed: `genres:aliases-rollback --batch=<id>` deletes only that batch's alias rows. A wrong merge is
    corrected by deleting or editing one alias row, not by splitting movie data.
-4. Full removal: the migration `down()` drops `genre_aliases` and `canonical_genres` (no other table depends on them).
+4. Full removal: first deploy code without the stage-1 writer (`MoviePersister::upsertGenres` linking) and drain every old
+   instance, because `genres.use_canonical` only controls reads and a running writer would fail and roll back a movie write
+   once the tables are gone; only then run the migration `down()`, which drops `genre_alias_genres`, `genre_aliases` and
+   `canonical_genres` (no other table depends on them).
 5. Before any production run: dry-run output saved, a database backup point confirmed by the owner, the run first applied on
    the staging copy, and counts compared (`genres:aliases-report`) before and after.
 6. Canonical keys are never renamed or reused after they appear in an API response; to retire one, set `is_visible = false`.

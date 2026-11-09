@@ -328,7 +328,9 @@ final class MovieRepository extends BusinessQueryRepository
                 [$exact, $text] = self::exactTerm($genre);
                 $query->whereHas('genres', static function (Builder $g) use ($like, $exact, $text): void {
                     if ($exact) {
-                        $g->whereRaw('LOWER(label_normalized) = ?', [mb_strtolower($text)])->orWhereRaw('LOWER(label_raw) = ?', [mb_strtolower($text)]);
+                        // A facet tick sends the value exactly as the facet list read it from the data, so equality is exact
+                        // (no case folding: LOWER() is ASCII-only on SQLite and on PostgreSQL with the C locale).
+                        $g->where('label_normalized', '=', $text)->orWhere('label_raw', '=', $text);
 
                         return;
                     }
@@ -400,7 +402,7 @@ final class MovieRepository extends BusinessQueryRepository
             if (is_string($value) && $value !== '') {
                 [$exact, $text] = self::exactTerm($value);
                 $exact
-                    ? $query->whereRaw('LOWER(' . $column . ') = ?', [mb_strtolower($text)])
+                    ? $query->where($column, '=', $text)
                     : $query->where($column, $like, '%' . $value . '%');
             }
         }
@@ -455,7 +457,8 @@ final class MovieRepository extends BusinessQueryRepository
     /** @return list<string> comma separated values, trimmed and without blanks */
     private static function list(mixed $value): array
     {
-        $parts = is_array($value) ? $value : explode(',', (string) $value);
+        // Commas inside double quotes belong to the value (an exact facet tick such as "Foo, Inc."), not to the list.
+        $parts = is_array($value) ? $value : (preg_split('/,(?=(?:[^"]*"[^"]*")*[^"]*$)/', (string) $value) ?: []);
 
         return array_values(array_unique(array_filter(array_map(static fn($p): string => trim((string) $p), $parts), static fn(string $p): bool => $p !== '')));
     }

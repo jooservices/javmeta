@@ -85,7 +85,8 @@ function mount(root, kind, k, initial) {
   form.addEventListener('input', e => { clearTimeout(timer); const q = e.target.value; timer = setTimeout(() => { typed = true; try { go({ ...st, q }); } finally { typed = false; } }, 250); }, { signal });
   form.addEventListener('submit', e => e.preventDefault(), { signal });
   sortSel.addEventListener('change', e => go({ ...st, sort: e.target.value }), { signal });
-  minBox.addEventListener('change', e => go({ ...st, min: e.target.checked ? MIN_COUNT : 0 }), { signal });
+  let lastMin = st.min > 0 ? st.min : MIN_COUNT; // the box restores the minimum the user had, not the default
+  minBox.addEventListener('change', e => { if (st.min > 0) lastMin = st.min; go({ ...st, min: e.target.checked ? lastMin : 0 }); }, { signal });
   root.addEventListener('click', e => { const b = e.target.closest('[data-script]'); if (b) go({ ...st, script: b.dataset.script }); }, { signal });
   return () => { clearTimeout(timer); unbind(); results.destroy(); ctl.destroy(); lifetime.abort(); };
 }

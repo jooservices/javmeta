@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { api } from '../public/ui/js/api.js';
-import { movieKeys, performerKeys, movieParams, performerParams, toggleValue, removeFilter, chipsHtml, activeFilters } from '../public/ui/js/filterState.js';
+import { movieKeys, performerKeys, movieParams, performerParams, toggleValue, removeFilter, chipsHtml, activeFilters, values } from '../public/ui/js/filterState.js';
 import { relaxationSuggestions, suggestionsHtml } from '../public/ui/js/facets.js';
 import { facetListHtml, mountFacetList, facetParams, patchFor, selectedOf } from '../public/ui/js/facetList.js';
 import { softNavigate, bindQuerySoftUpdate, refreshResultsRegion, markRendered, trySoftUpdate } from '../public/ui/js/resultsRefresh.js';
@@ -40,6 +40,11 @@ assert.deepEqual(patchFor('maker', { maker: '"M"' }, 'N', true), { maker: '"N"' 
 assert.deepEqual(selectedOf('genre', { genre: '"Anal","Anal Toy"' }), ['Anal', 'Anal Toy'], 'quotes are not shown as part of the value');
 assert.deepEqual(selectedOf('maker', { maker: 'Anal' }), ['Anal'], 'a typed keyword is read as it is');
 assert.match(activeFilters({ genre: '"Anal"' })[0].label, /: Anal$/, 'chips show the value without quotes');
+assert.match(activeFilters({ q: '"abc"' })[0].label, /: "abc"$/, 'a typed keyword keeps its quotes in the chip');
+assert.deepEqual(values('"Foo, Inc.",Bar'), ['"Foo, Inc."', 'Bar'], 'a comma inside quotes is part of the value');
+assert.deepEqual(patchFor('genre', {}, 'Foo, Inc.', true), { genre: '"Foo, Inc."' }); assert.deepEqual(selectedOf('genre', { genre: '"Foo, Inc.",Bar' }), ['Foo, Inc.', 'Bar']);
+assert.deepEqual(patchFor('genre', { genre: '"Foo, Inc."' }, 'Foo, Inc.', false), { genre: '' }, 'unticking removes a value that contains a comma');
+assert.deepEqual(patchFor('genre', {}, '"Foo"', true), { genre: '""Foo""' }, 'a value that already has quotes is wrapped again');
 assert.deepEqual(patchFor('year', {}, '2025', true), { released_from: '2025', released_to: '2025' });
 assert.deepEqual(patchFor('location', { location: 'Tokyo' }, 'Osaka', true), { location: 'Tokyo,Osaka' }, 'location accepts several values');
 // the request: scope without the list's own filter, keyword for the page search, never the page sort/paging

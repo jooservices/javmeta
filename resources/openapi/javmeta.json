@@ -2326,7 +2326,32 @@
                           "items": {
                             "type": "object",
                             "description": "One value with its result count",
-                            "additionalProperties": true
+                            "additionalProperties": true,
+                            "properties": {
+                              "id": {
+                                "description": "Value id when the facet has one (a performer id for the performer facet)",
+                                "oneOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "integer"
+                                  }
+                                ]
+                              },
+                              "name": {
+                                "type": "string",
+                                "description": "Display value"
+                              },
+                              "count": {
+                                "type": "integer",
+                                "description": "Results that carry this value inside the current filters"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "count"
+                            ]
                           }
                         },
                         "total": {
@@ -2707,7 +2732,32 @@
                           "items": {
                             "type": "object",
                             "description": "One value with its result count",
-                            "additionalProperties": true
+                            "additionalProperties": true,
+                            "properties": {
+                              "id": {
+                                "description": "Value id when the facet has one (a performer id for the performer facet)",
+                                "oneOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "integer"
+                                  }
+                                ]
+                              },
+                              "name": {
+                                "type": "string",
+                                "description": "Display value"
+                              },
+                              "count": {
+                                "type": "integer",
+                                "description": "Results that carry this value inside the current filters"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "count"
+                            ]
                           }
                         },
                         "total": {

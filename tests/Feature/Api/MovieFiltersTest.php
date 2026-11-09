@@ -81,7 +81,13 @@ final class MovieFiltersTest extends TestCase
         $this->assertNotEmpty($exact);
         $this->assertGreaterThan(count($exact), count($bare), 'the bare prefix also finds the neighbouring genres');
         $this->assertSame([], $this->codes('genre=' . urlencode('"' . $prefix . '"')), 'an exact prefix is not a genre');
-        $this->assertSame($exact, $this->codes('genre=' . urlencode('"' . strtoupper($name) . '"')), 'exact matching ignores case');
+        $this->assertSame([], $this->codes('genre=' . urlencode('"' . strtoupper($name) . '"')), 'a facet tick is the value exactly as listed');
+
+        // A comma inside the quotes belongs to the value and is not a list separator.
+        $commaGenre = DB::table('genres')->insertGetId(['label_normalized' => 'foo-inc', 'label_raw' => 'Foo, Inc.']);
+        $movieId = (int) DB::table('movies')->value('id');
+        DB::table('movie_genres')->insert(['movie_id' => $movieId, 'genre_id' => $commaGenre, 'source_slug' => 'sample', 'crawled_at' => now()]);
+        $this->assertContains((string) DB::table('movies')->where('id', $movieId)->value('display_code'), $this->codes('genre=' . urlencode('"Foo, Inc."')));
 
         $maker = (string) DB::table('movies')->whereNotNull('maker')->value('maker');
         $this->assertNotEmpty($this->codes('maker=' . urlencode('"' . $maker . '"')));

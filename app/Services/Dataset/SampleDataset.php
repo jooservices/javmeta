@@ -113,8 +113,11 @@ final class SampleDataset
         $keep = $repository->tableQuery('genres')->whereIn('label_normalized', $currentKeys)->pluck('id')->all();
         $stale = $repository->tableQuery('sample_dataset_rows')->whereNotNull('genre_id')->whereNotIn('genre_id', $keep)->pluck('genre_id')->all();
         foreach (array_chunk($stale, 500) as $chunk) {
-            $repository->tableQuery('movie_genres')->whereIn('genre_id', $chunk)->delete();
-            $repository->tableQuery('genres')->whereIn('id', $chunk)->delete();
+            // Only the links this dataset made are removed; a genre that a real crawl linked meanwhile is kept and simply
+            // stops being owned by the dataset.
+            $repository->tableQuery('movie_genres')->whereIn('genre_id', $chunk)->where('source_slug', self::SOURCE)->delete();
+            $stillLinked = $repository->tableQuery('movie_genres')->whereIn('genre_id', $chunk)->distinct()->pluck('genre_id')->all();
+            $repository->tableQuery('genres')->whereIn('id', array_values(array_diff($chunk, $stillLinked)))->delete();
             $repository->tableQuery('sample_dataset_rows')->whereIn('genre_id', $chunk)->delete();
         }
     }
