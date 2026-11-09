@@ -55,7 +55,9 @@ jobs:
 
       # The PHP quality image has no Node on purpose, so the UI string ratchet runs on the runner's own Node.
       - name: UI hardcoded-string ratchet
-        run: node tools/quality/i18n-hardcoded-ratchet.mjs
+        run: |
+          node tools/quality/i18n-literals.test.mjs
+          node tools/quality/i18n-hardcoded-ratchet.mjs
 
       - name: Test with coverage
         env:

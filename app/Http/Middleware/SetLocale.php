@@ -64,7 +64,7 @@ final class SetLocale
         return $this->normalize($stored);
     }
 
-    /** The supported language with the highest non-zero quality value; the first one listed wins a tie. */
+    /** The supported language with the highest non-zero quality value; entries with an invalid weight are ignored and the first one listed wins a tie. */
     private function fromAcceptLanguage(string $header): ?string
     {
         $best = null;
@@ -77,8 +77,9 @@ final class SetLocale
             }
             $quality = 1.0;
             foreach (array_slice($segments, 1) as $parameter) {
-                if (preg_match('/^\s*q\s*=\s*([0-9.]+)\s*$/i', $parameter, $match) === 1) {
-                    $quality = (float) $match[1];
+                if (preg_match('/^\s*q\s*=\s*(.*?)\s*$/i', $parameter, $match) === 1) {
+                    // RFC 9110: a weight is 0 to 1 with at most three decimals; anything else is an invalid entry.
+                    $quality = preg_match('/^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/', $match[1]) === 1 ? (float) $match[1] : -1.0;
                 }
             }
             if ($quality > $bestQuality) {

@@ -4,7 +4,7 @@ import { head, errorBox, emptyBox } from '../components.js';
 import { t } from '../i18n.js';
 
 /* language names are shown in their own language on purpose */
-const languageLabel = s => ({ en: 'English', vi: 'Tiếng Việt', ja: '日本語' }[s.language] || s.language) + (s.source === 'whisper' ? ' · ' + t('player.sub.original') : ' · ' + t('player.sub.translated'));
+const languageLabel = s => ({ en: t('locale.name.en'), vi: t('locale.name.vi'), ja: '日本語' }[s.language] || s.language) + (s.source === 'whisper' ? ' · ' + t('player.sub.original') : ' · ' + t('player.sub.translated'));
 const stamp = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 export function seek(video, seconds) {
   const value = Number(seconds);

@@ -66,4 +66,13 @@ final class SetLocaleMiddlewareTest extends TestCase
         $tie->headers->set('Accept-Language', 'en, vi');
         $this->assertSame('en', $middleware->resolve($tie), 'The first listed language wins a tie.');
     }
+
+    public function test_entries_with_an_invalid_quality_value_are_ignored(): void
+    {
+        $middleware = new SetLocale();
+        $request = Request::create('/app', 'GET');
+        $request->headers->set('Accept-Language', 'en;q=1.5,vi;q=1');
+
+        $this->assertSame('vi', $middleware->resolve($request));
+    }
 }

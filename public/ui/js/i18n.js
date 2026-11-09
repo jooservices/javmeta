@@ -209,14 +209,37 @@ export function onLocaleChange(fn) {
   return () => listeners.delete(fn);
 }
 
+let selection = 0;
+let retryTimer = null;
+
+/** A failed catalog is fetched again a few times; when it arrives the interface is redrawn. */
+function scheduleCatalogRetry(attempt = 1) {
+  if (retryTimer !== null || attempt > 3) return;
+  retryTimer = setTimeout(async () => {
+    retryTimer = null;
+    await Promise.all([loadCatalog(active), loadCatalog('en')]);
+    if (catalogs[active] && catalogs.en) {
+      for (const fn of [...listeners]) {
+        try { await fn(active); } catch { /* ignore */ }
+      }
+    } else {
+      scheduleCatalogRetry(attempt + 1);
+    }
+  }, 2000 * attempt);
+}
+
 export async function setLocale(locale, { persist = true, notify = true } = {}) {
   if (!SUPPORTED.includes(locale)) return active;
+  // Every selection, even of the language already shown, supersedes a switch that is still loading.
+  const ticket = ++selection;
   if (locale === active && ready) return active;
   await Promise.all([loadCatalog(locale), loadCatalog('en')]); // en backs up any key a catalog lacks
+  if (ticket !== selection) return active;
   active = locale;
   if (persist) writeStored(locale);
   syncDocument();
   ready = true;
+  if (!catalogs[locale] || !catalogs.en) scheduleCatalogRetry();
   if (notify) {
     for (const fn of [...listeners]) {
       try { await fn(active); } catch { /* ignore */ }

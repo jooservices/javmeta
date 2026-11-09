@@ -815,5 +815,6 @@
   "mark.toast.seen_off": "Unmarked as seen",
   "mark.toast.follow_on": "Following",
   "mark.toast.follow_off": "Unfollowed",
-  "mark.toast.updated": "Updated"
+  "mark.toast.updated": "Updated",
+  "locale.save_failed": "The language was changed here but could not be saved to your account. Choose it again to retry."
 }

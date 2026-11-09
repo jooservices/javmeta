@@ -798,5 +798,6 @@
   "mark.toast.seen_off": "Đã bỏ đánh dấu đã xem",
   "mark.toast.follow_on": "Đã theo dõi",
   "mark.toast.follow_off": "Đã bỏ theo dõi",
-  "mark.toast.updated": "Đã cập nhật"
+  "mark.toast.updated": "Đã cập nhật",
+  "locale.save_failed": "Đã đổi ngôn ngữ trên trình duyệt này nhưng chưa lưu được vào tài khoản. Chọn lại để thử lưu lần nữa."
 }
