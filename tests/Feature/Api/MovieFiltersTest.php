@@ -69,6 +69,25 @@ final class MovieFiltersTest extends TestCase
         $this->assertNotEmpty($this->codes('has_magnet=1'));
     }
 
+    public function test_a_quoted_value_matches_exactly_while_a_bare_value_keeps_the_substring_search(): void
+    {
+        // What a facet tick sends is quoted, so the movies found equal the count shown beside the value.
+        $name = (string) DB::table('genres')->whereIn('id', DB::table('movie_genres')->select('genre_id'))->orderBy('id')->value('label_raw');
+        $prefix = substr($name, 0, -1);
+
+        $bare = $this->codes('genre=' . urlencode($prefix));
+        $exact = $this->codes('genre=' . urlencode('"' . $name . '"'));
+
+        $this->assertNotEmpty($exact);
+        $this->assertGreaterThan(count($exact), count($bare), 'the bare prefix also finds the neighbouring genres');
+        $this->assertSame([], $this->codes('genre=' . urlencode('"' . $prefix . '"')), 'an exact prefix is not a genre');
+        $this->assertSame($exact, $this->codes('genre=' . urlencode('"' . strtoupper($name) . '"')), 'exact matching ignores case');
+
+        $maker = (string) DB::table('movies')->whereNotNull('maker')->value('maker');
+        $this->assertNotEmpty($this->codes('maker=' . urlencode('"' . $maker . '"')));
+        $this->assertSame([], $this->codes('maker=' . urlencode('"' . substr($maker, 0, -1) . '"')));
+    }
+
     public function test_facets_count_inside_the_current_result_and_respect_the_filters(): void
     {
         $all = $this->getJson('/api/v1/movies/facets', $this->headers)->assertOk()->json('data');

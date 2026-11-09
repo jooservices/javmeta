@@ -69,6 +69,25 @@ final class SampleDatasetTest extends TestCase
         $this->assertSame(3, DB::table('performer_aliases')->where('performer_id', DB::table('performers')->where('external_id', 'p0001')->value('id'))->count(), 'a performer with aliases');
     }
 
+    public function test_reloading_after_an_older_smaller_catalog_matches_a_fresh_load_and_spares_foreign_genres(): void
+    {
+        $this->artisan('dataset:load', ['name' => 'sample'])->assertSuccessful();
+        $fresh = DB::table('genres')->count();
+
+        // A genre this dataset created in an older release (owned, no longer in the catalog) and one it does not own.
+        $oldId = DB::table('genres')->insertGetId(['label_normalized' => 'sample-old-1', 'label_raw' => 'Old Sample Genre']);
+        DB::table('sample_dataset_rows')->insert(['genre_id' => $oldId]);
+        DB::table('movie_genres')->insert(['movie_id' => (int) DB::table('movies')->value('id'), 'genre_id' => $oldId, 'source_slug' => 'sample', 'crawled_at' => now()]);
+        $foreignId = DB::table('genres')->insertGetId(['label_normalized' => 'real-genre', 'label_raw' => 'Real Genre']);
+
+        $this->artisan('dataset:load', ['name' => 'sample'])->assertSuccessful();
+
+        $this->assertSame($fresh + 1, DB::table('genres')->count(), 'only the foreign genre remains besides the current catalog');
+        $this->assertNull(DB::table('genres')->where('id', $oldId)->first());
+        $this->assertSame(0, DB::table('movie_genres')->where('genre_id', $oldId)->count());
+        $this->assertNotNull(DB::table('genres')->where('id', $foreignId)->first());
+    }
+
     public function test_wipe_removes_exactly_the_sample_and_leaves_other_rows(): void
     {
         $real = Movie::factory()->create(['display_code' => 'REAL-001']);

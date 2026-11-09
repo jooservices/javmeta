@@ -244,7 +244,7 @@
   "facetlist.none_active": "Chưa chọn bộ lọc nào",
   "facetlist.prev": "Trang trước",
   "facetlist.range": "{from}–{to} / {total}",
-  "facetlist.rule": "Trong cùng một bộ lọc là “một trong các mục” (OR); giữa các bộ lọc là “và” (AND). Thể loại có thêm tuỳ chọn “có tất cả”.",
+  "facetlist.rule": "Trong cùng một bộ lọc là “một trong các mục” (OR); giữa các bộ lọc là “và” (AND). Thể loại có thêm tuỳ chọn “có tất cả”. Hãng, loạt phim, nhãn và năm chỉ chọn được một giá trị (một phim chỉ có một).",
   "facetlist.search_label": "Tìm {title}",
   "facetlist.search_placeholder": "Tìm {title}…",
   "facetlist.sort.count": "Theo số lượng",

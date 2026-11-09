@@ -98,6 +98,25 @@ final class SampleDataset
             $rows[] = ['label_normalized' => sprintf('sample-%03d', $i), 'label_raw' => sprintf('Sample Genre %03d', $i)];
         }
         $this->saveOwned('genres', 'genre_id', $rows, ['label_normalized']);
+        $this->dropStaleOwnedGenres(array_column($rows, 'label_normalized'));
+    }
+
+    /**
+     * A reload without a wipe must end like a fresh load: genres this dataset created in an older release (a smaller
+     * catalog) and their movie links are removed; genres it does not own are never touched.
+     *
+     * @param list<string> $currentKeys
+     */
+    private function dropStaleOwnedGenres(array $currentKeys): void
+    {
+        $repository = app(MovieRepository::class);
+        $keep = $repository->tableQuery('genres')->whereIn('label_normalized', $currentKeys)->pluck('id')->all();
+        $stale = $repository->tableQuery('sample_dataset_rows')->whereNotNull('genre_id')->whereNotIn('genre_id', $keep)->pluck('genre_id')->all();
+        foreach (array_chunk($stale, 500) as $chunk) {
+            $repository->tableQuery('movie_genres')->whereIn('genre_id', $chunk)->delete();
+            $repository->tableQuery('genres')->whereIn('id', $chunk)->delete();
+            $repository->tableQuery('sample_dataset_rows')->whereIn('genre_id', $chunk)->delete();
+        }
     }
 
     private function loadPerformers(\DateTimeInterface $now): void

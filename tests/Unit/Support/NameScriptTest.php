@@ -36,4 +36,14 @@ final class NameScriptTest extends TestCase
         $this->assertTrue(NameScript::matches($name, 'all'));
         $this->assertFalse(NameScript::matches($name, $script === 'other' ? 'latin' : 'other'));
     }
+
+    public function test_a_han_only_name_belongs_to_both_the_japanese_and_the_chinese_index(): void
+    {
+        foreach (['巨乳', '痴女', 'S1 巨乳'] as $name) {
+            $this->assertTrue(NameScript::matches($name, 'ja'), $name);
+            $this->assertTrue(NameScript::matches($name, 'zh'), $name);
+        }
+        $this->assertFalse(NameScript::matches('Big Tits', 'ja'));
+        $this->assertFalse(NameScript::matches('ハイビジョン', 'zh'), 'kana is only Japanese');
+    }
 }

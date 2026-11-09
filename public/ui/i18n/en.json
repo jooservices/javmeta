@@ -250,7 +250,7 @@
   "facetlist.none_active": "No filter selected",
   "facetlist.prev": "Previous page",
   "facetlist.range": "{from}–{to} / {total}",
-  "facetlist.rule": "Inside one filter a movie needs any one of the ticked items (OR); between filters it must match every filter (AND). A genre filter can also require all ticked genres.",
+  "facetlist.rule": "Inside one filter a movie needs any one of the ticked items (OR); between filters it must match every filter (AND). A genre filter can also require all ticked genres. Maker, series, label and year take one value at a time (a movie has only one).",
   "facetlist.search_label": "Search {title}",
   "facetlist.search_placeholder": "Search {title}…",
   "facetlist.sort.count": "By count",

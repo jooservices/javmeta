@@ -34,8 +34,12 @@ assert.ok(!facetListHtml({ kind: 'movies', facetGroup: 'genres', filterKey: 'gen
 function evilName() { return '<img src=x onerror=alert(1)>'; }
 assert.deepEqual(selectedOf('year', { released_from: '2025', released_to: '2025' }), ['2025']); assert.deepEqual(selectedOf('year', { released_from: '2024', released_to: '2025' }), []);
 assert.deepEqual(selectedOf('year', { released_from: '2025-01-01', released_to: '2025-12-31' }), ['2025'], 'canonical year bounds remain checked');
-assert.deepEqual(patchFor('genre', { genre: 'A' }, 'B', true), { genre: 'A,B' }); assert.deepEqual(patchFor('genre', { genre: 'A,B' }, 'A', false), { genre: 'B' });
-assert.deepEqual(patchFor('maker', { maker: 'M' }, 'N', true), { maker: 'N' }); assert.deepEqual(patchFor('maker', { maker: 'M' }, 'M', false), { maker: '' });
+// A tick sends the value in double quotes (exact match); a typed keyword stays as it is (substring search).
+assert.deepEqual(patchFor('genre', { genre: 'A' }, 'B', true), { genre: 'A,"B"' }); assert.deepEqual(patchFor('genre', { genre: '"A","B"' }, 'A', false), { genre: '"B"' });
+assert.deepEqual(patchFor('maker', { maker: '"M"' }, 'N', true), { maker: '"N"' }); assert.deepEqual(patchFor('maker', { maker: '"M"' }, 'M', false), { maker: '' });
+assert.deepEqual(selectedOf('genre', { genre: '"Anal","Anal Toy"' }), ['Anal', 'Anal Toy'], 'quotes are not shown as part of the value');
+assert.deepEqual(selectedOf('maker', { maker: 'Anal' }), ['Anal'], 'a typed keyword is read as it is');
+assert.match(activeFilters({ genre: '"Anal"' })[0].label, /: Anal$/, 'chips show the value without quotes');
 assert.deepEqual(patchFor('year', {}, '2025', true), { released_from: '2025', released_to: '2025' });
 assert.deepEqual(patchFor('location', { location: 'Tokyo' }, 'Osaka', true), { location: 'Tokyo,Osaka' }, 'location accepts several values');
 // the request: scope without the list's own filter, keyword for the page search, never the page sort/paging
@@ -132,7 +136,7 @@ fl.els['[data-fl-min]'].checked = false; fl.els['[data-fl-min]'].emit('change');
 assert.ok(flRequests[3].url.includes('min_count=0') && flRequests[3].url.includes('sort=name') && flRequests[3].url.includes('q=sch'), 'the min-count toggle keeps the rest');
 const clickLabel = {}; let stopped = false;
 fl.els['[data-fl-list]'].emit('change', { target: { matches: sel => sel === '[data-fl-value]', closest: () => clickLabel, checked: true, value: 'School' }, stopPropagation() { stopped = true; } });
-assert.deepEqual(flChanges, [{ genre: 'Drama,School' }]); assert.equal(fl.els['[data-fl-pin]'].appended[0], clickLabel, 'the clicked row moves into the pinned group'); assert.equal(stopped, true);
+assert.deepEqual(flChanges, [{ genre: 'Drama,"School"' }], 'a tick is sent in quotes (exact match)'); assert.equal(fl.els['[data-fl-pin]'].appended[0], clickLabel, 'the clicked row moves into the pinned group'); assert.equal(stopped, true);
 await delay(300); assert.equal(flRequests.length, 4, 'a tick does not reload the list it came from');
 fl.ticked = [{ value: 'Drama' }, { value: 'School' }]; flList.update({ query: { genre: 'Drama,School' } }); await delay(300);
 assert.equal(flRequests.length, 4, 'a parent refresh with the same scope does not reload'); assert.equal(fl.writes, 0, 'the fieldset itself is never re-rendered');

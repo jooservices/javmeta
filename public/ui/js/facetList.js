@@ -1,7 +1,7 @@
 import { api } from './api.js';
 import { esc, fmt } from './util.js';
 import { t } from './i18n.js';
-import { values, multiKeys } from './filterState.js';
+import { values, multiKeys, exactKeys, quoteExact, unquoteExact } from './filterState.js';
 
 /* The one facet component: a searchable, sortable, paginated checkbox list for EVERY facet
    (movies: genre maker series label year source; performers: cup blood_type location source status).
@@ -16,7 +16,7 @@ const display = (group, name) => (group === 'status' ? ({ active: t('filter.stat
 
 /* the values ticked for this list, mirrored from the page query (a year is one released_from = released_to pair) */
 export const selectedOf = (filterKey, query = {}) => {
-  if (filterKey !== 'year') return values(query[filterKey]);
+  if (filterKey !== 'year') return exactKeys.includes(filterKey) ? values(query[filterKey]).map(unquoteExact) : values(query[filterKey]);
   const from = String(query.released_from || ''), to = String(query.released_to || '');
   if (/^\d{4}$/.test(from) && from === to) return [from];
   const year = /^(\d{4})-01-01$/.exec(from)?.[1];
@@ -27,10 +27,12 @@ export const selectedOf = (filterKey, query = {}) => {
 export function patchFor(filterKey, query, value, checked) {
   if (filterKey === 'year') return checked ? { released_from: value, released_to: value } : { released_from: '', released_to: '' };
   if (multiKeys.includes(filterKey)) {
-    const current = values(query[filterKey]);
-    return { [filterKey]: (checked ? [...new Set([...current, value])] : current.filter(v => v !== value)).join(',') };
+    // the same value may already be in the URL typed (substring) or ticked (quoted): either form is replaced or removed
+    const bare = v => (exactKeys.includes(filterKey) ? unquoteExact(v) : v);
+    const rest = values(query[filterKey]).filter(v => bare(v) !== value);
+    return { [filterKey]: (checked ? [...rest, quoteExact(filterKey, value)] : rest).join(',') };
   }
-  return { [filterKey]: checked ? value : '' };
+  return { [filterKey]: checked ? quoteExact(filterKey, value) : '' };
 }
 
 /* The facet request: the result scope without this list's own filter (so the user can add more values),

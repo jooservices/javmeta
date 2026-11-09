@@ -130,7 +130,8 @@ final class CatalogEndpointTest extends TestCase
         $names = fn(string $script, string $extra = ''): array => array_column($this->getJson('/api/v1/meta/catalog/makers?sort=name&script=' . $script . $extra, $this->headers())->assertOk()->json('data'), 'name');
 
         $this->assertSame(['4K Studio', 'Alpha'], $names('latin'));
-        $this->assertSame(['ハイビジョン', '中出し'], $names('ja'));
+        // Han-only names (巨乳, 美女) are shared by Japanese and Chinese, so both indexes list them; kana is only Japanese.
+        $this->assertSame(['ハイビジョン', '中出し', '巨乳', '美女'], $names('ja'));
         $this->assertSame(['巨乳', '美女'], $names('zh'));
         $this->assertSame(['巨乳'], $names('zh', '&min_count=3'));
         $this->assertSame(['★★★'], $names('other'));
@@ -138,6 +139,12 @@ final class CatalogEndpointTest extends TestCase
         $response = $this->getJson('/api/v1/meta/catalog/makers?script=zh&min_count=3', $this->headers())->assertOk();
         $this->assertSame(1, $response->json('meta.pagination.total'));
         $this->assertSame(1, $response->json('meta.pagination.hidden_below_min'));
+        // Paging a script-filtered catalog slices one cached copy of the whole catalog.
+        $first = $this->getJson('/api/v1/meta/catalog/makers?sort=name&script=ja&per_page=2&page=1', $this->headers())->assertOk();
+        $second = $this->getJson('/api/v1/meta/catalog/makers?sort=name&script=ja&per_page=2&page=2', $this->headers())->assertOk();
+        $this->assertSame(['ハイビジョン', '中出し'], array_column($first->json('data'), 'name'));
+        $this->assertSame(['巨乳', '美女'], array_column($second->json('data'), 'name'));
+        $this->assertSame(4, $second->json('meta.pagination.total'));
         $this->getJson('/api/v1/meta/catalog/makers?script=klingon', $this->headers())->assertStatus(400);
     }
 }

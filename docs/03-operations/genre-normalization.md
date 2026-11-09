@@ -169,18 +169,30 @@ Indexes and constraints: primary key `id`; `unique(canonical_key)`; check constr
 | `canonical_genre_id` | unsigned int, FK `canonical_genres.id` | `restrictOnDelete`: deleting a canonical genre with aliases is refused. |
 | `alias_key` | `text`, not null | NFKC + case-folded + whitespace-collapsed label, the lookup key. Computed by one shared function used by seeder, persister and search. |
 | `alias_raw` | `text`, not null | Label as written by the source (display and audit). |
-| `genre_id` | unsigned int, nullable, FK `genres.id` | Source label row; filled when the label exists in `genres`. Used for fast joins. |
 | `script` | `text`, not null | `latin`, `kana`, `han`, `other`; informational, supports JP/ZH/EN reporting. |
 | `confidence` | `char(1)`, not null, default `M` | `H`, `M`, `L` from the review; `L` rows are not applied automatically. |
 | `seed_batch` | `text`, not null | Identifier of the seed or backfill run that created the row (rollback handle). |
 | `created_at` | `timestampTz` | |
+
+### `genre_alias_genres` (the source labels behind an alias)
+
+Several source labels can share one alias key (`NTR` and `ＮＴＲ` fold to the same key), so an alias row cannot hold a single
+`genre_id`. Each alias links to every source label row it covers through an association table:
+
+| Column | Type | Notes |
+|---|---|---|
+| `alias_id` | unsigned bigint, FK `genre_aliases.id`, `cascadeOnDelete` | |
+| `genre_id` | unsigned int, FK `genres.id`, `cascadeOnDelete` | Every `genres` row whose folded label equals the alias key. |
+
+`primary key(alias_id, genre_id)` and `index(genre_id)` (serves the join `movie_genres.genre_id -> genre_alias_genres ->
+genre_aliases -> canonical_genres`). A canonical genre therefore counts the movies of all of its source labels, and no label's
+movies are left out when two labels share a key.
 
 Uniqueness and indexes:
 
 - `unique(alias_key, canonical_genre_id)`. One alias may map to several canonical genres (compound labels) but never twice
   to the same one.
 - `index(alias_key)` serves search and persister lookups (exact match).
-- `index(genre_id)` serves the join `movie_genres.genre_id -> genre_aliases -> canonical_genres`.
 - `index(canonical_genre_id)` serves "all aliases of a canonical genre" and the admin view.
 - `index(seed_batch)` serves rollback.
 
@@ -197,11 +209,11 @@ Do not add this file to `database/migrations/` as part of JOOXCR-407 Part 2. It 
 //
 // Design note
 // Purpose:        map many source labels (JP/ZH/EN) to one canonical genre.
-// Access:         alias_key exact lookup (persister, search input); genre_id join (counts, facets);
+// Access:         alias_key exact lookup (persister, search input); genre_alias_genres join (counts, facets);
 //                 canonical_genre_id for admin; seed_batch for rollback.
 // Growth:         bounded by distinct labels (not per-movie); movie_genres untouched.
 // Compatibility:  additive and forward-only; old code ignores the new tables.
-// Rollback:       down() drops the two new tables; no existing table is altered.
+// Rollback:       down() drops the three new tables; no existing table is altered.
 // Privileges:     ordinary application role; no superuser needed.
 Schema::create('canonical_genres', function (Blueprint $table): void {
     $table->increments('id');
@@ -218,19 +230,27 @@ Schema::create('genre_aliases', function (Blueprint $table): void {
     $table->unsignedInteger('canonical_genre_id');
     $table->text('alias_key');
     $table->text('alias_raw');
-    $table->unsignedInteger('genre_id')->nullable();
     $table->text('script');
     $table->char('confidence', 1)->default('M');
     $table->text('seed_batch');
     $table->timestampTz('created_at')->useCurrent();
 
     $table->foreign('canonical_genre_id')->references('id')->on('canonical_genres')->restrictOnDelete();
-    $table->foreign('genre_id')->references('id')->on('genres')->nullOnDelete();
     $table->unique(['alias_key', 'canonical_genre_id']);
     $table->index('alias_key');
-    $table->index('genre_id');
     $table->index('canonical_genre_id');
     $table->index('seed_batch');
+});
+
+// One alias key can cover several source labels (NTR, ＮＴＲ): every label keeps its own link.
+Schema::create('genre_alias_genres', function (Blueprint $table): void {
+    $table->unsignedBigInteger('alias_id');
+    $table->unsignedInteger('genre_id');
+
+    $table->primary(['alias_id', 'genre_id']);
+    $table->foreign('alias_id')->references('id')->on('genre_aliases')->cascadeOnDelete();
+    $table->foreign('genre_id')->references('id')->on('genres')->cascadeOnDelete();
+    $table->index('genre_id');
 });
 ```
 
@@ -252,14 +272,17 @@ Names follow the existing layout (`app/Repositories`, `app/Services`, `app/Conso
 - **`GenreCanonicalizer` service**: reads the CSV (or a DB-backed list), validates it (every alias unique per canonical,
   keys match `^[a-z0-9_]+$`, `kind` allowed, `confidence` allowed, compound aliases listed on every target row), and applies
   it through the repository. It never edits `genres` or `movie_genres`.
-- **`MoviePersister::upsertGenres`** keeps storing the raw label and link as today. Optionally (stage 2) it fills
-  `genre_aliases.genre_id` when a new `genres` row matches an alias key, so new labels join automatically. A label with no
-  alias is not an error: it falls back to itself in every read path.
+- **`MoviePersister::upsertGenres`** keeps storing the raw label and link as today. In **stage 1** (before canonical reads
+  are switched on) it also links a newly created `genres` row to the aliases whose key equals its folded label
+  (`GenreAliasRepository::linkGenre`, one insert into `genre_alias_genres`, in the same transaction), so a label created
+  after the backfill is never left outside the canonical count. A label with no alias is not an error: it falls back to
+  itself in every read path. As a safety net `genres:aliases-report` lists linked-looking labels that have no link, and
+  `genres.use_canonical` is not enabled while that list is not empty.
 - **Commands** (modelled on `performers:backfill-normalization`: dry-run by default, `--apply`, chunked):
   - `genres:aliases-seed {csv} [--apply] [--batch=<id>] [--min-confidence=M]`: validate and print a plan (rows to add, rows
     already present, alias keys that match no `genres` row, conflicts). `--apply` writes inside a transaction and tags rows
     with `seed_batch`. Safe to re-run (upsert on `(alias_key, canonical_genre_id)`).
-  - `genres:aliases-link [--apply] [--chunk=N] [--after=ID]`: fill `genre_aliases.genre_id` for existing source labels in ID
+  - `genres:aliases-link [--apply] [--chunk=N] [--after=ID]`: fill `genre_alias_genres` for existing source labels in ID
     chunks, printing the last ID for resume.
   - `genres:aliases-report [--min-links=N]`: top labels without alias, alias rows without a matching label, equal-count
     anomalies, and canonical counts (DISTINCT movies) versus raw label counts. Read-only.
@@ -274,15 +297,17 @@ All paths use a feature switch (proposed setting `genres.use_canonical`, default
 when it is off or when a label has no alias.
 
 - **Counts** (`movieCatalog('genres')`, movie facets `genres`): join
-  `movie_genres -> genre_aliases (genre_id) -> canonical_genres`, group by `canonical_key`, count `COUNT(DISTINCT
+  `movie_genres -> genre_alias_genres -> genre_aliases -> canonical_genres`, group by `canonical_key`, count `COUNT(DISTINCT
   movie_id)` so a movie tagged with both `Creampie` and `中出し` counts once. Unmapped genres are grouped by their own
   label as today. The row shows `display_vi` or `display_en` by UI language; `is_visible = false` and `kind <> 'genre'`
   rows are excluded from the genre facet.
 - **Search / filter** (`genre` and `genre_all` parameters): resolve the input with the alias key. A query `中出し`,
   `Creampie` or the canonical key `creampie` yields the canonical id(s); the movie filter becomes
-  `EXISTS (movie_genres JOIN genre_aliases ... WHERE canonical_genre_id IN (...))`. For `genre_all=1` there is one `EXISTS`
-  per canonical genre. If the input matches no alias, the existing `LIKE` on label columns is used, so free-text behavior is
-  preserved.
+  `EXISTS (movie_genres JOIN genre_alias_genres JOIN genre_aliases ... WHERE canonical_genre_id IN (...))`, **combined with
+  the existing `LIKE` on the label columns for each term** (`canonical match OR substring match`). The substring match is
+  kept even when the term resolves to an alias, so a filter `Anal` still finds a movie tagged only `Anal Toy`, as it does
+  today. For `genre_all=1` there is one such condition per term. A quoted term (an exact facet tick) uses the canonical
+  match only.
 - **Suggest and autocomplete**: return canonical rows and show their aliases, so typing `中出` suggests `creampie`.
 - **Elasticsearch/embeddings**: the search document would need canonical keys in addition to raw labels, followed by a
   reindex. This is not verified against the current mapping; it requires its own change and is out of scope here.

@@ -39,7 +39,7 @@ export default {
     const html = `<div class="wrap">${head(t(k.title), t('catalog.sub', { unit: t(k.unit) }))}
       <div class="brbar" style="margin-bottom:8px"><form id="cf" class="omni" style="max-width:360px;flex:1"><input type="text" name="q" value="${esc(st.q)}" placeholder="${t('catalog.search_in', { title: t(k.title).toLowerCase() })}" aria-label="${t('catalog.search_in', { title: t(k.title).toLowerCase() })}" autocomplete="off" style="padding-left:12px"></form><b class="mono" data-count></b> <span class="muted">${t('catalog.items')}</span><span class="sp"></span>
         <label class="muted">${t('browser.sort_by')} <select id="csort"><option value="movie_count" ${st.sort === 'movie_count' ? 'selected' : ''}>${t('catalog.sort.movie_count')}</option><option value="name" ${st.sort === 'name' ? 'selected' : ''}>${t('catalog.sort.name')}</option></select></label></div>
-      <div class="catalog-tools">${k.script ? scriptBar(st) : ''}<label class="fl-min"><input type="checkbox" id="cmin" ${st.min > 0 ? 'checked' : ''}> <span data-min-text>${t('catalog.min_count', { min: MIN_COUNT, unit: t(k.unit), hidden: fmt(0) })}</span></label></div>
+      <div class="catalog-tools">${k.script ? scriptBar(st) : ''}<label class="fl-min"><input type="checkbox" id="cmin" ${st.min > 0 ? 'checked' : ''}> <span data-min-text>${t('catalog.min_count', { min: st.min > 0 ? st.min : MIN_COUNT, unit: t(k.unit), hidden: fmt(0) })}</span></label></div>
       <div class="search-results" data-results aria-busy="false"><div class="results-error" data-results-error role="alert" hidden></div><div class="panel" data-list></div></div></div>`;
     return { html, mount: root => mount(root, params.kind, k, st) };
   },
@@ -54,7 +54,7 @@ function mount(root, kind, k, initial) {
   const pageOf = async (state, snap, sig) => {
     const body = await api('meta/catalog/' + kind, { q: snap.q, sort: snap.sort, per_page: 60, page: state.page, min_count: snap.min, ...(snap.script !== 'all' ? { script: snap.script } : {}) }, { signal: sig });
     const pg = pagination(body);
-    if (state.page === 1) { max = body.data.length ? Math.max(1, ...body.data.map(n)) : 1; root.querySelector('[data-min-text]').textContent = t('catalog.min_count', { min: MIN_COUNT, unit: t(k.unit), hidden: fmt(pg.hidden_below_min ?? 0) }); }
+    if (state.page === 1) { max = body.data.length ? Math.max(1, ...body.data.map(n)) : 1; root.querySelector('[data-min-text]').textContent = t('catalog.min_count', { min: snap.min > 0 ? snap.min : MIN_COUNT, unit: t(k.unit), hidden: fmt(pg.hidden_below_min ?? 0) }); }
     return { items: body.data || [], total: pg.total, page: state.page + 1, hasMore: state.page < (pg.last_page || 1) };
   };
   const makeList = (snap, first = null) => infiniteList(list, {

@@ -172,8 +172,10 @@ export const selectFacetOption = defineStep('selectFacetOption', async (ctx, kin
   await ctx.page.evaluate(() => { document.querySelector('#view').dataset.qaView = 'kept'; });
   const previous = await ctx.page.$eval('#view [data-count]', element => element.textContent.trim()).catch(() => '');
   // Year is stored as released_from = released_to, not as year=.
-  const needles = key === 'year' ? [`released_from=${chosen}`, `released_to=${chosen}`] : [`${key}=${chosen}`];
-  const hashNeedle = key === 'year' ? `released_from=${chosen}` : `${key}=${chosen}`;
+  // A tick sends genre, maker, series and label in double quotes (exact match).
+  const sent = ['genre', 'maker', 'series', 'label'].includes(key) ? `"${chosen}"` : `${key}=${chosen}`;
+  const needles = key === 'year' ? [`released_from=${chosen}`, `released_to=${chosen}`] : [sent];
+  const hashNeedle = key === 'year' ? `released_from=${chosen}` : sent;
   const pending = waitForList(ctx.page, listUrl(kind), needles);
   await box.check();
   await pending.catch(() => { throw new Error(`Selecting ${group} ${chosen} did not request the list.`); });

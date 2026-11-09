@@ -6,6 +6,11 @@ export const toggleValue = (value, item) => values(value).includes(String(item))
 export const movieKeys = 'q code genre genre_all actress actress_id maker series label source released_from released_to runtime_min runtime_max score_min tier_min censored on_disk has_cover has_magnet has_performers sort'.split(' ');
 export const performerKeys = 'q cup blood_type location age_min age_max height_min height_max bust_min bust_max waist_min waist_max hip_min hip_max debut_from debut_to status has_image has_bio movies_min source sort'.split(' ');
 export const multiKeys = ['genre', 'actress_id', 'source', 'cup', 'blood_type', 'location'];
+/* A value ticked in a facet list is sent in double quotes: the API then matches it exactly, so the movies found equal
+   the count shown beside the value. Typed keywords stay unquoted and keep the substring search. */
+export const exactKeys = ['genre', 'maker', 'series', 'label'];
+export const quoteExact = (key, value) => (exactKeys.includes(key) && !/^".*"$/.test(value) ? `"${value}"` : value);
+export const unquoteExact = value => String(value).replace(/^"(.*)"$/, '$1');
 const labelKeys = new Set(['q', 'code', 'genre', 'genre_all', 'actress', 'actress_id', 'maker', 'series', 'label', 'source', 'released_from', 'released_to', 'runtime_min', 'runtime_max', 'score_min', 'tier_min', 'censored', 'on_disk', 'has_cover', 'has_magnet', 'has_performers', 'cup', 'blood_type', 'location', 'age_min', 'age_max', 'height_min', 'height_max', 'bust_min', 'bust_max', 'waist_min', 'waist_max', 'hip_min', 'hip_max', 'debut_from', 'debut_to', 'status', 'has_image', 'has_bio', 'movies_min']);
 export const label = key => t('filter.label.' + key);
 /* Compatibility for docs/smoke that read labels[key]: resolve through i18n. */
@@ -25,7 +30,7 @@ export function performerParams(query) {
   return p;
 }
 export function activeFilters(query, names = {}) {
-  return Object.entries(query).filter(([k, v]) => labelKeys.has(k) && v !== '' && v !== undefined).flatMap(([k, v]) => (multiKeys.includes(k) ? values(v) : [String(v)]).map(value => ({ key: k, value, label: label(k) + ': ' + (k === 'actress_id' ? names[value] || '#' + value : value) })));
+  return Object.entries(query).filter(([k, v]) => labelKeys.has(k) && v !== '' && v !== undefined).flatMap(([k, v]) => (multiKeys.includes(k) ? values(v) : [String(v)]).map(value => ({ key: k, value, label: label(k) + ': ' + (k === 'actress_id' ? names[value] || '#' + value : unquoteExact(value)) })));
 }
 export function removeFilter(query, key, value) {
   const next = { ...query };

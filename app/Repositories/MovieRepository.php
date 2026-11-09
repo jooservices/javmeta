@@ -58,6 +58,51 @@ final class MovieRepository extends BusinessQueryRepository
      */
     public function movieCatalog(string $kind, string $query, string $sort, int $perPage, int $page, int $minCount = 0, string $script = 'all'): array
     {
+        if ($script !== 'all') {
+            $whole = $this->movieCatalogWhole($kind, $query, $sort, $minCount, $script);
+
+            return [
+                'items' => array_slice($whole['items'], ($page - 1) * $perPage, $perPage),
+                'total' => count($whole['items']),
+                'hidden' => $whole['hidden'],
+            ];
+        }
+
+        [$base, $order] = $this->movieCatalogBase($kind, $query, $sort);
+        $all = (int) DB::query()->fromSub(clone $base, 'c')->count();
+        $visible = DB::query()->fromSub(clone $base, 'c')->when($minCount > 0, static fn($rows) => $rows->where('movie_count', '>=', $minCount));
+        $total = $minCount > 0 ? (int) (clone $visible)->count() : $all;
+        $rows = $visible->orderByRaw($order)->forPage($page, $perPage)->get(['name', 'movie_count']);
+
+        /** @var list<array{name: string, movie_count: int}> $items */
+        $items = $rows->map(static fn(object $row): array => ['name' => (string) $row->name, 'movie_count' => (int) $row->movie_count])->values()->all();
+
+        return ['items' => $items, 'total' => $total, 'hidden' => $all - $total];
+    }
+
+    /**
+     * The whole catalog of one writing system, ordered and without the entries below $minCount (counted in `hidden`).
+     * The script is decided in PHP (there is no portable SQL for it), so every entry of the kind is read; the caller caches
+     * the result independently of the page. Bounded by the number of distinct values of the kind (genres: about 13,400).
+     *
+     * @return array{items: list<array{name: string, movie_count: int}>, hidden: int}
+     */
+    public function movieCatalogWhole(string $kind, string $query, string $sort, int $minCount, string $script): array
+    {
+        [$base, $order] = $this->movieCatalogBase($kind, $query, $sort);
+        $named = DB::query()->fromSub($base, 'c')->orderByRaw($order)->get(['name', 'movie_count'])
+            ->filter(static fn(object $row): bool => NameScript::matches((string) $row->name, $script))->values();
+        $kept = $named->filter(static fn(object $row): bool => (int) $row->movie_count >= $minCount)->values();
+
+        /** @var list<array{name: string, movie_count: int}> $items */
+        $items = $kept->map(static fn(object $row): array => ['name' => (string) $row->name, 'movie_count' => (int) $row->movie_count])->values()->all();
+
+        return ['items' => $items, 'hidden' => $named->count() - $kept->count()];
+    }
+
+    /** @return array{0: \Illuminate\Database\Query\Builder, 1: string} the grouped query and its ORDER BY */
+    private function movieCatalogBase(string $kind, string $query, string $sort): array
+    {
         $nameColumn = match ($kind) {
             'genres' => 'COALESCE(genres.label_raw, genres.label_normalized)',
             'years' => $this->yearExpression(),
@@ -82,27 +127,7 @@ final class MovieRepository extends BusinessQueryRepository
                 : $base->whereRaw('LOWER(' . $nameColumn . ') LIKE ?', [$pattern]);
         }
 
-        $order = $sort === 'name' ? ($kind === 'years' ? 'name DESC' : 'name ASC') : 'movie_count DESC, name ASC';
-        if ($script === 'all') {
-            $all = (int) DB::query()->fromSub(clone $base, 'c')->count();
-            $visible = DB::query()->fromSub(clone $base, 'c')->when($minCount > 0, static fn($rows) => $rows->where('movie_count', '>=', $minCount));
-            $total = $minCount > 0 ? (int) (clone $visible)->count() : $all;
-            $hidden = $all - $total;
-            $rows = $visible->orderByRaw($order)->forPage($page, $perPage)->get(['name', 'movie_count']);
-        } else {
-            // The script is decided in PHP (no portable SQL), so the whole ordered catalog is read once; it is cached by the caller.
-            $named = DB::query()->fromSub($base, 'c')->orderByRaw($order)->get(['name', 'movie_count'])
-                ->filter(static fn(object $row): bool => NameScript::matches((string) $row->name, $script))->values();
-            $kept = $named->filter(static fn(object $row): bool => (int) $row->movie_count >= $minCount)->values();
-            $total = $kept->count();
-            $hidden = $named->count() - $total;
-            $rows = $kept->slice(($page - 1) * $perPage, $perPage);
-        }
-
-        /** @var list<array{name: string, movie_count: int}> $items */
-        $items = $rows->map(static fn(object $row): array => ['name' => (string) $row->name, 'movie_count' => (int) $row->movie_count])->values()->all();
-
-        return ['items' => $items, 'total' => $total, 'hidden' => $hidden];
+        return [$base, $sort === 'name' ? ($kind === 'years' ? 'name DESC' : 'name ASC') : 'movie_count DESC, name ASC'];
     }
 
     public function countAll(): int
@@ -300,8 +325,14 @@ final class MovieRepository extends BusinessQueryRepository
         if ($genres !== []) {
             $all = (string) ($filters['genre_all'] ?? '0') === '1';
             $one = static function (Builder $query, string $genre) use ($like): void {
-                $pattern = '%' . self::escapeLike($genre) . '%';
-                $query->whereHas('genres', static function (Builder $g) use ($like, $pattern): void {
+                [$exact, $text] = self::exactTerm($genre);
+                $query->whereHas('genres', static function (Builder $g) use ($like, $exact, $text): void {
+                    if ($exact) {
+                        $g->whereRaw('LOWER(label_normalized) = ?', [mb_strtolower($text)])->orWhereRaw('LOWER(label_raw) = ?', [mb_strtolower($text)]);
+
+                        return;
+                    }
+                    $pattern = '%' . self::escapeLike($text) . '%';
                     $g->where('label_normalized', $like, $pattern)->orWhere('label_raw', $like, $pattern);
                 });
             };
@@ -367,7 +398,10 @@ final class MovieRepository extends BusinessQueryRepository
         foreach (['maker', 'series', 'label'] as $column) {
             $value = $filters[$column] ?? null;
             if (is_string($value) && $value !== '') {
-                $query->where($column, $like, '%' . $value . '%');
+                [$exact, $text] = self::exactTerm($value);
+                $exact
+                    ? $query->whereRaw('LOWER(' . $column . ') = ?', [mb_strtolower($text)])
+                    : $query->where($column, $like, '%' . $value . '%');
             }
         }
 
@@ -401,6 +435,21 @@ final class MovieRepository extends BusinessQueryRepository
         if ($censored !== null) {
             $query->where('censored', (int) $censored);
         }
+    }
+
+    /**
+     * A value wrapped in double quotes is an exact match (what a facet tick sends, so the movies found equal the count
+     * shown next to the value); any other value keeps the substring search every filter has always had.
+     *
+     * @return array{0: bool, 1: string}
+     */
+    private static function exactTerm(string $term): array
+    {
+        if (strlen($term) >= 2 && $term[0] === '"' && str_ends_with($term, '"')) {
+            return [true, substr($term, 1, -1)];
+        }
+
+        return [false, $term];
     }
 
     /** @return list<string> comma separated values, trimmed and without blanks */

@@ -127,9 +127,12 @@ export const chooseMovieChoice = defineStep('chooseMovieChoice', async (ctx, key
   await box.waitFor({ state: 'attached', timeout: 12000 });
   if (await box.isChecked()) throw new Error(`${key}=${value} is already selected.`);
   const previous = await ctx.page.$eval('#view [data-count]', element => element.textContent.trim()).catch(() => '');
-  const pending = waitForList(ctx.page, '/ui-api/movies?', [`${key}=${value}`]);
+  // A facet tick sends genre, maker, series and label in double quotes (exact match); the other keys are sent as they are.
+  const sent = ['genre', 'maker', 'series', 'label'].includes(key) ? `"${value}"` : `${key}=${value}`;
+  const pending = waitForList(ctx.page, '/ui-api/movies?', [sent]);
+  pending.catch(() => {}); // a failure is reported by the await below, never as an unhandled rejection
   await box.check();
-  await waitForHash(ctx.page, `${key}=${value}`);
+  await waitForHash(ctx.page, sent);
   await pending;
   await waitForSettledCount(ctx.page, previous);
 });

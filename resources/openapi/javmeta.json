@@ -819,7 +819,70 @@
         "x-scope": "catalog",
         "responses": {
           "200": {
-            "description": "Success"
+            "description": "Catalog entries with pagination metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "movie_count": {
+                            "type": "integer"
+                          },
+                          "performer_count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "pagination": {
+                          "type": "object",
+                          "properties": {
+                            "total": {
+                              "type": "integer"
+                            },
+                            "per_page": {
+                              "type": "integer"
+                            },
+                            "page": {
+                              "type": "integer"
+                            },
+                            "last_page": {
+                              "type": "integer"
+                            },
+                            "sort": {
+                              "type": "string"
+                            },
+                            "min_count": {
+                              "type": "integer",
+                              "description": "Values below this many results were left out"
+                            },
+                            "hidden_below_min": {
+                              "type": "integer",
+                              "description": "How many values the minimum hid (catalog only)"
+                            },
+                            "script": {
+                              "type": "string",
+                              "description": "Writing system filter applied (catalog only)"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid API key"
@@ -829,6 +892,9 @@
           },
           "429": {
             "description": "Rate limited"
+          },
+          "400": {
+            "description": "Invalid sort, per_page, min_count or script"
           }
         },
         "parameters": [
@@ -885,6 +951,35 @@
             "schema": {
               "type": "boolean",
               "default": false
+            }
+          },
+          {
+            "name": "min_count",
+            "in": "query",
+            "required": false,
+            "description": "Hide entries with fewer movies or performers than this (0 to 1,000,000; default 0)",
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "minimum": 0,
+              "maximum": 1000000
+            }
+          },
+          {
+            "name": "script",
+            "in": "query",
+            "required": false,
+            "description": "Keep one writing system: all, latin, ja, zh or other (default all). Han-only names belong to both ja and zh",
+            "schema": {
+              "type": "string",
+              "default": "all",
+              "enum": [
+                "all",
+                "latin",
+                "ja",
+                "zh",
+                "other"
+              ]
             }
           }
         ]
@@ -970,21 +1065,175 @@
       "get": {
         "summary": "Effective configuration for browser services",
         "description": "Poll every poll_interval_seconds (30 seconds by default), send If-None-Match, and retain the last good response when the API is unavailable. Requires the config scope.",
-        "tags": ["configuration"],
-        "security": [{"ApiKey": []}],
+        "tags": [
+          "configuration"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
         "x-scope": "config",
         "parameters": [
-          {"name": "If-None-Match", "in": "header", "required": false, "schema": {"type": "string"}, "description": "The ETag from the previous 200 response."}
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ETag from the previous 200 response."
+          }
         ],
         "responses": {
           "200": {
             "description": "Effective browser and watchdog limits, with a version and ETag",
-            "headers": {"ETag": {"schema": {"type": "string"}}, "Cache-Control": {"schema": {"type": "string"}}},
-            "content": {"application/json": {"schema": {"type": "object", "required": ["data"], "properties": {"data": {"type": "object", "required": ["concurrency", "queues", "timeouts", "thresholds", "retry", "cleanup", "poll_interval_seconds", "version"], "properties": {"concurrency": {"type": "object", "properties": {"browser_max": {"type": "integer"}}}, "queues": {"type": "object", "properties": {"browser_max": {"type": "integer"}, "crawl_depth_max": {"type": "integer"}}}, "timeouts": {"type": "object", "properties": {"playwright_request_ms": {"type": "integer"}, "flaresolverr_max_ms": {"type": "integer"}, "gateway_wait_ms": {"type": "integer"}, "gateway_client_ms": {"type": "integer"}, "config_client_ms": {"type": "integer"}}}, "thresholds": {"type": "object", "properties": {"max_requests_per_browser": {"type": "integer"}, "client_inflight": {"type": "integer"}, "lane_browser_percent": {"type": "integer"}, "lane_min_attempts": {"type": "integer"}}}, "retry": {"type": "object", "properties": {"queue_tries": {"type": "integer"}, "backoff_seconds": {"type": "integer"}, "retry_after_seconds": {"type": "integer"}, "crawl_max_attempts": {"type": "integer"}}}, "cleanup": {"type": "object", "properties": {"temp_data_max_age_hours": {"type": "integer"}, "watchdog_stall_after_minutes": {"type": "integer"}}}, "poll_interval_seconds": {"type": "integer"}, "version": {"type": "string"}}}}}}}
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "concurrency",
+                        "queues",
+                        "timeouts",
+                        "thresholds",
+                        "retry",
+                        "cleanup",
+                        "poll_interval_seconds",
+                        "version"
+                      ],
+                      "properties": {
+                        "concurrency": {
+                          "type": "object",
+                          "properties": {
+                            "browser_max": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "queues": {
+                          "type": "object",
+                          "properties": {
+                            "browser_max": {
+                              "type": "integer"
+                            },
+                            "crawl_depth_max": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "timeouts": {
+                          "type": "object",
+                          "properties": {
+                            "playwright_request_ms": {
+                              "type": "integer"
+                            },
+                            "flaresolverr_max_ms": {
+                              "type": "integer"
+                            },
+                            "gateway_wait_ms": {
+                              "type": "integer"
+                            },
+                            "gateway_client_ms": {
+                              "type": "integer"
+                            },
+                            "config_client_ms": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "thresholds": {
+                          "type": "object",
+                          "properties": {
+                            "max_requests_per_browser": {
+                              "type": "integer"
+                            },
+                            "client_inflight": {
+                              "type": "integer"
+                            },
+                            "lane_browser_percent": {
+                              "type": "integer"
+                            },
+                            "lane_min_attempts": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "retry": {
+                          "type": "object",
+                          "properties": {
+                            "queue_tries": {
+                              "type": "integer"
+                            },
+                            "backoff_seconds": {
+                              "type": "integer"
+                            },
+                            "retry_after_seconds": {
+                              "type": "integer"
+                            },
+                            "crawl_max_attempts": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "cleanup": {
+                          "type": "object",
+                          "properties": {
+                            "temp_data_max_age_hours": {
+                              "type": "integer"
+                            },
+                            "watchdog_stall_after_minutes": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "poll_interval_seconds": {
+                          "type": "integer"
+                        },
+                        "version": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
-          "304": {"description": "Configuration has not changed", "headers": {"ETag": {"schema": {"type": "string"}}}},
-          "401": {"description": "Missing or invalid API key"},
-          "403": {"description": "The key has no access to this scope"}
+          "304": {
+            "description": "Configuration has not changed",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          }
         }
       }
     },
@@ -2063,7 +2312,75 @@
         ],
         "responses": {
           "200": {
-            "description": "Facet values and pagination metadata"
+            "description": "Facet values and pagination metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "description": "One value with its result count",
+                            "additionalProperties": true
+                          }
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "hidden_below_min": {
+                          "type": "integer"
+                        },
+                        "facet": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "pagination": {
+                          "type": "object",
+                          "properties": {
+                            "total": {
+                              "type": "integer"
+                            },
+                            "per_page": {
+                              "type": "integer"
+                            },
+                            "page": {
+                              "type": "integer"
+                            },
+                            "last_page": {
+                              "type": "integer"
+                            },
+                            "sort": {
+                              "type": "string"
+                            },
+                            "min_count": {
+                              "type": "integer",
+                              "description": "Values below this many results were left out"
+                            },
+                            "hidden_below_min": {
+                              "type": "integer",
+                              "description": "How many values the minimum hid (catalog only)"
+                            },
+                            "script": {
+                              "type": "string",
+                              "description": "Writing system filter applied (catalog only)"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid API key"
@@ -2071,7 +2388,7 @@
           "403": {
             "description": "The key has no access to this scope"
           },
-          "422": {
+          "400": {
             "description": "Invalid facet or filter"
           },
           "429": {
@@ -2376,7 +2693,75 @@
         ],
         "responses": {
           "200": {
-            "description": "Facet values and pagination metadata"
+            "description": "Facet values and pagination metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "description": "One value with its result count",
+                            "additionalProperties": true
+                          }
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "hidden_below_min": {
+                          "type": "integer"
+                        },
+                        "facet": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "pagination": {
+                          "type": "object",
+                          "properties": {
+                            "total": {
+                              "type": "integer"
+                            },
+                            "per_page": {
+                              "type": "integer"
+                            },
+                            "page": {
+                              "type": "integer"
+                            },
+                            "last_page": {
+                              "type": "integer"
+                            },
+                            "sort": {
+                              "type": "string"
+                            },
+                            "min_count": {
+                              "type": "integer",
+                              "description": "Values below this many results were left out"
+                            },
+                            "hidden_below_min": {
+                              "type": "integer",
+                              "description": "How many values the minimum hid (catalog only)"
+                            },
+                            "script": {
+                              "type": "string",
+                              "description": "Writing system filter applied (catalog only)"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid API key"
@@ -2384,7 +2769,7 @@
           "403": {
             "description": "The key has no access to this scope"
           },
-          "422": {
+          "400": {
             "description": "Invalid facet or filter"
           },
           "429": {

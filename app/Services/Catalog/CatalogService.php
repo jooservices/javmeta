@@ -26,9 +26,22 @@ final class CatalogService
 
     public function index(CatalogQuery $query): CatalogSnapshot
     {
-        $key = 'javmeta:catalog:' . hash('sha256', json_encode([$query->kind, $query->query, $query->sort, $query->perPage, $query->page, $query->includeUnknown, $query->minCount, $query->script], JSON_THROW_ON_ERROR));
-        /** @var array{items: list<array<string, mixed>>, total: int, hidden: int} $result */
-        $result = Cache::remember($key, 120, fn(): array => $this->load($query));
+        if ($this->readsWholeCatalog($query)) {
+            // Every page of this catalog needs all of it (the writing system or the grouping is decided in PHP), so the
+            // whole ordered catalog is cached once, independently of the page, and each response slices it.
+            $wholeKey = 'javmeta:catalog:whole:' . hash('sha256', json_encode([$query->kind, $query->query, $query->sort, $query->includeUnknown, $query->minCount, $query->script], JSON_THROW_ON_ERROR));
+            /** @var array{items: list<array<string, mixed>>, hidden: int} $whole */
+            $whole = Cache::remember($wholeKey, 120, fn(): array => $this->loadWhole($query));
+            $result = [
+                'items' => array_slice($whole['items'], ($query->page - 1) * $query->perPage, $query->perPage),
+                'total' => count($whole['items']),
+                'hidden' => $whole['hidden'],
+            ];
+        } else {
+            $key = 'javmeta:catalog:' . hash('sha256', json_encode([$query->kind, $query->query, $query->sort, $query->perPage, $query->page, $query->includeUnknown, $query->minCount, $query->script], JSON_THROW_ON_ERROR));
+            /** @var array{items: list<array<string, mixed>>, total: int, hidden: int} $result */
+            $result = Cache::remember($key, 120, fn(): array => $this->load($query));
+        }
 
         return new CatalogSnapshot($result['items'], [
             'total' => $result['total'],
@@ -42,17 +55,28 @@ final class CatalogService
         ]);
     }
 
-    /** @return array{items: list<array<string, mixed>>, total: int, hidden: int} */
-    private function load(CatalogQuery $query): array
+    private function readsWholeCatalog(CatalogQuery $query): bool
+    {
+        return isset(self::PERFORMER_COLUMNS[$query->kind]) || $query->script !== 'all';
+    }
+
+    /** @return array{items: list<array<string, mixed>>, hidden: int} */
+    private function loadWhole(CatalogQuery $query): array
     {
         if (isset(self::PERFORMER_COLUMNS[$query->kind])) {
             return $this->loadPerformers(self::PERFORMER_COLUMNS[$query->kind], $query);
         }
 
+        return $this->movies->movieCatalogWhole($query->kind, $query->query, $query->sort, $query->minCount, $query->script);
+    }
+
+    /** @return array{items: list<array<string, mixed>>, total: int, hidden: int} */
+    private function load(CatalogQuery $query): array
+    {
         return $this->movies->movieCatalog($query->kind, $query->query, $query->sort, $query->perPage, $query->page, $query->minCount, $query->script);
     }
 
-    /** @return array{items: list<array{name: string, performer_count: int}>, total: int, hidden: int} */
+    /** @return array{items: list<array{name: string, performer_count: int}>, hidden: int} */
     private function loadPerformers(string $column, CatalogQuery $query): array
     {
         $groups = $this->performers->facetGroups($column);
@@ -94,9 +118,7 @@ final class CatalogService
         }
         $named = count($items);
         $items = array_values(array_filter($items, static fn(array $item): bool => $item['performer_count'] >= $query->minCount));
-        $total = count($items);
-        $items = array_slice($items, ($query->page - 1) * $query->perPage, $query->perPage);
 
-        return ['items' => $items, 'total' => $total, 'hidden' => $named - $total];
+        return ['items' => $items, 'hidden' => $named - count($items)];
     }
 }
