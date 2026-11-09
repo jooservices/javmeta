@@ -18,7 +18,7 @@ final class CatalogEndpointTest extends TestCase
     /** @return array<string, string> */
     private function headers(): array
     {
-        return ['X-API-Key' => app(ApiKeyService::class)->create('catalog-test')->plaintext];
+        return ['X-API-Key' => app(ApiKeyService::class)->create('catalog-test', 60, ['catalog'])->plaintext];
     }
 
     public function test_it_needs_an_api_key_and_rejects_an_unknown_catalog(): void

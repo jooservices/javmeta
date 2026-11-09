@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Crawl;
 
-use App\Repositories\SourceRepository;
 use App\Repositories\CrawlStatusServiceRepository;
+use App\Repositories\SourceCircuitBreakerRepository;
+use App\Repositories\SourceRepository;
 use DateTimeInterface;
 
 /**
@@ -61,17 +62,26 @@ final class CrawlStatusService
     private function sourceStatus(): array
     {
         $rows = [];
+        app(SourceCircuitBreaker::class)->pausedSourceSlugs();
         $lanes = app(CrawlLaneService::class);
         $browser = $lanes->browserSources();
+        $circuits = app(SourceCircuitBreakerRepository::class)->statusBySlug();
         foreach ($this->sourceRepository()->statusRows() as $source) {
+            $circuit = $circuits[$source['slug']] ?? [
+                'circuit_state' => 'closed',
+                'consecutive_failures' => 0,
+                'circuit_opened_at' => null,
+                'circuit_cooldown_seconds' => null,
+            ];
             $rows[] = [
                 'slug' => $source['slug'],
                 'name' => $source['name'],
                 'enabled' => $source['enabled'],
                 'lane' => config('javmeta_queues.lanes_enabled', true) && in_array($source['slug'], $browser, true) ? 'browser' : 'direct',
-                // Deprecated: crawlerx owns fetch health; kept so MCP crawl_status keys stay stable.
-                'circuit_state' => 'closed',
-                'consecutive_failures' => 0,
+                'circuit_state' => $circuit['circuit_state'],
+                'consecutive_failures' => $circuit['consecutive_failures'],
+                'circuit_cooldown_seconds' => $circuit['circuit_cooldown_seconds'],
+                'circuit_resume_at' => $this->circuitResumeAt($circuit['circuit_opened_at'], $circuit['circuit_cooldown_seconds']),
                 'gap_seconds_current' => $source['gap_seconds_current'],
                 'gap_seconds_min' => $source['gap_seconds_min'],
                 'gap_seconds_max' => $source['gap_seconds_max'],
@@ -126,5 +136,14 @@ final class CrawlStatusService
     private function dateTime(mixed $value): ?string
     {
         return $value instanceof DateTimeInterface ? $value->format(DATE_ATOM) : null;
+    }
+
+    private function circuitResumeAt(mixed $openedAt, ?int $cooldownSeconds): ?string
+    {
+        if (! $openedAt instanceof DateTimeInterface || $cooldownSeconds === null) {
+            return null;
+        }
+
+        return \Illuminate\Support\Carbon::instance($openedAt)->addSeconds($cooldownSeconds)->toIso8601String();
     }
 }

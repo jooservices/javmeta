@@ -60,7 +60,7 @@ curl --fail-with-body -sS -X DELETE -H "X-Owner-Token: $OWNER_TOKEN" "$BASE/api/
 
 ## Keys, scopes and limits
 
-`X-API-Key` must contain an active key. Missing, invalid or revoked keys return 401. Supported scopes are `movies` (also `/search`), `bulk`, `performers`, `catalog` (also `/suggest`), `status`, `mcp`. Missing a required family scope returns 403. A null scope list means unrestricted access; the UI sends no scopes when no checkboxes are selected, so that creates an unrestricted key. Empty-array behavior should not be inferred from that UI shortcut.
+`X-API-Key` must contain an active key. Missing, invalid or revoked keys return 401. Supported scopes are `movies` (also `/search`), `bulk`, `performers`, `catalog` (also `/suggest`), `status`, `mcp`. Missing a required family scope returns 403. A null or empty scope list grants no scoped API access. Assign every intended scope explicitly when creating a key.
 
 `LogApiUsage` applies the key's `abuse_rpm` across authenticated data/MCP calls in a 60-second limiter window. The creation default is 60, allowed range 1–10000. A rejected over-limit request returns 429 and `Retry-After` seconds; wait before retrying. Owner token administration does not use this API-key limiter. Owner browser bridge calls bypass the key limiter and usage rows; login separately uses `throttle:6,1`.
 

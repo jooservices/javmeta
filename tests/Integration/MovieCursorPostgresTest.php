@@ -27,7 +27,7 @@ final class MovieCursorPostgresTest extends TestCase
     {
         self::assertSame('pgsql', DB::getDriverName());
         Queue::fake([IndexMovieJob::class]);
-        $key = app(ApiKeyService::class)->create('cursor regression')->plaintext;
+        $key = app(ApiKeyService::class)->create('cursor regression', 60, ['movies'])->plaintext;
         foreach ([9.0, 8.0, null, null, 7.5] as $index => $score) {
             Movie::factory()->create([
                 'community_score' => $score,

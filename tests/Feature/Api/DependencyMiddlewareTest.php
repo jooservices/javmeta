@@ -21,7 +21,7 @@ final class DependencyMiddlewareTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->apiKey = app(ApiKeyService::class)->create(fake()->words(2, true))->plaintext;
+        $this->apiKey = app(ApiKeyService::class)->create(fake()->words(2, true), 60, ['movies', 'catalog'])->plaintext;
         DependencyMonitorTestHelper::bind();
     }
 

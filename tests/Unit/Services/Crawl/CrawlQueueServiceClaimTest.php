@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Tests\Unit\Services\Crawl;
 
 use App\Models\CrawlQueue;
+use App\Enums\CrawlErrorCode;
 use App\Models\Source;
+use App\Services\Crawl\SourceCircuitBreaker;
+use App\Services\Crawl\SourceRequestPacer;
 use App\Services\Crawl\CrawlQueueService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -87,6 +90,58 @@ final class CrawlQueueServiceClaimTest extends TestCase
         $this->assertNotNull($started?->started_at);
         $this->assertNull($service->startClaimedRow($row->id, CrawlQueue::KIND_LISTING, 'test-worker'));
         $this->assertSame(3, $row->refresh()->attempts);
+    }
+
+    public function test_a_circuit_that_opens_during_the_pacing_wait_stops_the_start(): void
+    {
+        config([
+            'javmeta_queues.source_gap_overrides' => ['onejav' => ['min' => 1, 'default' => 1, 'max' => 10]],
+            'javmeta_sources.defaults.circuit.failure_threshold' => 1,
+        ]);
+        Source::query()->create([
+            'slug' => 'onejav',
+            'name' => 'OneJav',
+            'base_url' => 'https://onejav.com',
+            'enabled' => true,
+            'priority' => 1,
+            'needs_proxy' => false,
+            'gap_seconds_default' => 1,
+            'gap_seconds_min' => 1,
+            'gap_seconds_max' => 10,
+            'gap_seconds_current' => 1,
+        ]);
+        $rows = CrawlQueue::factory()->count(2)->create([
+            'source_slug' => 'onejav',
+            'kind' => CrawlQueue::KIND_LISTING,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'locked_by' => 'test-worker',
+            'attempts' => 0,
+        ]);
+        $quiet = new class extends SourceRequestPacer {
+            public function reserveStart(string $sourceSlug, float $gapSeconds, string $lane, int $maximumWaitMicroseconds): ?int
+            {
+                return 1;
+            }
+
+            public function wait(int $microseconds): void {}
+        };
+        $blocking = new class extends SourceRequestPacer {
+            public function reserveStart(string $sourceSlug, float $gapSeconds, string $lane, int $maximumWaitMicroseconds): ?int
+            {
+                return 1;
+            }
+
+            public function wait(int $microseconds): void
+            {
+                app(SourceCircuitBreaker::class)->recordFailure('onejav', CrawlErrorCode::Blocked);
+            }
+        };
+
+        $started = (new CrawlQueueService(sourceRequestPacer: $quiet))->startClaimedRow($rows[0]->id, CrawlQueue::KIND_LISTING, 'test-worker');
+        $this->assertSame(1, $started?->attempts, 'Without a block during the wait the row starts.');
+
+        $this->assertNull((new CrawlQueueService(sourceRequestPacer: $blocking))->startClaimedRow($rows[1]->id, CrawlQueue::KIND_LISTING, 'test-worker'));
+        $this->assertSame(0, $rows[1]->refresh()->attempts, 'A circuit opened during the wait must not start an upstream request.');
     }
 
     private function source(string $slug): void

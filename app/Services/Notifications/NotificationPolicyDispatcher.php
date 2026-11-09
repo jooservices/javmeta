@@ -266,6 +266,7 @@ final class NotificationPolicyDispatcher
         return match ($key) {
             'crawl.heartbeat_recovered' => 'crawl.heartbeat_stale',
             'crawl.source_recovered' => 'crawl.source_stale',
+            'crawl.source_circuit_recovered' => 'crawl.source_circuit_open',
             'crawl.stalled_recovered' => 'crawl.stalled',
             'crawl.queue_recovered' => 'crawl.queue_stuck',
             'crawl.backlog_recovered' => 'crawl.backlog_high',

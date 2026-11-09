@@ -29,7 +29,7 @@ final class McpHttpEndpointTest extends TestCase
     {
         parent::setUp();
 
-        $this->apiKey = app(ApiKeyService::class)->create('mcp-http-endpoint')->plaintext;
+        $this->apiKey = app(ApiKeyService::class)->create('mcp-http-endpoint', 60, ['mcp', 'movies', 'performers'])->plaintext;
         config(['javmeta_auth.mcp_api_key' => '']);
 
         $this->movie = Movie::factory()->create([

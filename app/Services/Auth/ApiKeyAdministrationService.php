@@ -32,7 +32,7 @@ final class ApiKeyAdministrationService
         $created = $this->apiKeyService->create(
             $data->label,
             $data->abuseRpm,
-            $data->scopes === null ? null : array_values(array_unique($data->scopes)),
+            array_values(array_unique($data->scopes ?? [])),
         );
         $snapshot = $this->keys->created($created);
         $this->observability->emitOps('admin_api_key', [

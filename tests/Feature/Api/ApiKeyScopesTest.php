@@ -29,13 +29,13 @@ final class ApiKeyScopesTest extends TestCase
         $this->getJson('/api/v1/status/summary', $headers)->assertStatus(403);
     }
 
-    public function test_a_key_without_scopes_keeps_full_access(): void
+    public function test_a_key_without_scopes_is_denied_every_scoped_route(): void
     {
         $headers = ['X-API-Key' => app(ApiKeyService::class)->create('all')->plaintext];
 
-        $this->getJson('/api/v1/performers', $headers)->assertOk();
-        $this->getJson('/api/v1/movies/calendar', $headers)->assertOk();
-        $this->assertNull(ApiKey::query()->where('label', 'all')->first()->scopes);
+        $this->getJson('/api/v1/performers', $headers)->assertForbidden();
+        $this->getJson('/api/v1/movies/calendar', $headers)->assertForbidden();
+        $this->assertSame([], ApiKey::query()->where('label', 'all')->first()->scopes);
     }
 
     public function test_encoded_routes_cannot_bypass_scopes(): void
@@ -62,7 +62,7 @@ final class ApiKeyScopesTest extends TestCase
 
     public function test_every_key_protected_route_has_an_explicit_scope_policy(): void
     {
-        $key = app(ApiKeyService::class)->create('all')->plaintext;
+        $key = app(ApiKeyService::class)->create('all', 60, ApiKey::SCOPES)->plaintext;
         foreach (app('router')->getRoutes() as $route) {
             if (! in_array(AuthenticateApiKey::class, $route->gatherMiddleware(), true)) {
                 continue;

@@ -660,6 +660,50 @@ final class PublishMetricsCommandTest extends TestCase
         });
     }
 
+    public function test_source_circuit_metrics_report_open_state_and_consecutive_blocks(): void
+    {
+        Source::factory()->create([
+            'slug' => 'javbus',
+            'circuit_state' => 'open',
+            'consecutive_failures' => 4,
+            'circuit_opened_at' => now(),
+            'circuit_open_count' => 2,
+            'circuit_cooldown_seconds' => 600,
+        ]);
+        config()->set([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.email' => 'root@javmeta.local',
+            'openobserve.password' => 'secret',
+            'openobserve.timeout' => 1,
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
+
+        $this->artisan('obs:publish-metrics')->assertSuccessful();
+
+        Http::assertSent(static function ($request): bool {
+            $values = [];
+            foreach ($request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [] as $metric) {
+                if (! in_array($metric['name'] ?? null, ['javmeta_source_circuit_open', 'javmeta_source_consecutive_blocks'], true)) {
+                    continue;
+                }
+                foreach ($metric['gauge']['dataPoints'] ?? [] as $point) {
+                    $attributes = [];
+                    foreach ($point['attributes'] ?? [] as $attribute) {
+                        $attributes[$attribute['key']] = $attribute['value']['stringValue'] ?? null;
+                    }
+                    if (($attributes['source_slug'] ?? null) === 'javbus') {
+                        $values[$metric['name']] = (float) ($point['asDouble'] ?? -1);
+                    }
+                }
+            }
+
+            return ($values['javmeta_source_circuit_open'] ?? null) === 1.0
+                && ($values['javmeta_source_consecutive_blocks'] ?? null) === 4.0;
+        });
+    }
+
     public function test_command_skips_when_disabled(): void
     {
         config()->set('openobserve.enabled', false);

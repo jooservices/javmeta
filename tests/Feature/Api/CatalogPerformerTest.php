@@ -15,7 +15,7 @@ final class CatalogPerformerTest extends TestCase
 
     public function test_performer_catalogs_count_performers_by_cup_blood_type_and_location(): void
     {
-        $headers = ['X-API-Key' => app(ApiKeyService::class)->create('catalog-performers')->plaintext];
+        $headers = ['X-API-Key' => app(ApiKeyService::class)->create('catalog-performers', 60, ['catalog'])->plaintext];
         Performer::factory()->count(3)->create(['cup' => 'D', 'blood_type' => 'O', 'location' => 'Tokyo']);
         Performer::factory()->create(['cup' => 'D', 'blood_type' => 'O型', 'location' => '東京都']);
         Performer::factory()->create(['cup' => 'E', 'blood_type' => null, 'location' => '']);

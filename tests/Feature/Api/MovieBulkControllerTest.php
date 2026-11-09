@@ -21,7 +21,7 @@ final class MovieBulkControllerTest extends TestCase
     {
         parent::setUp();
 
-        $this->apiKey = app(ApiKeyService::class)->create(fake()->words(2, true))->plaintext;
+        $this->apiKey = app(ApiKeyService::class)->create(fake()->words(2, true), 60, ['bulk'])->plaintext;
     }
 
     public function test_bulk_requires_api_key(): void

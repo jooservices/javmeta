@@ -42,13 +42,18 @@ final class CrawlQueueService
      */
     public function claimNext(string $workerId, ?string $kind = null, array $excludeSources = [], ?string $lane = null, ?array &$diagnostics = null): ?CrawlQueue
     {
+        $disabledSources = array_values(array_unique([
+            ...$this->sourceRepository()->disabledSlugs(),
+            ...app(SourceCircuitBreaker::class)->pausedSourceSlugs(),
+        ]));
+
         return $this->queueRepository()->claimNext(
             $workerId,
             $kind,
             $excludeSources,
             $lane,
             $diagnostics,
-            $this->sourceRepository()->disabledSlugs(),
+            $disabledSources,
             app(CrawlLaneService::class),
         );
     }
@@ -216,6 +221,9 @@ final class CrawlQueueService
     {
         return $this->queueRepository()->startClaimedRow($id, $expectedKind, $claimToken, function (CrawlQueue $row): ?array {
             $sourceSlug = (string) $row->source_slug;
+            if (app(SourceCircuitBreaker::class)->isPaused($sourceSlug)) {
+                return null;
+            }
             if ($this->sourceGapPolicy->isOverridden($sourceSlug)) {
                 $source = $this->sourceRepository()->findSource($sourceSlug);
                 if ($source instanceof Source) {
@@ -232,6 +240,9 @@ final class CrawlQueueService
                         return null;
                     }
                     $this->sourceRequestPacer->wait($wait);
+                    if (app(SourceCircuitBreaker::class)->isPaused($sourceSlug)) {
+                        return null;
+                    }
                 }
             }
 

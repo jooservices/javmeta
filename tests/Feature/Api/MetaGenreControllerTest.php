@@ -19,7 +19,7 @@ final class MetaGenreControllerTest extends TestCase
     {
         parent::setUp();
 
-        $this->apiKey = app(ApiKeyService::class)->create(fake()->words(2, true))->plaintext;
+        $this->apiKey = app(ApiKeyService::class)->create(fake()->words(2, true), 60, ['catalog'])->plaintext;
     }
 
     public function test_meta_genres_require_api_key(): void
