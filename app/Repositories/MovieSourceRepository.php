@@ -18,6 +18,26 @@ final class MovieSourceRepository extends BusinessQueryRepository
 
     public function recordDraft(int $movieId, MovieDraft $draft, ?string $mongoId): void
     {
+        $source = $this->newQuery()
+            ->where(['movie_id' => $movieId, 'site_slug' => $draft->sourceSlug])
+            ->lockForUpdate()
+            ->first();
+
+        if ($mongoId === null && $source instanceof MovieSource && $source->source_url === $draft->sourceUrl) {
+            $mongoId = $source->mongo_id;
+        }
+
+        if ($mongoId !== null) {
+            $previousSource = $this->newQuery()
+                ->where('site_slug', $draft->sourceSlug)
+                ->where('mongo_id', $mongoId)
+                ->where('movie_id', '!=', $movieId)
+                ->lockForUpdate()
+                ->first();
+
+            $previousSource?->forceFill(['mongo_id' => null])->save();
+        }
+
         $this->newQuery()->updateOrCreate(
             ['movie_id' => $movieId, 'site_slug' => $draft->sourceSlug],
             [
