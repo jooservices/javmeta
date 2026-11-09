@@ -960,6 +960,34 @@ return [
             'label' => 'Thời gian chờ qBittorrent (giây)',
             'description' => 'Giới hạn thời gian mỗi yêu cầu tới qBittorrent.',
         ],
+        'downloads__link_search_enabled' => [
+            'label' => 'Bật tìm link tải theo yêu cầu',
+            'description' => 'Cho phép mọi người (kể cả khách) bấm Tìm link tải trên trang phim. Tắt khi cần bảo vệ địa chỉ egress.',
+        ],
+        'downloads__link_search_cooldown_hours' => [
+            'label' => 'Nghỉ sau khi không tìm thấy (giờ)',
+            'description' => 'Sau kết quả không có link, cùng một phim không tìm lại cho đến hết khoảng này.',
+        ],
+        'downloads__link_search_global_budget_per_hour' => [
+            'label' => 'Ngân sách tìm toàn cục mỗi giờ',
+            'description' => 'Số lần tìm link tải tối đa trên toàn hệ thống mỗi giờ (bảo vệ IP egress chung).',
+        ],
+        'downloads__link_search_per_source_budget_per_hour' => [
+            'label' => 'Ngân sách tìm mỗi nguồn mỗi giờ',
+            'description' => 'Số lần tìm tối đa tới một nguồn tải mỗi giờ.',
+        ],
+        'downloads__link_search_client_budget_per_hour' => [
+            'label' => 'Ngân sách tìm mỗi máy khách mỗi giờ',
+            'description' => 'Số lần tìm tối đa mỗi địa chỉ IP/phiên mỗi giờ.',
+        ],
+        'downloads__link_search_timeout_seconds' => [
+            'label' => 'Thời gian chờ mỗi nguồn (giây)',
+            'description' => 'Giới hạn thời gian ngắn cho mỗi job tìm link trên một nguồn.',
+        ],
+        'downloads__link_search_max_sources_per_run' => [
+            'label' => 'Số nguồn tối đa mỗi lần tìm',
+            'description' => 'Mỗi lần bấm tìm chỉ hỏi tuần tự tối đa số nguồn này (không quạt đồng loạt).',
+        ],
         'files__enabled' => [
             'label' => 'Bật máy chủ tệp',
             'description' => 'TẮT cho tới khi chủ sở hữu duyệt (JOOXCR-223). Phục vụ tệp đã tải qua liên kết ký có thời hạn.',
@@ -1020,5 +1048,12 @@ return [
             'label' => 'Kích thước lô backfill',
             'description' => 'Số hồ sơ diễn viên xử lý trước mỗi mốc tiếp tục; có thể ghi đè bằng tùy chọn --chunk.',
         ],
+    ],
+    'validation' => [
+        'queue_worker_timeout' => 'queue.worker_timeout phải dài hơn timeouts.fetch_service_seconds.',
+        'worker_stop_grace' => 'worker.stop_grace_seconds phải ít nhất bằng queue.worker_timeout.',
+        'queue_retry_after' => 'queue.retry_after_seconds phải dài hơn queue.worker_timeout.',
+        'browser_gateway_wait' => 'browser.gateway_wait_timeout_ms phải dài hơn thời gian chờ của Playwright và FlareSolverr.',
+        'browser_gateway_client' => 'browser.gateway_client_timeout_ms phải dài hơn browser.gateway_wait_timeout_ms.',
     ],
 ];

@@ -500,7 +500,7 @@ final class SettingsService
         $timeout = $this->storedOrDefaultWorkerValue('queue.worker_timeout', $saved);
         $grace = $this->storedOrDefaultWorkerValue('worker.stop_grace_seconds', $saved);
         if ((int) $grace < (int) $timeout) {
-            throw new InvalidArgumentException('worker.stop_grace_seconds must be at least queue.worker_timeout.');
+            throw new InvalidArgumentException(__('settings.validation.worker_stop_grace'));
         }
     }
 
@@ -748,6 +748,11 @@ final class SettingsService
             }
         }
 
+        $downloadSearchQueue = (string) config('javmeta_queues.download_search_queue', 'download_search');
+        if (! in_array($downloadSearchQueue, $items, true)) {
+            $items[] = $downloadSearchQueue;
+        }
+
         return $items;
     }
 
@@ -905,32 +910,7 @@ final class SettingsService
 
             return $this->validate($setting, $definition, $this->effectiveValue($setting, $definition, $this->fromStorage($definition, $saved[$setting])));
         };
-        $fetchClient = (int) $candidate('queue.worker_timeout');
-        $fetchService = (int) $candidate('timeouts.fetch_service_seconds');
-        if ($fetchClient <= $fetchService) {
-            throw new InvalidArgumentException('queue.worker_timeout must exceed timeouts.fetch_service_seconds.');
-        }
-        $stopGrace = (int) $candidate('worker.stop_grace_seconds');
-        if ($stopGrace < $fetchClient) {
-            throw new InvalidArgumentException('worker.stop_grace_seconds must be at least queue.worker_timeout.');
-        }
-
-        $retryAfter = (int) $candidate('queue.retry_after_seconds');
-        if ($retryAfter <= $fetchClient) {
-            throw new InvalidArgumentException('queue.retry_after_seconds must exceed queue.worker_timeout.');
-        }
-
-        $gatewayClient = (int) $candidate('browser.gateway_client_timeout_ms');
-        $gatewayWait = (int) $candidate('browser.gateway_wait_timeout_ms');
-        $playwright = (int) $candidate('browser.playwright_request_timeout_ms');
-        $flareSolverr = (int) $candidate('browser.flaresolverr_max_timeout_ms');
-        if ($gatewayWait <= max($playwright, $flareSolverr)) {
-            throw new InvalidArgumentException('browser.gateway_wait_timeout_ms must exceed Playwright and FlareSolverr service timeouts.');
-        }
-        if ($gatewayClient <= $gatewayWait) {
-            throw new InvalidArgumentException('browser.gateway_client_timeout_ms must exceed browser.gateway_wait_timeout_ms.');
-        }
-
+        (new TimeoutRelationshipValidator())->validate($candidate);
         $validateSuccessRatePair = array_key_exists('alerts.success_rate_min_percent', $overrides)
             || array_key_exists('alerts.success_rate_critical_percent', $overrides);
         (new AlertThresholdOrderValidator())->validate($candidate, $validateSuccessRatePair);

@@ -10,6 +10,7 @@ use App\Http\Resources\Concerns\FormatsPhotos;
 use App\Models\Movie;
 use App\Models\MovieCredit;
 use App\Models\MovieMedia;
+use App\Services\Downloads\DownloadLinkSearchService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Collection;
@@ -65,6 +66,7 @@ final class MovieResource extends JsonResource
             'completeness_tier' => $resource->completeness_tier,
             'attrs' => $this->attrsArray($resource->getAttribute('attrs')),
             'magnets' => $this->media($resource, MovieMedia::KIND_MAGNET),
+            'downloads' => app(DownloadLinkSearchService::class)->summarize((int) $resource->id)->toArray(),
             'hls_stream_urls' => $this->media($resource, MovieMedia::KIND_HLS),
             'gallery' => $this->media($resource, MovieMedia::KIND_GALLERY),
             'photos' => $this->photos(

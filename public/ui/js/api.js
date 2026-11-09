@@ -41,16 +41,22 @@ export async function api(path, params = {}, opt = {}) {
 export const pagination = body => (body.meta && body.meta.pagination) || {};
 
 /* Changes made by the owner (admin page): POST/DELETE to /ui-admin with the page's CSRF token. */
+const guestWriteAllowed = (method, path) => method === 'POST' && /^\/ui-api\/movies\/[^/]+\/downloads\/search\/?$/.test(path);
+
 export async function send(method, path, body) {
-  if (guestMode()) throw new ApiError(t('api.error.login_required'), 401, null);
+  const fullPath = path.startsWith('/') ? path : '/ui-admin/' + path;
+  if (guestMode() && !guestWriteAllowed(method, fullPath)) throw new ApiError(t('api.error.login_required'), 401, null);
   const token = document.querySelector('meta[name=csrf-token]')?.content || '';
   let res;
   try {
-    res = await fetch(path.startsWith('/') ? path : '/ui-admin/' + path, { method, credentials: 'same-origin', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token, ...lang() }, body: body ? JSON.stringify(body) : undefined });
+    res = await fetch(fullPath, { method, credentials: 'same-origin', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token, ...lang() }, body: body ? JSON.stringify(body) : undefined });
   } catch { throw new ApiError(t('api.error.network'), 0, null); }
   if (res.status === 204) return null;
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(data.detail || data.message || data.title || httpError(res.status), res.status, data);
+  // The public search endpoint returns a useful summary with its 429 budget response.
+  if (!res.ok && !(res.status === 429 && guestWriteAllowed(method, fullPath))) {
+    throw new ApiError(data.detail || data.message || data.title || httpError(res.status), res.status, data);
+  }
   return data;
 }
 

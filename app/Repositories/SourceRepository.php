@@ -77,6 +77,11 @@ final class SourceRepository extends EloquentRepository implements RepositoryInt
         return $source;
     }
 
+    public function isEnabled(string $slug): bool
+    {
+        return (bool) $this->newQuery()->whereKey($slug)->value('enabled');
+    }
+
     /** @return list<string> */
     public function disabledSlugs(): array
     {

@@ -243,7 +243,7 @@ final class SettingsTest extends TestCase
     {
         $settings = app(SettingsService::class);
         $settings->set('worker.queue_names', ['listing', 'detail', 'browser_detail', 'observability']);
-        $this->assertSame(['listing', 'detail', 'browser_detail', 'observability', 'browser_listing', 'retry_listing', 'retry_detail'], config('javmeta_queues.horizon_names'));
+        $this->assertSame(['listing', 'detail', 'browser_detail', 'observability', 'browser_listing', 'retry_listing', 'retry_detail', 'download_search'], config('javmeta_queues.horizon_names'));
         $settings->set('worker.queue_overrides', ['listing' => 2, 'browser_detail' => 1]);
         $this->assertSame(['listing' => 2, 'browser_detail' => 1], config('javmeta_queues.worker_queue_overrides'));
         foreach ([

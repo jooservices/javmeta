@@ -69,6 +69,8 @@ the calculation, reserve, metrics, and alert.
 
 Movie and performer persistence dispatches a unique job to `search` after the database transaction commits. The crawl worker does not call Elasticsearch or the embedder; Horizon handles indexing with the configured database retry count and backoff. A failed job is recorded by Laravel's configured failed-job store and Horizon. `search.enabled` prevents new indexing jobs from being dispatched; queued jobs also exit without indexing while the switch is off.
 
+On-demand movie link lookups use the separate, lower-priority `download_search` queue. It shares the `search` supervisor so it does not add a PostgreSQL worker pool; saved worker queue lists are normalized to include it.
+
 Shared integration tests use the Workspaces Redis account on the project's own database indexes (`provision-project javmeta --redis`: live and test indexes) and the key prefixes `javmeta:`, `javmeta_test:` and `javmeta_wt<id>:`; the shared Redis service has one root account and no per-project Redis users or ACLs. `docker/ci/integration-shared` verifies the target with `check-project` first.
 
 ## Backpressure

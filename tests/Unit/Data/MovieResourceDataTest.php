@@ -59,6 +59,7 @@ final class MovieResourceDataTest extends TestCase
             'completeness_tier',
             'attrs',
             'magnets',
+            'downloads',
             'hls_stream_urls',
             'gallery',
             'photos',

@@ -46,6 +46,7 @@ empty array); keys are never omitted. Changes are additive: existing keys keep t
 | `completeness_tier` | string or null | How complete the record is |
 | `attrs` | object | Sparse source-specific extras |
 | `magnets`, `hls_stream_urls`, `gallery` | array | Media links |
+| `downloads` | object | Link availability, result count, search state, cooldown and whether on-demand search is enabled |
 | `photos` | object | Images and galleries |
 | `crawled_at`, `delisted_at` | datetime or null | ISO 8601 |
 | `needs_review` | boolean | Flagged for manual review |

@@ -960,6 +960,34 @@ return [
             'label' => 'qBittorrent timeout (seconds)',
             'description' => 'Time limit for each request to qBittorrent.',
         ],
+        'downloads__link_search_enabled' => [
+            'label' => 'Enable on-demand download-link search',
+            'description' => 'Allows anyone, including guests, to request a download-link search from a movie page. Turn it off to protect the shared egress address.',
+        ],
+        'downloads__link_search_cooldown_hours' => [
+            'label' => 'Cooldown after no links are found (hours)',
+            'description' => 'After a search finds no links, the same movie cannot be searched again until this interval expires.',
+        ],
+        'downloads__link_search_global_budget_per_hour' => [
+            'label' => 'Global search budget per hour',
+            'description' => 'Maximum download-link searches across the whole system per hour to protect the shared egress IP.',
+        ],
+        'downloads__link_search_per_source_budget_per_hour' => [
+            'label' => 'Search budget per source per hour',
+            'description' => 'Maximum searches sent to one download source per hour.',
+        ],
+        'downloads__link_search_client_budget_per_hour' => [
+            'label' => 'Search budget per client per hour',
+            'description' => 'Maximum searches per IP address and session per hour.',
+        ],
+        'downloads__link_search_timeout_seconds' => [
+            'label' => 'Timeout per source (seconds)',
+            'description' => 'Short time limit for each download-link search job on one source.',
+        ],
+        'downloads__link_search_max_sources_per_run' => [
+            'label' => 'Maximum sources per search',
+            'description' => 'Each search requests this many sources at most, in sequence rather than all at once.',
+        ],
         'files__enabled' => [
             'label' => 'Enable file server',
             'description' => 'OFF until the owner approves (JOOXCR-223). Serves downloaded files through signed, time-limited links.',
@@ -1020,5 +1048,12 @@ return [
             'label' => 'Backfill batch size',
             'description' => 'Number of performer profiles processed before each resume marker; can be overridden with the --chunk option.',
         ],
+    ],
+    'validation' => [
+        'queue_worker_timeout' => 'queue.worker_timeout must exceed timeouts.fetch_service_seconds.',
+        'worker_stop_grace' => 'worker.stop_grace_seconds must be at least queue.worker_timeout.',
+        'queue_retry_after' => 'queue.retry_after_seconds must exceed queue.worker_timeout.',
+        'browser_gateway_wait' => 'browser.gateway_wait_timeout_ms must exceed the Playwright and FlareSolverr service timeouts.',
+        'browser_gateway_client' => 'browser.gateway_client_timeout_ms must exceed browser.gateway_wait_timeout_ms.',
     ],
 ];

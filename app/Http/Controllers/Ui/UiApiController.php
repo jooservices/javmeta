@@ -107,7 +107,8 @@ final class UiApiController
                 array_filter($payload['data'], 'is_array'),
             );
         } elseif (preg_match('#^movies/[A-Za-z0-9._-]+$#D', $path) === 1 && is_array($payload['data'] ?? null)) {
-            unset($payload['data']['magnets'], $payload['data']['hls_stream_urls'], $payload['data']['gallery'], $payload['data']['photos']);
+            // Magnets/torrents stay public (JOOXCR-445); signed media galleries stay owner-only.
+            unset($payload['data']['hls_stream_urls'], $payload['data']['gallery'], $payload['data']['photos']);
         }
 
         $payload = $this->redactPrivateFields($payload);
@@ -121,7 +122,7 @@ final class UiApiController
     {
         foreach ($value as $key => $item) {
             $normalizedKey = strtolower((string) $key);
-            if (preg_match('/(?:api.?key|(?:private|access|secret|signing|encryption|client).?key|key.?hash|token|password|secret|credential|cookie|authorization|headers|last.?error|internal|base.?url|file.?path|local.?path|storage.?path|library.?file.?id|file.?id|magnet|hls|stream.?url|play.?url|download.?url|gallery|photos|path|marks?|saved.?search|follows?|signature|expires|stack|trace|exception)/', $normalizedKey) === 1) {
+            if (preg_match('/(?:api.?key|(?:private|access|secret|signing|encryption|client).?key|key.?hash|token|password|secret|credential|cookie|authorization|headers|last.?error|internal|base.?url|file.?path|local.?path|storage.?path|library.?file.?id|file.?id|hls|stream.?url|play.?url|download.?url|gallery|photos|path|marks?|saved.?search|follows?|signature|expires|stack|trace|exception)/', $normalizedKey) === 1) {
                 unset($value[$key]);
             } elseif (is_array($item)) {
                 $value[$key] = $this->redactPrivateFields($item);

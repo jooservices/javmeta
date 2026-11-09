@@ -175,6 +175,11 @@ final class UiGuestModeTest extends TestCase
         ]);
         MovieMedia::factory()->create([
             'movie_id' => $movie->id,
+            'kind' => MovieMedia::KIND_MAGNET,
+            'url' => 'magnet:?xt=urn:btih:guestpublicmagnetfixture00000000000000000000',
+        ]);
+        MovieMedia::factory()->create([
+            'movie_id' => $movie->id,
             'kind' => MovieMedia::KIND_HLS,
             'url' => 'https://cdn.example.com/media/video.m3u8?signature=private-signature',
         ]);
@@ -186,7 +191,8 @@ final class UiGuestModeTest extends TestCase
 
         $response = $this->getJson('/ui-api/movies/GUEST-001')->assertOk();
 
-        $response->assertJsonMissingPath('data.magnets');
+        $response->assertJsonPath('data.magnets.0.url', 'magnet:?xt=urn:btih:guestpublicmagnetfixture00000000000000000000');
+        $response->assertJsonPath('data.downloads.available', true);
         $response->assertJsonMissingPath('data.hls_stream_urls');
         $response->assertJsonMissingPath('data.gallery');
         $response->assertJsonMissingPath('data.photos');
@@ -356,9 +362,16 @@ final class UiGuestModeTest extends TestCase
             $this->assertSame($allowed, $matrix[$identifier]['guest_allowed'], 'Guest matrix classification differs from code: ' . $identifier);
 
             if ($allowed) {
-                $this->assertEqualsCanonicalizing(['GET', 'HEAD'], $route->methods(), 'Guest routes must be GET/HEAD only: ' . $identifier);
-                $response = $this->call('GET', $this->routeProbePath($route));
-                $this->assertContains($response->getStatusCode(), [200, 302, 503], 'Guest route did not respond safely: ' . $identifier);
+                $isDownloadSearch = $route->uri() === 'ui-api/movies/{code}/downloads/search';
+                if ($isDownloadSearch) {
+                    $this->assertEqualsCanonicalizing(['POST'], $route->methods(), 'Download search must stay POST-only: ' . $identifier);
+                    $response = $this->call('POST', $this->routeProbePath($route), [], [], [], ['HTTP_ACCEPT' => 'application/json']);
+                    $this->assertContains($response->getStatusCode(), [202, 403, 404, 429], 'Guest download search did not respond safely: ' . $identifier);
+                } else {
+                    $this->assertEqualsCanonicalizing(['GET', 'HEAD'], $route->methods(), 'Guest routes must be GET/HEAD only: ' . $identifier);
+                    $response = $this->call('GET', $this->routeProbePath($route));
+                    $this->assertContains($response->getStatusCode(), [200, 302, 503], 'Guest route did not respond safely: ' . $identifier);
+                }
                 $this->assertGuestResponseContainsNoKnownSecrets($response->getContent());
 
                 if (in_array($route->uri(), ['app', 'ui-api/{path}'], true)) {
@@ -401,7 +414,12 @@ final class UiGuestModeTest extends TestCase
                 $guestRoutes[] = $this->routeIdentifier($route);
             }
         }
-        $this->assertEqualsCanonicalizing(['GET|HEAD app', 'GET|HEAD ui-api/{path}', 'DELETE|PATCH|POST|PUT ui-api/{path}'], $guestRoutes);
+        $this->assertEqualsCanonicalizing([
+            'GET|HEAD app',
+            'GET|HEAD ui-api/{path}',
+            'POST ui-api/movies/{code}/downloads/search',
+            'DELETE|PATCH|POST|PUT ui-api/{path}',
+        ], $guestRoutes);
 
         foreach (['movies', 'movies/AAA-001', 'performers', 'search', 'suggest', 'meta/catalog/genres', 'movies/calendar', 'status/summary'] as $path) {
             $this->assertTrue(UiApiController::guestPathAllowed($path), 'Public bridge path is missing: ' . $path);

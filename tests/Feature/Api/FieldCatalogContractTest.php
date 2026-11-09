@@ -23,7 +23,7 @@ final class FieldCatalogContractTest extends TestCase
     private const MOVIE_FIELDS = [
         'uuid', 'code', 'codes', 'title_jp', 'title_en', 'description', 'performers', 'directors', 'cover_url',
         'cover_thumb_url', 'release_date', 'runtime_minutes', 'maker', 'label', 'series', 'genres', 'censored',
-        'community_score', 'completeness_tier', 'attrs', 'magnets', 'hls_stream_urls', 'gallery', 'photos',
+        'community_score', 'completeness_tier', 'attrs', 'magnets', 'downloads', 'hls_stream_urls', 'gallery', 'photos',
         'crawled_at', 'delisted_at', 'needs_review',
     ];
 
