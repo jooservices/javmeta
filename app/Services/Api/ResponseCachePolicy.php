@@ -45,7 +45,7 @@ final class ResponseCachePolicy
         $catalog = ['q', 'sort', 'per_page', 'page', 'include_unknown', 'min_count', 'script', ...self::LOCALE];
 
         $this->rules = [
-            'api/v1/movies' => new ResponseCacheRule('lists', self::MOVIE_LIST, ['per_page' => 10, 'sort' => 'relevance', 'semantic' => false], 100),
+            'api/v1/movies' => new ResponseCacheRule('lists', self::MOVIE_LIST, ['per_page' => 10, 'semantic' => false], 100),
             'api/v1/performers' => new ResponseCacheRule('lists', self::PERFORMER_LIST, ['per_page' => 15, 'sort' => 'name'], 100),
             'api/v1/movies/facets' => new ResponseCacheRule('facets', $movieFacets),
             'api/v1/performers/facets' => new ResponseCacheRule('facets', $performerFacets),
@@ -69,6 +69,7 @@ final class ResponseCachePolicy
         $route = match (true) {
             in_array($path, ['movies', 'performers', 'movies/facets', 'performers/facets', 'movies/facets/values', 'performers/facets/values', 'meta/genres', 'suggest', 'status/summary'], true) => 'api/v1/' . $path,
             preg_match('#^meta/catalog/[a-z_]+$#D', $path) === 1 => 'api/v1/meta/catalog/{kind}',
+            $path === 'movies/calendar' => null,
             preg_match('#^movies/[A-Za-z0-9._-]+$#D', $path) === 1 => 'api/v1/movies/{code}',
             default => null,
         };

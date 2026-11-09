@@ -71,4 +71,13 @@ final class PerformanceCache
 
         return $data;
     }
+
+    /** @param array<string, mixed> $filters
+     * @return array<string, mixed>
+     */
+    public function facetsForResponse(array $filters = []): array
+    {
+        // The API response cache owns this endpoint's freshness. An inner cache could outlive its configured TTL.
+        return $this->movies->facets($filters);
+    }
 }

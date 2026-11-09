@@ -19,6 +19,9 @@ return [
 
     'default' => env('CACHE_STORE', 'database'),
 
+    // Keep request abuse limits on a shared durable store when Redis is down.
+    'limiter' => 'database',
+
     'serializable_classes' => false,
 
     /*

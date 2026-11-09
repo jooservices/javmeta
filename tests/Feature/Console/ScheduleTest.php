@@ -96,7 +96,7 @@ final class ScheduleTest extends TestCase
 
     public function test_feed_pool_schedule_polls_at_five_seconds_independent_of_the_current_database_interval(): void
     {
-        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class));
+        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class), app(\App\Services\Api\ResponseCacheEpoch::class));
         $this->app->instance(SettingsService::class, $settings);
         $previousEnvironment = app('env');
         app()->instance('env', 'local');
@@ -139,7 +139,7 @@ final class ScheduleTest extends TestCase
 
     public function test_legacy_hourly_report_is_disabled_by_default_and_while_periodic_is_enabled(): void
     {
-        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class));
+        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class), app(\App\Services\Api\ResponseCacheEpoch::class));
         $settings->set('report.legacy_hourly_enabled', true);
         $settings->set('report.enabled', true);
         $this->app->instance(SettingsService::class, $settings);
@@ -157,7 +157,7 @@ final class ScheduleTest extends TestCase
 
     public function test_daily_report_schedule_uses_saved_time_and_timezone(): void
     {
-        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class));
+        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class), app(\App\Services\Api\ResponseCacheEpoch::class));
         $settings->set('report.daily_time', '09:15');
         $settings->set('report.daily_timezone', 'UTC');
         $this->app->instance(SettingsService::class, $settings);

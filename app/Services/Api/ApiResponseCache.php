@@ -9,7 +9,10 @@ use Closure;
 use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
+use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
+use ReflectionMethod;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\Response;
 use RuntimeException;
@@ -26,6 +29,10 @@ final readonly class ApiResponseCache
     /** @param Closure(Request): Response $next */
     public function handleApi(Request $request, Closure $next): Response
     {
+        if ($request->isMethod('HEAD')) {
+            return $next($request);
+        }
+
         if ($request->attributes->get('javmeta.internal_ui') === true) {
             return $next($request);
         }
@@ -41,6 +48,8 @@ final readonly class ApiResponseCache
         if (! is_object($apiKey) || ! isset($apiKey->id)) {
             return $next($request);
         }
+
+        $this->validateRouteFormRequest($route, $request);
 
         $scopes = is_array($apiKey->scopes ?? null) ? array_values(array_map('strval', $apiKey->scopes)) : [];
         sort($scopes);
@@ -60,10 +69,16 @@ final readonly class ApiResponseCache
     /** @param Closure(): Response $next */
     public function handleUi(Request $request, string $path, string $principal, bool $guest, Closure $next): Response
     {
+        if ($request->isMethod('HEAD')) {
+            return $next();
+        }
+
         $rule = $this->policy->forUiPath($path);
         if ($rule === null || (! $guest && $principal === 'ui:owner:unknown')) {
             return $next();
         }
+
+        $this->validateUiFormRequest($request, $path);
 
         return $this->handleResponseCache(
             $request,
@@ -75,6 +90,56 @@ final readonly class ApiResponseCache
             $guest,
             $next,
         );
+    }
+
+    private function validateUiFormRequest(Request $request, string $path): void
+    {
+        $validationRequest = Request::create(
+            '/api/v1/' . $path,
+            'GET',
+            $request->query->all(),
+            [],
+            [],
+            [
+                'HTTP_ACCEPT' => 'application/json',
+                'HTTP_ACCEPT_LANGUAGE' => (string) $request->header('Accept-Language', ''),
+            ],
+        );
+        $route = app('router')->getRoutes()->match($validationRequest);
+        $validationRequest->setRouteResolver(static fn(): Route => $route);
+        $this->validateRouteFormRequest($route, $validationRequest);
+    }
+
+    private function validateRouteFormRequest(Route $route, Request $request): void
+    {
+        $controller = $route->getControllerClass();
+        if (! is_string($controller) || ! class_exists($controller)) {
+            return;
+        }
+
+        $method = $route->getActionMethod();
+        if (! method_exists($controller, $method)) {
+            return;
+        }
+
+        $reflection = new ReflectionMethod($controller, $method);
+        foreach ($reflection->getParameters() as $parameter) {
+            $type = $parameter->getType();
+            $class = $type instanceof \ReflectionNamedType && ! $type->isBuiltin() ? $type->getName() : null;
+            if ($class === null || ! is_subclass_of($class, FormRequest::class)) {
+                continue;
+            }
+
+            $originalRequest = app('request');
+            app()->instance('request', $request);
+            try {
+                app()->make($class);
+            } finally {
+                app()->instance('request', $originalRequest);
+            }
+
+            return;
+        }
     }
 
     /**
@@ -191,7 +256,7 @@ final readonly class ApiResponseCache
             $lock = $this->lock(
                 $context['store'],
                 $this->lockKey($rule->class, $this->slot($rule->class, $context['fingerprint'])),
-                max(5, (int) config('javmeta_response_cache.lock_seconds', 300)),
+                max(300, (int) config('javmeta_response_cache.lock_seconds', 300)),
             );
             $acquired = $lock->get();
             $deadline = microtime(true) + max(0, (int) config('javmeta_response_cache.lock_wait_milliseconds', 750)) / 1000;

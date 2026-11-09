@@ -15,6 +15,7 @@ use App\Services\Dataset\SampleDataset;
 use App\Services\Api\ResponseCacheEpoch;
 use App\Services\Persist\GalleryPersister;
 use App\Services\Persist\PerformerPersister;
+use App\Services\Settings\SettingsService;
 use Illuminate\Cache\ArrayStore;
 use Illuminate\Contracts\Cache\Store;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -22,6 +23,8 @@ use Illuminate\Http\Request as HttpRequest;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use JOOservices\LaravelConfig\Contracts\ConfigStore;
+use JOOservices\LaravelConfig\Testing\FakeConfigStore;
 use JOOservices\CrawlerX\Dto\Entity\GalleryDto;
 use JOOservices\CrawlerX\Dto\Entity\PhotoDto;
 use Mockery;
@@ -102,6 +105,37 @@ final class ApiResponseCacheTest extends TestCase
             ->get('/ui-api/status/summary')
             ->assertStatus(304)
             ->assertHeader('ETag', $etag);
+    }
+
+    public function test_head_does_not_store_an_empty_representation_for_a_following_get(): void
+    {
+        app(SampleDataset::class)->load();
+        $headers = [
+            'X-API-Key' => app(ApiKeyService::class)->create('response-cache-head', 60, ['movies'])->plaintext,
+        ];
+
+        $this->head('/api/v1/movies?per_page=10', $headers)->assertOk();
+
+        $response = $this->getJson('/api/v1/movies?per_page=10', $headers)->assertOk();
+        $this->assertNotSame('', (string) $response->getContent());
+        $response->assertJsonPath('meta.pagination.total', 520);
+    }
+
+    public function test_ui_calendar_months_and_invalid_months_bypass_the_response_cache(): void
+    {
+        $store = $this->useSwitchableResponseCacheStore();
+        config(['javmeta_response_cache.store' => 'response-cache-switchable']);
+        Movie::factory()->create(['display_code' => 'CAL-OCT', 'release_date' => '2026-10-03']);
+        Movie::factory()->create(['display_code' => 'CAL-NOV', 'release_date' => '2026-11-03']);
+
+        $october = $this->getJson('/ui-api/movies/calendar?month=2026-10')->assertOk();
+        $november = $this->getJson('/ui-api/movies/calendar?month=2026-11')->assertOk();
+        $october->assertJsonPath('meta.month', '2026-10')->assertJsonFragment(['code' => 'CAL-OCT']);
+        $october->assertJsonMissing(['code' => 'CAL-NOV']);
+        $november->assertJsonPath('meta.month', '2026-11')->assertJsonFragment(['code' => 'CAL-NOV']);
+        $november->assertJsonMissing(['code' => 'CAL-OCT']);
+        $this->getJson('/ui-api/movies/calendar?month=2026-13')->assertStatus(400);
+        $this->assertSame(0, $store->getCalls, 'Calendar requests must not be classified as movie detail cache entries.');
     }
 
     public function test_guest_response_is_not_shared_cacheable_before_login_is_enabled(): void
@@ -241,15 +275,82 @@ final class ApiResponseCacheTest extends TestCase
 
     public function test_warm_cache_does_not_skip_movie_search_or_facet_validation(): void
     {
+        $store = $this->useSwitchableResponseCacheStore();
+        config(['javmeta_response_cache.store' => 'response-cache-switchable']);
         $headers = [
             'X-API-Key' => app(ApiKeyService::class)->create('response-cache-validation', 60, ['movies'])->plaintext,
         ];
 
         $this->getJson('/api/v1/movies?per_page=10', $headers)->assertOk();
+        $store->getCalls = 0;
         $this->getJson('/api/v1/movies?per_page=10.9', $headers)->assertStatus(400);
+        $this->getJson('/api/v1/movies?per_page=10.9', $headers)->assertStatus(400);
+        $this->assertSame(0, $store->getCalls, 'Invalid movie list requests must be rejected before the response cache is read.');
 
         $this->getJson('/api/v1/movies/facets', $headers)->assertOk();
+        $store->getCalls = 0;
         $this->getJson('/api/v1/movies/facets?sort=invalid', $headers)->assertStatus(400);
+        $this->assertSame(0, $store->getCalls, 'Invalid facet requests must be rejected before the response cache is read.');
+    }
+
+    public function test_cursor_validation_distinguishes_an_omitted_sort_from_an_explicit_sort(): void
+    {
+        app(SampleDataset::class)->load();
+        $headers = [
+            'X-API-Key' => app(ApiKeyService::class)->create('response-cache-cursor-sort', 60, ['movies'])->plaintext,
+        ];
+        $first = $this->getJson('/api/v1/movies?sort=release_date&per_page=1', $headers)->assertOk();
+        $cursor = (string) $first->json('meta.pagination.next_cursor');
+        $cursorPath = '/api/v1/movies?per_page=1&cursor=' . urlencode($cursor);
+
+        $this->getJson($cursorPath, $headers)->assertOk();
+        $this->getJson($cursorPath . '&sort=relevance', $headers)->assertStatus(400);
+    }
+
+    public function test_facet_response_ttl_rebuilds_after_the_configured_ttl(): void
+    {
+        app(SampleDataset::class)->load();
+        config([
+            'javmeta_response_cache.ttl.facets' => 1,
+            'javmeta_response_cache.stale_seconds' => 0,
+        ]);
+        $headers = [
+            'X-API-Key' => app(ApiKeyService::class)->create('response-cache-facet-ttl', 60, ['movies'])->plaintext,
+        ];
+
+        $this->getJson('/api/v1/movies/facets', $headers)->assertOk()->assertJsonPath('data.total', 520);
+        Movie::factory()->create(['maker' => 'Added after facet cache warm']);
+        $this->travel(2)->seconds();
+
+        $this->getJson('/api/v1/movies/facets', $headers)->assertOk()->assertJsonPath('data.total', 521);
+    }
+
+    public function test_location_alias_setting_changes_bump_the_response_epoch(): void
+    {
+        $store = new FakeConfigStore();
+        $this->app->instance(ConfigStore::class, $store);
+        $this->app->forgetInstance(SettingsService::class);
+        $settings = app(SettingsService::class);
+        $epoch = app(ResponseCacheEpoch::class);
+        $before = $epoch->current();
+
+        $settings->set('normalization.location_aliases', ['tokyo' => '東京都', '東京都' => '東京都']);
+
+        $this->assertNotSame($before, $epoch->current());
+    }
+
+    public function test_sample_dataset_wipe_invalidates_the_cached_movie_list(): void
+    {
+        $dataset = app(SampleDataset::class);
+        $dataset->load();
+        $headers = [
+            'X-API-Key' => app(ApiKeyService::class)->create('response-cache-wipe', 60, ['movies'])->plaintext,
+        ];
+        $this->getJson('/api/v1/movies?per_page=50', $headers)->assertOk()->assertJsonPath('meta.pagination.total', 520);
+
+        $dataset->wipe();
+
+        $this->getJson('/api/v1/movies?per_page=50', $headers)->assertOk()->assertJsonPath('meta.pagination.total', 0);
     }
 
     public function test_gallery_write_during_response_cache_outage_invalidates_movie_and_performer_responses(): void
@@ -323,24 +424,26 @@ final class ApiResponseCacheTest extends TestCase
             ->assertJsonPath('meta.pagination.total', 1);
     }
 
-    public function test_rate_limiter_failure_fails_closed_and_ui_status_degrades_without_a_500(): void
+    public function test_default_cache_outage_uses_the_durable_rate_limiter_fallback_for_api_and_guest_status(): void
     {
         $cacheStore = $this->useSwitchableResponseCacheStore();
         config([
             'cache.default' => 'response-cache-switchable',
+            'cache.limiter' => 'database',
             'javmeta_response_cache.store' => 'array',
             'javmeta.ui_login_required' => false,
+            'javmeta.ui_guest_rate_limit_per_minute' => 1,
         ]);
         $cacheStore->unavailable = true;
         $headers = [
-            'X-API-Key' => app(ApiKeyService::class)->create('response-cache-rate-limiter', 60, ['status'])->plaintext,
+            'X-API-Key' => app(ApiKeyService::class)->create('response-cache-rate-limiter', 1, ['status'])->plaintext,
         ];
 
-        $apiResponse = $this->getJson('/api/v1/status/summary', $headers)->assertStatus(503);
-        $this->assertStringContainsString('no-store', (string) $apiResponse->headers->get('Cache-Control'));
+        $this->getJson('/api/v1/status/summary', $headers)->assertOk();
+        $this->getJson('/api/v1/status/summary', $headers)->assertStatus(429);
         $this->getJson('/ui-api/status/summary')
-            ->assertStatus(503)
-            ->assertHeader('Cache-Control', 'no-store, private');
+            ->assertOk();
+        $this->getJson('/ui-api/status/summary')->assertStatus(429);
 
         $owner = User::factory()->create(['role' => 'super_administrator']);
         $this->actingAs($owner)
@@ -354,11 +457,12 @@ final class ApiResponseCacheTest extends TestCase
         config([
             'javmeta_response_cache.store' => 'array',
             'javmeta_response_cache.slots_per_class' => 1,
-            'javmeta_response_cache.lock_wait_milliseconds' => 0,
+            'javmeta_response_cache.lock_seconds' => 1,
         ]);
         $apiKey = (object) ['id' => 'lock-collision', 'scopes' => ['movies']];
         $builderCalls = 0;
         $waiterResponse = null;
+        $startedAt = microtime(true);
 
         $response = $this->runCachedApiRequest($apiKey, '/api/v1/movies?per_page=10', function () use ($apiKey, &$builderCalls, &$waiterResponse): SymfonyResponse {
             $builderCalls++;
@@ -379,6 +483,7 @@ final class ApiResponseCacheTest extends TestCase
         $this->assertInstanceOf(SymfonyResponse::class, $waiterResponse);
         $this->assertSame(503, $waiterResponse->getStatusCode());
         $this->assertSame(200, $response->getStatusCode());
+        $this->assertGreaterThanOrEqual(0.7, microtime(true) - $startedAt, 'The waiter should outlast the response rebuild wait without becoming a second builder.');
     }
 
     /** @return array{int, int} cold/warm SELECT counts against domain tables only */
@@ -441,9 +546,11 @@ final class ApiResponseCacheTest extends TestCase
     {
         $store = new class extends ArrayStore {
             public bool $unavailable = false;
+            public int $getCalls = 0;
 
             public function get($key, $default = null): mixed
             {
+                $this->getCalls++;
                 if ($this->unavailable) {
                     throw new RuntimeException('cache unavailable');
                 }
@@ -458,6 +565,24 @@ final class ApiResponseCacheTest extends TestCase
                 }
 
                 return parent::put($key, $value, $seconds);
+            }
+
+            public function add($key, $value, $seconds): bool
+            {
+                if ($this->unavailable) {
+                    throw new RuntimeException('cache unavailable');
+                }
+
+                return parent::add($key, $value, $seconds);
+            }
+
+            public function increment($key, $value = 1): int|false
+            {
+                if ($this->unavailable) {
+                    throw new RuntimeException('cache unavailable');
+                }
+
+                return parent::increment($key, $value);
             }
         };
 
