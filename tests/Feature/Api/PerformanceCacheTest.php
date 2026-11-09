@@ -8,6 +8,7 @@ use App\Models\Genre;
 use App\Models\Movie;
 use App\Repositories\MovieRepository;
 use App\Services\Performance\PerformanceCache;
+use App\Services\Api\ResponseCacheEpoch;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
@@ -17,9 +18,15 @@ final class PerformanceCacheTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        config(['javmeta_response_cache.store' => 'array']);
+    }
+
     public function test_warmer_refreshes_existing_values_and_readers_share_the_cache_keys(): void
     {
-        Cache::put('javmeta:status:summary', ['old' => true], 15);
+        Cache::store('array')->put($this->performanceKey('status:summary'), ['old' => true], 15);
         Movie::factory()->create();
         $this->artisan('perf:warm')->assertSuccessful();
         $cache = app(PerformanceCache::class);
@@ -37,18 +44,18 @@ final class PerformanceCacheTest extends TestCase
     {
         config(['javmeta_perf.warm_enabled' => false]);
         $this->artisan('perf:warm')->assertSuccessful();
-        $this->assertNull(Cache::get('javmeta:status:summary'));
-        $this->assertNull(Cache::get('javmeta:facets:' . hash('sha256', '[]')));
+        $this->assertNull(Cache::store('array')->get($this->performanceKey('status:summary')));
+        $this->assertNull(Cache::store('array')->get($this->performanceKey('facets:' . hash('sha256', '[]'))));
     }
 
     public function test_status_only_keeps_the_short_ttl_without_rebuilding_facets(): void
     {
         $this->travelTo('2026-11-02T12:34:00Z');
         $this->artisan('perf:warm --status-only')->assertSuccessful();
-        $this->assertNotNull(Cache::get('javmeta:status:summary'));
-        $this->assertNull(Cache::get('javmeta:facets:' . hash('sha256', '[]')));
+        $this->assertNotNull(Cache::store('array')->get($this->performanceKey('status:summary')));
+        $this->assertNull(Cache::store('array')->get($this->performanceKey('facets:' . hash('sha256', '[]'))));
         $this->travel(16)->seconds();
-        $this->assertNull(Cache::get('javmeta:status:summary'));
+        $this->assertNull(Cache::store('array')->get($this->performanceKey('status:summary')));
     }
 
     public function test_facets_key_is_deterministic_and_differs_for_different_filters(): void
@@ -58,23 +65,24 @@ final class PerformanceCacheTest extends TestCase
         Cache::flush();
 
         $generic = $cache->facets([]);
-        $keyEmpty = 'javmeta:facets:' . hash('sha256', json_encode([], JSON_THROW_ON_ERROR));
-        $this->assertSame($generic, Cache::get($keyEmpty));
+        $keyEmpty = $this->performanceKey('facets:' . hash('sha256', json_encode([], JSON_THROW_ON_ERROR)));
+        $this->assertSame($generic, Cache::store('array')->get($keyEmpty));
         $this->assertSame($generic, $cache->facets([]));
 
         $narrow = $cache->facets(['maker' => 'Sample Maker 03']);
-        $keyNarrow = 'javmeta:facets:' . hash('sha256', json_encode(['maker' => 'Sample Maker 03'], JSON_THROW_ON_ERROR));
+        $keyNarrow = $this->performanceKey('facets:' . hash('sha256', json_encode(['maker' => 'Sample Maker 03'], JSON_THROW_ON_ERROR)));
         $this->assertNotSame($keyEmpty, $keyNarrow);
-        $this->assertSame($narrow, Cache::get($keyNarrow));
-        $this->assertSame($generic, Cache::get($keyEmpty));
+        $this->assertSame($narrow, Cache::store('array')->get($keyNarrow));
+        $this->assertSame($generic, Cache::store('array')->get($keyEmpty));
     }
 
     public function test_one_failure_preserves_the_previous_cache_and_does_not_skip_the_other(): void
     {
-        Cache::put('javmeta:status:summary', ['old' => true], 15);
+        $statusKey = $this->performanceKey('status:summary');
+        Cache::store('array')->put($statusKey, ['old' => true], 15);
         Schema::drop('crawl_runs');
         $this->artisan('perf:warm')->assertFailed();
-        $this->assertSame(['old' => true], Cache::get('javmeta:status:summary'));
+        $this->assertSame(['old' => true], Cache::store('array')->get($statusKey));
         $this->assertSame(0, app(PerformanceCache::class)->facets()['total']);
     }
 
@@ -91,5 +99,10 @@ final class PerformanceCacheTest extends TestCase
         $this->assertSame([['name' => 'Drama', 'count' => 2]], $repo->facets([])['genres']);
         $this->assertSame([['name' => 'Drama', 'count' => 1]], $repo->facets(['maker' => 'A'])['genres']);
         $this->assertSame([], $repo->facets(['maker' => 'absent'])['genres']);
+    }
+
+    private function performanceKey(string $suffix): string
+    {
+        return 'javmeta:performance:v2:' . app(ResponseCacheEpoch::class)->current() . ':' . $suffix;
     }
 }

@@ -56,6 +56,7 @@ final class PerformerPersister implements PerformerDraftSink
         $draft = $this->attributeNormalizer->normalizeDraft($draft);
         $crawledAt = CarbonImmutable::now();
         [$performer, $isNew] = $this->persistLocalPerformer($draft, $crawledAt);
+        app(\App\Services\Api\ResponseCacheEpoch::class)->bump();
         $mongoId = $this->archivePerformer($draft, $rawPayload);
         $this->linkAndIndex($performer, $draft, $mongoId, $crawledAt);
         $this->emitPersistEvent($draft, $isNew);

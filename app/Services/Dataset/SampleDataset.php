@@ -45,6 +45,7 @@ final class SampleDataset
             $this->loadPerformers($now);
             $this->loadMovies($now);
         });
+        app(\App\Services\Api\ResponseCacheEpoch::class)->bump();
 
         $indexed = $index ? $this->index() : 0;
 
@@ -89,6 +90,7 @@ final class SampleDataset
             app(MovieRepository::class)->tableQuery('movie_genres')->whereIn('genre_id', $genreIds)->delete();
             app(MovieRepository::class)->tableQuery('genres')->whereIn('id', $genreIds)->delete();
         });
+        app(\App\Services\Api\ResponseCacheEpoch::class)->bump();
     }
 
     private function loadGenres(): void

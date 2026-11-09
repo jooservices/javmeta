@@ -24,6 +24,7 @@ return [
         'report' => 'Báo cáo',
         'readiness' => 'Kiểm tra sẵn sàng',
         'search' => 'Tìm kiếm',
+        'api_cache' => 'Bộ nhớ đệm API',
         'observability' => 'Giám sát',
         'stats' => 'Thống kê crawl',
         'backup' => 'Sao lưu',
@@ -72,6 +73,14 @@ return [
         'nodes.release_ref' => ['group' => 'nodes', 'label' => 'Nhánh, tag hoặc commit cho node mới', 'description' => 'Bản phát hành mà node mới cài đặt; nên trùng bản đang chạy.', 'type' => 'string', 'config' => ['javmeta_nodes.release_ref']],
         'dataset.allowed_databases' => ['group' => 'dataset', 'label' => 'Cơ sở dữ liệu cho phép nạp dữ liệu mẫu', 'description' => 'Chỉ cho phép nạp và xóa dữ liệu mẫu trên các cơ sở dữ liệu này; ngoài kiểm thử luôn cần --force.', 'type' => 'string_list', 'config' => ['javmeta_dataset.allowed_databases']],
         'perf.warm_enabled' => ['group' => 'search', 'label' => 'Làm ấm bộ nhớ đệm', 'description' => 'Tự làm mới trạng thái và bộ lọc toàn bộ danh mục theo lịch, giảm thời gian chờ khi bộ nhớ đệm hết hạn.', 'type' => 'bool', 'config' => ['javmeta_perf.warm_enabled']],
+
+        'api.response_cache.enabled' => ['group' => 'api_cache', 'label' => 'Bật bộ nhớ đệm response API', 'description' => 'Tắt để bỏ qua bộ nhớ đệm response; khi Redis lỗi API vẫn trả dữ liệu trực tiếp.', 'type' => 'bool', 'config' => ['javmeta_response_cache.enabled']],
+        'api.response_cache.ttl.lists' => ['group' => 'api_cache', 'label' => 'TTL danh sách (giây)', 'description' => 'Thời gian lưu danh sách phim và performer.', 'type' => 'int', 'config' => ['javmeta_response_cache.ttl.lists'], 'min' => 1, 'max' => 60],
+        'api.response_cache.ttl.facets' => ['group' => 'api_cache', 'label' => 'TTL bộ lọc (giây)', 'description' => 'Thời gian lưu facets phim và performer.', 'type' => 'int', 'config' => ['javmeta_response_cache.ttl.facets'], 'min' => 1, 'max' => 300],
+        'api.response_cache.ttl.catalog' => ['group' => 'api_cache', 'label' => 'TTL danh mục (giây)', 'description' => 'Thời gian lưu các mục catalog ít thay đổi.', 'type' => 'int', 'config' => ['javmeta_response_cache.ttl.catalog'], 'min' => 60, 'max' => 3600],
+        'api.response_cache.ttl.suggestions' => ['group' => 'api_cache', 'label' => 'TTL gợi ý tìm kiếm (giây)', 'description' => 'Thời gian lưu response gợi ý tìm kiếm.', 'type' => 'int', 'config' => ['javmeta_response_cache.ttl.suggestions'], 'min' => 1, 'max' => 60],
+        'api.response_cache.ttl.status' => ['group' => 'api_cache', 'label' => 'TTL trạng thái (giây)', 'description' => 'Thời gian lưu tóm tắt trạng thái hệ thống.', 'type' => 'int', 'config' => ['javmeta_response_cache.ttl.status'], 'min' => 1, 'max' => 15],
+        'api.response_cache.ttl.movie_detail' => ['group' => 'api_cache', 'label' => 'TTL chi tiết phim (giây)', 'description' => 'Thời gian lưu chi tiết phim.', 'type' => 'int', 'config' => ['javmeta_response_cache.ttl.movie_detail'], 'min' => 1, 'max' => 300],
 
         'search.budget_ms' => ['group' => 'search', 'label' => 'Ngân sách tìm kiếm (mili giây)', 'description' => 'Tổng thời gian dành cho HTTP tùy chọn trong một lượt tìm kiếm kết hợp. Hết thời gian thì trả kết quả từ khóa; không giới hạn truy vấn cơ sở dữ liệu.', 'type' => 'int', 'config' => ['javmeta_search.budget_ms'], 'min' => 25, 'max' => 1500],
 

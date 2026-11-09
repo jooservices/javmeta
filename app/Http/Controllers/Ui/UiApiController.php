@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Ui;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use App\Services\Api\ApiResponseCache;
 
 /**
  * Read-only bridge for the UI: `/ui-api/<path>` runs `/api/v1/<path>` inside the same process for the signed-in owner,
@@ -14,6 +15,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class UiApiController
 {
+    public function __construct(private readonly ApiResponseCache $responseCache) {}
+
     /** Paths the UI may read (GET only). */
     private const ALLOWED = '#^(movies|performers|meta|status|suggest|search|scenes)(/|$)#';
 
@@ -53,16 +56,29 @@ final class UiApiController
                 'HTTP_ACCEPT_LANGUAGE' => (string) $request->header('Accept-Language', ''),
             ],
         );
+        $principal = $guest
+            ? 'ui:guest'
+            : 'ui:owner:' . (string) ($request->user()?->getAuthIdentifier() ?? 'unknown');
         $internal->attributes->set('javmeta.internal_ui', true);
+        $internal->attributes->set('javmeta.guest_mode', $guest);
+        $internal->attributes->set('javmeta.cache_identity', $principal);
 
-        $response = app('router')->dispatch($internal);
-        $response->headers->set('Cache-Control', 'no-store');
+        return $this->responseCache->handleUi(
+            $request,
+            $path,
+            $principal,
+            $guest,
+            function () use ($internal, $guest, $path): Response {
+                $response = app('router')->dispatch($internal);
+                $response->headers->set('Cache-Control', 'no-store');
 
-        if ($guest && $response instanceof JsonResponse) {
-            $this->removePrivateGuestFields($path, $response);
-        }
+                if ($guest && $response instanceof JsonResponse) {
+                    $this->removePrivateGuestFields($path, $response);
+                }
 
-        return $response;
+                return $response;
+            },
+        );
     }
 
     public static function guestPathAllowed(string $path): bool

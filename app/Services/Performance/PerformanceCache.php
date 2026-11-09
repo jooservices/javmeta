@@ -6,11 +6,13 @@ namespace App\Services\Performance;
 
 use App\Repositories\MovieRepository;
 use App\Services\Crawl\CrawlStatusService;
+use App\Services\Api\ResponseCacheEpoch;
 use Illuminate\Support\Facades\Cache;
+use Throwable;
 
 final class PerformanceCache
 {
-    public function __construct(private readonly CrawlStatusService $status, private readonly MovieRepository $movies) {}
+    public function __construct(private readonly CrawlStatusService $status, private readonly MovieRepository $movies, private readonly ResponseCacheEpoch $epoch) {}
 
     /** @return array<string, mixed> */
     public function summary(bool $refresh = false): array
@@ -21,14 +23,7 @@ final class PerformanceCache
 
             return $data;
         };
-        if ($refresh) {
-            $data = $build();
-            Cache::put('javmeta:status:summary', $data, 15);
-
-            return $data;
-        }
-
-        return Cache::remember('javmeta:status:summary', 15, $build);
+        return $this->cacheData('status:summary', 15, $refresh, $build);
     }
 
     /** @param array<string, mixed> $filters
@@ -36,14 +31,43 @@ final class PerformanceCache
      */
     public function facets(array $filters = [], bool $refresh = false): array
     {
-        $key = 'javmeta:facets:' . hash('sha256', json_encode($filters, JSON_THROW_ON_ERROR));
-        if ($refresh) {
-            $data = $this->movies->facets($filters);
-            Cache::put($key, $data, 60);
+        $encoded = json_encode($filters, JSON_THROW_ON_ERROR);
 
-            return $data;
+        return $this->cacheData('facets:' . hash('sha256', $encoded), 60, $refresh, fn(): array => $this->movies->facets($filters));
+    }
+
+    /** @param callable(): array<string, mixed> $build
+     * @return array<string, mixed>
+     */
+    private function cacheData(string $suffix, int $ttl, bool $refresh, callable $build): array
+    {
+        if (! (bool) config('javmeta_response_cache.enabled', true)) {
+            return $build();
         }
 
-        return Cache::remember($key, 60, fn(): array => $this->movies->facets($filters));
+        $store = null;
+        $key = null;
+        try {
+            $epoch = $this->epoch->current();
+            $store = Cache::store((string) config('javmeta_response_cache.store', 'redis'));
+            $key = 'javmeta:performance:v2:' . $epoch . ':' . $suffix;
+            if (! $refresh) {
+                $cached = $store->get($key);
+                if (is_array($cached)) {
+                    return $cached;
+                }
+            }
+        } catch (Throwable) {
+            return $build();
+        }
+
+        $data = $build();
+        try {
+            $store->put($key, $data, $ttl);
+        } catch (Throwable) {
+            // The cache is optional; the computed result remains valid.
+        }
+
+        return $data;
     }
 }
