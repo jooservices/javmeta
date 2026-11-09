@@ -50,6 +50,7 @@ function mount(root, kind, k, initial) {
   const path = 'catalog/' + kind;
   const lifetime = new AbortController(), signal = lifetime.signal;
   let st = initial, max = 1, typed = false, timer;
+  let lastMin = st.min > 0 ? st.min : MIN_COUNT; // the box restores the minimum the user had (history included), not the default
   const input = root.querySelector('#cf input[name=q]'), sortSel = root.querySelector('#csort'), minBox = root.querySelector('#cmin');
   const pageOf = async (state, snap, sig) => {
     const body = await api('meta/catalog/' + kind, { q: snap.q, sort: snap.sort, per_page: 60, page: state.page, min_count: snap.min, ...(snap.script !== 'all' ? { script: snap.script } : {}) }, { signal: sig });
@@ -73,6 +74,7 @@ function mount(root, kind, k, initial) {
   const go = next => { clearTimeout(timer); softNavigate(path, toQuery(k, next)); };
   const apply = raw => {
     st = stateOf(kind, k, raw);
+    if (st.min > 0) lastMin = st.min;
     if (input !== document.activeElement) input.value = st.q;
     sortSel.value = st.sort;
     minBox.checked = st.min > 0;
@@ -85,8 +87,7 @@ function mount(root, kind, k, initial) {
   form.addEventListener('input', e => { clearTimeout(timer); const q = e.target.value; timer = setTimeout(() => { typed = true; try { go({ ...st, q }); } finally { typed = false; } }, 250); }, { signal });
   form.addEventListener('submit', e => e.preventDefault(), { signal });
   sortSel.addEventListener('change', e => go({ ...st, sort: e.target.value }), { signal });
-  let lastMin = st.min > 0 ? st.min : MIN_COUNT; // the box restores the minimum the user had, not the default
-  minBox.addEventListener('change', e => { if (st.min > 0) lastMin = st.min; go({ ...st, min: e.target.checked ? lastMin : 0 }); }, { signal });
+  minBox.addEventListener('change', e => go({ ...st, min: e.target.checked ? lastMin : 0 }), { signal });
   root.addEventListener('click', e => { const b = e.target.closest('[data-script]'); if (b) go({ ...st, script: b.dataset.script }); }, { signal });
   return () => { clearTimeout(timer); unbind(); results.destroy(); ctl.destroy(); lifetime.abort(); };
 }

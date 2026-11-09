@@ -89,6 +89,14 @@ final class MovieFiltersTest extends TestCase
         DB::table('movie_genres')->insert(['movie_id' => $movieId, 'genre_id' => $commaGenre, 'source_slug' => 'sample', 'crawled_at' => now()]);
         $this->assertContains((string) DB::table('movies')->where('id', $movieId)->value('display_code'), $this->codes('genre=' . urlencode('"Foo, Inc."')));
 
+        // Embedded quotes travel escaped; a quote inside a bare term does not start a quoted term.
+        $quoted = DB::table('genres')->insertGetId(['label_normalized' => 'a-b-c-d', 'label_raw' => 'A" B, C" D']);
+        DB::table('movie_genres')->insert(['movie_id' => $movieId, 'genre_id' => $quoted, 'source_slug' => 'sample', 'crawled_at' => now()]);
+        $code = (string) DB::table('movies')->where('id', $movieId)->value('display_code');
+        $this->assertContains($code, $this->codes('genre=' . urlencode('"A\\" B, C\\" D"')));
+        $this->assertContains($code, $this->codes('genre=' . urlencode('Sample Genre 00x,"A\\" B, C\\" D"')), 'a list can mix a bare and a quoted term');
+        $this->assertNotContains($code, $this->codes('genre=' . urlencode('Action,Foo"Bar')), 'a bare term with a quote is still one substring term');
+
         $maker = (string) DB::table('movies')->whereNotNull('maker')->value('maker');
         $this->assertNotEmpty($this->codes('maker=' . urlencode('"' . $maker . '"')));
         $this->assertSame([], $this->codes('maker=' . urlencode('"' . substr($maker, 0, -1) . '"')));

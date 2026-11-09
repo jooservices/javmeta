@@ -41,10 +41,16 @@ assert.deepEqual(selectedOf('genre', { genre: '"Anal","Anal Toy"' }), ['Anal', '
 assert.deepEqual(selectedOf('maker', { maker: 'Anal' }), ['Anal'], 'a typed keyword is read as it is');
 assert.match(activeFilters({ genre: '"Anal"' })[0].label, /: Anal$/, 'chips show the value without quotes');
 assert.match(activeFilters({ q: '"abc"' })[0].label, /: "abc"$/, 'a typed keyword keeps its quotes in the chip');
-assert.deepEqual(values('"Foo, Inc.",Bar'), ['"Foo, Inc."', 'Bar'], 'a comma inside quotes is part of the value');
+assert.deepEqual(values('"Foo, Inc.",Bar', 'genre'), ['"Foo, Inc."', 'Bar'], 'a comma inside quotes is part of the value');
+assert.deepEqual(values('Action,Foo"Bar', 'genre'), ['Action', 'Foo"Bar'], 'a quote inside a bare term does not start a quoted term');
+assert.deepEqual(values('"A\\" B, C\\" D",Z', 'genre'), ['"A\\" B, C\\" D"', 'Z'], 'escaped quotes stay inside the quoted term');
+assert.deepEqual(values('"North,South"', 'location'), ['"North', 'South"'], 'other filters split on every comma, as the API does');
+assert.deepEqual(values('Paris, Paris', 'location'), ['Paris'], 'terms are trimmed and de-duplicated');
 assert.deepEqual(patchFor('genre', {}, 'Foo, Inc.', true), { genre: '"Foo, Inc."' }); assert.deepEqual(selectedOf('genre', { genre: '"Foo, Inc.",Bar' }), ['Foo, Inc.', 'Bar']);
 assert.deepEqual(patchFor('genre', { genre: '"Foo, Inc."' }, 'Foo, Inc.', false), { genre: '' }, 'unticking removes a value that contains a comma');
-assert.deepEqual(patchFor('genre', {}, '"Foo"', true), { genre: '""Foo""' }, 'a value that already has quotes is wrapped again');
+assert.deepEqual(patchFor('genre', {}, '"Foo"', true), { genre: '"\\"Foo\\""' }, 'a value that already has quotes is escaped and wrapped');
+assert.deepEqual(selectedOf('genre', { genre: '"\\"Foo\\""' }), ['"Foo"'], 'and read back as the same value');
+assert.deepEqual(patchFor('genre', { genre: '"A\\" B, C\\" D"' }, 'A" B, C" D', false), { genre: '' }, 'a value with quotes and a comma can be unticked');
 assert.deepEqual(patchFor('year', {}, '2025', true), { released_from: '2025', released_to: '2025' });
 assert.deepEqual(patchFor('location', { location: 'Tokyo' }, 'Osaka', true), { location: 'Tokyo,Osaka' }, 'location accepts several values');
 // the request: scope without the list's own filter, keyword for the page search, never the page sort/paging

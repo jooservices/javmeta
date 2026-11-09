@@ -321,7 +321,7 @@ final class MovieRepository extends BusinessQueryRepository
 
         $like = $this->likeOperator();
 
-        $genres = self::list($filters['genre'] ?? null);
+        $genres = self::quotedList($filters['genre'] ?? null);
         if ($genres !== []) {
             $all = (string) ($filters['genre_all'] ?? '0') === '1';
             $one = static function (Builder $query, string $genre) use ($like): void {
@@ -330,7 +330,7 @@ final class MovieRepository extends BusinessQueryRepository
                     if ($exact) {
                         // A facet tick sends the value exactly as the facet list read it from the data, so equality is exact
                         // (no case folding: LOWER() is ASCII-only on SQLite and on PostgreSQL with the C locale).
-                        $g->where('label_normalized', '=', $text)->orWhere('label_raw', '=', $text);
+                        $g->whereRaw('COALESCE(label_raw, label_normalized) = ?', [$text]);
 
                         return;
                     }
@@ -448,7 +448,7 @@ final class MovieRepository extends BusinessQueryRepository
     private static function exactTerm(string $term): array
     {
         if (strlen($term) >= 2 && $term[0] === '"' && str_ends_with($term, '"')) {
-            return [true, substr($term, 1, -1)];
+            return [true, (string) preg_replace('/\\\\([\\\\"])/', '$1', substr($term, 1, -1))];
         }
 
         return [false, $term];
@@ -457,10 +457,58 @@ final class MovieRepository extends BusinessQueryRepository
     /** @return list<string> comma separated values, trimmed and without blanks */
     private static function list(mixed $value): array
     {
-        // Commas inside double quotes belong to the value (an exact facet tick such as "Foo, Inc."), not to the list.
-        $parts = is_array($value) ? $value : (preg_split('/,(?=(?:[^"]*"[^"]*")*[^"]*$)/', (string) $value) ?: []);
+        $parts = is_array($value) ? $value : explode(',', (string) $value);
 
         return array_values(array_unique(array_filter(array_map(static fn($p): string => trim((string) $p), $parts), static fn(string $p): bool => $p !== '')));
+    }
+
+    /**
+     * The terms of a comma separated filter that can hold exact (quoted) terms: a term that starts with a double quote runs to
+     * its closing quote, where a backslash escapes a quote or a backslash; any other term is plain text up to the next comma.
+     * This is the same rule as `values()` in public/ui/js/filterState.js.
+     *
+     * @return list<string> terms with their quotes kept (see exactTerm)
+     */
+    private static function quotedList(mixed $value): array
+    {
+        if (is_array($value)) {
+            return self::list($value);
+        }
+        $text = (string) $value;
+        $length = strlen($text);
+        $terms = [];
+        for ($i = 0; $i < $length; $i++) {
+            while ($i < $length && $text[$i] === ' ') {
+                $i++;
+            }
+            $term = '';
+            if ($i < $length && $text[$i] === '"') {
+                $term = '"';
+                for ($i++; $i < $length && $text[$i] !== '"'; $i++) {
+                    if ($text[$i] === '\\' && $i + 1 < $length) {
+                        $term .= $text[$i] . $text[++$i];
+
+                        continue;
+                    }
+                    $term .= $text[$i];
+                }
+                $term .= '"';
+                while ($i + 1 < $length && $text[$i + 1] !== ',') {
+                    $i++;
+                }
+                $i++;
+            } else {
+                while ($i < $length && $text[$i] !== ',') {
+                    $term .= $text[$i++];
+                }
+                $term = trim($term);
+            }
+            if ($term !== '' && $term !== '""') {
+                $terms[] = $term;
+            }
+        }
+
+        return array_values(array_unique($terms));
     }
 
     /** @return list<int> */
