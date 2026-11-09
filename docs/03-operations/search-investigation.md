@@ -4,6 +4,18 @@ Date of measurement: 2026-11-07. Branch: `JOOXCR-413-search-investigation`.
 Scope: report only. No source file was changed. Production was probed with the
 limited read-only budget (23 requests in total, all HTTP 200, no 5xx observed).
 
+## Implementation status (JOOXCR-434)
+
+The changes in the JOOXCR-434 work branch implement the request-side search fixes below. This status describes code in that branch; it is not evidence of a production rollout. No production or server access was used for implementation or verification.
+
+- `search.budget_ms` now defaults to 8000 ms (editable from 25 to 10000). The controller owns the deadline through cache miss, search, result mapping and response creation. PostgreSQL applies `statement_timeout` using the remaining budget. Keyword SQL reserves time for the optional semantic branch; timed-out stages are listed in `interpretation.degraded`, with timings in `interpretation.timings_ms`.
+- The embedder call is limited to two seconds. Ollama chat uses at most two seconds with a two-second connect timeout. A failure logs `javmeta.ollama.chat_fallback`, increments `javmeta_ollama_chat_failures` and opens a 60-second circuit. The rules interpreter remains the fallback. The default URL is `http://192.168.2.10:11434`; a saved database setting can override it.
+- Rules and model-proposed catalog filters are validated against catalog values and movie counts. Latin names match at token boundaries, genres need at least 20 movies, and maker or series names shorter than three characters need at least 20 movies. Rules support multiple genres, `from YYYY`, and `this month`.
+- Search omits records with both titles empty and returns Japanese text in `title_en` when no English title exists. `*-DERIVED-*` movies remain searchable with the short label `SOURCE · #HASH6`; the raw value is returned as `internal_code` only when requested with `include_internal_code=1`.
+- The e5 mapping remains `javmeta-query` → `query: ` and `javmeta-passage` → `passage: `; the mapping helper now has a server-side unit test. `tests/Fixtures/search-eval.json` contains 50 QA queries (20 English, 15 Vietnamese, 15 Japanese). Run `php tools/quality/search-recall.php` on a PostgreSQL database and role both ending in `_test` or `_wt<id>`; it requires the synthetic sample dataset and refuses other database identities. `--write-baseline` stores measured per-language recall in `tests/Fixtures/search-eval-baseline.json`.
+
+No recall baseline was measured: the available CI wrapper uses SQLite, and the evaluation script exits before querying unless it has a PostgreSQL database and role with a `_test` or `_wt<id>` suffix. Generate and commit a measured baseline when that guarded QA database is available. These changes do not configure gateway or FPM timeouts; infrastructure timeout alignment remains a deployment review item. Search quality against live multilingual vectors and the workstation Ollama model remains unverified.
+
 ## 1. Summary
 
 1. **The time budget does not bound the database.** `SearchBudget` (default 300 ms)
@@ -447,13 +459,13 @@ stated), and the acceptance criteria. Tests are named for the behaviour they che
 - **Files:** `app/Http/Resources/MovieSummaryResource.php:30-31`, `:55-56`;
   `app/Services/Search/ElasticsearchIndexer.php` (`searchMovieUuids`,
   `semanticUuids`) if derived movies are to be excluded.
-- **Change:** `title_en ?: title_jp` (never `""`). Show the short label from
-  `docs/ui/README.md:204` in the API. **Decision needed:** hide `*-DERIVED-*` from default
-  search (add a `must_not` on `code_normalized`) or keep them with the label.
+- **Change:** return `title_en ?: title_jp` and omit search results with neither title.
+  Keep derived-code movies searchable with the short label from `docs/ui/README.md:204`;
+  return the full key only for `include_internal_code=1`.
 - **Tests:** `tests/Feature/Api/MovieSearchControllerTest.php`:
   `test_title_falls_back_to_the_japanese_title`,
   `test_derived_code_is_shown_as_a_short_label`.
-- **Acceptance:** no raw `DERIVED` string in search responses unless the caller asks for it.
+- **Acceptance:** no raw `DERIVED` key in search responses unless the caller asks for it.
 - **Out of scope here:** crawler extraction (JOOXCR-282/283) for recoverable codes.
 
 ### P2-11 Search-quality evaluation set (JOOXCR-413-11)
