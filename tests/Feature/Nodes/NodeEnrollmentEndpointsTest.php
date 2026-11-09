@@ -9,6 +9,7 @@ use App\Services\Nodes\NodeEnrollmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 final class NodeEnrollmentEndpointsTest extends TestCase
@@ -62,6 +63,52 @@ final class NodeEnrollmentEndpointsTest extends TestCase
     public function test_a_bad_node_name_or_role_is_rejected(array $input): void
     {
         $this->actingAs(User::factory()->create(['role' => 'super_administrator']))->postJson('/ops/nodes', $input)->assertUnprocessable();
+        self::assertSame(0, DB::table('node_enrollments')->count());
+    }
+
+    /** @return iterable<string, array{string, string, string, string}> */
+    public static function dashboardLocales(): iterable
+    {
+        yield 'English dashboard with Vietnamese browser' => [
+            'en',
+            'vi',
+            'The node name may only use lowercase letters, digits and hyphens, and must start with a letter.',
+            'at least 3 characters',
+        ];
+        yield 'Vietnamese dashboard with English browser' => [
+            'vi',
+            'en',
+            'Tên nút chỉ được dùng chữ thường, chữ số và dấu gạch nối, đồng thời phải bắt đầu bằng một chữ cái.',
+            'ít nhất 3 ký tự',
+        ];
+    }
+
+    #[DataProvider('dashboardLocales')]
+    public function test_node_name_validation_errors_follow_the_selected_dashboard_language(
+        string $selectedLocale,
+        string $browserLocale,
+        string $expectedRegexMessage,
+        string $expectedMinMessage,
+    ): void {
+        $owner = User::factory()->create(['role' => 'super_administrator']);
+
+        $this->actingAs($owner)
+            ->withHeader('Accept-Language', $browserLocale)
+            ->get('/ops?lang=' . $selectedLocale)
+            ->assertOk()
+            ->assertSee('<html lang="' . $selectedLocale . '">', false);
+
+        $this->withHeader('Accept-Language', $selectedLocale)
+            ->postJson('/ops/nodes', ['node_name' => 'Invalid_name', 'role' => 'worker'])
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.node_name.0', $expectedRegexMessage);
+
+        $trimmedShortName = $this->withHeader('Accept-Language', $selectedLocale)
+            ->postJson('/ops/nodes', ['node_name' => ' ab ', 'role' => 'worker'])
+            ->assertUnprocessable();
+
+        self::assertStringContainsString($expectedMinMessage, $trimmedShortName->json('errors.node_name.0'));
+
         self::assertSame(0, DB::table('node_enrollments')->count());
     }
 

@@ -13,6 +13,8 @@ export const expectJoinCommand = defineStep('expectJoinCommand', async (ctx, nam
   const command = await ctx.page.$eval('#join-command', e => e.textContent);
   const shape = new RegExp(`^curl -fsSL https?://\\S+/node/join\\.sh \\| sudo bash -s -- --token jne_[a-f0-9]{64} --name ${name}$`);
   if (!shape.test(command)) throw new Error('The join command does not have the expected shape.');
+  if (ctx.joinCommand && ctx.joinCommand !== command) throw new Error('The join command changed while switching dashboard language.');
+  ctx.joinCommand = command;
 });
 
 export const copyJoinCommand = defineStep('copyJoinCommand', async ctx => {

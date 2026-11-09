@@ -77,6 +77,30 @@ return [
         'hint' => 'Sự kiện thu thập gần đây',
         'empty' => 'Chưa có sự kiện thu thập nào.',
     ],
+    'kinds' => [
+        'unknown' => 'Loại chưa xác định',
+        'queue' => [
+            'listing' => 'Danh sách phim',
+            'detail' => 'Chi tiết phim',
+            'performer_listing' => 'Danh sách diễn viên',
+            'performer_detail' => 'Chi tiết diễn viên',
+            'gallery' => 'Thư viện ảnh',
+        ],
+        'event' => [
+            'blocked' => 'Bị chặn',
+            'challenge' => 'Phát hiện thử thách',
+            'soft404' => 'Không tìm thấy trang',
+            'rate_limited' => 'Bị giới hạn tần suất',
+            'domain_change' => 'Tên miền đã thay đổi',
+            'proxy_exhausted' => 'Đã hết proxy',
+            'parse_drift' => 'Cấu trúc trang đã thay đổi',
+            'auth' => 'Yêu cầu xác thực',
+            'queue_reclaimed_without_start' => 'Hàng đợi được thu hồi khi chưa bắt đầu',
+            'source_toggled' => 'Đã thay đổi trạng thái nguồn',
+            'ui_login_state_changed' => 'Đã thay đổi chế độ đăng nhập',
+            'workers_reconfigured' => 'Đã cấu hình lại worker',
+        ],
+    ],
     'queue' => [
         'done' => 'hoàn tất',
         'pending' => 'đang chờ',
@@ -122,5 +146,8 @@ return [
         'data_request' => 'Yêu cầu dữ liệu trả về :status',
         'refresh_failed' => 'Không thể cập nhật tình trạng thu thập: :error',
         'request' => 'Yêu cầu trả về :status',
+    ],
+    'validation' => [
+        'node_name_regex' => 'Tên nút chỉ được dùng chữ thường, chữ số và dấu gạch nối, đồng thời phải bắt đầu bằng một chữ cái.',
     ],
 ];

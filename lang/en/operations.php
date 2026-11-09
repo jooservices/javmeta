@@ -77,6 +77,30 @@ return [
         'hint' => 'Recent crawl events',
         'empty' => 'No crawl events yet.',
     ],
+    'kinds' => [
+        'unknown' => 'Unknown kind',
+        'queue' => [
+            'listing' => 'Movie listing',
+            'detail' => 'Movie detail',
+            'performer_listing' => 'Performer listing',
+            'performer_detail' => 'Performer detail',
+            'gallery' => 'Gallery',
+        ],
+        'event' => [
+            'blocked' => 'Blocked',
+            'challenge' => 'Challenge detected',
+            'soft404' => 'Page not found',
+            'rate_limited' => 'Rate limited',
+            'domain_change' => 'Domain changed',
+            'proxy_exhausted' => 'Proxies exhausted',
+            'parse_drift' => 'Page structure changed',
+            'auth' => 'Authentication required',
+            'queue_reclaimed_without_start' => 'Queue reclaimed before start',
+            'source_toggled' => 'Source setting changed',
+            'ui_login_state_changed' => 'Sign-in mode changed',
+            'workers_reconfigured' => 'Workers reconfigured',
+        ],
+    ],
     'queue' => [
         'done' => 'done',
         'pending' => 'pending',
@@ -122,5 +146,8 @@ return [
         'data_request' => 'Data request returned :status',
         'refresh_failed' => 'Could not refresh crawl status: :error',
         'request' => 'Request returned :status',
+    ],
+    'validation' => [
+        'node_name_regex' => 'The node name may only use lowercase letters, digits and hyphens, and must start with a letter.',
     ],
 ];

@@ -17,6 +17,8 @@ export default defineSuite('javmeta browser E2E', [
   s.settingsTabsShowTheirControls,
   s.settingsSwitchPersists,
   s.commandCenterSupportsEnglishAndVietnamese,
+  s.commandCenterTranslatesActivityAndKeepsTimestampSeconds,
+  s.commandCenterValidationFollowsSelectedLanguage,
   s.addNodeFromTheCommandCenter,
   s.performersCanBeFilteredOpenedAndFollowed,
   s.catalogEntriesOpenMatchingMovies,
