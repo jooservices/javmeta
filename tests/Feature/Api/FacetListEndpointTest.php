@@ -20,7 +20,7 @@ final class FacetListEndpointTest extends TestCase
     {
         parent::setUp();
         app(SampleDataset::class)->load();
-        $this->headers = ['X-API-Key' => app(ApiKeyService::class)->create('facet-list')->plaintext];
+        $this->headers = ['X-API-Key' => app(ApiKeyService::class)->create('facet-list', 60, ['movies', 'performers', 'catalog'])->plaintext];
     }
 
     public function test_movie_facet_values_are_paginated_searchable_and_sorted(): void
