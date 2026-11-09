@@ -3,6 +3,7 @@ from typing import Any
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 from sentence_transformers import SentenceTransformer
+from prefix import prefix_for_model
 
 app = FastAPI(title="javmeta embedder")
 
@@ -36,7 +37,7 @@ class EmbeddingResponse(BaseModel):
 
 
 def _prefix(model: str) -> str:
-    return "query: " if "query" in model.lower() else "passage: "
+    return prefix_for_model(model)
 
 
 @app.get("/healthz")
