@@ -51,6 +51,14 @@ return [
             'lock_table' => env('DB_CACHE_LOCK_TABLE'),
         ],
 
+        'api-response-epoch' => [
+            'driver' => 'database',
+            'connection' => null,
+            'table' => env('DB_CACHE_TABLE', 'cache'),
+            'lock_connection' => null,
+            'lock_table' => null,
+        ],
+
         'file' => [
             'driver' => 'file',
             'path' => storage_path('framework/cache/data'),

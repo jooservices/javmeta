@@ -167,11 +167,10 @@ final class MoviePersister implements MovieDraftSink
             }
 
             $this->recordSourceSuccess($draft->sourceSlug);
+            app(\App\Services\Api\ResponseCacheEpoch::class)->bump();
 
             return $movie->refresh();
         });
-
-        app(\App\Services\Api\ResponseCacheEpoch::class)->bump();
 
         $this->dispatchIndex($movie);
         $this->archive($movie, $draft);

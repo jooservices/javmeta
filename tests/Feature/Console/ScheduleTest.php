@@ -61,7 +61,6 @@ final class ScheduleTest extends TestCase
             'node:sample' => '* * * * *',
             'obs:publish-metrics' => '* * * * *',
             'perf:warm' => '* * * * *',
-            'perf:warm --status-only' => '* * * * *',
             'report:send' => '* * * * *',
             'report:send-daily' => '0 8 * * *',
             'search:backfill-embeddings' => '0 * * * *',
@@ -88,7 +87,6 @@ final class ScheduleTest extends TestCase
         $this->assertTrue($scheduled['search:backfill-embeddings']->withoutOverlapping);
         $this->assertTrue($scheduled['staging:readiness']->withoutOverlapping);
         $this->assertTrue($scheduled['perf:warm']->withoutOverlapping);
-        $this->assertSame(10, $scheduled['perf:warm --status-only']->repeatSeconds);
         foreach ($events as $event) {
             if (! str_contains((string) $event->command, 'report:send')) {
                 $this->assertFalse($event->onOneServer);

@@ -80,7 +80,5 @@ if (! app()->runningUnitTests()) {
     $scheduleCommand('library:scan')->hourly()->withoutOverlapping();
     $scheduleCommand('ai:warm')->everyFifteenMinutes()->withoutOverlapping();
     $scheduleCommand('perf:warm')->everyMinute()->withoutOverlapping();
-    // A once-a-minute refresh alone leaves a 45-second hole in the 15-second status cache.
-    $scheduleCommand('perf:warm', ['--status-only'])->everyTenSeconds()->withoutOverlapping();
     $scheduleCommand('follows:notify')->everyFiveMinutes()->withoutOverlapping();
 }

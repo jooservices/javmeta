@@ -9,9 +9,9 @@ use App\Models\Movie;
 use App\Repositories\MovieRepository;
 use App\Services\Performance\PerformanceCache;
 use App\Services\Api\ResponseCacheEpoch;
+use Illuminate\Cache\ArrayStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 final class PerformanceCacheTest extends TestCase
@@ -26,7 +26,6 @@ final class PerformanceCacheTest extends TestCase
 
     public function test_warmer_refreshes_existing_values_and_readers_share_the_cache_keys(): void
     {
-        Cache::store('array')->put($this->performanceKey('status:summary'), ['old' => true], 15);
         Movie::factory()->create();
         $this->artisan('perf:warm')->assertSuccessful();
         $cache = app(PerformanceCache::class);
@@ -42,48 +41,80 @@ final class PerformanceCacheTest extends TestCase
 
     public function test_disabled_warming_does_not_build_any_cache(): void
     {
+        $store = $this->useRecordingPerformanceStore();
         config(['javmeta_perf.warm_enabled' => false]);
         $this->artisan('perf:warm')->assertSuccessful();
-        $this->assertNull(Cache::store('array')->get($this->performanceKey('status:summary')));
-        $this->assertNull(Cache::store('array')->get($this->performanceKey('facets:' . hash('sha256', '[]'))));
+        $this->assertSame([], $store->writes);
     }
 
-    public function test_status_only_keeps_the_short_ttl_without_rebuilding_facets(): void
+    public function test_status_summary_is_rebuilt_without_a_second_inner_cache(): void
     {
-        $this->travelTo('2026-11-02T12:34:00Z');
-        $this->artisan('perf:warm --status-only')->assertSuccessful();
-        $this->assertNotNull(Cache::store('array')->get($this->performanceKey('status:summary')));
-        $this->assertNull(Cache::store('array')->get($this->performanceKey('facets:' . hash('sha256', '[]'))));
-        $this->travel(16)->seconds();
-        $this->assertNull(Cache::store('array')->get($this->performanceKey('status:summary')));
+        Movie::factory()->create();
+        $cache = app(PerformanceCache::class);
+        $this->assertSame(1, $cache->summary()['counts']['movies']);
+
+        Movie::factory()->create();
+
+        $this->assertSame(2, $cache->summary()['counts']['movies']);
     }
 
-    public function test_facets_key_is_deterministic_and_differs_for_different_filters(): void
+    public function test_facets_cache_keeps_filter_results_isolated(): void
     {
         $cache = app(PerformanceCache::class);
         Movie::factory()->create(['maker' => 'Sample Maker 03']);
-        Cache::flush();
+        Movie::factory()->create(['maker' => 'Sample Maker 04']);
+        Cache::store('array')->flush();
 
         $generic = $cache->facets([]);
-        $keyEmpty = $this->performanceKey('facets:' . hash('sha256', json_encode([], JSON_THROW_ON_ERROR)));
-        $this->assertSame($generic, Cache::store('array')->get($keyEmpty));
         $this->assertSame($generic, $cache->facets([]));
+        $this->assertSame(2, $generic['total']);
 
         $narrow = $cache->facets(['maker' => 'Sample Maker 03']);
-        $keyNarrow = $this->performanceKey('facets:' . hash('sha256', json_encode(['maker' => 'Sample Maker 03'], JSON_THROW_ON_ERROR)));
-        $this->assertNotSame($keyEmpty, $keyNarrow);
-        $this->assertSame($narrow, Cache::store('array')->get($keyNarrow));
-        $this->assertSame($generic, Cache::store('array')->get($keyEmpty));
+        $this->assertSame(1, $narrow['total']);
+        $this->assertSame($generic, $cache->facets([]));
     }
 
-    public function test_one_failure_preserves_the_previous_cache_and_does_not_skip_the_other(): void
+    public function test_status_only_warming_does_not_create_a_status_cache(): void
     {
-        $statusKey = $this->performanceKey('status:summary');
-        Cache::store('array')->put($statusKey, ['old' => true], 15);
-        Schema::drop('crawl_runs');
-        $this->artisan('perf:warm')->assertFailed();
-        $this->assertSame(['old' => true], Cache::store('array')->get($statusKey));
-        $this->assertSame(0, app(PerformanceCache::class)->facets()['total']);
+        $store = $this->useRecordingPerformanceStore();
+        $this->artisan('perf:warm --status-only')->assertSuccessful();
+        $this->assertSame([], $store->writes);
+    }
+
+    public function test_many_filter_values_and_epoch_changes_stay_within_the_fixed_cache_budget(): void
+    {
+        $store = $this->useRecordingPerformanceStore();
+        $cache = app(PerformanceCache::class);
+
+        for ($i = 0; $i < 200; $i++) {
+            $cache->facets(['maker' => 'query-' . $i]);
+        }
+        app(ResponseCacheEpoch::class)->bump();
+        for ($i = 200; $i < 400; $i++) {
+            $cache->facets(['maker' => 'query-' . $i]);
+        }
+
+        $slots = (int) config('javmeta_response_cache.slots_per_class');
+        $maxBytes = (int) config('javmeta_response_cache.max_entry_bytes');
+        $this->assertLessThanOrEqual($slots, count($store->writes));
+        $this->assertLessThanOrEqual(
+            $slots * $maxBytes,
+            array_sum(array_map(static fn(array $entry): int => strlen(serialize($entry)), array_values($store->writes))),
+        );
+    }
+
+    public function test_oversized_facet_values_are_returned_but_not_cached(): void
+    {
+        $store = $this->useRecordingPerformanceStore();
+        Movie::factory()->create(['maker' => str_repeat('x', (int) config('javmeta_response_cache.max_entry_bytes') + 1)]);
+        $cache = app(PerformanceCache::class);
+
+        $first = $cache->facets();
+        $second = $cache->facets();
+
+        $this->assertSame($first, $second);
+        $this->assertGreaterThan((int) config('javmeta_response_cache.max_entry_bytes'), strlen(serialize($first)));
+        $this->assertSame([], $store->writes);
     }
 
     public function test_genre_facets_count_a_movie_once_even_for_shared_labels_and_multiple_sources(): void
@@ -101,8 +132,26 @@ final class PerformanceCacheTest extends TestCase
         $this->assertSame([], $repo->facets(['maker' => 'absent'])['genres']);
     }
 
-    private function performanceKey(string $suffix): string
+    private function useRecordingPerformanceStore(): object
     {
-        return 'javmeta:performance:v2:' . app(ResponseCacheEpoch::class)->current() . ':' . $suffix;
+        $store = new class extends ArrayStore {
+            /** @var array<string, mixed> */
+            public array $writes = [];
+
+            public function put($key, $value, $seconds): bool
+            {
+                $this->writes[(string) $key] = $value;
+
+                return parent::put($key, $value, $seconds);
+            }
+        };
+
+        Cache::extend('performance-recording', static fn($app, array $config) => Cache::repository($store, $config));
+        config([
+            'cache.stores.performance-recording' => ['driver' => 'performance-recording'],
+            'javmeta_response_cache.store' => 'performance-recording',
+        ]);
+
+        return $store;
     }
 }

@@ -39,7 +39,7 @@ final readonly class EnsureUiOwnerOrGuest
                     : response('Internal Server Error.', 500);
             }
 
-            return $this->guestResponse($request, $response);
+            return $this->guestResponse($response);
         }
     }
 
@@ -52,7 +52,7 @@ final readonly class EnsureUiOwnerOrGuest
         if (! $required && ! $hasSessionCookie && $request->user() === null) {
             $request->attributes->set('javmeta.guest_mode', true);
 
-            return $this->guestResponse($request, $next($request));
+            return $this->guestResponse($next($request));
         }
 
         $response = $this->startSession->handle($request, function (Request $request) use ($required, $next): Response {
@@ -72,18 +72,17 @@ final readonly class EnsureUiOwnerOrGuest
         });
 
         if (! $required && $request->attributes->get('javmeta.guest_mode', false)) {
-            return $this->guestResponse($request, $response);
+            return $this->guestResponse($response);
         }
 
         return $response;
     }
 
-    private function guestResponse(Request $request, Response $response): Response
+    private function guestResponse(Response $response): Response
     {
         $response->headers->set('X-Robots-Tag', 'noindex, nofollow');
-        if ($request->attributes->get('javmeta.shared_cacheable') !== true) {
-            $response->headers->set('Cache-Control', 'no-store');
-        }
+        $response->headers->remove('Cache-Control');
+        $response->headers->set('Cache-Control', 'private, no-store');
         $response->headers->remove('Set-Cookie');
 
         return $response;

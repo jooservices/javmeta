@@ -26,7 +26,7 @@ return [
     'max_entry_bytes' => 131_072,
     'max_query_bytes' => 2_048,
     'slots_per_class' => 64,
-    'lock_seconds' => 20,
+    'lock_seconds' => 300,
     'lock_wait_milliseconds' => 750,
     'epoch_ttl_seconds' => 31_536_000,
     'metrics_ttl_seconds' => 7_776_000,

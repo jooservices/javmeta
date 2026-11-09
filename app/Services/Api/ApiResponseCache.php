@@ -94,24 +94,24 @@ final readonly class ApiResponseCache
     ): Response {
         $ttl = $this->ttl($rule->class);
         if (! (bool) config('javmeta_response_cache.enabled', true)) {
-            return $this->bypass($request, $build, $ttl, $guest, $rule->class);
+            return $this->bypass($request, $build, $rule->class);
         }
 
         $context = $this->cacheContext($request, $rule, $route, $routeParameters, $principal, $scopes, $guest, $ttl);
         if ($context === null) {
-            return $this->bypass($request, $build, $ttl, $guest, $rule->class);
+            return $this->bypass($request, $build, $rule->class);
         }
 
         $fresh = $this->matchingEntry($context['entry'], $context['fingerprint'], false);
         if ($fresh !== null) {
             $this->metrics->record($rule->class, 'hits');
 
-            return $this->cachedResponse($request, $fresh, $ttl, $guest, true);
+            return $this->cachedResponse($request, $fresh);
         }
 
         $stale = $this->matchingEntry($context['entry'], $context['fingerprint'], true);
         $this->metrics->record($rule->class, 'misses');
-        $lock = $this->acquireLock($request, $rule, $context, $stale, $ttl, $guest, $build);
+        $lock = $this->acquireLock($request, $rule, $context, $stale, $ttl, $build);
         if ($lock instanceof Response) {
             return $lock;
         }
@@ -119,13 +119,13 @@ final readonly class ApiResponseCache
             if ($stale !== null) {
                 $this->metrics->record($rule->class, 'stale_served');
 
-                return $this->cachedResponse($request, $stale, $ttl, $guest, true);
+                return $this->cachedResponse($request, $stale);
             }
 
-            return $this->bypass($request, $build, $ttl, $guest, $rule->class);
+            return $this->cacheBusyResponse();
         }
 
-        return $this->rebuildUnderLock($request, $rule, $context, $lock, $ttl, $guest, $build);
+        return $this->rebuildUnderLock($request, $rule, $context, $lock, $ttl, $build);
     }
 
     /**
@@ -152,7 +152,7 @@ final readonly class ApiResponseCache
         try {
             $epoch = $this->epoch->current();
             $fingerprint = hash('sha256', json_encode([
-                'version' => 1,
+                'version' => 2,
                 'epoch' => $epoch,
                 'route' => $route,
                 'parameters' => $normalizedRouteParameters,
@@ -183,7 +183,6 @@ final readonly class ApiResponseCache
         array $context,
         ?array &$stale,
         int $ttl,
-        bool $guest,
         Closure $build,
     ): Lock|Response|null {
         $lock = null;
@@ -192,7 +191,7 @@ final readonly class ApiResponseCache
             $lock = $this->lock(
                 $context['store'],
                 $this->lockKey($rule->class, $this->slot($rule->class, $context['fingerprint'])),
-                max(5, (int) config('javmeta_response_cache.lock_seconds', 20)),
+                max(5, (int) config('javmeta_response_cache.lock_seconds', 300)),
             );
             $acquired = $lock->get();
             $deadline = microtime(true) + max(0, (int) config('javmeta_response_cache.lock_wait_milliseconds', 750)) / 1000;
@@ -204,13 +203,13 @@ final readonly class ApiResponseCache
                 if ($fresh !== null) {
                     $this->metrics->record($rule->class, 'hits');
 
-                    return $this->cachedResponse($request, $fresh, $ttl, $guest, true);
+                    return $this->cachedResponse($request, $fresh);
                 }
                 $stale = $this->matchingEntry($candidate, $context['fingerprint'], true);
                 if ($stale !== null) {
                     $this->metrics->record($rule->class, 'stale_served');
 
-                    return $this->cachedResponse($request, $stale, $ttl, $guest, true);
+                    return $this->cachedResponse($request, $stale);
                 }
                 $acquired = $lock->get();
             }
@@ -219,7 +218,7 @@ final readonly class ApiResponseCache
                 $this->releaseLockSafely($lock);
             }
 
-            return $this->bypass($request, $build, $ttl, $guest, $rule->class);
+            return $this->bypass($request, $build, $rule->class);
         }
 
         return $acquired ? $lock : null;
@@ -234,27 +233,26 @@ final readonly class ApiResponseCache
         array $context,
         Lock $lock,
         int $ttl,
-        bool $guest,
         Closure $build,
     ): Response {
         try {
             try {
                 $entry = $context['store']->get($context['key']);
             } catch (Throwable) {
-                return $this->bypass($request, $build, $ttl, $guest, $rule->class);
+                return $this->bypass($request, $build, $rule->class);
             }
 
             $fresh = $this->matchingEntry($entry, $context['fingerprint'], false);
             if ($fresh !== null) {
                 $this->metrics->record($rule->class, 'hits');
 
-                return $this->cachedResponse($request, $fresh, $ttl, $guest, true);
+                return $this->cachedResponse($request, $fresh);
             }
 
             $response = $build();
-            $stored = $this->storeResponse($context['store'], $context['key'], $context['fingerprint'], $response, $ttl, $rule->class);
+            $this->storeResponse($context['store'], $context['key'], $context['fingerprint'], $response, $ttl, $rule->class);
 
-            return $this->decorate($request, $response, $ttl, $guest, $stored);
+            return $this->decorate($request, $response);
         } finally {
             $this->releaseLockSafely($lock);
         }
@@ -313,7 +311,7 @@ final readonly class ApiResponseCache
     }
 
     /** @param array<string, mixed> $entry */
-    private function cachedResponse(Request $request, array $entry, int $ttl, bool $guest, bool $cacheable): Response
+    private function cachedResponse(Request $request, array $entry): Response
     {
         $response = new Response(
             (string) $entry['body'],
@@ -321,35 +319,34 @@ final readonly class ApiResponseCache
             ['Content-Type' => (string) ($entry['content_type'] ?? 'application/json; charset=UTF-8')],
         );
 
-        return $this->decorate($request, $response, $ttl, $guest, $cacheable);
+        return $this->decorate($request, $response);
     }
 
-    private function bypass(Request $request, Closure $build, int $ttl, bool $guest, string $class): Response
+    private function bypass(Request $request, Closure $build, string $class): Response
     {
         $this->metrics->record($class, 'bypass');
 
-        return $this->decorate($request, $build(), $ttl, $guest, false);
+        return $this->decorate($request, $build());
     }
 
-    private function decorate(Request $request, Response $response, int $ttl, bool $guest, bool $cacheable): Response
+    private function cacheBusyResponse(): Response
     {
-        $cacheControl = $guest && $cacheable
-            ? sprintf(
-                'public, max-age=0, s-maxage=%d, stale-while-revalidate=%d, stale-if-error=%d',
-                $ttl,
-                max(0, (int) config('javmeta_response_cache.stale_seconds', 10)),
-                max(0, (int) config('javmeta_response_cache.stale_seconds', 10)),
-            )
-            : 'private, no-store';
+        return response()->json([
+            'type' => 'cache_busy',
+            'title' => 'Temporarily unavailable',
+            'status' => Response::HTTP_SERVICE_UNAVAILABLE,
+            'detail' => 'A response for this request is being prepared. Please retry shortly.',
+        ], Response::HTTP_SERVICE_UNAVAILABLE)
+            ->header('Retry-After', '1')
+            ->header('Cache-Control', 'private, no-store');
+    }
+
+    private function decorate(Request $request, Response $response): Response
+    {
+        $cacheControl = 'private, no-store';
 
         $this->varyByLanguage($response);
         $response->headers->set('Cache-Control', $cacheControl);
-        if ($guest && $cacheable) {
-            $request->attributes->set('javmeta.shared_cacheable', true);
-        } else {
-            $request->attributes->remove('javmeta.shared_cacheable');
-        }
-
         if ($response->getStatusCode() !== Response::HTTP_OK) {
             return $response;
         }
@@ -402,6 +399,10 @@ final readonly class ApiResponseCache
     private function normalizedQuery(Request $request, ResponseCacheRule $rule): ?array
     {
         $query = $rule->defaults;
+        $rawQuery = $this->normalizeValue($request->query->all(), 0);
+        if (! is_array($rawQuery)) {
+            return null;
+        }
         foreach ($rule->queryKeys as $key) {
             if ($key === 'lang') {
                 $query[$key] = $this->locale();
@@ -414,15 +415,6 @@ final readonly class ApiResponseCache
                 if ($normalized === null) {
                     return null;
                 }
-                if (is_string($normalized)) {
-                    $normalized = trim($normalized);
-                }
-                if (in_array($key, ['per_page', 'page', 'limit'], true) && is_numeric($normalized)) {
-                    $normalized = (int) $normalized;
-                }
-                if ($key === 'semantic' && is_string($normalized)) {
-                    $normalized = in_array(strtolower($normalized), ['1', 'true'], true);
-                }
                 $query[$key] = $normalized;
             }
         }
@@ -432,6 +424,7 @@ final readonly class ApiResponseCache
         }
 
         ksort($query);
+        $query = ['defaults' => $query, 'raw' => $rawQuery];
         try {
             $encoded = json_encode($query, JSON_THROW_ON_ERROR);
         } catch (Throwable) {

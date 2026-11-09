@@ -5,25 +5,26 @@ declare(strict_types=1);
 namespace App\Services\Performance;
 
 use App\Repositories\MovieRepository;
-use App\Services\Crawl\CrawlStatusService;
 use App\Services\Api\ResponseCacheEpoch;
+use App\Services\Crawl\CrawlStatusService;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 final class PerformanceCache
 {
-    public function __construct(private readonly CrawlStatusService $status, private readonly MovieRepository $movies, private readonly ResponseCacheEpoch $epoch) {}
+    public function __construct(
+        private readonly CrawlStatusService $status,
+        private readonly MovieRepository $movies,
+        private readonly ResponseCacheEpoch $epoch,
+    ) {}
 
     /** @return array<string, mixed> */
-    public function summary(bool $refresh = false): array
+    public function summary(): array
     {
-        $build = function (): array {
-            $data = $this->status->status();
-            unset($data['sources']);
+        $data = $this->status->status();
+        unset($data['sources']);
 
-            return $data;
-        };
-        return $this->cacheData('status:summary', 15, $refresh, $build);
+        return $data;
     }
 
     /** @param array<string, mixed> $filters
@@ -31,41 +32,41 @@ final class PerformanceCache
      */
     public function facets(array $filters = [], bool $refresh = false): array
     {
-        $encoded = json_encode($filters, JSON_THROW_ON_ERROR);
-
-        return $this->cacheData('facets:' . hash('sha256', $encoded), 60, $refresh, fn(): array => $this->movies->facets($filters));
-    }
-
-    /** @param callable(): array<string, mixed> $build
-     * @return array<string, mixed>
-     */
-    private function cacheData(string $suffix, int $ttl, bool $refresh, callable $build): array
-    {
         if (! (bool) config('javmeta_response_cache.enabled', true)) {
-            return $build();
+            return $this->movies->facets($filters);
         }
 
-        $store = null;
-        $key = null;
         try {
-            $epoch = $this->epoch->current();
+            $fingerprint = hash('sha256', json_encode([
+                'version' => 3,
+                'epoch' => $this->epoch->current(),
+                'filters' => $filters,
+            ], JSON_THROW_ON_ERROR));
+            $slots = max(1, (int) config('javmeta_response_cache.slots_per_class', 64));
+            $slot = (int) hexdec(substr($fingerprint, 0, 8)) % $slots;
+            $key = 'javmeta:performance:v3:facets:' . $slot;
             $store = Cache::store((string) config('javmeta_response_cache.store', 'redis'));
-            $key = 'javmeta:performance:v2:' . $epoch . ':' . $suffix;
+
             if (! $refresh) {
                 $cached = $store->get($key);
-                if (is_array($cached)) {
-                    return $cached;
+                if (is_array($cached) && isset($cached['fingerprint'], $cached['data'])
+                    && is_string($cached['fingerprint']) && hash_equals($fingerprint, $cached['fingerprint'])
+                    && is_array($cached['data'])) {
+                    return $cached['data'];
                 }
             }
         } catch (Throwable) {
-            return $build();
+            return $this->movies->facets($filters);
         }
 
-        $data = $build();
+        $data = $this->movies->facets($filters);
         try {
-            $store->put($key, $data, $ttl);
+            $entry = ['fingerprint' => $fingerprint, 'data' => $data];
+            if (strlen(serialize($entry)) <= max(1, (int) config('javmeta_response_cache.max_entry_bytes', 131_072))) {
+                $store->put($key, $entry, 60);
+            }
         } catch (Throwable) {
-            // The cache is optional; the computed result remains valid.
+            // Cache and encoding failures must not hide the live result.
         }
 
         return $data;

@@ -263,18 +263,28 @@ final class PerformerIdentityService
     /** A removed source profile is retained as history and does not remove its canonical performer. */
     public function markSourceRemoved(string $siteSlug, string $externalId): bool
     {
-        $source = app(PerformerRepository::class)->modelQuery(PerformerSource::class)
-            ->where('site_slug', $siteSlug)
-            ->where('external_id', $externalId)
-            ->first();
+        $performerId = app(PerformerRepository::class)->transaction(function () use ($siteSlug, $externalId): ?int {
+            $source = app(PerformerRepository::class)->modelQuery(PerformerSource::class)
+                ->where('site_slug', $siteSlug)
+                ->where('external_id', $externalId)
+                ->first();
 
-        if (! $source instanceof PerformerSource) {
+            if (! $source instanceof PerformerSource) {
+                return null;
+            }
+
+            $source->removed_at = now()->toDateTimeString();
+            $source->save();
+            app(\App\Services\Api\ResponseCacheEpoch::class)->bump();
+
+            return (int) $source->performer_id;
+        });
+
+        if ($performerId === null) {
             return false;
         }
 
-        $source->removed_at = now()->toDateTimeString();
-        $source->save();
-        $this->reindexPerformers([(int) $source->performer_id]);
+        $this->reindexPerformers([$performerId]);
 
         return true;
     }
@@ -329,7 +339,7 @@ final class PerformerIdentityService
             $merge->reversed_at = now()->toDateTimeString();
             $merge->save();
 
-            return app(PerformerRepository::class)->modelQuery(PerformerIdentityEvent::class)->create([
+            $split = app(PerformerRepository::class)->modelQuery(PerformerIdentityEvent::class)->create([
                 'event_type' => 'split',
                 'from_performer_id' => $merge->to_performer_id,
                 'to_performer_id' => $merge->from_performer_id,
@@ -337,6 +347,9 @@ final class PerformerIdentityService
                 'details' => ['original_merge_event_id' => (int) $merge->id],
                 'created_at' => now(),
             ]);
+            app(\App\Services\Api\ResponseCacheEpoch::class)->bump();
+
+            return $split;
         });
 
         $this->reindexPerformers([(int) $split->to_performer_id, (int) $split->from_performer_id]);
@@ -397,7 +410,7 @@ final class PerformerIdentityService
             $merge->reversed_at = null;
             $merge->save();
 
-            return app(PerformerRepository::class)->modelQuery(PerformerIdentityEvent::class)->create([
+            $undo = app(PerformerRepository::class)->modelQuery(PerformerIdentityEvent::class)->create([
                 'event_type' => 'undo',
                 'from_performer_id' => $merge->from_performer_id,
                 'to_performer_id' => $merge->to_performer_id,
@@ -405,6 +418,9 @@ final class PerformerIdentityService
                 'details' => ['original_merge_event_id' => (int) $merge->id],
                 'created_at' => now(),
             ]);
+            app(\App\Services\Api\ResponseCacheEpoch::class)->bump();
+
+            return $undo;
         });
 
         $this->reindexPerformers([(int) $undo->from_performer_id, (int) $undo->to_performer_id]);
@@ -763,6 +779,7 @@ final class PerformerIdentityService
             if (isset($evaluation['co_credit'])) {
                 $this->lastReviewsClosed = $this->coCreditAudit->record($mergeEvent, $evaluation['co_credit']);
             }
+            app(\App\Services\Api\ResponseCacheEpoch::class)->bump();
 
             return $eventDetails;
         });

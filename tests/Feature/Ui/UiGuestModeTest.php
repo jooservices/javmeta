@@ -140,8 +140,7 @@ final class UiGuestModeTest extends TestCase
             ->assertHeader('X-Robots-Tag', 'noindex, nofollow');
         $bridge = $this->getJson('/ui-api/movies')->assertOk();
         $bridge->assertHeader('X-Robots-Tag', 'noindex, nofollow');
-        self::assertStringContainsString('public', (string) $bridge->headers->get('Cache-Control'));
-        self::assertStringContainsString('s-maxage=', (string) $bridge->headers->get('Cache-Control'));
+        self::assertStringContainsString('no-store', (string) $bridge->headers->get('Cache-Control'));
         self::assertFalse($bridge->headers->has('Set-Cookie'));
     }
 
@@ -385,7 +384,7 @@ final class UiGuestModeTest extends TestCase
                         && $response->isOk()
                         && app(\App\Services\Api\ResponseCachePolicy::class)->forUiPath($uiPath) !== null;
                     if ($cacheable) {
-                        self::assertStringContainsString('public', (string) $response->headers->get('Cache-Control'));
+                        self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
                         self::assertTrue($response->headers->has('ETag'));
                     } else {
                         self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
