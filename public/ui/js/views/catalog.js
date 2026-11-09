@@ -86,8 +86,8 @@ function mount(root, kind, k, initial) {
   const form = root.querySelector('#cf');
   form.addEventListener('input', e => { clearTimeout(timer); const q = e.target.value; timer = setTimeout(() => { typed = true; try { go({ ...st, q }); } finally { typed = false; } }, 250); }, { signal });
   form.addEventListener('submit', e => e.preventDefault(), { signal });
-  sortSel.addEventListener('change', e => go({ ...st, sort: e.target.value }), { signal });
-  minBox.addEventListener('change', e => go({ ...st, min: e.target.checked ? lastMin : 0 }), { signal });
-  root.addEventListener('click', e => { const b = e.target.closest('[data-script]'); if (b) go({ ...st, script: b.dataset.script }); }, { signal });
+  sortSel.addEventListener('change', e => go({ ...st, q: input.value, sort: e.target.value }), { signal });
+  minBox.addEventListener('change', e => go({ ...st, q: input.value, min: e.target.checked ? lastMin : 0 }), { signal });
+  root.addEventListener('click', e => { const b = e.target.closest('[data-script]'); if (b) go({ ...st, q: input.value, script: b.dataset.script }); }, { signal });
   return () => { clearTimeout(timer); unbind(); results.destroy(); ctl.destroy(); lifetime.abort(); };
 }

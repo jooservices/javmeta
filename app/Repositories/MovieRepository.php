@@ -616,11 +616,13 @@ final class MovieRepository extends BusinessQueryRepository
         usort($matched, static function (array $left, array $right) use ($query): int {
             if ($query->sort === 'name') {
                 return strcmp((string) $left['name'], (string) $right['name'])
-                    ?: ((int) $right['count'] <=> (int) $left['count']);
+                    ?: ((int) $right['count'] <=> (int) $left['count'])
+                    ?: ((int) ($left['id'] ?? 0) <=> (int) ($right['id'] ?? 0));
             }
 
             return ((int) $right['count'] <=> (int) $left['count'])
-                ?: strcmp((string) $left['name'], (string) $right['name']);
+                ?: strcmp((string) $left['name'], (string) $right['name'])
+                ?: ((int) ($left['id'] ?? 0) <=> (int) ($right['id'] ?? 0));
         });
 
         $total = count($matched);

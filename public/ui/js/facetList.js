@@ -140,7 +140,7 @@ export function mountFacetList(host, { kind = 'movies', facetGroup, filterKey, q
   };
 
   const opts = signal ? { signal } : undefined;
-  search.addEventListener('input', () => { state.q = search.value; state.page = 1; load(); }, opts);
+  search.addEventListener('input', () => { request?.abort(); state.q = search.value; state.page = 1; load(); }, opts);
   search.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); }, opts);
   sortSel.addEventListener('change', () => { state.sort = sortSel.value; state.page = 1; load({ immediate: true }); }, opts);
   minBox.addEventListener('change', () => { state.min = minBox.checked; state.page = 1; load({ immediate: true }); }, opts);
