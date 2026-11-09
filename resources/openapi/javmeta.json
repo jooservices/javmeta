@@ -1761,6 +1761,638 @@
         }
       }
     },
+    "/api/v1/movies/facets/values": {
+      "get": {
+        "summary": "Search and page facet values within the current result set",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "movies",
+        "parameters": [
+          {
+            "name": "facet",
+            "in": "query",
+            "required": true,
+            "description": "Facet to list: genres, makers, series, labels, years, sources, performers",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "genres",
+                "makers",
+                "series",
+                "labels",
+                "years",
+                "sources",
+                "performers"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Search facet labels",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "description": "Filter the result set by a keyword (minimum 2 characters)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "count or name; defaults to count",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "count",
+                "name"
+              ],
+              "default": "count"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "One-based page; defaults to 1",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "description": "1 to 200; defaults to 20",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "min_count",
+            "in": "query",
+            "required": false,
+            "description": "Minimum facet count; defaults to 3",
+            "schema": {
+              "type": "integer",
+              "default": 3
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "description": "Movie code",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "genre",
+            "in": "query",
+            "required": false,
+            "description": "Genre name; several separated by commas",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actress",
+            "in": "query",
+            "required": false,
+            "description": "Part of a performer name, kana, kanji or alias",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "maker",
+            "in": "query",
+            "required": false,
+            "description": "Maker",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "series",
+            "in": "query",
+            "required": false,
+            "description": "Series",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "label",
+            "in": "query",
+            "required": false,
+            "description": "Label",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "released_from",
+            "in": "query",
+            "required": false,
+            "description": "Start release date (YYYY-MM-DD)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "released_to",
+            "in": "query",
+            "required": false,
+            "description": "End release date (YYYY-MM-DD)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "runtime_min",
+            "in": "query",
+            "required": false,
+            "description": "Minimum runtime in minutes",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "runtime_max",
+            "in": "query",
+            "required": false,
+            "description": "Maximum runtime in minutes",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "censored",
+            "in": "query",
+            "required": false,
+            "description": "0, 1, censored or uncensored",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1",
+                "censored",
+                "uncensored"
+              ]
+            }
+          },
+          {
+            "name": "on_disk",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            }
+          },
+          {
+            "name": "actress_id",
+            "in": "query",
+            "required": false,
+            "description": "Performer ids separated by commas",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "genre_all",
+            "in": "query",
+            "required": false,
+            "description": "1 = match all selected genres",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "description": "Source slugs separated by commas",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "score_min",
+            "in": "query",
+            "required": false,
+            "description": "Minimum community score 0 to 10",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "tier_min",
+            "in": "query",
+            "required": false,
+            "description": "Minimum completeness tier 0 to 3",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "has_cover",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            }
+          },
+          {
+            "name": "has_magnet",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            }
+          },
+          {
+            "name": "has_performers",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Facet values and pagination metadata"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "422": {
+            "description": "Invalid facet or filter"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
+      }
+    },
+    "/api/v1/performers/facets/values": {
+      "get": {
+        "summary": "Search and page facet values within the current result set",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "performers",
+        "parameters": [
+          {
+            "name": "facet",
+            "in": "query",
+            "required": true,
+            "description": "Facet to list: cups, blood_types, locations, sources, status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cups",
+                "blood_types",
+                "locations",
+                "sources",
+                "status"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Search facet labels",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "description": "Filter the result set by a keyword (minimum 2 characters)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "count or name; defaults to count",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "count",
+                "name"
+              ],
+              "default": "count"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "One-based page; defaults to 1",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "description": "1 to 200; defaults to 20",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "min_count",
+            "in": "query",
+            "required": false,
+            "description": "Minimum facet count; defaults to 3",
+            "schema": {
+              "type": "integer",
+              "default": 3
+            }
+          },
+          {
+            "name": "cup",
+            "in": "query",
+            "required": false,
+            "description": "Cup; comma-separated values match any",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "blood_type",
+            "in": "query",
+            "required": false,
+            "description": "Blood type; comma-separated values match any",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "description": "Location",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "description": "Source slugs separated by commas",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "active or retired",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "retired"
+              ]
+            }
+          },
+          {
+            "name": "age_min",
+            "in": "query",
+            "required": false,
+            "description": "Min age",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "age_max",
+            "in": "query",
+            "required": false,
+            "description": "Max age",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "height_min",
+            "in": "query",
+            "required": false,
+            "description": "Min height",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "height_max",
+            "in": "query",
+            "required": false,
+            "description": "Max height",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "bust_min",
+            "in": "query",
+            "required": false,
+            "description": "Min bust",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "bust_max",
+            "in": "query",
+            "required": false,
+            "description": "Max bust",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "waist_min",
+            "in": "query",
+            "required": false,
+            "description": "Min waist",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "waist_max",
+            "in": "query",
+            "required": false,
+            "description": "Max waist",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "hip_min",
+            "in": "query",
+            "required": false,
+            "description": "Min hip",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "hip_max",
+            "in": "query",
+            "required": false,
+            "description": "Max hip",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "debut_from",
+            "in": "query",
+            "required": false,
+            "description": "First debut year",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "debut_to",
+            "in": "query",
+            "required": false,
+            "description": "Last debut year",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "has_image",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            }
+          },
+          {
+            "name": "has_bio",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            }
+          },
+          {
+            "name": "movies_min",
+            "in": "query",
+            "required": false,
+            "description": "Minimum linked movies",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "include_unknown",
+            "in": "query",
+            "required": false,
+            "description": "Include the otherwise hidden Unknown blood type bucket",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Facet values and pagination metadata"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "422": {
+            "description": "Invalid facet or filter"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
+      }
+    },
     "/api/v1/media/config": {
       "get": {
         "summary": "Read local worker settings",

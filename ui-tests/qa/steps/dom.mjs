@@ -53,3 +53,12 @@ export async function typeInto(locator, value) {
   await locator.fill('');
   if (value !== '') await locator.pressSequentially(String(value), { delay: 12 });
 }
+
+/** Filter sections are collapsed <details>; open the one holding this facet so its list loads and its controls can be used. */
+export async function openFacetSection(page, key) {
+  const search = page.locator(`#view [data-choice-search="${key}"]`);
+  await search.waitFor({ state: 'attached', timeout: 12000 });
+  const details = search.locator('xpath=ancestor::details[1]');
+  if (await details.count() && !(await details.evaluate(element => element.open))) await details.locator('> summary').click();
+  await search.waitFor({ state: 'visible', timeout: 8000 });
+}

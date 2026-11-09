@@ -59,7 +59,7 @@ final class UiJourneysTest extends TestCase
         foreach ($filtered->json('data') as $movie) {
             $this->assertSame('Sample Maker 03', $movie['maker']);
         }
-        $this->assertNotEmpty($this->getJson('/ui-api/movies?genre=' . urlencode('Sample Genre 05'))->json('data'));
+        $this->assertNotEmpty($this->getJson('/ui-api/movies?genre=' . urlencode('Sample Genre 005'))->json('data'));
         $this->assertNotEmpty($this->getJson('/ui-api/movies?released_from=2023-06-01&released_to=2023-06-30')->json('data'));
 
         $this->getJson('/ui-api/movies/SMP-0005')->assertOk()->assertJsonPath('data.code', 'SMP-0005');

@@ -13,7 +13,7 @@ final class DatasetLoadCommand extends Command
 {
     protected $signature = 'dataset:load {name : Only "sample" exists} {--force : Confirm an allow-listed non-testing database} {--index : Also index the rows in Elasticsearch}';
 
-    protected $description = 'Load the repeatable fake sample dataset (520 movies, 210 performers, 30 genres, 20 makers, 10 series). Safe to run twice.';
+    protected $description = 'Load the repeatable fake sample dataset (520 movies, 210 performers, 120 genres, 20 makers, 10 series). Safe to run twice.';
 
     public function handle(SampleDataset $dataset, DatasetGuard $guard): int
     {

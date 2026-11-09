@@ -18,6 +18,7 @@ export function mountPicker(root, selected, onPick, signal) {
   const input = root.querySelector('[data-performer-input]');
   if (!input) return () => {};
   const box = root.querySelector('[role=listbox]');
+  const chosen = () => values(typeof selected === 'function' ? selected() : selected);
   let timer, request, items = [], active = -1, generation = 0;
   const close = () => { box.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); };
   const draw = () => { box.hidden = false; input.setAttribute('aria-expanded', 'true'); box.innerHTML = items.length ? optionsHtml(items, active) : `<p role="status">${t('picker.none')}</p>`; if (active >= 0) input.setAttribute('aria-activedescendant', 'performer-option-' + active); };
@@ -32,7 +33,7 @@ export function mountPicker(root, selected, onPick, signal) {
       try {
         const { data } = await api('suggest', { q }, { signal: request.signal });
         if (gen !== generation || signal.aborted) return;
-        items = (data.performers || []).filter(p => !values(selected).includes(String(p.id))); active = -1; draw();
+        items = (data.performers || []).filter(p => !chosen().includes(String(p.id))); active = -1; draw();
       } catch (e) { if (e.name !== 'AbortError' && gen === generation && !signal.aborted) box.innerHTML = `<p role="alert">${esc(e.message)}</p>`; }
     }, 250);
   }, { signal });

@@ -115,7 +115,9 @@ final class UiGuestModeTest extends TestCase
             '/ui-api/search?q=public+movie',
             '/ui-api/suggest?q=public',
             '/ui-api/movies/facets',
+            '/ui-api/movies/facets/values?facet=genres&min_count=0',
             '/ui-api/performers/facets',
+            '/ui-api/performers/facets/values?facet=cups&min_count=0',
             '/ui-api/meta/genres',
             '/ui-api/meta/catalog/makers',
             '/ui-api/movies/calendar?month=2026-10',
@@ -421,7 +423,7 @@ final class UiGuestModeTest extends TestCase
             'DELETE|PATCH|POST|PUT ui-api/{path}',
         ], $guestRoutes);
 
-        foreach (['movies', 'movies/AAA-001', 'performers', 'search', 'suggest', 'meta/catalog/genres', 'movies/calendar', 'status/summary'] as $path) {
+        foreach (['movies', 'movies/AAA-001', 'movies/facets/values', 'performers', 'performers/facets/values', 'search', 'suggest', 'meta/catalog/genres', 'movies/calendar', 'status/summary'] as $path) {
             $this->assertTrue(UiApiController::guestPathAllowed($path), 'Public bridge path is missing: ' . $path);
         }
         foreach (['scenes/search', 'status', 'admin/keys', 'movies:bulk', 'search/parse', 'media/jobs/next'] as $path) {

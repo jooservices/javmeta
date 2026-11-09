@@ -1,6 +1,6 @@
 import { defineStep } from '../lib/step.mjs';
 import { onContextClose } from './cleanup.mjs';
-import { escapeRegExp, typeInto, viewText, waitForHash, waitForList, waitForSettledCount } from './dom.mjs';
+import { escapeRegExp, openFacetSection, typeInto, viewText, waitForHash, waitForList, waitForSettledCount } from './dom.mjs';
 
 const nameLink = (page, name) => page.locator('#view a[href*="#/performer/"]').filter({ hasText: new RegExp(`^${escapeRegExp(name)}$`) });
 
@@ -29,6 +29,7 @@ export const filterPerformersByName = defineStep('filterPerformersByName', async
 });
 
 export const choosePerformerOption = defineStep('choosePerformerOption', async (ctx, key, value) => {
+  await openFacetSection(ctx.page, key);
   const box = ctx.page.locator(`#view input[data-choice="${key}"][value="${value}"]`);
   await box.waitFor({ state: 'attached', timeout: 12000 });
   if (await box.isChecked()) throw new Error(`${key}=${value} is already selected.`);
@@ -36,28 +37,6 @@ export const choosePerformerOption = defineStep('choosePerformerOption', async (
   const pending = waitForList(ctx.page, '/ui-api/performers?', [`${key}=${value}`]);
   await box.check();
   await waitForHash(ctx.page, `${key}=${value}`);
-  await pending;
-  await waitForSettledCount(ctx.page, previous);
-});
-
-export const filterPerformersByLocation = defineStep('filterPerformersByLocation', async (ctx, location) => {
-  const box = ctx.page.locator('#view [data-filter-form] input[name=location]');
-  await box.waitFor({ state: 'visible', timeout: 8000 });
-  const previous = await ctx.page.$eval('#view [data-count]', e => e.textContent.trim()).catch(() => '');
-  const pending = waitForList(ctx.page, '/ui-api/performers?', [`location=${location}`]);
-  await typeInto(box, location);
-  await waitForHash(ctx.page, `location=${location}`);
-  await pending;
-  await waitForSettledCount(ctx.page, previous);
-});
-
-export const chooseLocationFacet = defineStep('chooseLocationFacet', async (ctx, value) => {
-  const button = ctx.page.locator(`#view button[data-facet="location"][data-value="${value}"]`).first();
-  await button.waitFor({ state: 'visible', timeout: 12000 });
-  const previous = await ctx.page.$eval('#view [data-count]', e => e.textContent.trim()).catch(() => '');
-  const pending = waitForList(ctx.page, '/ui-api/performers?', [`location=${value}`]);
-  await button.click();
-  await waitForHash(ctx.page, `location=${value}`);
   await pending;
   await waitForSettledCount(ctx.page, previous);
 });

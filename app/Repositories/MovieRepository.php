@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace App\Repositories;
 
+use App\Data\Facets\FacetListQuery;
 use App\Models\Movie;
 use App\Models\MovieCode;
 use App\Models\MovieMedia;
 use App\Models\MovieSource;
+use App\Support\Catalog\NameScript;
 use DateTimeImmutable;
 use DateTimeInterface;
+use InvalidArgumentException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -48,8 +51,12 @@ final class MovieRepository extends BusinessQueryRepository
         parent::__construct($model);
     }
 
-    /** @return array{items: list<array{name: string, movie_count: int}>, total: int} */
-    public function movieCatalog(string $kind, string $query, string $sort, int $perPage, int $page): array
+    /**
+     * @return array{items: list<array{name: string, movie_count: int}>, total: int, hidden: int}
+     *
+     * Entries below $minCount movies are left out and counted in `hidden`; $script keeps one writing system (see NameScript).
+     */
+    public function movieCatalog(string $kind, string $query, string $sort, int $perPage, int $page, int $minCount = 0, string $script = 'all'): array
     {
         $nameColumn = match ($kind) {
             'genres' => 'COALESCE(genres.label_raw, genres.label_normalized)',
@@ -75,14 +82,27 @@ final class MovieRepository extends BusinessQueryRepository
                 : $base->whereRaw('LOWER(' . $nameColumn . ') LIKE ?', [$pattern]);
         }
 
-        $total = (int) DB::query()->fromSub(clone $base, 'c')->count();
         $order = $sort === 'name' ? ($kind === 'years' ? 'name DESC' : 'name ASC') : 'movie_count DESC, name ASC';
-        $rows = DB::query()->fromSub($base, 'c')->orderByRaw($order)->forPage($page, $perPage)->get(['name', 'movie_count']);
+        if ($script === 'all') {
+            $all = (int) DB::query()->fromSub(clone $base, 'c')->count();
+            $visible = DB::query()->fromSub(clone $base, 'c')->when($minCount > 0, static fn($rows) => $rows->where('movie_count', '>=', $minCount));
+            $total = $minCount > 0 ? (int) (clone $visible)->count() : $all;
+            $hidden = $all - $total;
+            $rows = $visible->orderByRaw($order)->forPage($page, $perPage)->get(['name', 'movie_count']);
+        } else {
+            // The script is decided in PHP (no portable SQL), so the whole ordered catalog is read once; it is cached by the caller.
+            $named = DB::query()->fromSub($base, 'c')->orderByRaw($order)->get(['name', 'movie_count'])
+                ->filter(static fn(object $row): bool => NameScript::matches((string) $row->name, $script))->values();
+            $kept = $named->filter(static fn(object $row): bool => (int) $row->movie_count >= $minCount)->values();
+            $total = $kept->count();
+            $hidden = $named->count() - $total;
+            $rows = $kept->slice(($page - 1) * $perPage, $perPage);
+        }
 
         /** @var list<array{name: string, movie_count: int}> $items */
-        $items = $rows->map(static fn(object $row): array => ['name' => (string) $row->name, 'movie_count' => (int) $row->movie_count])->all();
+        $items = $rows->map(static fn(object $row): array => ['name' => (string) $row->name, 'movie_count' => (int) $row->movie_count])->values()->all();
 
-        return ['items' => $items, 'total' => $total];
+        return ['items' => $items, 'total' => $total, 'hidden' => $hidden];
     }
 
     public function countAll(): int
@@ -451,6 +471,126 @@ final class MovieRepository extends BusinessQueryRepository
                 ->selectRaw("performers.id, COALESCE(performers.name_romaji, performers.name_kanji, performers.name_kana) AS name, COUNT(DISTINCT movie_performers.movie_id) AS c")->groupBy('performers.id', 'performers.name_romaji', 'performers.name_kanji', 'performers.name_kana')->orderByDesc('c')->limit(12)->get()
                 ->map(static fn($r): array => ['id' => (int) $r->id, 'name' => (string) $r->name, 'count' => (int) $r->c])->all(),
         ];
+    }
+
+    /**
+     * One paginated facet value list scoped to the current movie filters.
+     *
+     * @return array{items: list<array<string, mixed>>, total: int, hidden_below_min: int, facet: string}
+     */
+    public function facetValues(FacetListQuery $query): array
+    {
+        $filters = $query->filters;
+        $movieQuery = $this->newQuery();
+        $q = isset($filters['q']) && is_string($filters['q']) ? trim($filters['q']) : null;
+        $this->applyFilters($movieQuery, $filters, $q === '' ? null : $q);
+        $ids = $movieQuery->toBase()->select('movies.id');
+        $scoped = $filters !== [];
+
+        $rows = match ($query->facet) {
+            'genres' => $this->genreFacetPairs($scoped ? $ids : null),
+            'makers' => $this->columnFacetPairs('maker', $scoped ? $ids : null),
+            'series' => $this->columnFacetPairs('series', $scoped ? $ids : null),
+            'labels' => $this->columnFacetPairs('label', $scoped ? $ids : null),
+            'years' => $this->yearFacetPairs($scoped ? $ids : null),
+            'sources' => $this->sourceFacetPairs($scoped ? $ids : null),
+            'performers' => $this->performerFacetPairs($scoped ? $ids : null),
+            default => throw new InvalidArgumentException('Unknown movie facet: ' . $query->facet),
+        };
+
+        $needle = mb_strtolower($query->query);
+        $matched = [];
+        $hidden = 0;
+        foreach ($rows as $row) {
+            $name = (string) $row['name'];
+            $count = (int) $row['count'];
+            if ($needle !== '' && ! str_contains(mb_strtolower($name), $needle)) {
+                continue;
+            }
+            if ($count < $query->minCount) {
+                $hidden++;
+                continue;
+            }
+            $matched[] = $row;
+        }
+
+        usort($matched, static function (array $left, array $right) use ($query): int {
+            if ($query->sort === 'name') {
+                return strcmp((string) $left['name'], (string) $right['name'])
+                    ?: ((int) $right['count'] <=> (int) $left['count']);
+            }
+
+            return ((int) $right['count'] <=> (int) $left['count'])
+                ?: strcmp((string) $left['name'], (string) $right['name']);
+        });
+
+        $total = count($matched);
+        $page = max(1, $query->page);
+        $items = array_slice($matched, ($page - 1) * $query->perPage, $query->perPage);
+
+        return [
+            'items' => $items,
+            'total' => $total,
+            'hidden_below_min' => $hidden,
+            'facet' => $query->facet,
+        ];
+    }
+
+    /** @return list<array{name: string, count: int}> */
+    private function genreFacetPairs(?\Illuminate\Database\Query\Builder $ids): array
+    {
+        $pairs = DB::table('movie_genres')->join('genres', 'genres.id', '=', 'movie_genres.genre_id')
+            ->when($ids !== null, static fn($rows) => $rows->whereIn('movie_genres.movie_id', clone $ids))
+            ->selectRaw('COALESCE(genres.label_raw, genres.label_normalized) AS name, movie_genres.movie_id')->distinct();
+
+        return DB::query()->fromSub($pairs, 'genre_pairs')->selectRaw('name, COUNT(*) AS c')->groupBy('name')->get()
+            ->map(static fn($r): array => ['name' => (string) $r->name, 'count' => (int) $r->c])->all();
+    }
+
+    /** @return list<array{name: string, count: int}> */
+    private function columnFacetPairs(string $column, ?\Illuminate\Database\Query\Builder $ids): array
+    {
+        $base = $ids === null
+            ? DB::table('movies')
+            : DB::table('movies')->whereIn('id', clone $ids);
+
+        return $base->whereNotNull($column)->where($column, '<>', '')
+            ->selectRaw($column . ' AS name, COUNT(*) AS c')->groupBy($column)->get()
+            ->map(static fn($r): array => ['name' => (string) $r->name, 'count' => (int) $r->c])->all();
+    }
+
+    /** @return list<array{name: string, count: int}> */
+    private function yearFacetPairs(?\Illuminate\Database\Query\Builder $ids): array
+    {
+        $year = $this->yearExpression();
+        $base = $ids === null
+            ? DB::table('movies')
+            : DB::table('movies')->whereIn('id', clone $ids);
+
+        return $base->whereNotNull('release_date')
+            ->selectRaw($year . ' AS name, COUNT(*) AS c')->groupByRaw($year)->get()
+            ->map(static fn($r): array => ['name' => (string) $r->name, 'count' => (int) $r->c])->all();
+    }
+
+    /** @return list<array{name: string, count: int}> */
+    private function sourceFacetPairs(?\Illuminate\Database\Query\Builder $ids): array
+    {
+        return DB::table('movie_codes')
+            ->when($ids !== null, static fn($rows) => $rows->whereIn('movie_id', clone $ids))
+            ->selectRaw('source_slug AS name, COUNT(DISTINCT movie_id) AS c')->groupBy('source_slug')->get()
+            ->map(static fn($r): array => ['name' => (string) $r->name, 'count' => (int) $r->c])->all();
+    }
+
+    /** @return list<array{id: int, name: string, count: int}> */
+    private function performerFacetPairs(?\Illuminate\Database\Query\Builder $ids): array
+    {
+        return DB::table('movie_performers')->join('performers', 'performers.id', '=', 'movie_performers.performer_id')
+            ->when($ids !== null, static fn($rows) => $rows->whereIn('movie_performers.movie_id', clone $ids))
+            ->whereNull('performers.canonical_performer_id')
+            ->selectRaw("performers.id, COALESCE(performers.name_romaji, performers.name_kanji, performers.name_kana) AS name, COUNT(DISTINCT movie_performers.movie_id) AS c")
+            ->groupBy('performers.id', 'performers.name_romaji', 'performers.name_kanji', 'performers.name_kana')
+            ->get()
+            ->map(static fn($r): array => ['id' => (int) $r->id, 'name' => (string) $r->name, 'count' => (int) $r->c])->all();
     }
 
     private function applyTextSearch(Builder $query, string $q): void

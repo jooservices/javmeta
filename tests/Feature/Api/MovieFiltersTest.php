@@ -47,9 +47,9 @@ final class MovieFiltersTest extends TestCase
 
     public function test_genres_any_or_all_source_score_tier_and_flags(): void
     {
-        $any = $this->codes('genre=' . urlencode('Sample Genre 01,Sample Genre 02'));
-        $one = $this->codes('genre=' . urlencode('Sample Genre 01'));
-        $all = $this->codes('genre=' . urlencode('Sample Genre 01,Sample Genre 02') . '&genre_all=1');
+        $any = $this->codes('genre=' . urlencode('Sample Genre 001,Sample Genre 002'));
+        $one = $this->codes('genre=' . urlencode('Sample Genre 001'));
+        $all = $this->codes('genre=' . urlencode('Sample Genre 001,Sample Genre 002') . '&genre_all=1');
         $this->assertGreaterThanOrEqual(count($one), count($any));
         $this->assertLessThanOrEqual(count($one), count($all));
 

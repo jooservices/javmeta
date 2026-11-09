@@ -56,9 +56,11 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
         Route::middleware([AuthenticateApiKey::class, 'requires:postgres', LogApiUsage::class])->group(function (): void {
             Route::get('config/browser-services', \App\Http\Controllers\BrowserServicesConfigController::class);
             Route::get('performers', [PerformerController::class, 'index']);
+            Route::get('performers/facets/values', [PerformerFacetsController::class, 'values']);
             Route::get('performers/facets', [PerformerFacetsController::class, 'index']);
             Route::get('performers/{id}', [PerformerController::class, 'show']);
             Route::get('movies/calendar', [MovieCalendarController::class, 'index']);
+            Route::get('movies/facets/values', [MovieFacetsController::class, 'values']);
             Route::get('movies/facets', [MovieFacetsController::class, 'index']);
             Route::get('movies/{code}/related', [MovieRelatedController::class, 'show']);
             Route::get('movies/{code}', [MovieLookupController::class, 'show']);

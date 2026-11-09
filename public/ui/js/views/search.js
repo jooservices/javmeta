@@ -12,12 +12,12 @@ export default {
     const form = `<form class="bigq" id="sform"><input type="text" id="sq" value="${esc(q)}" placeholder="${t('search.placeholder_describe')}" autocomplete="off" aria-label="${t('search.input_label')}"><button class="btn pri" type="submit">${t('common.search')}</button></form>`;
     if (q.length < 2) {
       let chips = [];
-      try { chips = ((await api('meta/catalog/genres', { per_page: 8 }, { ttl: 120000 })).data || []).filter(g => g.movie_count > 0).slice(0, 4); } catch { /* keep fallback examples */ }
+      try { chips = ((await api('meta/catalog/genres', { per_page: 8, min_count: 3 }, { ttl: 120000 })).data || []).filter(g => g.movie_count > 0).slice(0, 4); } catch { /* keep fallback examples */ }
       // Prefer a recognisable Drama example when the catalog has it; otherwise keep the top genres.
       const drama = chips.find(g => String(g.name).toLowerCase() === 'drama');
       if (drama) chips = [drama, ...chips.filter(g => g !== drama)].slice(0, 4);
       else chips = [{ name: 'Drama', movie_count: 1 }, ...chips].slice(0, 4);
-      const examples = `<div class="chips"><span class="dim">${t('search.examples')}</span>${chips.map(g => a(href.search(g.name), esc(g.name), 'chip')).join('')}</div>`;
+      const examples = `<div class="chips"><span class="dim">${t('search.examples')}</span>${chips.map(g => a(href.search(g.name), esc(g.name), 'chip')).join('')}${a('#/catalog/genres', t('search.all_genres'), 'chip more')}</div>`;
       const hint = q.length === 1 ? `<p class="muted" role="status">${t('search.min_chars')}</p>` : '';
       return { html: `<div class="wrap">${head(t('search.title'), t('search.sub'))}<div class="hero">${form}${modeLinks}${examples}${hint}</div></div>`, mount: bind };
     }

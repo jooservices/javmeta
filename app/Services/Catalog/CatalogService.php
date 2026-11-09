@@ -9,6 +9,7 @@ use App\Data\Catalog\CatalogSnapshot;
 use App\Repositories\MovieRepository;
 use App\Repositories\PerformerRepository;
 use App\Services\Normalize\PerformerAttributeNormalizer;
+use App\Support\Catalog\NameScript;
 use Illuminate\Support\Facades\Cache;
 
 /** Reads and caches catalog facets for movies and performers. */
@@ -25,8 +26,8 @@ final class CatalogService
 
     public function index(CatalogQuery $query): CatalogSnapshot
     {
-        $key = 'javmeta:catalog:' . hash('sha256', json_encode([$query->kind, $query->query, $query->sort, $query->perPage, $query->page, $query->includeUnknown], JSON_THROW_ON_ERROR));
-        /** @var array{items: list<array<string, mixed>>, total: int} $result */
+        $key = 'javmeta:catalog:' . hash('sha256', json_encode([$query->kind, $query->query, $query->sort, $query->perPage, $query->page, $query->includeUnknown, $query->minCount, $query->script], JSON_THROW_ON_ERROR));
+        /** @var array{items: list<array<string, mixed>>, total: int, hidden: int} $result */
         $result = Cache::remember($key, 120, fn(): array => $this->load($query));
 
         return new CatalogSnapshot($result['items'], [
@@ -35,20 +36,23 @@ final class CatalogService
             'page' => $query->page,
             'last_page' => max(1, (int) ceil($result['total'] / $query->perPage)),
             'sort' => $query->sort,
+            'min_count' => $query->minCount,
+            'hidden_below_min' => $result['hidden'],
+            'script' => $query->script,
         ]);
     }
 
-    /** @return array{items: list<array<string, mixed>>, total: int} */
+    /** @return array{items: list<array<string, mixed>>, total: int, hidden: int} */
     private function load(CatalogQuery $query): array
     {
         if (isset(self::PERFORMER_COLUMNS[$query->kind])) {
             return $this->loadPerformers(self::PERFORMER_COLUMNS[$query->kind], $query);
         }
 
-        return $this->movies->movieCatalog($query->kind, $query->query, $query->sort, $query->perPage, $query->page);
+        return $this->movies->movieCatalog($query->kind, $query->query, $query->sort, $query->perPage, $query->page, $query->minCount, $query->script);
     }
 
-    /** @return array{items: list<array{name: string, performer_count: int}>, total: int} */
+    /** @return array{items: list<array{name: string, performer_count: int}>, total: int, hidden: int} */
     private function loadPerformers(string $column, CatalogQuery $query): array
     {
         $groups = $this->performers->facetGroups($column);
@@ -78,7 +82,7 @@ final class CatalogService
 
         $items = [];
         foreach ($counts as $name => $count) {
-            if (! $matchesQuery[$name]) {
+            if (! $matchesQuery[$name] || ! NameScript::matches((string) $name, $query->script)) {
                 continue;
             }
             $items[] = ['name' => $name, 'performer_count' => $count];
@@ -88,9 +92,11 @@ final class CatalogService
         } else {
             usort($items, static fn(array $left, array $right): int => $right['performer_count'] <=> $left['performer_count'] ?: strcmp($left['name'], $right['name']));
         }
+        $named = count($items);
+        $items = array_values(array_filter($items, static fn(array $item): bool => $item['performer_count'] >= $query->minCount));
         $total = count($items);
         $items = array_slice($items, ($query->page - 1) * $query->perPage, $query->perPage);
 
-        return ['items' => $items, 'total' => $total];
+        return ['items' => $items, 'total' => $total, 'hidden' => $named - $total];
     }
 }

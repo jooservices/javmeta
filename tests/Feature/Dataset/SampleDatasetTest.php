@@ -148,7 +148,7 @@ final class SampleDatasetTest extends TestCase
 
     public function test_unmarked_genre_and_performer_collisions_are_not_adopted(): void
     {
-        $genre = DB::table('genres')->insertGetId(['label_normalized' => 'sample-01', 'label_raw' => 'Real genre']);
+        $genre = DB::table('genres')->insertGetId(['label_normalized' => 'sample-001', 'label_raw' => 'Real genre']);
         $this->artisan('dataset:load', ['name' => 'sample'])->assertFailed();
         $this->artisan('dataset:wipe', ['name' => 'sample'])->assertSuccessful();
         $this->assertSame('Real genre', DB::table('genres')->where('id', $genre)->value('label_raw'));

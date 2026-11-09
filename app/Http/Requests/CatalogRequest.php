@@ -24,6 +24,8 @@ final class CatalogRequest extends FormRequest
             'kind' => ['required', Rule::in(CatalogQuery::KINDS)],
             'sort' => ['required', Rule::in(CatalogQuery::SORTS)],
             'per_page' => ['required', 'integer', 'min:1', 'max:200'],
+            'min_count' => ['required', 'integer', 'min:0', 'max:1000000'],
+            'script' => ['required', Rule::in(CatalogQuery::SCRIPTS)],
         ];
     }
 
@@ -36,6 +38,8 @@ final class CatalogRequest extends FormRequest
             'sort' => (string) $this->query('sort', $kind === 'years' ? 'name' : 'movie_count'),
             'per_page' => (int) $this->query('per_page', 50),
             'page' => max(1, (int) $this->query('page', 1)),
+            'min_count' => (int) $this->query('min_count', 0),
+            'script' => (string) $this->query('script', 'all'),
             'include_unknown' => $this->boolean('include_unknown'),
         ]);
     }
@@ -46,12 +50,12 @@ final class CatalogRequest extends FormRequest
             throw new InvalidFilterException('Unknown catalog.');
         }
 
-        throw new InvalidFilterException('Invalid sort or per_page.', ['sort' => ['movie_count or name'], 'per_page' => ['1 to 200']]);
+        throw new InvalidFilterException('Invalid sort, per_page, min_count or script.', ['sort' => ['movie_count or name'], 'per_page' => ['1 to 200'], 'min_count' => ['0 or more'], 'script' => ['all, latin, ja, zh or other']]);
     }
 
     public function catalogQuery(): CatalogQuery
     {
-        /** @var array{kind: string, sort: string, per_page: int|string} $data */
+        /** @var array{kind: string, sort: string, per_page: int|string, min_count: int|string, script: string} $data */
         $data = $this->validated();
 
         return new CatalogQuery(
@@ -61,6 +65,8 @@ final class CatalogRequest extends FormRequest
             perPage: (int) $data['per_page'],
             page: (int) $this->input('page', 1),
             includeUnknown: (bool) $this->input('include_unknown', false),
+            minCount: (int) $data['min_count'],
+            script: $data['script'],
         );
     }
 }

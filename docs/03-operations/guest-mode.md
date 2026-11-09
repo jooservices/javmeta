@@ -40,11 +40,13 @@ session or API credential.
 | `GET, HEAD` | `api/v1/movies` | Login required | Requires a scoped API key. |
 | `GET, HEAD` | `api/v1/movies/calendar` | Login required | Requires a scoped API key. |
 | `GET, HEAD` | `api/v1/movies/facets` | Login required | Requires a scoped API key. |
+| `GET, HEAD` | `api/v1/movies/facets/values` | Login required | Requires a scoped API key; guests reach the same list through the UI bridge. |
 | `GET, HEAD` | `api/v1/movies/{code}` | Login required | Requires a scoped API key. |
 | `GET, HEAD` | `api/v1/movies/{code}/related` | Login required | Requires a scoped API key. |
 | `POST` | `api/v1/movies:bulk` | Login required | Requires a scoped API key and writes catalog records. |
 | `GET, HEAD` | `api/v1/performers` | Login required | Requires a scoped API key. |
 | `GET, HEAD` | `api/v1/performers/facets` | Login required | Requires a scoped API key. |
+| `GET, HEAD` | `api/v1/performers/facets/values` | Login required | Requires a scoped API key; guests reach the same list through the UI bridge. |
 | `GET, HEAD` | `api/v1/performers/{id}` | Login required | Requires a scoped API key. |
 | `GET, HEAD` | `api/v1/scenes/search` | Login required | Requires a scoped API key; may return local scene and file references. |
 | `GET, HEAD` | `api/v1/search` | Login required | Requires a scoped API key. |

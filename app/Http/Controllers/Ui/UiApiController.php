@@ -19,8 +19,8 @@ final class UiApiController
 
     /** Guest users receive only public catalogue operations with public-safe status projections. */
     private const GUEST_ALLOWED = '#^(?:'
-        . 'movies(?:/facets|/calendar|/[A-Za-z0-9._-]+(?:/related)?)?|'
-        . 'performers(?:/facets|/(?:[0-9]+|[A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12}))?|'
+        . 'movies(?:/facets(?:/values)?|/calendar|/[A-Za-z0-9._-]+(?:/related)?)?|'
+        . 'performers(?:/facets(?:/values)?|/(?:[0-9]+|[A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12}))?|'
         . 'meta/(?:genres|catalog/(?:genres|makers|series|labels|years|cups|blood_types|locations))|'
         . 'search|suggest|status/(?:summary|sources)'
         . ')$#D';

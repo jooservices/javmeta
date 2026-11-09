@@ -1,6 +1,6 @@
 import { defineStep } from '../lib/step.mjs';
 import { onContextClose } from './cleanup.mjs';
-import { escapeRegExp, typeInto, viewText, waitForCount, waitForHash, waitForList, waitForSettledCount } from './dom.mjs';
+import { escapeRegExp, openFacetSection, typeInto, viewText, waitForCount, waitForHash, waitForList, waitForSettledCount } from './dom.mjs';
 
 const noLoader = page => page.waitForFunction(() => !document.querySelector('#view .loader'), null, { timeout: 12000 })
   .catch(() => { throw new Error('The view kept its loading spinner.'); });
@@ -120,6 +120,7 @@ export const expectRememberedCount = defineStep('expectRememberedCount', async c
 });
 
 export const chooseMovieChoice = defineStep('chooseMovieChoice', async (ctx, key, value) => {
+  await openFacetSection(ctx.page, key);
   const search = ctx.page.locator(`#view [data-choice-search="${key}"]`);
   if (await search.count()) await search.fill(value);
   const box = ctx.page.locator(`#view input[data-choice="${key}"][value="${value}"]`);

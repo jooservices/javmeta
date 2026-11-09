@@ -5,8 +5,8 @@ export const values = value => [...new Set(String(value || '').split(',').filter
 export const toggleValue = (value, item) => values(value).includes(String(item)) ? values(value).filter(v => v !== String(item)).join(',') : [...values(value), String(item)].join(',');
 export const movieKeys = 'q code genre genre_all actress actress_id maker series label source released_from released_to runtime_min runtime_max score_min tier_min censored on_disk has_cover has_magnet has_performers sort'.split(' ');
 export const performerKeys = 'q cup blood_type location age_min age_max height_min height_max bust_min bust_max waist_min waist_max hip_min hip_max debut_from debut_to status has_image has_bio movies_min source sort'.split(' ');
-export const multiKeys = ['genre', 'actress_id', 'source', 'cup', 'blood_type'];
-const labelKeys =new Set(['q', 'code', 'genre', 'genre_all', 'actress', 'actress_id', 'maker', 'series', 'label', 'source', 'released_from', 'released_to', 'runtime_min', 'runtime_max', 'score_min', 'tier_min', 'censored', 'on_disk', 'has_cover', 'has_magnet', 'has_performers', 'cup', 'blood_type', 'location', 'age_min', 'age_max', 'height_min', 'height_max', 'bust_min', 'bust_max', 'waist_min', 'waist_max', 'hip_min', 'hip_max', 'debut_from', 'debut_to', 'status', 'has_image', 'has_bio', 'movies_min']);
+export const multiKeys = ['genre', 'actress_id', 'source', 'cup', 'blood_type', 'location'];
+const labelKeys = new Set(['q', 'code', 'genre', 'genre_all', 'actress', 'actress_id', 'maker', 'series', 'label', 'source', 'released_from', 'released_to', 'runtime_min', 'runtime_max', 'score_min', 'tier_min', 'censored', 'on_disk', 'has_cover', 'has_magnet', 'has_performers', 'cup', 'blood_type', 'location', 'age_min', 'age_max', 'height_min', 'height_max', 'bust_min', 'bust_max', 'waist_min', 'waist_max', 'hip_min', 'hip_max', 'debut_from', 'debut_to', 'status', 'has_image', 'has_bio', 'movies_min']);
 export const label = key => t('filter.label.' + key);
 /* Compatibility for docs/smoke that read labels[key]: resolve through i18n. */
 export const labels = new Proxy({}, { get: (_t, key) => (typeof key === 'string' ? label(key) : undefined) });

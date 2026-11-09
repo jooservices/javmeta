@@ -13,17 +13,17 @@ use Illuminate\Database\Query\Builder;
 use RuntimeException;
 
 /**
- * A repeatable fake collection for tests and UAT: 520 movies, 210 performers, 30 genres, 20 makers, 10 series, with the
+ * A repeatable fake collection for tests and UAT: 520 movies, 210 performers, 120 genres, 20 makers, 10 series, with the
  * links between them and the awkward cases the screens must survive. Everything is generated (no scraped text, no
  * images, no real people). Explicit ownership in sample_dataset_rows makes loading repeatable and limits wipe to
- * owned parents and their dependent rows.
+ * owned parents and their dependent rows. Genre count is >100 so browse/facet paging is exercised.
  */
 final class SampleDataset
 {
     public const SOURCE = 'sample';
     public const MOVIES = 520;
     public const PERFORMERS = 210;
-    public const GENRES = 30;
+    public const GENRES = 120;
     public const MAKERS = 20;
     public const SERIES = 10;
 
@@ -95,7 +95,7 @@ final class SampleDataset
     {
         $rows = [];
         for ($i = 1; $i <= self::GENRES; $i++) {
-            $rows[] = ['label_normalized' => sprintf('sample-%02d', $i), 'label_raw' => sprintf('Sample Genre %02d', $i)];
+            $rows[] = ['label_normalized' => sprintf('sample-%03d', $i), 'label_raw' => sprintf('Sample Genre %03d', $i)];
         }
         $this->saveOwned('genres', 'genre_id', $rows, ['label_normalized']);
     }
@@ -212,7 +212,7 @@ final class SampleDataset
                 $links[$id . '-' . ($n + 1)] = ['movie_id' => $id, 'performer_id' => $performers[sprintf('p%04d', $n + 1)], 'source_slug' => self::SOURCE, 'crawled_at' => $now];
             }
             foreach ([1 + $i % self::GENRES, 1 + ($i * 3) % self::GENRES] as $g) {
-                $movieGenres[$id . '-' . $g] = ['movie_id' => $id, 'genre_id' => $genres[sprintf('sample-%02d', $g)], 'source_slug' => self::SOURCE, 'crawled_at' => $now];
+                $movieGenres[$id . '-' . $g] = ['movie_id' => $id, 'genre_id' => $genres[sprintf('sample-%03d', $g)], 'source_slug' => self::SOURCE, 'crawled_at' => $now];
             }
         }
         foreach (array_chunk($codes, 200) as $chunk) {
