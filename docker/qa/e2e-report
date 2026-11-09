@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Unattended browser QA. Takes the machine-wide QA lock (the stack name is fixed, so only one stack can exist), starts the
+# QA stack, runs the browser suite, stops the stack and writes ONE short report. Nobody has to watch it: read the report.
+#
+#   docker/qa/e2e-report [suite]        default suite: main
+#
+# Environment: JAVMETA_QA_PORT (default 18099), E2E_REPORT_DIR (default .tmp/e2e inside the checkout),
+# PLAYWRIGHT_NODE_MODULES (a node_modules folder that contains playwright-core; linked in for the run when the checkout has none),
+# QA_LOCK (default ~/Workspaces/.tmp/qa.lock when that folder exists, else /tmp/javmeta-qa.lock).
+# Exit code: 0 all scenarios passed, 1 something failed, 2 the stack or the runner could not start.
+set -u
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+suite="${1:-main}"
+port="${JAVMETA_QA_PORT:-18099}"
+dir="${E2E_REPORT_DIR:-$root/.tmp/e2e}"
+stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+log="$dir/$stamp-$suite.log"
+report="$dir/$stamp-$suite.report.md"
+lock="${QA_LOCK:-}"
+if [ -z "$lock" ]; then
+  if [ -d "$HOME/Workspaces/.tmp" ]; then lock="$HOME/Workspaces/.tmp/qa.lock"; else lock="/tmp/javmeta-qa.lock"; fi
+fi
+nm="${PLAYWRIGHT_NODE_MODULES:-$HOME/Workspaces/.tmp/ui373/pw/node_modules}"
+mkdir -p "$dir"
+
+run() {
+  linked=0
+  if [ ! -e "$root/node_modules" ] && [ -d "$nm" ]; then ln -s "$nm" "$root/node_modules"; linked=1; fi
+  started=$(date +%s)
+  if JAVMETA_QA_PORT="$port" "$root/docker/qa/qa-up" > "$dir/$stamp-stack.log" 2>&1; then
+    (cd "$root" && QA_BASE="http://localhost:$port" node ui-tests/qa/run.mjs "$suite" > "$log" 2>&1); rc=$?
+  else
+    rc=2; echo "The QA stack did not start; see $dir/$stamp-stack.log" > "$log"
+  fi
+  JAVMETA_QA_PORT="$port" "$root/docker/qa/qa-down" > /dev/null 2>&1
+  [ "$linked" = 1 ] && rm -f "$root/node_modules"
+  echo $(( $(date +%s) - started )) > "$dir/$stamp-seconds"
+  return $rc
+}
+
+if command -v flock > /dev/null 2>&1; then
+  flock "$lock" bash -c "$(declare -f run); root='$root'; suite='$suite'; port='$port'; dir='$dir'; stamp='$stamp'; log='$log'; nm='$nm'; run"
+else
+  run
+fi
+rc=$?
+
+plain="$(sed 's/\x1b\[[0-9;]*m//g' "$log" 2>/dev/null)"
+summary="$(printf '%s\n' "$plain" | grep -E '[0-9]+/[0-9]+ scenarios passed' | tail -1)"
+seconds="$(cat "$dir/$stamp-seconds" 2>/dev/null || echo '?')"
+{
+  echo "# Browser QA report ($suite) $stamp"
+  echo
+  echo "- Result: ${summary:-no summary (exit code $rc)}"
+  echo "- Duration: ${seconds} s (stack start and stop included)"
+  echo "- Commit: $(git -C "$root" rev-parse --short HEAD 2>/dev/null) on $(git -C "$root" branch --show-current 2>/dev/null)"
+  echo "- Full log: $log"
+  fails="$(printf '%s\n' "$plain" | awk '/^FAIL /{name=$0; next} /✗/{print name " -> " $0; getline m; print "    " m}' )"
+  if [ -n "$fails" ]; then
+    echo
+    echo "## Failed steps"
+    printf '%s\n' "$fails" | sed 's/^/    /'
+    echo
+    echo "Screenshots of failed steps: $root/.tmp/qa-shots/"
+  fi
+} > "$report"
+echo "$report"
+[ "$rc" = 0 ] && echo "PASS: ${summary:-ok}" || echo "FAIL (exit $rc): ${summary:-see report}"
+exit "$rc"
