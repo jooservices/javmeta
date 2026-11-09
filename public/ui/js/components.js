@@ -1,6 +1,7 @@
 import { esc, fmt, hueOf, initials, titleOf, queryString, codeLabel, $ } from './util.js';
 import { ic } from './icons.js';
 import { api, pagination } from './api.js';
+import { t } from './i18n.js';
 
 /* ---------- links: every value is a link ---------- */
 export const href = {
@@ -13,14 +14,14 @@ export const href = {
   crawl: () => '#/crawl',
 };
 export const a = (h, label, cls = 'lnk') => `<a href="${h}" class="${cls}">${label}</a>`;
-export const facetLink = (kind, value, cls = 'lnk') => value ? a(href.facet(kind, value), esc(value), cls) : '<span class="dim">chưa có</span>';
+export const facetLink = (kind, value, cls = 'lnk') => value ? a(href.facet(kind, value), esc(value), cls) : `<span class="dim">${t('common.none_yet')}</span>`;
 export const facetChip = (kind, value, extra = '') => value ? a(href.facet(kind, value), esc(value), 'chip' + (extra ? ' ' + extra : '')) : '';
-export const notKnown = () => '<span class="dim">chưa có</span>';
+export const notKnown = () => `<span class="dim">${t('common.none_yet')}</span>`;
 
-export const head = (t, sub = '', right = '') => `<div class="ph"><h1>${t}</h1><span class="sub">${sub}</span><span class="sp"></span>${right}</div>`;
+export const head = (title, sub = '', right = '') => `<div class="ph"><h1>${title}</h1><span class="sub">${sub}</span><span class="sp"></span>${right}</div>`;
 export const crumbs = list => `<div class="crumbs">${list.map((c, i) => (i ? '<span>›</span>' : '') + (c[1] ? a(c[1], esc(c[0]), '') : `<span>${esc(c[0])}</span>`)).join('')}</div>`;
-export const emptyBox = (t, sub = '', btn = '') => `<div class="empty"><div style="font-size:15px;color:var(--fg)">${t}</div><div>${sub}</div>${btn}</div>`;
-export const errorBox = e => emptyBox('Không tải được dữ liệu', `<span class="err">${esc(e.message || e)}</span>`, '<button class="btn" data-act="reload">Thử lại</button>');
+export const emptyBox = (title, sub = '', btn = '') => `<div class="empty"><div style="font-size:15px;color:var(--fg)">${title}</div><div>${sub}</div>${btn}</div>`;
+export const errorBox = e => emptyBox(t('common.load_failed'), `<span class="err">${esc(e.message || e)}</span>`, `<button class="btn" data-act="reload">${t('common.retry')}</button>`);
 export const loadingBox = () => '<div class="empty"><span class="loader"><i></i><i></i><i></i></span></div>';
 
 /* ---------- covers and avatars ---------- */
@@ -28,14 +29,14 @@ export function cover(m, { dur = false, zoom = false, alt = '' } = {}) {
   const h = hueOf(m.code);
   const zoomable = zoom && /^https?:\/\//i.test(m.cover_url || '');
   const img = m.cover_url ? `<img loading="lazy" referrerpolicy="no-referrer" alt="${esc(alt || titleOf(m))}" src="${esc(m.cover_url)}" onerror="this.remove()">` : '';
-  return `<div class="th${zoomable ? ' big' : ''}" style="--h:${h}"${zoomable ? ` data-zoom="${esc(m.cover_url)}" data-zoom-label="${esc(codeLabel(m.code))}" tabindex="0" role="button" aria-label="Phóng to ảnh bìa ${esc(codeLabel(m.code))}"` : ''}>${img}<span class="code" title="${esc(m.code)}">${esc(codeLabel(m.code))}</span>${dur && m.runtime_minutes ? `<span class="dur">${m.runtime_minutes}′</span>` : ''}${m.needs_review ? '<div class="bdg"><span>XEM LẠI</span></div>' : ''}</div>`;
+  return `<div class="th${zoomable ? ' big' : ''}" style="--h:${h}"${zoomable ? ` data-zoom="${esc(m.cover_url)}" data-zoom-label="${esc(codeLabel(m.code))}" tabindex="0" role="button" aria-label="${t('cover.zoom_aria', { code: codeLabel(m.code) })}"` : ''}>${img}<span class="code" title="${esc(m.code)}">${esc(codeLabel(m.code))}</span>${dur && m.runtime_minutes ? `<span class="dur">${m.runtime_minutes}′</span>` : ''}${m.needs_review ? `<div class="bdg"><span>${t('cover.needs_review')}</span></div>` : ''}</div>`;
 }
 export function avatar(p, cls = '') {
   const name = p.name_romaji || p.name_kanji || p.name_kana || '?';
   const img = p.image_url ? `<img loading="lazy" referrerpolicy="no-referrer" alt="" src="${esc(p.image_url)}" onerror="this.remove()">` : '';
   return `<div class="avatar ${cls}" style="--h:${hueOf(name)}">${initials(name)}${img}</div>`;
 }
-export const performerName = p => p.name_romaji || p.name_kanji || p.name_kana || '(chưa có tên)';
+export const performerName = p => p.name_romaji || p.name_kanji || p.name_kana || t('performer.unnamed');
 
 /* ---------- cards and rows ---------- */
 /* codes of the movies that have a file on disk (loaded from the library); the cards show a badge for them */
@@ -45,8 +46,8 @@ export function movieCard(m, i = 0) {
   const performers = (m.performers || []).slice(0, 3).map(p => a(href.performer(p.id), esc(performerName(p)))).join(', ');
   const genres = (m.genres || []).slice(0, 2).map(g => facetChip('genre', g, 'g')).join('');
   return `<div class="mc" style="--i:${i % 14}"><a href="${href.movie(m.code)}" class="mc-main">${cover(m, { dur: true, alt: name })}<span class="t ell">${esc(name)}</span></a>
-   <div class="m">${performers || '<span class="dim">chưa có diễn viên</span>'}</div>
-   <div class="chips mini">${disk.codes.has(m.code) ? '<span class="chip ok">Trên máy</span>' : ''}${genres}${(m.genres || []).length > 2 ? `<span class="chip">+${m.genres.length - 2}</span>` : ''}</div></div>`;
+   <div class="m">${performers || `<span class="dim">${t('movie.no_performers')}</span>`}</div>
+   <div class="chips mini">${disk.codes.has(m.code) ? `<span class="chip ok">${t('movie.on_disk')}</span>` : ''}${genres}${(m.genres || []).length > 2 ? `<span class="chip">+${m.genres.length - 2}</span>` : ''}</div></div>`;
 }
 export function movieRow(m) {
   return `<tr class="row"><td class="mono">${a(href.movie(m.code), esc(codeLabel(m.code)))}</td><td>${esc(titleOf(m))}</td>
@@ -55,21 +56,21 @@ export function movieRow(m) {
    <td class="mono">${esc(m.release_date || '—')}</td><td class="mono">${m.runtime_minutes ? m.runtime_minutes + '′' : '—'}</td>
    <td class="mono">${m.community_score ?? '—'}</td><td><div class="chips mini">${(m.genres || []).slice(0, 3).map(g => facetChip('genre', g)).join('')}</div></td></tr>`;
 }
-export const movieHead = '<tr><th>Mã</th><th>Tên</th><th>Diễn viên</th><th>Hãng</th><th>Loạt phim</th><th>Phát hành</th><th>Dài</th><th>★</th><th>Thể loại</th></tr>';
+export const movieHead = () => `<tr><th>${t('movie.head.code')}</th><th>${t('movie.head.title')}</th><th>${t('movie.head.performers')}</th><th>${t('movie.head.maker')}</th><th>${t('movie.head.series')}</th><th>${t('movie.head.released')}</th><th>${t('movie.head.length')}</th><th>★</th><th>${t('movie.head.genres')}</th></tr>`;
 
 export function performerCard(p, i = 0) {
   const src = (p.sources || []).length;
   return `<div class="ac" style="--i:${i % 14}">${avatar(p)}
    <div class="grow" style="min-width:0"><div class="ell"><b><a href="${href.performer(p.id)}" class="lnk">${esc(performerName(p))}</a></b></div>
    <div class="muted ell">${esc(p.name_kanji || '')}${(p.aliases || []).length ? ' · ' + esc(p.aliases.slice(0, 2).join(', ')) : ''}</div>
-   <div class="dim mono ell">${src} nguồn · #${p.id}</div></div></div>`;
+   <div class="dim mono ell">${t('performer.card.sources', { count: src, n: src })} · #${p.id}</div></div></div>`;
 }
 export function performerRow(p) {
   return `<tr class="row"><td><b>${a(href.performer(p.id), esc(performerName(p)))}</b></td><td class="muted">${esc(p.name_kanji || '')}</td>
    <td class="muted">${esc((p.aliases || []).slice(0, 3).join(', '))}</td><td class="mono">${(p.sources || []).map(s => esc(s.source_slug)).join(', ')}</td>
    <td class="mono">${p.linked_title_count ?? '—'}</td></tr>`;
 }
-export const performerHead = '<tr><th>Tên</th><th>Kanji</th><th>Biệt danh</th><th>Nguồn</th><th>Số phim</th></tr>';
+export const performerHead = () => `<tr><th>${t('performer.head.name')}</th><th>${t('performer.head.kanji')}</th><th>${t('performer.head.aliases')}</th><th>${t('performer.head.sources')}</th><th>${t('performer.head.movies')}</th></tr>`;
 
 export const stat = (value, label, note = '') => `<div class="stat"><b>${value}</b><span>${label}</span>${note ? `<em>${note}</em>` : ''}</div>`;
 export const kv = rows => `<dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
@@ -99,9 +100,9 @@ export function infiniteList(root, { fetchPage, renderItems, wrapGrid, emptyHtml
       state.shown += r.items.length;
       if (countEl) countEl.textContent = fmt(state.total ?? state.shown);
       if (!state.shown) { foot.innerHTML = ''; host.innerHTML = ''; root.querySelector('[data-e]').innerHTML = emptyHtml; }
-      else foot.innerHTML = state.done ? `<span class="dim">Đã hiển thị ${fmt(state.shown)}${state.total ? ' / ' + fmt(state.total) : ''}</span>` : '';
+      else foot.innerHTML = state.done ? `<span class="dim">${state.total ? t('list.shown_of', { shown: fmt(state.shown), total: fmt(state.total) }) : t('list.shown', { shown: fmt(state.shown) })}</span>` : '';
     } catch (e) {
-      if (gen === state.gen) foot.innerHTML = `<span class="err">${esc(e.message || e)}</span> <button class="btn sm" data-act="more">Thử lại</button>`;
+      if (gen === state.gen) foot.innerHTML = `<span class="err">${esc(e.message || e)}</span> <button class="btn sm" data-act="more">${t('common.retry')}</button>`;
     } finally {
       if (gen === state.gen) state.loading = false;
     }

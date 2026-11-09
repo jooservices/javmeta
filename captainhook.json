@@ -20,7 +20,7 @@
                 "conditions": []
             },
             {
-                "action": "echo 'Running linters...' && composer lint",
+                "action": "echo 'Running linters...' && composer lint && composer lint:i18n",
                 "conditions": []
             }
         ]

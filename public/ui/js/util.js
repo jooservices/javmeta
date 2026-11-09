@@ -1,20 +1,15 @@
+import { t, formatNumber, formatRelativeTime } from './i18n.js';
+
 export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const fold = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').toLowerCase();
-export const fmt = n => (n === null || n === undefined || n === '') ? '—' : Number(n).toLocaleString('vi-VN');
+export const fmt = n => formatNumber(n);
 export const hueOf = s => { let h = 7; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 export const initials = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase();
-export const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+export const debounce = (fn, ms) => { let timer; return (...a) => { clearTimeout(timer); timer = setTimeout(() => fn(...a), ms); }; };
 
-export function ago(iso) {
-  if (!iso) return '—';
-  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 90) return Math.round(s) + ' giây trước';
-  if (s < 5400) return Math.round(s / 60) + ' phút trước';
-  if (s < 129600) return Math.round(s / 3600) + ' giờ trước';
-  return Math.round(s / 86400) + ' ngày trước';
-}
+export const ago = iso => formatRelativeTime(iso);
 
 export function toast(text) {
   const e = document.createElement('div');
@@ -24,7 +19,7 @@ export function toast(text) {
   setTimeout(() => e.remove(), 2600);
 }
 
-export async function copyText(text, ok = 'Đã sao chép') {
+export async function copyText(text, ok = t('util.copied')) {
   try { await navigator.clipboard.writeText(text); toast(ok); } catch { toast(text); }
 }
 

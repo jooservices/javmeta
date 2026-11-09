@@ -1402,6 +1402,14 @@ Thông tin bí mật. Mã mục: `ui_security.owner_admin_token`.
 
 Thông tin bí mật. Mã mục: `ui_security.mcp_api_key`.
 
+## Giao diện người dùng
+
+### Ngôn ngữ giao diện
+
+Tiếng Việt hoặc English cho giao diện chủ sở hữu; trình duyệt khách vẫn chọn riêng trên máy.
+
+Văn bản; chọn: vi, en. Mã mục: `ui.locale`.
+
 ## Thêm node
 
 ### Thời hạn mã thêm node (phút)

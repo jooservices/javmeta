@@ -23,7 +23,7 @@ export const enableGuestMode = defineStep('enableGuestMode', async ctx => {
     });
   }
   await putSetting(ctx.page, 'ui_security.login_required', false);
-  const probe = await ctx.context.browser().newContext();
+  const probe = await ctx.context.browser().newContext({ locale: 'vi-VN' });
   try {
     const page = await probe.newPage();
     await page.goto(ctx.base + '/app', { waitUntil: 'load' });
@@ -36,7 +36,7 @@ export const enableGuestMode = defineStep('enableGuestMode', async ctx => {
 
 /** Continues the scenario in a second browser context that has never signed in. */
 export const browseAsGuest = defineStep('browseAsGuest', async ctx => {
-  const guestContext = await ctx.context.browser().newContext({ viewport: ctx.page.viewportSize() || { width: 1440, height: 900 } });
+  const guestContext = await ctx.context.browser().newContext({ locale: 'vi-VN', viewport: ctx.page.viewportSize() || { width: 1440, height: 900 } });
   onContextClose(ctx, async () => { await guestContext.close(); });
   const guestPage = await guestContext.newPage();
   const issues = [];

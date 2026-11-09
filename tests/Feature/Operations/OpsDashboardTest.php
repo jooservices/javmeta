@@ -42,6 +42,8 @@ final class OpsDashboardTest extends TestCase
         $admin = $this->admin();
 
         $this->actingAs($admin)->get('/ops')->assertOk();
+        // The Command Center text is English only, so its language attribute stays honest whatever ?lang asks for.
+        $this->actingAs($admin)->get('/ops?lang=vi')->assertOk()->assertSee('<html lang="en">', false);
         $this->actingAs($admin)->getJson('/ops/data')->assertOk()->assertJsonStructure(['as_of', 'totals' => ['movies']]);
     }
 
@@ -94,7 +96,7 @@ final class OpsDashboardTest extends TestCase
 
     public function test_the_login_page_is_vietnamese_xcrawler(): void
     {
-        $this->get('/login')
+        $this->get('/login?lang=vi')
             ->assertOk()
             ->assertSee('lang="vi"', false)
             ->assertSee('Đăng nhập · XCrawler', false)
@@ -102,6 +104,17 @@ final class OpsDashboardTest extends TestCase
             ->assertSee('Kho phim này là riêng tư', false)
             ->assertDontSee('Operations sign in')
             ->assertDontSee('JavMeta Operations');
+    }
+
+    public function test_a_failed_sign_in_keeps_the_language_chosen_in_the_url(): void
+    {
+        $page = $this->get('/login?lang=vi');
+        $page->assertSee('/login?lang=vi', false);
+
+        $this->withHeader('Accept-Language', 'en')
+            ->post('/login?lang=vi', ['email' => 'nobody@example.test', 'password' => 'wrong-password'])
+            ->assertSessionHasErrors();
+        $this->assertStringContainsString('không đúng', (string) session('errors')->first());
     }
 
     public function test_login_attempts_are_rate_limited(): void

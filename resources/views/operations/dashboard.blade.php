@@ -1,4 +1,5 @@
 <!doctype html>
+{{-- The Command Center is not translated yet: its text is English, so the page says so whatever ?lang asks for. --}}
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -88,7 +89,7 @@
     <div class="kpi"><span class="label">Videos</span><strong id="movies">—</strong><small id="movies-hour">— added in 1 hour</small></div>
     <div class="kpi"><span class="label">Performers</span><strong id="performers">—</strong><small>Unique records</small></div>
     <div class="kpi"><span class="label">Queue complete</span><strong id="done">—</strong><small>All time</small></div>
-    <div class="kpi"><span class="label">Quyền truy cập giao diện</span><strong id="ui-login-mode">—</strong><small id="ui-login-detail">—</small></div>
+    <div class="kpi" lang="vi"><span class="label">Quyền truy cập giao diện</span><strong id="ui-login-mode">—</strong><small id="ui-login-detail">—</small></div>
     <div class="kpi"><span class="label">Queue pending</span><strong id="pending">—</strong><small id="claimed">— in progress</small></div>
     <div class="kpi problem"><span class="label">Failed items</span><strong id="failed">—</strong><small id="failed-jobs">— failed jobs</small></div>
   </section>

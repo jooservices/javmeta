@@ -28,13 +28,13 @@ final class LoginController
         ]);
 
         if (! Auth::attempt($credentials)) {
-            return back()->withErrors(['email' => 'Email hoặc mật khẩu không đúng.'])->onlyInput('email');
+            return back()->withErrors(['email' => __('auth.failed')])->onlyInput('email');
         }
 
         if ($request->user()?->role !== 'super_administrator') {
             Auth::logout();
 
-            return back()->withErrors(['email' => 'Tài khoản này không được vào XCrawler.'])->onlyInput('email');
+            return back()->withErrors(['email' => __('auth.forbidden')])->onlyInput('email');
         }
 
         $request->session()->regenerate();

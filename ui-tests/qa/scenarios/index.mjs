@@ -1,5 +1,5 @@
 import { defineScenario } from '../lib/step.mjs';
-import { login, loginWith, expectOnLoginPage, expectSignInEmailEmpty, expectFrontDoorIsXCrawlerInVietnamese } from '../steps/auth.mjs';
+import { login, loginWith, expectOnLoginPage, expectSignInEmailEmpty, expectFrontDoorIsXCrawlerInVietnamese, switchUiLanguage, expectUiLanguage, expectLanguagePersistsAfterReload } from '../steps/auth.mjs';
 import { openView, openPath, expectViewHealthy, resizeTo, expectNoConsoleErrors } from '../steps/navigation.mjs';
 import { openTab, expectTabShowsControls, tabNames, toggleFirstSwitch, saveSwitchGroup, expectSwitchPersisted, restoreSwitch } from '../steps/settings.mjs';
 import { filterMoviesByKeyword, expectMovieResults, openMovie, expectMovieDetail, toggleFavourite, expectInFavourites, expectCalendarOpensWithReleases } from '../steps/movies.mjs';
@@ -32,7 +32,13 @@ export const signInFormHasNoPrefilledEmail = defineScenario('the sign-in form ha
 ]);
 
 export const frontDoorIsVietnameseXCrawler = defineScenario('the front door is Vietnamese XCrawler', [
-  openPath('/login'), expectFrontDoorIsXCrawlerInVietnamese(),
+  openPath('/login?lang=vi'), expectFrontDoorIsXCrawlerInVietnamese(),
+]);
+
+export const languageSwitcherChangesUiAndPersists = defineScenario('switching to English changes visible texts and persists after reload', [
+  login(), openView('#/'), expectUiLanguage('vi'),
+  switchUiLanguage('en'), expectUiLanguage('en'), expectLanguagePersistsAfterReload('en'),
+  switchUiLanguage('vi'), expectUiLanguage('vi'),
 ]);
 
 export const everyViewRendersOnDesktop = defineScenario('every view renders on desktop', [login(), ...VIEWS.flatMap(v => [openView(v), expectViewHealthy()])]);

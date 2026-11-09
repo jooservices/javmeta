@@ -53,6 +53,12 @@ jobs:
           JAVMETA_CI_SKIP_BUILD: '1'
         run: docker/ci/run composer lint
 
+      # The PHP quality image has no Node on purpose, so the UI string ratchet runs on the runner's own Node.
+      - name: UI hardcoded-string ratchet
+        run: |
+          node tools/quality/i18n-literals.test.mjs
+          node tools/quality/i18n-hardcoded-ratchet.mjs
+
       - name: Test with coverage
         env:
           JAVMETA_CI_SKIP_BUILD: '1'
@@ -74,10 +80,14 @@ jobs:
         run: |
           set -euo pipefail
           # GitHub-hosted runner jitter makes a 30% cutoff noisy; warn in that
-          # band and fail only when a run exceeds 2x the stable baseline.
-          baseline_seconds=200.00
-          warning_seconds=260.00
-          maximum_seconds=400.00
+          # band and fail only when a run is clearly slower than the stable baseline.
+          # Re-measured 2026-11-09 on CI: 290-409 s per run (median ~340 s). About 130 s of it is a real
+          # 5 s polite delay inside the CrawlerX date-listing contract tests (the library sleeps even when HTTP
+          # is faked), so the old 200 s baseline no longer describes the suite. Warn above +30% of 300 s and
+          # fail above 480 s; speeding the contract tests up is tracked separately.
+          baseline_seconds=300.00
+          warning_seconds=400.00
+          maximum_seconds=480.00
 
           for run in 1 2 3; do
             printf 'Composer test stability run %s/3\n' "${run}"

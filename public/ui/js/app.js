@@ -28,6 +28,8 @@ import downloads from './views/downloads.js';
 import media from './views/media.js';
 import player from './views/player.js';
 import { send } from './api.js';
+import { t, html as tHtml, initI18n, onLocaleChange, currentLocale } from './i18n.js';
+import { switchLocale } from './locale.js';
 
 const ROUTES = [
   [/^$/, home, 'home'], [/^home$/, home, 'home'],
@@ -54,11 +56,12 @@ const ROUTES = [
   [/^settings\/report$/, report, 'settings'],
 ];
 
+/* [group key, [[id, label key, icon, href]]]: labels are translated when the shell is drawn */
 const NAV = [
-  ['Khám phá', [['home', 'Khám phá', 'home', '#/'], ['search', 'Tìm kiếm', 'search', '#/search'], ['stats', 'Thống kê', 'chart', '#/stats']]],
-  ['Danh mục', [['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers'], ['bio', 'Hồ sơ diễn viên', 'user', '#/bio'], ['smart-new', 'Mới cập nhật', 'film', '#/movies?sort=update_date'], ['catalog-genres', 'Thể loại', 'tag', '#/catalog/genres'], ['catalog-makers', 'Hãng', 'building', '#/catalog/makers'], ['catalog-series', 'Loạt phim', 'folder', '#/catalog/series'], ['catalog-labels', 'Nhãn', 'layers', '#/catalog/labels'], ['catalog-years', 'Năm', 'cal', '#/catalog/years'], ['calendar', 'Lịch phát hành', 'cal', '#/calendar']]],
-  ['Của tôi', [['me-favourite', 'Yêu thích', 'tag', '#/me/favourite'], ['me-watch_later', 'Xem sau', 'cal', '#/me/watch_later'], ['me-seen', 'Đã xem', 'film', '#/me/seen'], ['feed', 'Theo dõi', 'user', '#/feed'], ['library', 'Thư viện', 'layers', '#/library'], ['downloads', 'Tải về', 'disk', '#/downloads'], ['media', 'Tệp media', 'film', '#/media']]],
-  ['Công cụ', [['crawl', 'Thu thập & nguồn', 'spider', '#/crawl'], ['ops', 'Vận hành', 'chart', document.querySelector('meta[name=command-center-url]')?.content || '/ops'], ['admin', 'Quản trị', 'gear', '#/admin'], ['settings', 'Cài đặt', 'gear', '#/settings']]],
+  ['nav.group.discover', [['home', 'nav.discover', 'home', '#/'], ['search', 'nav.search', 'search', '#/search'], ['stats', 'nav.stats', 'chart', '#/stats']]],
+  ['nav.group.catalog', [['movies', 'nav.movies', 'film', '#/movies'], ['performers', 'nav.performers', 'user', '#/performers'], ['bio', 'nav.bio', 'user', '#/bio'], ['smart-new', 'nav.new', 'film', '#/movies?sort=update_date'], ['catalog-genres', 'nav.genres', 'tag', '#/catalog/genres'], ['catalog-makers', 'nav.makers', 'building', '#/catalog/makers'], ['catalog-series', 'nav.series', 'folder', '#/catalog/series'], ['catalog-labels', 'nav.labels', 'layers', '#/catalog/labels'], ['catalog-years', 'nav.years', 'cal', '#/catalog/years'], ['calendar', 'nav.calendar', 'cal', '#/calendar']]],
+  ['nav.group.mine', [['me-favourite', 'nav.favourite', 'tag', '#/me/favourite'], ['me-watch_later', 'nav.watch_later', 'cal', '#/me/watch_later'], ['me-seen', 'nav.seen', 'film', '#/me/seen'], ['feed', 'nav.feed', 'user', '#/feed'], ['library', 'nav.library', 'layers', '#/library'], ['downloads', 'nav.downloads', 'disk', '#/downloads'], ['media', 'nav.media', 'film', '#/media']]],
+  ['nav.group.tools', [['crawl', 'nav.crawl', 'spider', '#/crawl'], ['ops', 'nav.ops', 'chart', document.querySelector('meta[name=command-center-url]')?.content || '/ops'], ['admin', 'nav.admin', 'gear', '#/admin'], ['settings', 'nav.settings', 'gear', '#/settings']]],
 ];
 
 let cleanup = null;
@@ -67,9 +70,9 @@ const guestMode = document.body.dataset.guestMode === 'true';
 const OWNER_ONLY_NAV_IDS = new Set(['me-favourite', 'me-watch_later', 'me-seen', 'feed', 'library', 'downloads', 'media', 'ops', 'admin', 'settings']);
 
 function guestLoginPrompt(page) {
-  const pageNames = { admin: 'Quản trị', settings: 'Cài đặt', library: 'Thư viện', downloads: 'Tải về', media: 'Tệp media', feed: 'Theo dõi' };
-  const label = pageNames[page] || page;
-  return `<div class="wrap"><section class="panel guest-login-prompt"><div class="bd"><h1>Đăng nhập để dùng tính năng này</h1><p>${label} chỉ dành cho chủ sở hữu đã đăng nhập.</p><a class="btn pri" href="/login">Đăng nhập</a></div></section></div>`;
+  const pageNames = { admin: 'nav.admin', settings: 'nav.settings', library: 'nav.library', downloads: 'nav.downloads', media: 'nav.media', feed: 'nav.feed', personal: 'guest.page.personal' };
+  const label = pageNames[page] ? t(pageNames[page]) : page;
+  return `<div class="wrap"><section class="panel guest-login-prompt"><div class="bd"><h1>${t('guest.prompt.title')}</h1><p>${t('guest.prompt.body', { page: label })}</p><a class="btn pri" href="/login">${t('guest.prompt.login')}</a></div></section></div>`;
 }
 
 function isOwnerPage(route) {
@@ -97,12 +100,28 @@ function drawShell(top) {
     ? NAV.map(([label, items]) => [label, items.filter(item => !OWNER_ONLY_NAV_IDS.has(item[0]))])
       .filter(group => group[1].length)
     : NAV;
-  $('#side').innerHTML = '<div class="brand"><i>X</i>XCrawler</div>' + groups.map(g => `<div class="nav-h">${g[0]}</div>` + g[1].map(n => `<a class="nav ${top === n[0] ? 'on' : ''}" href="${n[3]}" style="text-decoration:none">${ic(n[2])}<span>${n[1]}</span></a>`).join('')).join('') + '<div class="side-foot">JavMeta API · dữ liệu thật</div>';
+  $('#side').innerHTML = '<div class="brand"><i>X</i>XCrawler</div>' + groups.map(g => `<div class="nav-h">${t(g[0])}</div>` + g[1].map(n => `<a class="nav ${top === n[0] ? 'on' : ''}" href="${n[3]}" style="text-decoration:none">${ic(n[2])}<span>${t(n[1])}</span></a>`).join('')).join('') + `<div class="side-foot">${t('nav.footer')}</div>`;
   const bn = guestMode
-    ? [['home', 'Khám phá', 'home', '#/'], ['search', 'Tìm', 'search', '#/search'], ['movies', 'Phim', 'film', '#/movies'], ['performers', 'Diễn viên', 'user', '#/performers']]
-    : [['home', 'Khám phá', 'home', '#/'], ['search', 'Tìm', 'search', '#/search'], ['movies', 'Phim', 'film', '#/movies'], ['me-favourite', 'Yêu thích', 'tag', '#/me/favourite'], ['settings', 'Cài đặt', 'gear', '#/settings']];
-  $('#bnav').innerHTML = bn.map(n => `<a class="${top === n[0] ? 'on' : ''}" href="${n[3]}">${ic(n[2])}${n[1]}</a>`).join('');
+    ? [['home', 'nav.discover', 'home', '#/'], ['search', 'nav.search_short', 'search', '#/search'], ['movies', 'nav.movies', 'film', '#/movies'], ['performers', 'nav.performers', 'user', '#/performers']]
+    : [['home', 'nav.discover', 'home', '#/'], ['search', 'nav.search_short', 'search', '#/search'], ['movies', 'nav.movies', 'film', '#/movies'], ['me-favourite', 'nav.favourite', 'tag', '#/me/favourite'], ['settings', 'nav.settings', 'gear', '#/settings']];
+  $('#bnav').innerHTML = bn.map(n => `<a class="${top === n[0] ? 'on' : ''}" href="${n[3]}">${ic(n[2])}${t(n[1])}</a>`).join('');
   $('.top .menu').innerHTML = ic('menu');
+  drawLangSwitch();
+}
+
+/* the VI | EN switch in the top bar */
+function drawLangSwitch() {
+  const host = $('#langsw');
+  if (!host) return;
+  host.innerHTML = ['vi', 'en'].map(code => `<button type="button" class="${currentLocale() === code ? 'on' : ''}" data-act="locale" data-v="${code}" aria-pressed="${currentLocale() === code}" lang="${code}" title="${t('locale.name.' + code)}">${code.toUpperCase()}</button>`).join('');
+}
+
+/* static markup in index.html: data-i18n (text) and data-i18n-placeholder / -aria-label / -title (attributes) */
+function applyStaticI18n() {
+  $$('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  for (const attr of ['placeholder', 'aria-label', 'title']) {
+    $$(`[data-i18n-${attr}]`).forEach(el => el.setAttribute(attr, t(el.getAttribute(`data-i18n-${attr}`))));
+  }
 }
 
 async function render() {
@@ -113,11 +132,11 @@ async function render() {
   setSideOpen(false);
   const token = current = {};
   if (guestMode && isOwnerPage(r)) {
-    const page = r.top.startsWith('me-') || r.top === 'feed' ? 'Tính năng cá nhân' : r.top;
+    const page = r.top.startsWith('me-') || r.top === 'feed' ? 'personal' : r.top;
     view.innerHTML = guestLoginPrompt(page);
     return;
   }
-  if (!r.view) { view.innerHTML = '<div class="wrap"><div class="empty">Trang không tồn tại.<a class="btn" href="#/">Về Khám phá</a></div></div>'; return; }
+  if (!r.view) { view.innerHTML = `<div class="wrap"><div class="empty">${t('app.not_found')}<a class="btn" href="#/">${t('app.back_discover')}</a></div></div>`; return; }
   view.innerHTML = loadingBox();
   try {
     await loadDisk(disk);
@@ -138,16 +157,16 @@ async function omniDraw() {
   const drop = $('#odrop');
   if (q.length < 2) { drop.hidden = true; return; }
   drop.hidden = false;
-  drop.innerHTML = '<div class="og">Đang tìm…</div>';
+  drop.innerHTML = `<div class="og">${t('common.searching')}</div>`;
   try {
     const { data: sg } = await api('suggest', { q, limit: 5 });
     if ($('#omq').value.trim() !== q) return;
     OM.items = [
-      ...(sg.movies || []).map(x => ({ g: 'Phim', href: href.movie(x.code), label: `${codeLabel(x.code)} · ${x.title || ''}`, sub: x.maker || '' })),
-      ...(sg.performers || []).map(x => ({ g: 'Diễn viên', href: href.performer(x.id), label: x.name || `#${x.id}`, sub: `#${x.id}`, p: { id: x.id, name_romaji: x.name } })),
-      ...(sg.makers || []).map(x => ({ g: 'Hãng', href: href.facet('maker', x.name), label: x.name, sub: `${fmt(x.movie_count)} phim` })),
-      ...(sg.series || []).map(x => ({ g: 'Loạt phim', href: href.facet('series', x.name), label: x.name, sub: `${fmt(x.movie_count)} phim` })),
-      { g: 'Tìm kiếm', href: href.search(q), label: `Tìm “${q}” trong mọi thứ`, sub: 'Enter' },
+      ...(sg.movies || []).map(x => ({ g: t('omni.group.movies'), href: href.movie(x.code), label: `${codeLabel(x.code)} · ${x.title || ''}`, sub: x.maker || '' })),
+      ...(sg.performers || []).map(x => ({ g: t('omni.group.performers'), href: href.performer(x.id), label: x.name || `#${x.id}`, sub: `#${x.id}`, p: { id: x.id, name_romaji: x.name } })),
+      ...(sg.makers || []).map(x => ({ g: t('omni.group.makers'), href: href.facet('maker', x.name), label: x.name, sub: t('omni.movie_count', { count: x.movie_count, n: fmt(x.movie_count) }) })),
+      ...(sg.series || []).map(x => ({ g: t('omni.group.series'), href: href.facet('series', x.name), label: x.name, sub: t('omni.movie_count', { count: x.movie_count, n: fmt(x.movie_count) }) })),
+      { g: t('omni.group.search'), href: href.search(q), label: tHtml('omni.search_all', { q }), sub: 'Enter' },
     ];
     OM.i = 0;
     let last = '';
@@ -167,12 +186,15 @@ async function live() {
     const [s, src] = await Promise.all([api('status/summary'), api('status/sources')]);
     const rows = src.data.filter(x => x.enabled);
     const ok = rows.filter(x => x.last_success_at && (Date.now() - new Date(x.last_success_at)) < 1800000).length;
-    $('#livetxt').textContent = `${fmt(s.data.counts.movies)} phim · ${fmt(s.data.counts.performers)} diễn viên · ${ok}/${rows.length} nguồn ổn`;
-  } catch { $('#livetxt').textContent = 'mất kết nối'; }
+    $('#livetxt').textContent = t('live.text', { movies: fmt(s.data.counts.movies), performers: fmt(s.data.counts.performers), ok, total: rows.length });
+  } catch { $('#livetxt').textContent = t('live.offline'); }
 }
 
 /* ---------- boot ---------- */
 initTheme();
+await initI18n(); // before the first render: the catalogs and <html lang> are ready
+applyStaticI18n();
+onLocaleChange(() => { applyStaticI18n(); omniClose(); live(); render(); });
 window.addEventListener('hashchange', render);
 $('#omq').addEventListener('input', debounce(omniDraw, 250));
 $('#omq').addEventListener('keydown', e => {
@@ -192,14 +214,15 @@ document.addEventListener('click', e => {
   if (!e.target.closest('#omni')) omniClose();
   const oi = e.target.closest('#odrop .oi'); if (oi) { omniClose(); $('#omq').value = ''; }
   const mk = e.target.closest('[data-mark]'); if (mk) { toggleMark(mk); return; }
-  const dlb = e.target.closest('[data-dl]'); if (dlb) { dlb.disabled = true; send('POST', '/ui-me/downloads', { code: dlb.dataset.dl }).then(() => { dlb.textContent = '✓ Đã thêm vào Tải về'; }).catch(err => { dlb.textContent = err.message; dlb.disabled = false; }); return; }
-  const t = e.target.closest('[data-act]'); if (!t) return;
-  const act = t.dataset.act;
+  const dlb = e.target.closest('[data-dl]'); if (dlb) { dlb.disabled = true; send('POST', '/ui-me/downloads', { code: dlb.dataset.dl }).then(() => { dlb.textContent = t('movie.download_added'); }).catch(err => { dlb.textContent = err.message; dlb.disabled = false; }); return; }
+  const actEl = e.target.closest('[data-act]'); if (!actEl) return;
+  const act = actEl.dataset.act;
   if (act === 'theme') toggleTheme();
   if (act === 'menu') setSideOpen(!$('#side').classList.contains('open'));
   if (act === 'reload') render();
-  if (act === 'copy') copyText(t.dataset.v);
+  if (act === 'copy') copyText(actEl.dataset.v);
   if (act === 'help') openHelp();
+  if (act === 'locale') switchLocale(actEl.dataset.v);
 });
 $('#sidescrim')?.addEventListener('click', () => setSideOpen(false));
 function setSideOpen(open) {
@@ -232,7 +255,7 @@ function openHelp() {
   dlg.setAttribute('role', 'dialog');
   dlg.setAttribute('aria-modal', 'true');
   dlg.setAttribute('aria-labelledby', 'help-title');
-  dlg.innerHTML = `<h2 id="help-title" style="margin-bottom:8px">Phím tắt</h2><dl class="kv" style="grid-template-columns:120px 1fr"><dt><kbd>${mod}+K</kbd> <kbd>/</kbd></dt><dd>Tìm kiếm</dd><dt><kbd>t</kbd></dt><dd>Đổi sáng/tối</dd><dt><kbd>Esc</kbd></dt><dd>Đóng</dd><dt><kbd>?</kbd></dt><dd>Bảng phím tắt</dd></dl><button type="button" class="btn" data-dlg-close>Đóng</button>`;
+  dlg.innerHTML = `<h2 id="help-title" style="margin-bottom:8px">${t('help.title')}</h2><dl class="kv" style="grid-template-columns:120px 1fr"><dt><kbd>${mod}+K</kbd> <kbd>/</kbd></dt><dd>${t('help.search')}</dd><dt><kbd>t</kbd></dt><dd>${t('help.theme')}</dd><dt><kbd>Esc</kbd></dt><dd>${t('help.close')}</dd><dt><kbd>?</kbd></dt><dd>${t('help.shortcuts')}</dd></dl><button type="button" class="btn" data-dlg-close>${t('common.close')}</button>`;
   $('#ov').classList.add('on');
   dlg.querySelector('[data-dlg-close]')?.focus();
 }

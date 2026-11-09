@@ -192,6 +192,9 @@ tr.sel td:first-child{box-shadow:inset 2px 0 var(--accent)}
 .seg button{border:0;background:var(--panel2);padding:3px 9px;color:var(--mute);display:flex;align-items:center;gap:4px}
 .seg button.on{background:var(--accent-soft);color:var(--accent)}
 .seg svg{width:13px;height:13px}
+.lang-switch{flex:none;font:600 11px var(--mono);letter-spacing:.04em}
+.lang-switch button{padding:3px 7px;cursor:pointer}
+.lang-switch button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .spark{display:flex;align-items:flex-end;gap:2px;height:22px}
 .spark i{width:4px;background:var(--accent);opacity:.7;border-radius:1px;min-height:2px}
 .spark i.f{background:var(--bad);opacity:.9}
@@ -285,6 +288,8 @@ tr.sel td:first-child{box-shadow:inset 2px 0 var(--accent)}
   #sidescrim{position:fixed;inset:0;z-index:45;background:rgba(0,0,0,.5)}
   #sidescrim[hidden]{display:none}
   .top .menu{display:grid}.pill-live,.omni kbd,.top .sp{display:none}
+  /* phone: only the other language is offered, so the search box keeps its width */
+  .top .lang-switch button.on{display:none}
   .omni{max-width:none}
   .omni input[type=text]{padding-right:12px}
   .view{padding-bottom:70px}

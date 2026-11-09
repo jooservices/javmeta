@@ -152,7 +152,8 @@
         "pre-package-uninstall": [
             "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
         ],
-        "test:nl": "@php artisan test tests/Nl/NaturalLanguageEvaluationTest.php"
+        "test:nl": "@php artisan test tests/Nl/NaturalLanguageEvaluationTest.php",
+        "lint:i18n": "node tools/quality/i18n-hardcoded-ratchet.mjs"
     },
     "extra": {
         "laravel": {
