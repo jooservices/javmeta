@@ -60,4 +60,22 @@ final class MovieResourceTest extends TestCase
         self::assertArrayNotHasKey('description', $payload);
         self::assertArrayNotHasKey('attrs', $payload);
     }
+
+    public function test_summary_uses_japanese_title_and_short_derived_code_with_opt_in_raw_code(): void
+    {
+        $code = 'JAVBTC-DERIVED-8e9952' . str_repeat('a', 58);
+        $resource = new MovieSummaryResource(new MovieResourceData(
+            code: $code,
+            title_jp: '日本語の作品',
+            title_en: '',
+        ));
+
+        $safe = $resource->toArray(Request::create('/api/v1/search'));
+        $raw = $resource->toArray(Request::create('/api/v1/search?include_internal_code=1'));
+
+        self::assertSame('日本語の作品', $safe['title_en']);
+        self::assertSame('JAVBTC · #8E9952', $safe['code']);
+        self::assertArrayNotHasKey('internal_code', $safe);
+        self::assertSame($code, $raw['internal_code']);
+    }
 }

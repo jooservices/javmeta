@@ -17,6 +17,7 @@ use App\Observability\OpenObserveClient;
 use App\Observability\MetricStreams;
 use App\Observability\NotificationMetrics;
 use App\Observability\NormalizationRejectionMetrics;
+use App\Observability\OllamaChatMetrics;
 use App\Services\Alerts\AlertMetrics;
 use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Crawl\CrawlerxFetchMethodPlan;
@@ -75,6 +76,7 @@ final class PublishMetricsCommand extends Command
         NodeSampleAggregator $sampleAggregator,
         ReportMetrics $reportMetrics,
         NormalizationRejectionMetrics $normalizationMetrics,
+        OllamaChatMetrics $ollamaChatMetrics,
         HorizonWorkerLayout $workerLayout,
         PostgresConnectionBudget $connectionBudget,
     ): int {
@@ -122,6 +124,10 @@ final class PublishMetricsCommand extends Command
                 'name' => MetricStreams::NAMES['elasticsearch_request_failures'],
                 'value' => $elasticsearchHealth->failureCount(),
             ]],
+            [
+                ['name' => MetricStreams::NAMES['ollama_chat_failures'], 'value' => $ollamaChatMetrics->failureCount()],
+                ['name' => MetricStreams::NAMES['ollama_chat_circuit_open'], 'value' => $ollamaChatMetrics->circuitOpen() ? 1 : 0],
+            ],
         );
 
         $client->ingestMetrics($points);

@@ -24,11 +24,11 @@ final class MovieSummaryResource extends JsonResource
         $resource = $this->resource;
 
         if ($resource instanceof MovieResourceData) {
-            return [
+            $payload = [
                 'uuid' => $resource->uuid,
-                'code' => $resource->code,
+                'code' => $this->displayCode($resource->code),
                 'title_jp' => $resource->title_jp,
-                'title_en' => $resource->title_en,
+                'title_en' => $this->title($resource->title_en, $resource->title_jp),
                 'performers' => $resource->performers,
                 'cover_url' => $resource->cover_url,
                 'cover_thumb_url' => $resource->cover_thumb_url,
@@ -43,17 +43,19 @@ final class MovieSummaryResource extends JsonResource
                 'completeness_tier' => $resource->completeness_tier,
                 'needs_review' => $resource->needs_review,
             ];
+
+            return $this->includeInternalCode($payload, $resource->code, $request);
         }
 
         if (! $resource instanceof Movie) {
             return is_array($resource) ? $resource : [];
         }
 
-        return [
+        $payload = [
             'uuid' => $resource->uuid,
-            'code' => $resource->display_code,
+            'code' => $this->displayCode((string) $resource->display_code),
             'title_jp' => $resource->title_jp,
-            'title_en' => $resource->title_en,
+            'title_en' => $this->title($resource->title_en, $resource->title_jp),
             'performers' => $this->whenLoaded(
                 'performers',
                 fn(): array => PerformerSummaryResource::collection($resource->performers)->resolve($request),
@@ -72,6 +74,40 @@ final class MovieSummaryResource extends JsonResource
             'completeness_tier' => $resource->completeness_tier,
             'needs_review' => (bool) $resource->needs_review,
         ];
+
+        return $this->includeInternalCode($payload, (string) $resource->display_code, $request);
+    }
+
+    private function title(?string $english, ?string $japanese): ?string
+    {
+        foreach ([$english, $japanese] as $title) {
+            if (is_string($title) && trim($title) !== '') {
+                return $title;
+            }
+        }
+
+        return null;
+    }
+
+    private function displayCode(string $code): string
+    {
+        if (preg_match('/^(.+)-DERIVED-([A-Fa-f0-9]{6})[A-Fa-f0-9]*$/', $code, $match) !== 1) {
+            return $code;
+        }
+
+        return strtoupper($match[1]) . ' · #' . strtoupper($match[2]);
+    }
+
+    /** @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function includeInternalCode(array $payload, string $code, Request $request): array
+    {
+        if ((string) $request->query('include_internal_code', '0') === '1' && $this->displayCode($code) !== $code) {
+            $payload['internal_code'] = $code;
+        }
+
+        return $payload;
     }
 
     private function coverUrl(Movie $movie): ?string

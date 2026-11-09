@@ -211,7 +211,8 @@ final class SampleDataset
             foreach ([$i % self::PERFORMERS, ($i * 7) % self::PERFORMERS] as $n) {
                 $links[$id . '-' . ($n + 1)] = ['movie_id' => $id, 'performer_id' => $performers[sprintf('p%04d', $n + 1)], 'source_slug' => self::SOURCE, 'crawled_at' => $now];
             }
-            foreach ([1 + $i % self::GENRES, 1 + ($i * 3) % self::GENRES] as $g) {
+            // A coprime multiplier distributes the second link across all labels so each QA genre clears search's 20-movie validation floor.
+            foreach ([1 + $i % self::GENRES, 1 + ($i * 7 + 1) % self::GENRES] as $g) {
                 $movieGenres[$id . '-' . $g] = ['movie_id' => $id, 'genre_id' => $genres[sprintf('sample-%02d', $g)], 'source_slug' => self::SOURCE, 'crawled_at' => $now];
             }
         }
@@ -221,6 +222,7 @@ final class SampleDataset
         foreach (array_chunk(array_values($links), 200) as $chunk) {
             app(MovieRepository::class)->tableQuery('movie_performers')->insertOrIgnore($chunk);
         }
+        app(MovieRepository::class)->tableQuery('movie_genres')->whereIn('movie_id', array_values($movies))->delete();
         foreach (array_chunk(array_values($movieGenres), 200) as $chunk) {
             app(MovieRepository::class)->tableQuery('movie_genres')->insertOrIgnore($chunk);
         }

@@ -36,6 +36,7 @@ use InvalidArgumentException;
  */
 final class MovieRepository extends BusinessQueryRepository
 {
+    private readonly ?SearchDeadlineRepository $searchDeadline;
     /** @var array<string, string> cursor sort => movies column */
     private const SORT_COLUMNS = [
         'release_date' => 'release_date',
@@ -43,9 +44,10 @@ final class MovieRepository extends BusinessQueryRepository
         'rating' => 'community_score',
     ];
 
-    public function __construct(Movie $model)
+    public function __construct(Movie $model, ?SearchDeadlineRepository $searchDeadline = null)
     {
         parent::__construct($model);
+        $this->searchDeadline = $searchDeadline;
     }
 
     /** @return array{items: list<array{name: string, movie_count: int}>, total: int} */
@@ -213,6 +215,19 @@ final class MovieRepository extends BusinessQueryRepository
      */
     public function search(array $filters, string $sort, ?array $cursor, int $perPage): array
     {
+        if ($this->searchDeadline !== null) {
+            return $this->searchDeadline->run(fn(): array => $this->searchWithinDeadline($filters, $sort, $cursor, $perPage));
+        }
+
+        return $this->searchWithinDeadline($filters, $sort, $cursor, $perPage);
+    }
+
+    /** @param array<string, mixed> $filters
+     * @param array{sort: string, last_sort: int|float|string|null, last_id: int}|null $cursor
+     * @return array{items: Collection<int, Movie>, total: int, sort: string, last_sort: int|float|string|null, last_id: int|null, has_more: bool}
+     */
+    private function searchWithinDeadline(array $filters, string $sort, ?array $cursor, int $perPage): array
+    {
         $q = isset($filters['q']) && is_string($filters['q']) ? trim($filters['q']) : null;
         $q = $q === '' ? null : $q;
 
@@ -254,6 +269,16 @@ final class MovieRepository extends BusinessQueryRepository
      */
     public function countFiltered(array $filters): int
     {
+        if ($this->searchDeadline !== null) {
+            return $this->searchDeadline->run(fn(): int => $this->countFilteredWithinDeadline($filters));
+        }
+
+        return $this->countFilteredWithinDeadline($filters);
+    }
+
+    /** @param array<string, mixed> $filters */
+    private function countFilteredWithinDeadline(array $filters): int
+    {
         $q = isset($filters['q']) && is_string($filters['q']) ? trim($filters['q']) : null;
         $q = $q === '' ? null : $q;
 
@@ -261,6 +286,27 @@ final class MovieRepository extends BusinessQueryRepository
         $this->applyFilters($query, $filters, $q);
 
         return $query->count();
+    }
+
+    /** @param list<string> $uuids
+     * @return Collection<string, Movie>
+     */
+    public function findByUuidsForSearch(array $uuids): Collection
+    {
+        if ($uuids === []) {
+            return new Collection();
+        }
+
+        $load = fn(): Collection => $this->modelQuery(Movie::class)
+            ->whereIn('uuid', $uuids)
+            ->with(['genres', 'performers.aliases', 'performers.sources', 'media', 'codes'])
+            ->get()
+            ->keyBy('uuid');
+
+        /** @var Collection<string, Movie> $movies */
+        $movies = $this->searchDeadline?->run($load) ?? $load();
+
+        return $movies;
     }
 
     /**

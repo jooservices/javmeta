@@ -183,26 +183,58 @@ final class QueryInterpreter
             }
         }
 
-        foreach (['maker' => 'makers', 'series' => 'series', 'genre' => 'genres'] as $field => $list) {
-            foreach ($this->names($list) as $name) {
-                $pos = mb_stripos($rest, $name);
-                if (mb_strlen($name) >= 3 && $pos !== false && ! isset($filters[$field])) {
-                    $filters[$field] = $name;
-                    $rest = mb_substr($rest, 0, $pos) . ' ' . mb_substr($rest, $pos + mb_strlen($name));
-                    break;
-                }
-            }
-        }
+        $filters = array_merge($filters, $this->catalogFilters($rest));
 
+        $keywords = $this->stripFillerTerms($rest);
+
+        return ['keywords' => $keywords, 'filters' => $filters];
+    }
+
+    /** @return array<string, mixed> */
+    private function catalogFilters(string &$rest): array
+    {
+        $filters = [];
         $actress = $this->performerIn($rest);
         if ($actress !== null) {
             $filters['actress'] = $actress;
             $rest = str_ireplace($actress, ' ', $rest);
         }
 
-        $keywords = $this->stripFillerTerms($rest);
+        foreach (['maker' => 'makers', 'series' => 'series', 'genre' => 'genres'] as $field => $list) {
+            foreach ($this->names($list) as $name) {
+                $pattern = preg_match('/[A-Za-z0-9]/', $name) === 1
+                    ? '/(?<![\p{L}\p{N}])' . preg_quote($name, '/') . '(?![\p{L}\p{N}])/iu'
+                    : '/' . preg_quote($name, '/') . '/u';
+                if (preg_match($pattern, $rest, $match, PREG_OFFSET_CAPTURE) !== 1) {
+                    continue;
+                }
+                $minimumMovies = $field === 'genre' || mb_strlen($name) < 3 ? 20 : 1;
+                if ($this->repository->movieCountForCatalogValue($field, $name) < $minimumMovies) {
+                    continue;
+                }
 
-        return ['keywords' => $keywords, 'filters' => $filters];
+                if ($field === 'genre') {
+                    if (! isset($filters['genre'])) {
+                        $filters['genre'] = $name;
+                    } else {
+                        $filters['genre'] = is_array($filters['genre']) ? $filters['genre'] : [$filters['genre']];
+                        if (! in_array($name, $filters['genre'], true)) {
+                            $filters['genre'][] = $name;
+                        }
+                    }
+                } elseif (! isset($filters[$field])) {
+                    $filters[$field] = $name;
+                }
+
+                $start = $match[0][1];
+                $rest = substr($rest, 0, $start) . ' ' . substr($rest, $start + strlen($match[0][0]));
+                if ($field !== 'genre') {
+                    break;
+                }
+            }
+        }
+
+        return $filters;
     }
 
     private function stripFillerTerms(string $text): string
@@ -226,7 +258,12 @@ final class QueryInterpreter
     private function releaseDateFilters(string &$rest): array
     {
         $filters = [];
-        if (preg_match('/(?<!\d)((?:19|20)\d{2})\s*(?:-|–|to|đến)\s*((?:19|20)\d{2})(?:\s*年)?(?!\d)/iu', $rest, $m) === 1) {
+        if (preg_match('/(?:this\s+month|tháng\s+này|今月)/iu', $rest, $m) === 1) {
+            $start = now()->startOfMonth();
+            $filters['released_from'] = $start->toDateString();
+            $filters['released_to'] = $start->endOfMonth()->toDateString();
+            $rest = $this->removeMatch($rest, $m[0]);
+        } elseif (preg_match('/(?<!\d)((?:19|20)\d{2})\s*(?:-|–|to|đến)\s*((?:19|20)\d{2})(?:\s*年)?(?!\d)/iu', $rest, $m) === 1) {
             [$filters['released_from'], $filters['released_to']] = [$m[1] . '-01-01', $m[2] . '-12-31'];
             $rest = $this->removeMatch($rest, $m[0]);
         } elseif (preg_match('/(?:after|since|từ|sau|以降)\s*((?:19|20)\d{2})(?:\s*年)?|(?<!\d)((?:19|20)\d{2})\s*年以降/iu', $rest, $m) === 1) {
@@ -239,7 +276,7 @@ final class QueryInterpreter
                 $filters['released_to'] = $year . '-12-31';
                 $rest = $this->removeMatch($rest, $m[0]);
             }
-        } elseif (preg_match('/(?:released\s+(?:in\s+)?|năm\s+|year\s+|(?<![A-Za-z])in\s+)((?:19|20)\d{2})(?:\s*年)?|(?<!\d)((?:19|20)\d{2})\s*年/iu', $rest, $m) === 1) {
+        } elseif (preg_match('/(?:released\s+(?:in\s+)?|from\s+|năm\s+|year\s+|(?<![A-Za-z])in\s+)((?:19|20)\d{2})(?:\s*年)?|(?<!\d)((?:19|20)\d{2})\s*年/iu', $rest, $m) === 1) {
             $year = $m[1] !== '' ? $m[1] : $m[2];
             [$filters['released_from'], $filters['released_to']] = [$year . '-01-01', $year . '-12-31'];
             $rest = $this->removeMatch($rest, $m[0]);
@@ -290,6 +327,12 @@ final class QueryInterpreter
                 'actress' => $this->knownPerformer($candidate),
                 default => $this->knownFacet($key, $candidate),
             };
+            if ($known !== null && in_array($key, ['maker', 'series', 'genre'], true)) {
+                $minimumMovies = $key === 'genre' ? 20 : 1;
+                if ($this->repository->movieCountForCatalogValue($key, $known) < $minimumMovies) {
+                    $known = null;
+                }
+            }
             if ($known === null) {
                 $invalid = true;
                 continue;
@@ -352,6 +395,10 @@ final class QueryInterpreter
     {
         if (in_array($field, ['blood_type', 'cup'], true) && mb_strlen($value) <= 2) {
             return preg_match('/(?<![A-Za-z0-9])' . preg_quote($value, '/') . '(?![A-Za-z0-9])/iu', $question) === 1;
+        }
+
+        if (in_array($field, ['maker', 'series', 'genre', 'actress'], true) && preg_match('/[A-Za-z0-9]/', $value) === 1) {
+            return preg_match('/(?<![\p{L}\p{N}])' . preg_quote($value, '/') . '(?![\p{L}\p{N}])/iu', $question) === 1;
         }
 
         return mb_stripos($question, $value) !== false;

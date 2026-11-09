@@ -33,6 +33,23 @@ final class SearchBudgetTest extends TestCase
         }
     }
 
+    public function test_statement_timeout_never_exceeds_the_remaining_budget(): void
+    {
+        config(['javmeta_search.budget_ms' => 8000]);
+        $now = 1_000_000_000;
+        $budget = new SearchBudget(static function () use (&$now): int {
+            return $now;
+        });
+
+        $budget->run(function () use ($budget, &$now): void {
+            $this->assertSame(2000, $budget->statementTimeoutMilliseconds());
+            $now += 7_250_000_000;
+            $this->assertSame(750, $budget->statementTimeoutMilliseconds());
+            $now += 750_000_000;
+            $this->assertSame(0, $budget->statementTimeoutMilliseconds());
+        });
+    }
+
     public function test_expired_budget_does_not_start_embedding_or_interpretation_http(): void
     {
         config(['javmeta_search.budget_ms' => 1]);

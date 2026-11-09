@@ -60,7 +60,9 @@ restart. See [notification policy and reports](notifications.md).
 
 ## Hybrid search HTTP budget
 
-`search.budget_ms` (default 300, range 25–1500, group Tìm kiếm) maps to `javmeta_search.budget_ms` through the database settings service. It limits optional HTTP work within one hybrid search. SQL and response serialization can exceed that budget. A timeout falls back to keyword results; the existing response keys remain unchanged. No environment variable is needed. See [performance](performance.md) for measurements and acceptance limits.
+`search.budget_ms` (default 8000, range 25–10000, group Tìm kiếm) maps to `javmeta_search.budget_ms` through the database settings service. It bounds `/ui-api/search` and `/api/v1/search` from cache miss through interpretation, keyword SQL, optional semantic search, totals and response serialization. PostgreSQL applies a per-statement timeout using the remaining budget. Keyword and semantic work have separate bounded windows; a timeout returns results already available and records the degraded stage. No environment variable is needed. See [search investigation](search-investigation.md#implementation-status-jooxcr-434) for operational behavior.
+
+`ai.ollama_url` defaults to `http://192.168.2.10:11434` and remains a database setting that can override the config default. Search chat requests use a two-second connect timeout and open a 60-second circuit after a failure; the rules interpreter continues to answer during that period. The failure counter and circuit state are published to OpenObserve.
 
 Media processing settings (`media.*`) are defined in `config/javmeta_media.php` and registered in `config/javmeta_settings.php`. They are database/UI settings, never environment variables. See [media.md](media.md) for queue limits and bootstrap credentials.
 

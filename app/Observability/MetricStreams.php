@@ -71,6 +71,8 @@ final class MetricStreams
         'postgres_connection_demand_warning' => self::PREFIX . 'postgres_connection_demand_warning',
         'mongo_archive_write_failures' => self::PREFIX . 'mongo_archive_write_failures',
         'elasticsearch_request_failures' => self::PREFIX . 'elasticsearch_request_failures',
+        'ollama_chat_failures' => self::PREFIX . 'ollama_chat_failures',
+        'ollama_chat_circuit_open' => self::PREFIX . 'ollama_chat_circuit_open',
         'dep_up' => self::PREFIX . 'dep_up',
         'backup_last_success_age_seconds' => self::PREFIX . 'backup_last_success_age_seconds',
         'horizon_workers' => self::PREFIX . 'horizon_workers',

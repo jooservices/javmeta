@@ -8,6 +8,7 @@ use App\Exceptions\InvalidFilterException;
 use App\Http\Resources\MovieSummaryResource;
 use App\Http\Resources\PerformerSummaryResource;
 use App\Services\Search\HybridSearchService;
+use App\Services\Search\SearchBudget;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -16,7 +17,12 @@ use JOOservices\LaravelController\Http\Controllers\BaseApiController;
 /** One search box for everything: movies and performers, keywords, filters read from the question, and meaning. */
 final class SearchController extends BaseApiController
 {
-    public function index(Request $request, HybridSearchService $search): JsonResponse
+    public function index(Request $request, HybridSearchService $search, SearchBudget $budget): JsonResponse
+    {
+        return $budget->run(fn(): JsonResponse => $this->searchWithinDeadline($request, $search));
+    }
+
+    private function searchWithinDeadline(Request $request, HybridSearchService $search): JsonResponse
     {
         $q = trim((string) $request->query('q', ''));
         $perPage = (int) $request->query('per_page', 12);
@@ -25,8 +31,10 @@ final class SearchController extends BaseApiController
         }
 
         $understand = ! in_array((string) $request->query('understand', '1'), ['0', 'false'], true);
+        $includeInternalCode = (string) $request->query('include_internal_code', '0') === '1';
         // The same question asked again within a minute (the UI re-sends it while typing and paging) is answered from the cache.
-        $data = Cache::remember('javmeta:search:' . hash('sha256', $q . '|' . $perPage . '|' . (int) $understand), 60, function () use ($search, $q, $perPage, $understand, $request): array {
+        $data = Cache::remember('javmeta:search:' . hash('sha256', $q . '|' . $perPage . '|' . (int) $understand . '|' . (int) $includeInternalCode), 60, function () use ($search, $q, $perPage, $understand, $request, $includeInternalCode): array {
+            $request->query->set('include_internal_code', $includeInternalCode ? '1' : '0');
             $result = $search->search($q, $perPage, $understand);
 
             return [

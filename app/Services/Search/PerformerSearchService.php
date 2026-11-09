@@ -27,12 +27,12 @@ final class PerformerSearchService
      */
     public function semanticSearch(string $query, int $perPage, ?array $prefetchedUuids = null): array
     {
-        if (
+        if ($prefetchedUuids === null && (
             ! (bool) config('elasticsearch.enabled', true)
             || app()->environment('testing')
             || ! $this->dependencies->isAvailable(Dependency::Elasticsearch)
             || ! $this->dependencies->isAvailable(Dependency::Embedder)
-        ) {
+        )) {
             return $this->performers->search(['q' => $query], 'name', null, $perPage);
         }
 
@@ -58,6 +58,10 @@ final class PerformerSearchService
                     'sort' => 'relevance',
                 ];
             }
+        }
+
+        if ($prefetchedUuids !== null) {
+            return ['items' => collect(), 'total' => 0, 'has_more' => false, 'last_id' => null, 'last_sort' => null, 'sort' => 'relevance'];
         }
 
         return $this->performers->search(['q' => $query], 'name', null, $perPage);

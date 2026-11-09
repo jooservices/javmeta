@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Embedding;
 
+use App\Observability\OllamaChatMetrics;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Throwable;
@@ -30,7 +31,9 @@ class OllamaClient
     public function warm(string $model): bool
     {
         try {
-            return Http::timeout($this->timeout())->post($this->baseUrl() . '/api/generate', ['model' => $model, 'keep_alive' => $this->keepAlive()])->successful();
+            $seconds = $this->timeout();
+
+            return Http::timeout($seconds)->connectTimeout(min(2, $seconds))->post($this->baseUrl() . '/api/generate', ['model' => $model, 'keep_alive' => $this->keepAlive()])->successful();
         } catch (Throwable) {
             return false;
         }
@@ -45,7 +48,8 @@ class OllamaClient
     public function models(): ?array
     {
         try {
-            $response = Http::timeout(min(10, $this->timeout()))->get($this->baseUrl() . '/api/tags');
+            $seconds = min(10, $this->timeout());
+            $response = Http::timeout($seconds)->connectTimeout(min(2, $seconds))->get($this->baseUrl() . '/api/tags');
 
             return $response->successful() ? array_values(array_map(static fn($m): string => (string) ($m['name'] ?? ''), (array) $response->json('models', []))) : null;
         } catch (Throwable) {
@@ -64,7 +68,7 @@ class OllamaClient
             if ($seconds <= 0) {
                 return null;
             }
-            $response = Http::timeout($seconds)->connectTimeout($seconds)->post($this->baseUrl() . '/api/embed', ['model' => (string) config('javmeta_ai.ollama_embed_model'), 'input' => $texts, 'keep_alive' => $this->keepAlive()]);
+            $response = Http::timeout($seconds)->connectTimeout(min(2, $seconds))->post($this->baseUrl() . '/api/embed', ['model' => (string) config('javmeta_ai.ollama_embed_model'), 'input' => $texts, 'keep_alive' => $this->keepAlive()]);
             $embeddings = $response->successful() ? $response->json('embeddings') : null;
             if (! is_array($embeddings) || count($embeddings) !== count($texts)) {
                 return null;
@@ -90,6 +94,10 @@ class OllamaClient
     public function jsonWithTelemetry(string $system, string $user, ?array $schema = null): array
     {
         $startedAt = hrtime(true);
+        $metrics = app(OllamaChatMetrics::class);
+        if ($metrics->circuitOpen()) {
+            return $this->jsonTelemetryResult(null, 'circuit_open', $startedAt);
+        }
 
         try {
             // A reading of a typed question must not hold the search: a cold model load takes seconds, so a short timeout lets
@@ -100,7 +108,7 @@ class OllamaClient
                 return $this->jsonTelemetryResult(null, 'budget_exhausted', $startedAt);
             }
 
-            $response = Http::timeout($seconds)->connectTimeout($seconds)->withoutRedirecting()->post($this->baseUrl() . '/api/chat', [
+            $response = Http::timeout($seconds)->connectTimeout(min(2.0, $seconds))->withoutRedirecting()->post($this->baseUrl() . '/api/chat', [
                 'model' => (string) config('javmeta_ai.ollama_chat_model'),
                 'keep_alive' => $this->keepAlive(),
                 'stream' => false,
@@ -110,15 +118,23 @@ class OllamaClient
             ]);
             $status = $response->status();
             if (! $response->successful()) {
+                $metrics->recordFailure('http_error', $status);
+
                 return $this->jsonTelemetryResult(null, 'http_error', $startedAt, $status);
             }
 
             $content = $response->json('message.content');
             $decoded = is_string($content) ? json_decode($content, true) : null;
 
-            return is_array($decoded)
-                ? $this->jsonTelemetryResult($decoded, 'success', $startedAt, $status)
-                : $this->jsonTelemetryResult(null, 'invalid_json', $startedAt, $status);
+            if (is_array($decoded)) {
+                $metrics->recordSuccess();
+
+                return $this->jsonTelemetryResult($decoded, 'success', $startedAt, $status);
+            }
+
+            $metrics->recordFailure('invalid_json', $status);
+
+            return $this->jsonTelemetryResult(null, 'invalid_json', $startedAt, $status);
         } catch (ConnectionException $exception) {
             $message = strtolower($exception->getMessage());
             $outcome = str_contains($message, 'timed out')
@@ -126,9 +142,12 @@ class OllamaClient
                 || str_contains($message, 'curl error 28')
                 ? 'timeout'
                 : 'transport_error';
+            $metrics->recordFailure($outcome, null);
 
             return $this->jsonTelemetryResult(null, $outcome, $startedAt);
         } catch (Throwable) {
+            $metrics->recordFailure('client_error', null);
+
             return $this->jsonTelemetryResult(null, 'client_error', $startedAt);
         }
     }

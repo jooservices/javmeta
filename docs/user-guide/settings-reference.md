@@ -860,11 +860,11 @@ Tự làm mới trạng thái và bộ lọc toàn bộ danh mục theo lịch, 
 
 Bật/tắt. Mã mục: `perf.warm_enabled`.
 
-### Ngân sách tìm kiếm (mili giây)
+### Thời hạn tìm kiếm (mili giây)
 
-Tổng thời gian dành cho HTTP tùy chọn trong một lượt tìm kiếm kết hợp. Hết thời gian thì trả kết quả từ khóa; không giới hạn truy vấn cơ sở dữ liệu.
+Giới hạn toàn bộ lượt tìm kiếm kết hợp. Truy vấn cơ sở dữ liệu và dịch vụ tùy chọn cũng được giới hạn; khi quá hạn, trả về các kết quả đã sẵn sàng.
 
-Số nguyên; từ 25 đến 1500. Mã mục: `search.budget_ms`.
+Số nguyên; từ 25 đến 10000. Mã mục: `search.budget_ms`.
 
 ### Bật tìm kiếm Elasticsearch
 
@@ -1026,7 +1026,7 @@ Văn bản; chọn: embedder, ollama. Mã mục: `ai.embedding_provider`.
 
 ### Địa chỉ Ollama
 
-Ví dụ http://127.0.0.1:11434. Kiểm tra bằng php artisan ai:check.
+Mặc định http://192.168.2.10:11434. Kiểm tra bằng php artisan ai:check.
 
 Văn bản. Mã mục: `ai.ollama_url`.
 

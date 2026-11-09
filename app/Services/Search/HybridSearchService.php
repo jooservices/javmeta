@@ -6,6 +6,7 @@ namespace App\Services\Search;
 
 use App\Models\Movie;
 use App\Models\Performer;
+use App\Repositories\SearchDeadlineRepository;
 use App\Repositories\PerformerRepository;
 use Illuminate\Support\Collection;
 
@@ -25,7 +26,7 @@ final class HybridSearchService
         private readonly PerformerRepository $performers,
         private readonly SearchBudget $budget,
         private readonly ElasticsearchIndexer $indexer,
-        private readonly \App\Services\Dependencies\DependencyMonitor $dependencies,
+        private readonly SearchDeadlineRepository $searchDeadline,
     ) {}
 
     /**
@@ -40,39 +41,63 @@ final class HybridSearchService
     private function searchWithinBudget(string $question, int $perPage, bool $understand): array
     {
         $question = trim($question);
-        $interpretation = $understand ? $this->interpreter->interpret($question) : ['keywords' => $question, 'filters' => [], 'by' => 'none'];
+        $started = hrtime(true);
+        try {
+            $interpretation = $understand ? $this->interpreter->interpret($question) : ['keywords' => $question, 'filters' => [], 'by' => 'none'];
+        } catch (SearchDeadlineExceeded) {
+            $this->budget->degrade('interpretation_timeout');
+            $interpretation = ['keywords' => $question, 'filters' => [], 'by' => 'rules'];
+        }
+        $interpretation['timings_ms']['interpret'] = $this->elapsedMilliseconds($started);
         $filters = $interpretation['filters'];
         $text = $interpretation['keywords'] !== '' ? $interpretation['keywords'] : ($filters === [] ? $question : '');
         $pool = min(60, max($perPage * 3, $perPage));
 
         $hasText = mb_strlen($text) >= 2;
-        $keyword = $this->keywordMovies($filters, $hasText ? $text : null, $pool, $interpretation);
+        $keywordMovies = collect();
         /** @var Collection<int, Performer> $performerKeyword */
-        $performerKeyword = $hasText ? $this->performers->search(['q' => $text], 'name', null, $pool)['items'] : collect();
+        $performerKeyword = collect();
+        $keywordStarted = hrtime(true);
+        $keywordWindow = max(0, $this->budget->remainingMilliseconds() - 2500);
+        try {
+            $this->budget->within($keywordWindow, function () use (&$keywordMovies, &$performerKeyword, $filters, $hasText, $text, $pool, &$interpretation): void {
+                $keywordMovies = $this->keywordMovies($filters, $hasText ? $text : null, $pool, $interpretation);
+                if ($hasText) {
+                    $performerKeyword = $this->performers->search(['q' => $text], 'name', null, $pool)['items'];
+                }
+            });
+        } catch (SearchDeadlineExceeded) {
+            $this->budget->degrade('keyword_timeout');
+        }
+        $interpretation['timings_ms']['keyword'] = $this->elapsedMilliseconds($keywordStarted);
+        /** @var Collection<int, Movie> $keyword */
+        $keyword = $keywordMovies->filter(fn(Movie $movie): bool => $this->hasTitle($movie))->values();
         $performerLimit = max(4, (int) ceil($perPage / 2));
         $needPerformers = $performerKeyword->count() < $performerLimit;
-        $vectors = null;
-        if (! $this->budget->expired() && mb_strlen($question) >= 2
-            && ! app()->environment('testing') && (bool) config('elasticsearch.enabled', true)
-            && $this->dependencies->isAvailable(\App\Services\Dependencies\Dependency::Elasticsearch)
-            && $this->dependencies->isAvailable(\App\Services\Dependencies\Dependency::Embedder)) {
-            $vectors = $this->indexer->semanticCatalogUuids($question, min(100, $pool * 5), $needPerformers);
-        }
-        /** @var Collection<int, Movie> $semantic */
-        $semantic = ($vectors !== null || ! $this->budget->expired()) && mb_strlen($question) >= 2 ? $this->movies->semanticSearch($question, $pool, $vectors['movies'] ?? null)['items'] : collect();
-        if ($filters !== []) {
-            $semantic = $semantic->filter(fn(Movie $m): bool => $this->passes($m, $filters))->values();
-        }
+        $semanticResult = $this->semanticResults($question, $pool, $needPerformers, $filters);
+        $vectors = $semanticResult['vectors'];
+        $semantic = $semanticResult['movies'];
+        $performerSemantic = $semanticResult['performers'];
+        $interpretation['timings_ms']['semantic'] = $semanticResult['timing_ms'];
 
-        // Only the words left after the filters were read: the whole sentence makes the name search slow and finds nothing.
-        /** @var Collection<int, Performer> $performerSemantic */
-        $performerSemantic = $needPerformers && ($vectors !== null || ! $this->budget->expired()) && mb_strlen($question) >= 2 ? $this->performerSearch->semanticSearch($question, $pool, $vectors['performers'] ?? null)['items'] : collect();
-
-        $countFilters = $filters + ($hasText ? ['q' => $text] : []);
-        $movieTotal = $countFilters === [] ? 0 : $this->movies->count($countFilters);
-        if ($movieTotal === 0 && $hasText && $keyword->isNotEmpty()) {
-            $movieTotal = $this->movies->count(['q' => $text]);
+        $totalsStarted = hrtime(true);
+        $movieTotal = 0;
+        $performerTotal = 0;
+        try {
+            $this->searchDeadline->run(function () use (&$movieTotal, &$performerTotal, $filters, $hasText, $text, $keyword): void {
+                $countFilters = $filters + ($hasText ? ['q' => $text] : []);
+                $movieTotal = $countFilters === [] ? 0 : $this->movies->count($countFilters);
+                if ($movieTotal === 0 && $hasText && $keyword->isNotEmpty()) {
+                    $movieTotal = $this->movies->count(['q' => $text]);
+                }
+                $performerTotal = $hasText ? $this->performers->search(['q' => $text], 'name', null, 1)['total'] : 0;
+            });
+        } catch (SearchDeadlineExceeded) {
+            $this->budget->degrade('totals_timeout');
         }
+        $interpretation['timings_ms']['totals'] = $this->elapsedMilliseconds($totalsStarted);
+        $interpretation['timings_ms']['budget_expired'] = $this->budget->expired();
+        $interpretation['degraded'] = $this->budget->degraded();
 
         return [
             'movies' => $this->fuse([$keyword, $semantic])->take($perPage)->values(),
@@ -80,8 +105,56 @@ final class HybridSearchService
             'interpretation' => $interpretation + ['used_vectors' => $vectors !== null],
             'totals' => [
                 'movies' => $movieTotal,
-                'performers' => $hasText ? $this->performers->search(['q' => $text], 'name', null, 1)['total'] : 0,
+                'performers' => $performerTotal,
             ],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @return array{vectors: array{movies: list<string>, performers: list<string>}|null, movies: Collection<int, Movie>, performers: Collection<int, Performer>, timing_ms: int}
+     */
+    private function semanticResults(string $question, int $pool, bool $needPerformers, array $filters): array
+    {
+        $vectors = null;
+        $started = hrtime(true);
+        if (! $this->budget->expired() && mb_strlen($question) >= 2
+            && ! app()->environment('testing') && (bool) config('elasticsearch.enabled', true)) {
+            try {
+                $vectors = $this->indexer->semanticCatalogUuids($question, min(100, $pool * 5), $needPerformers);
+            } catch (SearchDeadlineExceeded) {
+                $this->budget->degrade('semantic_timeout');
+                $vectors = ['movies' => [], 'performers' => []];
+            }
+        }
+
+        $movies = collect();
+        if ($vectors !== null && ! $this->budget->expired()) {
+            try {
+                $movies = $this->movies->semanticSearch($question, $pool, $vectors['movies'])['items'];
+            } catch (SearchDeadlineExceeded) {
+                $this->budget->degrade('semantic_timeout');
+            }
+        }
+        $movies = $movies->filter(fn(Movie $movie): bool => $this->hasTitle($movie))->values();
+        if ($filters !== []) {
+            $movies = $movies->filter(fn(Movie $movie): bool => $this->passes($movie, $filters))->values();
+        }
+
+        $performers = collect();
+        if ($needPerformers && $vectors !== null && ! $this->budget->expired()) {
+            try {
+                $performers = $this->performerSearch->semanticSearch($question, $pool, $vectors['performers'])['items'];
+            } catch (SearchDeadlineExceeded) {
+                $this->budget->degrade('semantic_timeout');
+            }
+        }
+
+        return [
+            'vectors' => $vectors,
+            'movies' => $movies,
+            'performers' => $performers,
+            'timing_ms' => $this->elapsedMilliseconds($started),
         ];
     }
 
@@ -148,8 +221,15 @@ final class HybridSearchService
                 return false;
             }
         }
-        if (isset($f['genre']) && ! $m->genres->contains(fn($g): bool => $eq($g->label_raw ?? $g->label_normalized, $f['genre']) || $eq($g->label_normalized, $f['genre']))) {
-            return false;
+        if (isset($f['genre'])) {
+            $wantedGenres = is_array($f['genre']) ? $f['genre'] : [$f['genre']];
+            $hasGenre = false;
+            foreach ($wantedGenres as $wantedGenre) {
+                $hasGenre = $hasGenre || (is_string($wantedGenre) && $m->genres->contains(fn($g): bool => $eq($g->label_raw ?? $g->label_normalized, $wantedGenre) || $eq($g->label_normalized, $wantedGenre)));
+            }
+            if (! $hasGenre) {
+                return false;
+            }
         }
         if (isset($f['actress']) && ! $m->performers->contains(fn($p): bool => $eq($p->name_romaji, $f['actress']) || $eq($p->name_kanji, $f['actress']))) {
             return false;
@@ -164,5 +244,15 @@ final class HybridSearchService
         }
 
         return ! isset($f['code']) || $m->display_code === $f['code'];
+    }
+
+    private function hasTitle(Movie $movie): bool
+    {
+        return trim((string) $movie->title_en) !== '' || trim((string) $movie->title_jp) !== '';
+    }
+
+    private function elapsedMilliseconds(int $started): int
+    {
+        return max(0, (int) round((hrtime(true) - $started) / 1_000_000));
     }
 }

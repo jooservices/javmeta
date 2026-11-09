@@ -1232,6 +1232,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "include_internal_code",
+            "in": "query",
+            "required": false,
+            "description": "1 includes internal derived movie keys in the internal_code field",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {

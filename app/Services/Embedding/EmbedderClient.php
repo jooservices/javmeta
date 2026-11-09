@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Embedding;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Client\ConnectionException;
 use Throwable;
 
 /**
@@ -32,12 +33,15 @@ final class EmbedderClient
             return app(OllamaClient::class)->embed($texts);
         }
 
+        $budget = app(\App\Services\Search\SearchBudget::class);
         try {
-            $seconds = app(\App\Services\Search\SearchBudget::class)->seconds(15);
+            $seconds = $budget->seconds(2.0);
             if ($seconds <= 0) {
+                $budget->degrade('semantic_timeout');
+
                 return null;
             }
-            $response = Http::timeout($seconds)->connectTimeout($seconds)->post(
+            $response = Http::timeout($seconds)->connectTimeout(min(2.0, $seconds))->post(
                 rtrim((string) config('elasticsearch.embedder_url', 'http://embedder:8000'), '/') . '/v1/embeddings',
                 [
                     'model' => $isQuery ? 'javmeta-query' : 'javmeta-passage',
@@ -46,11 +50,15 @@ final class EmbedderClient
             );
 
             if (! $response->successful()) {
+                $budget->degrade('semantic_unavailable');
+
                 return null;
             }
 
             $data = $response->json('data');
             if (! is_array($data)) {
+                $budget->degrade('semantic_unavailable');
+
                 return null;
             }
 
@@ -58,13 +66,21 @@ final class EmbedderClient
             foreach ($data as $item) {
                 $embedding = $item['embedding'] ?? null;
                 if (! is_array($embedding)) {
+                    $budget->degrade('semantic_unavailable');
+
                     return null;
                 }
                 $vectors[] = array_values(array_map(static fn(mixed $v): float => (float) $v, $embedding));
             }
 
             return $vectors;
+        } catch (ConnectionException) {
+            $budget->degrade('semantic_timeout');
+
+            return null;
         } catch (Throwable) {
+            $budget->degrade('semantic_unavailable');
+
             return null;
         }
     }

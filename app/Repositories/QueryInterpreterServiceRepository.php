@@ -23,7 +23,7 @@ final class QueryInterpreterServiceRepository extends EloquentRepository impleme
     use HasRead;
     use HasRequestQuery;
 
-    public function __construct(Performer $model)
+    public function __construct(Performer $model, private readonly SearchDeadlineRepository $deadline)
     {
         parent::__construct($model);
     }
@@ -37,7 +37,7 @@ final class QueryInterpreterServiceRepository extends EloquentRepository impleme
         };
         $needle = mb_strtolower($value);
         if ($column !== null) {
-            $known = DB::table('movies')->whereNotNull($column)->whereRaw('LOWER(' . $column . ') = ?', [$needle])->value($column);
+            $known = $this->deadline->run(fn(): mixed => DB::table('movies')->whereNotNull($column)->whereRaw('LOWER(' . $column . ') = ?', [$needle])->value($column));
 
             return is_string($known) ? $known : null;
         }
@@ -45,8 +45,8 @@ final class QueryInterpreterServiceRepository extends EloquentRepository impleme
             return null;
         }
 
-        $known = DB::table('genres')->selectRaw('COALESCE(label_raw, label_normalized) AS value')
-            ->whereRaw('LOWER(COALESCE(label_raw, label_normalized)) = ?', [$needle])->value('value');
+        $known = $this->deadline->run(fn(): mixed => DB::table('genres')->selectRaw('COALESCE(label_raw, label_normalized) AS value')
+            ->whereRaw('LOWER(COALESCE(label_raw, label_normalized)) = ?', [$needle])->value('value'));
 
         return is_string($known) ? $known : null;
     }
@@ -54,12 +54,12 @@ final class QueryInterpreterServiceRepository extends EloquentRepository impleme
     public function knownPerformer(string $value): ?string
     {
         $needle = mb_strtolower($value);
-        $row = DB::table('performers')->whereNull('canonical_performer_id')
+        $row = $this->deadline->run(fn(): mixed => DB::table('performers')->whereNull('canonical_performer_id')
             ->where(static function ($query) use ($needle): void {
                 foreach (['name_romaji', 'name_kanji', 'name_kana'] as $column) {
                     $query->orWhereRaw('LOWER(' . $column . ') = ?', [$needle]);
                 }
-            })->first(['name_romaji', 'name_kanji', 'name_kana']);
+            })->first(['name_romaji', 'name_kanji', 'name_kana']));
         if ($row === null) {
             return null;
         }
@@ -78,8 +78,8 @@ final class QueryInterpreterServiceRepository extends EloquentRepository impleme
         if (! in_array($field, ['blood_type', 'location', 'cup'], true)) {
             return null;
         }
-        $known = DB::table('performers')->whereNotNull($field)->where($field, '<>', '')
-            ->whereRaw('LOWER(' . $field . ') = ?', [mb_strtolower(trim($value))])->value($field);
+        $known = $this->deadline->run(fn(): mixed => DB::table('performers')->whereNotNull($field)->where($field, '<>', '')
+            ->whereRaw('LOWER(' . $field . ') = ?', [mb_strtolower(trim($value))])->value($field));
 
         return is_string($known) ? $known : null;
     }
@@ -91,29 +91,53 @@ final class QueryInterpreterServiceRepository extends EloquentRepository impleme
             return [];
         }
 
-        return DB::table('performers')->whereNotNull($field)->where($field, '<>', '')
-            ->distinct()->orderBy($field)->pluck($field)->map(static fn(mixed $value): string => (string) $value)->all();
+        return $this->deadline->run(fn(): array => DB::table('performers')->whereNotNull($field)->where($field, '<>', '')
+            ->distinct()->orderBy($field)->pluck($field)->map(static fn(mixed $value): string => (string) $value)->all());
     }
 
     /** @return list<string> */
     public function catalogNames(string $list): array
     {
-        $names = match ($list) {
+        $names = $this->deadline->run(fn(): array => match ($list) {
             'makers' => DB::table('movies')->whereNotNull('maker')->where('maker', '<>', '')->distinct()->pluck('maker')->all(),
             'series' => DB::table('movies')->whereNotNull('series')->where('series', '<>', '')->distinct()->pluck('series')->all(),
             'genres' => DB::table('genres')->selectRaw('COALESCE(label_raw, label_normalized) AS n')->pluck('n')->all(),
             default => [],
-        };
+        });
 
         return array_values(array_filter(array_map('strval', $names)));
+    }
+
+    public function movieCountForCatalogValue(string $field, string $value): int
+    {
+        $needle = mb_strtolower(trim($value));
+
+        return $this->deadline->run(function () use ($field, $needle): int {
+            if ($field === 'genre') {
+                return (int) DB::table('movie_genres')->join('genres', 'genres.id', '=', 'movie_genres.genre_id')
+                    ->whereRaw('LOWER(COALESCE(genres.label_raw, genres.label_normalized)) = ?', [$needle])
+                    ->distinct()->count('movie_genres.movie_id');
+            }
+
+            $column = match ($field) {
+                'maker' => 'maker',
+                'series' => 'series',
+                default => null,
+            };
+            if ($column === null) {
+                return 0;
+            }
+
+            return (int) DB::table('movies')->whereNotNull($column)->whereRaw('LOWER(' . $column . ') = ?', [$needle])->count();
+        });
     }
 
     /** @param list<string> $candidates */
     public function performerNameIn(array $candidates): ?string
     {
-        $name = DB::table('performers')->whereNull('canonical_performer_id')
+        $name = $this->deadline->run(fn(): mixed => DB::table('performers')->whereNull('canonical_performer_id')
             ->whereIn(DB::raw('LOWER(name_romaji)'), $candidates)
-            ->orderByRaw('LENGTH(name_romaji) DESC')->value('name_romaji');
+            ->orderByRaw('LENGTH(name_romaji) DESC')->value('name_romaji'));
 
         return is_string($name) ? $name : null;
     }

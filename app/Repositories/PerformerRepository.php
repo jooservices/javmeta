@@ -15,13 +15,18 @@ use Illuminate\Support\Facades\DB;
 final class PerformerRepository extends BusinessQueryRepository
 {
     private readonly PerformerAttributeNormalizer $attributeNormalizer;
+    private readonly ?SearchDeadlineRepository $searchDeadline;
     /** @var list<string> */
     public const SORTS = ['name', 'updated_at', 'linked_title_count'];
 
-    public function __construct(Performer $model, ?PerformerAttributeNormalizer $attributeNormalizer = null)
-    {
+    public function __construct(
+        Performer $model,
+        ?PerformerAttributeNormalizer $attributeNormalizer = null,
+        ?SearchDeadlineRepository $searchDeadline = null,
+    ) {
         parent::__construct($model);
         $this->attributeNormalizer = $attributeNormalizer ?? new PerformerAttributeNormalizer();
+        $this->searchDeadline = $searchDeadline;
     }
 
     /** @return \Illuminate\Support\Collection<int, \stdClass> */
@@ -59,6 +64,16 @@ final class PerformerRepository extends BusinessQueryRepository
      */
     public function countFiltered(array $filters): int
     {
+        if ($this->searchDeadline !== null) {
+            return $this->searchDeadline->run(fn(): int => $this->countFilteredWithinDeadline($filters));
+        }
+
+        return $this->countFilteredWithinDeadline($filters);
+    }
+
+    /** @param array<string, mixed> $filters */
+    private function countFilteredWithinDeadline(array $filters): int
+    {
         $query = $this->newQuery()->whereNull('canonical_performer_id');
         $this->applyFilters($query, $filters);
 
@@ -71,6 +86,19 @@ final class PerformerRepository extends BusinessQueryRepository
      * @return array{items: Collection<int, Performer>, total: int, sort: string, last_sort: int|float|string|null, last_id: int|null, has_more: bool}
      */
     public function search(array $filters, string $sort, ?array $cursor, int $perPage): array
+    {
+        if ($this->searchDeadline !== null) {
+            return $this->searchDeadline->run(fn(): array => $this->searchWithinDeadline($filters, $sort, $cursor, $perPage));
+        }
+
+        return $this->searchWithinDeadline($filters, $sort, $cursor, $perPage);
+    }
+
+    /** @param array<string, mixed> $filters
+     * @param array{sort: string, last_sort: int|float|string|null, last_id: int}|null $cursor
+     * @return array{items: Collection<int, Performer>, total: int, sort: string, last_sort: int|float|string|null, last_id: int|null, has_more: bool}
+     */
+    private function searchWithinDeadline(array $filters, string $sort, ?array $cursor, int $perPage): array
     {
         $query = $this->newQuery()
             ->whereNull('canonical_performer_id')
@@ -462,6 +490,18 @@ final class PerformerRepository extends BusinessQueryRepository
      * @return Collection<int, Performer>
      */
     public function findByUuidsForDisplay(array $uuids): Collection
+    {
+        if ($this->searchDeadline !== null) {
+            return $this->searchDeadline->run(fn(): Collection => $this->findByUuidsWithinDeadline($uuids));
+        }
+
+        return $this->findByUuidsWithinDeadline($uuids);
+    }
+
+    /** @param list<string> $uuids
+     * @return Collection<int, Performer>
+     */
+    private function findByUuidsWithinDeadline(array $uuids): Collection
     {
         $uuidToCanonicalId = Performer::query()->whereIn('uuid', $uuids)->get(['id', 'uuid', 'canonical_performer_id'])
             ->mapWithKeys(static fn(Performer $performer): array => [

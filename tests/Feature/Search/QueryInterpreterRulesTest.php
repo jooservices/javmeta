@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Search;
 
 use App\Models\Movie;
+use App\Models\Genre;
+use App\Models\MovieGenre;
 use App\Models\Performer;
 use App\Services\Search\QueryInterpreter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -92,6 +94,58 @@ final class QueryInterpreterRulesTest extends TestCase
         $result = app(QueryInterpreter::class)->interpret('先生 の映画');
 
         self::assertSame('先生', $result['keywords']);
+    }
+
+    public function test_rule_filters_ignore_a_rare_genre_name_inside_a_longer_phrase(): void
+    {
+        $genre = Genre::factory()->create(['label_normalized' => 'sweet', 'label_raw' => 'sweet']);
+        $movie = Movie::factory()->create();
+        MovieGenre::factory()->create(['movie_id' => $movie->id, 'genre_id' => $genre->id]);
+
+        $result = app(QueryInterpreter::class)->interpret('sweet idol first time on camera');
+
+        self::assertArrayNotHasKey('genre', $result['filters']);
+        self::assertStringContainsString('sweet', $result['keywords']);
+    }
+
+    public function test_rule_filters_match_a_two_character_maker_only_when_it_has_enough_movies(): void
+    {
+        Movie::factory()->count(20)->create(['maker' => 'S1']);
+
+        $result = app(QueryInterpreter::class)->interpret('latest movies from S1');
+
+        self::assertSame('S1', $result['filters']['maker'] ?? null);
+        self::assertArrayNotHasKey('genre', $result['filters']);
+    }
+
+    public function test_year_from_phrase_becomes_a_lower_release_bound(): void
+    {
+        $result = app(QueryInterpreter::class)->interpret('mature woman from 2022');
+
+        self::assertSame('2022-01-01', $result['filters']['released_from'] ?? null);
+    }
+
+    public function test_rule_filters_match_a_catalog_performer_before_a_substring_genre(): void
+    {
+        Performer::factory()->create(['name_romaji' => 'Yua Mikami']);
+        Genre::factory()->create(['label_normalized' => 'KAM', 'label_raw' => 'KAM']);
+        Movie::factory()->count(20)->create(['maker' => 'KAM']);
+
+        $result = app(QueryInterpreter::class)->interpret('movies with Yua Mikami');
+
+        self::assertSame('Yua Mikami', $result['filters']['actress'] ?? null);
+        self::assertArrayNotHasKey('genre', $result['filters']);
+    }
+
+    public function test_from_year_and_this_month_become_release_ranges(): void
+    {
+        $year = app(QueryInterpreter::class)->interpret('mature woman with big tits from 2022');
+        $month = app(QueryInterpreter::class)->interpret('new releases this month');
+
+        self::assertSame('2022-01-01', $year['filters']['released_from'] ?? null);
+        self::assertSame('2022-12-31', $year['filters']['released_to'] ?? null);
+        self::assertSame(now()->startOfMonth()->toDateString(), $month['filters']['released_from'] ?? null);
+        self::assertSame(now()->endOfMonth()->toDateString(), $month['filters']['released_to'] ?? null);
     }
 
     public function test_telemetry_says_rules_were_used_when_the_model_is_off(): void

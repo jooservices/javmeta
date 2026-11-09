@@ -92,23 +92,19 @@ final class MovieSearchService
      */
     public function semanticSearch(string $query, int $perPage, ?array $prefetchedUuids = null): array
     {
-        if (
+        if ($prefetchedUuids === null && (
             ! (bool) config('elasticsearch.enabled', true)
             || app()->environment('testing')
             || ! $this->dependencies->isAvailable(Dependency::Elasticsearch)
             || ! $this->dependencies->isAvailable(Dependency::Embedder)
-        ) {
+        )) {
             return $this->movies->search(['q' => $query], 'relevance', null, $perPage);
         }
 
         $uuids = $prefetchedUuids ?? $this->elasticsearch->semanticMovieUuids($query, min(100, max($perPage * 5, $perPage)));
         if ($uuids !== []) {
             $pageUuids = array_slice($uuids, 0, $perPage);
-            $byUuid = app(MovieRepository::class)->modelQuery(Movie::class)
-                ->whereIn('uuid', $pageUuids)
-                    ->with(['genres', 'performers.aliases', 'performers.sources', 'media', 'codes'])
-                ->get()
-                ->keyBy('uuid');
+            $byUuid = $this->movies->findByUuidsForSearch($pageUuids);
 
             $ordered = collect($pageUuids)
                 ->map(static fn(string $uuid): ?Movie => $byUuid->get($uuid))
@@ -128,6 +124,10 @@ final class MovieSearchService
                     'sort' => 'relevance',
                 ];
             }
+        }
+
+        if ($prefetchedUuids !== null) {
+            return ['items' => collect(), 'total' => 0, 'has_more' => false, 'last_id' => null, 'last_sort' => null, 'sort' => 'relevance'];
         }
 
         return $this->movies->search(['q' => $query], 'relevance', null, $perPage);

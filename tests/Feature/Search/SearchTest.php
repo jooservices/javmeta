@@ -6,6 +6,7 @@ namespace Tests\Feature\Search;
 
 use App\Services\Auth\ApiKeyService;
 use App\Services\Dataset\SampleDataset;
+use App\Models\Movie;
 use App\Services\Search\QueryInterpreter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -91,12 +92,12 @@ final class SearchTest extends TestCase
 
         $q = 'Sample Maker 03';
         $first = $this->getJson('/api/v1/search?q=' . urlencode($q) . '&per_page=50', $headers)->assertOk()->json('data');
-        $key = 'javmeta:search:' . hash('sha256', $q . '|50|1');
+        $key = 'javmeta:search:' . hash('sha256', $q . '|50|1|0');
         $this->assertSame($first, \Illuminate\Support\Facades\Cache::get($key));
         $this->assertSame($first, $this->getJson('/api/v1/search?q=' . urlencode($q) . '&per_page=50', $headers)->assertOk()->json('data'));
 
         $other = $this->getJson('/api/v1/search?q=SMP-0007', $headers)->assertOk()->json('data');
-        $otherKey = 'javmeta:search:' . hash('sha256', 'SMP-0007|12|1');
+        $otherKey = 'javmeta:search:' . hash('sha256', 'SMP-0007|12|1|0');
         $this->assertNotSame($key, $otherKey);
         $this->assertSame($other, \Illuminate\Support\Facades\Cache::get($otherKey));
         $this->assertSame($first, \Illuminate\Support\Facades\Cache::get($key));
@@ -118,5 +119,49 @@ final class SearchTest extends TestCase
 
         $this->assertNotEmpty($r->json('data.movies'));
         $this->assertSame('filters only', $r->json('data.interpretation.relaxed'));
+    }
+
+    public function test_search_omits_movies_without_any_title_and_falls_back_to_japanese_title(): void
+    {
+        Http::fake();
+        $withoutTitle = Movie::factory()->create(['display_code' => 'EMPTY-001', 'title_en' => '', 'title_jp' => null]);
+        $japaneseTitle = Movie::factory()->create(['display_code' => 'JAP-001', 'title_en' => '', 'title_jp' => '日本語の作品']);
+        $headers = ['X-API-Key' => app(ApiKeyService::class)->create('title-search', 60, ['movies'])->plaintext];
+
+        $response = $this->getJson('/api/v1/search?q=EMPTY-001&understand=0', $headers)->assertOk();
+
+        self::assertNotContains($withoutTitle->uuid, array_column($response->json('data.movies'), 'uuid'));
+        self::assertSame('日本語の作品', $this->getJson('/api/v1/search?q=JAP-001&understand=0', $headers)->assertOk()->json('data.movies.0.title_en'));
+    }
+
+    public function test_derived_codes_use_a_short_label_and_expose_the_raw_code_only_on_request(): void
+    {
+        Http::fake();
+        $code = 'JAVBTC-DERIVED-8e9952' . str_repeat('a', 58);
+        $movie = Movie::factory()->create(['display_code' => $code, 'code_normalized' => 'JAVBTCDERIVED8E9952' . str_repeat('A', 58), 'title_en' => 'A derived QA title']);
+        $headers = ['X-API-Key' => app(ApiKeyService::class)->create('derived-search', 60, ['movies'])->plaintext];
+
+        $safe = $this->getJson('/api/v1/search?q=' . urlencode($code) . '&understand=0', $headers)->assertOk()->json('data.movies.0');
+        $raw = $this->getJson('/api/v1/search?q=' . urlencode($code) . '&understand=0&include_internal_code=1', $headers)->assertOk()->json('data.movies.0');
+
+        self::assertSame('JAVBTC · #8E9952', $safe['code']);
+        self::assertArrayNotHasKey('internal_code', $safe);
+        self::assertSame($code, $raw['internal_code']);
+        self::assertSame($movie->uuid, $raw['uuid']);
+    }
+
+    public function test_unreachable_ollama_falls_back_to_rules_and_opens_the_circuit(): void
+    {
+        Http::fake(static function (): never {
+            throw new \Illuminate\Http\Client\ConnectionException('Connection refused');
+        });
+        $headers = ['X-API-Key' => app(ApiKeyService::class)->create('ollama-fallback', 60, ['movies'])->plaintext];
+
+        $response = $this->getJson('/api/v1/search?q=' . urlencode('movies from Sample Maker 04') . '&per_page=20', $headers)->assertOk();
+
+        self::assertSame('Sample Maker 04', $response->json('data.interpretation.filters.maker'));
+        self::assertNotEmpty($response->json('data.movies'));
+        self::assertSame(1, app(\App\Observability\OllamaChatMetrics::class)->failureCount());
+        self::assertTrue(app(\App\Observability\OllamaChatMetrics::class)->circuitOpen());
     }
 }

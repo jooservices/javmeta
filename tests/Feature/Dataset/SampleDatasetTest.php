@@ -36,6 +36,19 @@ final class SampleDatasetTest extends TestCase
         $this->assertGreaterThanOrEqual(10, $first['series']);
     }
 
+    public function test_qa_genres_have_enough_movies_for_interpreter_validation(): void
+    {
+        $this->artisan('dataset:load', ['name' => 'sample'])->assertSuccessful();
+
+        $counts = DB::table('movie_genres')->join('genres', 'genres.id', '=', 'movie_genres.genre_id')
+            ->where('genres.label_normalized', 'like', 'sample-%')
+            ->select('genres.id')->selectRaw('COUNT(DISTINCT movie_genres.movie_id) AS total')
+            ->groupBy('genres.id')->pluck('total');
+
+        $this->assertCount(SampleDataset::GENRES, $counts);
+        $this->assertGreaterThanOrEqual(20, $counts->min());
+    }
+
     public function test_observation_hash_and_deterministic_uuids_use_sha256(): void
     {
         $this->artisan('dataset:load', ['name' => 'sample'])->assertSuccessful();

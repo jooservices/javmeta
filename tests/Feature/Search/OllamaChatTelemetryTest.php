@@ -7,6 +7,7 @@ namespace Tests\Feature\Search;
 use App\Services\Embedding\OllamaClient;
 use App\Services\Search\SearchBudget;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -19,6 +20,7 @@ final class OllamaChatTelemetryTest extends TestCase
             'javmeta_ai.ollama_url' => 'http://ollama.test:11434',
             'javmeta_ai.ollama_chat_model' => 'qwen2.5:7b',
         ]);
+        Cache::flush();
     }
 
     public function test_it_classifies_http_and_invalid_json_outcomes_without_retaining_response_bodies(): void
@@ -29,6 +31,7 @@ final class OllamaChatTelemetryTest extends TestCase
 
         $client = app(OllamaClient::class);
         $httpError = $client->jsonWithTelemetry('private system prompt', 'private user query');
+        Cache::flush();
         $invalidJson = $client->jsonWithTelemetry('private system prompt', 'private user query');
 
         $this->assertSame('http_error', $httpError['outcome']);
@@ -53,6 +56,7 @@ final class OllamaChatTelemetryTest extends TestCase
 
         $client = app(OllamaClient::class);
         $timeout = $client->jsonWithTelemetry('private system prompt', 'private user query');
+        Cache::flush();
         $transport = $client->jsonWithTelemetry('private system prompt', 'private user query');
 
         $this->assertSame('timeout', $timeout['outcome']);
@@ -79,5 +83,19 @@ final class OllamaChatTelemetryTest extends TestCase
         $this->assertSame('budget_exhausted', $result['outcome']);
         $this->assertNull($result['http_status']);
         Http::assertNothingSent();
+    }
+
+    public function test_chat_failure_opens_a_sixty_second_circuit(): void
+    {
+        Http::fakeSequence('ollama.test:11434/api/chat')->push(['error' => 'unavailable'], 503);
+
+        $client = app(OllamaClient::class);
+        $first = $client->jsonWithTelemetry('system', 'question');
+        $second = $client->jsonWithTelemetry('system', 'question');
+
+        self::assertSame('http_error', $first['outcome']);
+        self::assertSame('circuit_open', $second['outcome']);
+        Http::assertSentCount(1);
+        self::assertSame(1, app(\App\Observability\OllamaChatMetrics::class)->failureCount());
     }
 }
