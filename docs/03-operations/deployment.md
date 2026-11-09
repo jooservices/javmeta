@@ -556,3 +556,9 @@ The script verifies a fresh backup and requires restore-rehearsal attestation be
 a failure restores the old symlink/services without automatically reversing schema changes.
 No production hosts were contacted while preparing this kit; see its verification limits and bootstrap
 Settings checklist. Staging uses the same wizard; pass the intended repository, ref, target and private service answers explicitly.
+
+## Client address behind Cloudflare, HAProxy and nginx
+
+Prerequisite: HAProxy may take the address from `CF-Connecting-IP` (`http-request set-src`) only for connections from Cloudflare. The gatekeeper therefore rejects every connection on ports 80 and 443 whose source is not in `/etc/haproxy/cloudflare-ips.lst` (`tcp-request connection reject if !{ src -f /etc/haproxy/cloudflare-ips.lst }`); keep that list current with Cloudflare's published ranges and do not expose these frontends directly.
+
+The visitor address reaches PHP as `REMOTE_ADDR`: Cloudflare sets `CF-Connecting-IP`, HAProxy copies it into the connection source (`http-request set-src`) and appends it to `X-Forwarded-For` (`option forwardfor`), and nginx rewrites `$remote_addr` from the last `X-Forwarded-For` entry (`set_real_ip_from` the gatekeeper + `real_ip_header X-Forwarded-For`). The application therefore does NOT trust `X-Forwarded-For`, `X-Forwarded-Host` or `X-Forwarded-Port` (`bootstrap/app.php` trusts only `X-Forwarded-Proto`, which HAProxy overwrites). Trusting the header with a wildcard would let any visitor pick its own IP and defeat the login throttle and every IP limiter (JOOXCR-421, finding BH-security-002). Test: `tests/Feature/Http/ClientAddressTest.php`.

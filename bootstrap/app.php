@@ -23,12 +23,13 @@ return Application::configure(basePath: dirname(__DIR__))
         if (! app()->runningUnitTests()) {
             $middleware->prepend(StartupHealthMiddleware::class);
         }
-        // JavMeta sits behind the gatekeeper (HAProxy) that terminates TLS: trust its forwarded headers so
-        // redirects, signed URLs and the Secure session cookie use https://jav.soulevil.com.
-        $middleware->trustProxies(at: '*', headers: \Illuminate\Http\Request::HEADER_X_FORWARDED_FOR
-            | \Illuminate\Http\Request::HEADER_X_FORWARDED_HOST
-            | \Illuminate\Http\Request::HEADER_X_FORWARDED_PORT
-            | \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO);
+        // JavMeta sits behind the gatekeeper (HAProxy) that terminates TLS and then nginx. HAProxy overwrites
+        // X-Forwarded-Proto, so redirects, signed URLs and the Secure session cookie can use https. The client
+        // address is NOT taken from X-Forwarded-For: nginx already rewrites REMOTE_ADDR from the address HAProxy
+        // appended (set_real_ip_from + real_ip_header), and trusting the header again with `*` would let any
+        // visitor choose its own IP (login throttle and every IP limiter bypass). X-Forwarded-Host/-Port are not
+        // trusted either: nginx forwards the original Host header.
+        $middleware->trustProxies(at: '*', headers: \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         Integration::handles($exceptions);
