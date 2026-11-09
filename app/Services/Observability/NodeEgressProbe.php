@@ -18,6 +18,8 @@ final class NodeEgressProbe
 {
     private const NODE_INDEX_KEY = 'javmeta:egress:nodes';
 
+    private const NODE_INDEX_LIMIT = 200;
+
     public function __construct(
         private readonly ClientBuilder $clientBuilder,
         private readonly Ipv4Parser $ipv4 = new Ipv4Parser(),
@@ -223,7 +225,7 @@ final class NodeEgressProbe
         if ($kind === 'node') {
             $storedMeta['configured_node'] = $identity;
         }
-        Cache::forever($metaKey, $storedMeta);
+        Cache::put($metaKey, $storedMeta, CarbonImmutable::now()->addDays(30));
 
         if ($changed) {
             $this->publishChange($kind, $identity, $oldIp, $ip, $lastChangeAt);
@@ -581,10 +583,9 @@ final class NodeEgressProbe
             if ($legacyNode !== $node && ! $this->hasLiveNodeProbe($legacyNode)) {
                 $nodes = array_values(array_filter($nodes, static fn(string $cachedNode): bool => $cachedNode !== $legacyNode));
             }
+            $nodes = array_values(array_filter($nodes, static fn(string $cachedNode): bool => $cachedNode !== $node));
             $nodes[] = $node;
-            $nodes = array_values(array_unique($nodes));
-            sort($nodes);
-            Cache::forever(self::NODE_INDEX_KEY, $nodes);
+            Cache::put(self::NODE_INDEX_KEY, array_slice($nodes, -self::NODE_INDEX_LIMIT), CarbonImmutable::now()->addDays(7));
         } catch (Throwable) {
             // Node discovery is best effort; the local node remains visible in status output.
         } finally {
