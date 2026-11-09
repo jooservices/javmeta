@@ -75,4 +75,14 @@ final class SetLocaleMiddlewareTest extends TestCase
 
         $this->assertSame('vi', $middleware->resolve($request));
     }
+
+    public function test_malformed_and_repeated_weights_make_the_entry_invalid(): void
+    {
+        $middleware = new SetLocale();
+        foreach (['en;q,vi;q=0.8', 'en;q=,vi;q=0.8', 'en;q=1.5;q=1,vi;q=0.8', 'en;q=1;q=1,vi;q=0.8'] as $header) {
+            $request = Request::create('/app', 'GET');
+            $request->headers->set('Accept-Language', $header);
+            $this->assertSame('vi', $middleware->resolve($request), $header);
+        }
+    }
 }

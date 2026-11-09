@@ -23,4 +23,18 @@ assert.equal(count("toast(t('mark.toast.seen_on'));"), 0);
 // Import paths and comments are ignored.
 assert.equal(count("import x from '../views/phim-ảnh.js'; // 'Đã xoá'"), 0);
 
+// Division after a postfix operator is not a regular expression.
+assert.equal(count("const r = counter++ / 2; toast('Đã lưu xong');"), 1);
+assert.equal(count("const r = counter-- / 2; toast('Đã lưu xong');"), 1);
+
+// Visible text of HTML and Blade files counts; catalog-driven fallbacks, Blade echoes and comments do not.
+const markup = (source, file = 'x.blade.php') => countIn(source, file).count;
+assert.equal(markup('<button>Đã lưu</button>'), 1);
+assert.equal(markup('<p>Xin chào <b>bạn</b></p>'), 2);
+assert.equal(markup('<button data-i18n="common.save">Lưu</button>'), 0);
+assert.equal(markup("<h1>{{ __('auth.heading') }}</h1>"), 0);
+assert.equal(markup('<!-- Đã lưu --><p>Plain English</p>'), 0);
+assert.equal(markup('<script>const a = 1; // Đã lưu\n</script><p>Plain</p>'), 0);
+assert.equal(markup('<div>Đã lưu</div>', 'x.html'), 1);
+
 console.log('i18n literal counter: all assertions passed');

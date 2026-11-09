@@ -12,6 +12,13 @@ const viChars = /[ĂÂÊÔƠƯĐăâêôơưđ\u00C0-\u00D6\u00D8-\u00F6\u00F8-\
 const pathLike = /^['"`](?:\.\.?\/|https?:|#\/)/;
 const regexMayStartAfter = /(?:[(,=:\[!&|?{};+\-*%<>~^]|\b(?:return|typeof|case|in|of|void|delete|throw|else|do))$/;
 
+/** A slash starts a regular expression after an operator or keyword, but is a division after `x++`, `x--` or a closing bracket. */
+function regexMayStartHere(text, i) {
+  const before = text.slice(Math.max(0, i - 12), i).trimEnd();
+  if (before.endsWith('++') || before.endsWith('--')) return false;
+  return regexMayStartAfter.test(before);
+}
+
 export function jsLiterals(text) {
   const items = [];
   const scan = (start, insideExpression) => {
@@ -22,7 +29,7 @@ export function jsLiterals(text) {
       const next = text[i + 1];
       if (c === '/' && next === '/') { while (i < text.length && text[i] !== '\n') i += 1; continue; }
       if (c === '/' && next === '*') { const end = text.indexOf('*/', i + 2); i = end === -1 ? text.length : end + 2; continue; }
-      if (c === '/' && (i === 0 || regexMayStartAfter.test(text.slice(Math.max(0, i - 12), i).trimEnd()))) {
+      if (c === '/' && (i === 0 || regexMayStartHere(text, i))) {
         let j = i + 1;
         let inClass = false;
         while (j < text.length && text[j] !== '\n') {
@@ -75,9 +82,32 @@ export function jsLiterals(text) {
   return items;
 }
 
+/**
+ * The visible text of an HTML or Blade file: comments, scripts, styles, Blade echoes and directives are dropped and what
+ * stands between tags is read as text. An element that carries data-i18n gets its text from the catalog at run time, so
+ * the Vietnamese fallback written inside it is not counted.
+ */
+export function markupTextNodes(text) {
+  const cleaned = text
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/\{\{--[\s\S]*?--\}\}/g, ' ')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+    .replace(/\{!!?[\s\S]*?!!?\}|\{\{[\s\S]*?\}\}/g, ' ')
+    .replace(/^\s*@\w+.*$/gm, ' ');
+  const nodes = [];
+  for (const m of cleaned.matchAll(/<([a-zA-Z][\w-]*)([^<>]*)>([^<>]+)(?=<)/g)) {
+    if (/\bdata-i18n\b/.test(m[2])) continue;
+    const value = m[3].replace(/&[a-z#0-9]+;/gi, ' ').trim();
+    if (value.length >= 2) nodes.push(value);
+  }
+  return nodes;
+}
+
 export function countIn(text, file = '') {
   let count = 0;
   const offenders = [];
+  const markup = /\.(?:html|blade\.php)$/.test(file);
   const literals = /\.js$/.test(file)
     ? jsLiterals(text)
     : [...text.matchAll(/(['"`])(?:(?!\1|\\).|\\.)*\1/gs)].map(m => m[0]);
@@ -87,6 +117,13 @@ export function countIn(text, file = '') {
     if (pathLike.test(s)) continue; // import paths, URLs and routes are not UI text
     count += 1;
     offenders.push(s.slice(0, 80));
+  }
+  if (markup) {
+    for (const node of markupTextNodes(text)) {
+      if (!viChars.test(node)) continue;
+      count += 1;
+      offenders.push(node.slice(0, 80));
+    }
   }
   return { count, offenders };
 }

@@ -76,11 +76,19 @@ final class SetLocale
                 continue;
             }
             $quality = 1.0;
+            $weighted = false;
             foreach (array_slice($segments, 1) as $parameter) {
-                if (preg_match('/^\s*q\s*=\s*(.*?)\s*$/i', $parameter, $match) === 1) {
-                    // RFC 9110: a weight is 0 to 1 with at most three decimals; anything else is an invalid entry.
-                    $quality = preg_match('/^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/', $match[1]) === 1 ? (float) $match[1] : -1.0;
+                if (preg_match('/^\s*q\s*(?:=\s*(.*?))?\s*$/i', $parameter, $match) !== 1) {
+                    continue;
                 }
+                // RFC 9110: a weight is 0 to 1 with at most three decimals. A bare "q", a bad value or a repeated
+                // weight makes the whole entry invalid, and an invalid entry is ignored.
+                $valid = ! $weighted && isset($match[1]) && preg_match('/^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/', $match[1]) === 1;
+                $quality = $valid ? (float) $match[1] : -1.0;
+                if (! $valid) {
+                    break;
+                }
+                $weighted = true;
             }
             if ($quality > $bestQuality) {
                 $best = $normalized;
