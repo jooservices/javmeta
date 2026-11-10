@@ -1,8 +1,7 @@
 {
-  "total": 8,
+  "total": 6,
   "byFile": {
-    "public/ui/index.html": 6,
-    "resources/views/operations/dashboard.blade.php": 2
+    "public/ui/index.html": 6
   },
-  "updated_at": "2026-11-09T11:13:04.987Z"
+  "updated_at": "2026-11-09T17:36:59.057Z"
 }

@@ -8,6 +8,15 @@ import { openNotificationEditor, typeInTitle, expectLivePreviewShows, insertVari
 import { createApiKey, expectApiKeyStatus, revokeApiKey, expectApiKeyRequiresAScope } from '../steps/admin.mjs';
 import { expectDiscoverForBrowsers, searchFromDiscover, expectSearchFound, expectDiscoverChipsAreRealGenres, expectSearchIsHonest, expectSearchTooShortMessage } from '../steps/discover.mjs';
 import { fillNodeName, submitNodeForm, expectBrowserRejectsNodeName, expectJoinCommand, copyJoinCommand, expectNodeListed } from '../steps/nodes.mjs';
+import {
+  switchOperationsLanguage,
+  expectOperationsDashboardLanguage,
+  setBrowserAcceptLanguage,
+  mockNodeValidationError,
+  submitNodeNameWithRegexError,
+  mockOperationsDashboardData,
+  expectLocalizedOperationsKindsAndPreciseTimes,
+} from '../steps/operations.mjs';
 import { expectHoverChanges, goBack } from '../steps/interact.mjs';
 import { toggleFilterDrawer, closeFilterDrawer, expectFilterField, clearFilters, expectResultCount, expectResultCountBetween, expectHashIncludes } from '../steps/browser.mjs';
 import { filterPerformersByName, choosePerformerOption, filterPerformersByAge, expectPerformerNamed, expectPerformerAbsent, openPerformer, openFirstPerformer, expectPerformerField, openPerformerTab, openPerformerTabWithKeyboard, expectPerformerTab, setFollow, expectFeedState, expectFeedMovies, expectPerformerMissing } from '../steps/performers.mjs';
@@ -61,9 +70,36 @@ export const settingsSwitchPersists = defineScenario('a settings switch saves an
 ]);
 
 export const addNodeFromTheCommandCenter = defineScenario('the owner adds a node from the Command Center', [
-  login(), openPath('/ops'), fillNodeName('Bad Name'), submitNodeForm(), expectBrowserRejectsNodeName(),
-  fillNodeName('worker-e2e-' + Date.now().toString(36)), submitNodeForm(), expectJoinCommand('worker-e2e-[a-z0-9]+'), copyJoinCommand(),
+  login(), openPath('/ops?lang=vi'), fillNodeName('Bad Name'), submitNodeForm(), expectBrowserRejectsNodeName(),
+  fillNodeName('worker-e2e-' + Date.now().toString(36)), submitNodeForm(), expectJoinCommand('worker-e2e-[a-z0-9]+'),
+  switchOperationsLanguage('en'), expectJoinCommand('worker-e2e-[a-z0-9]+'), copyJoinCommand(),
   expectNodeListed('worker-e2e-', 'pending'), expectNoConsoleErrors(),
+]);
+
+export const commandCenterSupportsEnglishAndVietnamese = defineScenario('the Command Center supports English and Vietnamese', [
+  login(), openPath('/ops?lang=vi'),
+  expectOperationsDashboardLanguage('vi', {title: 'JavMeta · Vận hành', heading: 'Vận hành thu thập dữ liệu', source: 'Nguồn', aria: 'Tổng số phim và hàng đợi'}),
+  switchOperationsLanguage('en'),
+  expectOperationsDashboardLanguage('en', {title: 'JavMeta · Operations', heading: 'Crawl operations', source: 'Sources', aria: 'Catalogue and queue totals'}),
+]);
+
+export const commandCenterValidationFollowsSelectedLanguage = defineScenario('node validation follows the selected language over the browser language', [
+  login(), setBrowserAcceptLanguage('vi'), openPath('/ops?lang=en'), mockNodeValidationError(),
+  submitNodeNameWithRegexError('en', 'The node name may only use lowercase letters, digits and hyphens, and must start with a letter.'),
+  switchOperationsLanguage('vi'),
+  setBrowserAcceptLanguage('en'),
+  submitNodeNameWithRegexError('vi', 'Tên nút chỉ được dùng chữ thường, chữ số và dấu gạch nối, đồng thời phải bắt đầu bằng một chữ cái.'),
+]);
+
+export const commandCenterTranslatesActivityAndKeepsTimestampSeconds = defineScenario('the Command Center translates activity and preserves timestamp seconds', [
+  login(), mockOperationsDashboardData(), openPath('/ops?lang=vi'),
+  expectLocalizedOperationsKindsAndPreciseTimes('vi', {
+    issueKind: 'Chi tiết diễn viên', blocked: 'Bị chặn', reclaimed: 'Hàng đợi được thu hồi khi chưa bắt đầu',
+  }),
+  switchOperationsLanguage('en'),
+  expectLocalizedOperationsKindsAndPreciseTimes('en', {
+    issueKind: 'Performer detail', blocked: 'Blocked', reclaimed: 'Queue reclaimed before start',
+  }),
 ]);
 
 export const discoverIsForBrowsingAndSearchWorks = defineScenario('Discover is for browsing and its search finds a movie', [
