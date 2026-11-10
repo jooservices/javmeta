@@ -21,7 +21,7 @@ export function mountSavedSearches(root, kind, query, signal) {
   root.querySelector('[data-save-cancel]').addEventListener('click', () => { form.hidden = true; root.querySelector('[data-save-search]').focus(); }, { signal });
   form.addEventListener('submit', async e => {
     e.preventDefault(); const name = form.elements.search_name.value.trim(); if (!name) return;
-    const qs = queryString(query).replace(/^\?/, '');
+    const qs = queryString(typeof query === 'function' ? query() : query).replace(/^\?/, '');
     if (qs.length > 1500) { error.textContent = t('saved.too_long', { max: 1500 }); return; }
     const button = form.querySelector('[type=submit]'); button.disabled = true; error.textContent = '';
     try { await send('POST', '/ui-me/marks', { kind: 'saved_search', subject: kind, key: JSON.stringify({ name, query: qs }), on: true }); if (!signal.aborted) { form.hidden = true; const details = root.querySelector('details'); if (details) details.open = true; await load(); toast(t('saved.saved_toast')); root.querySelector('[data-save-search]').focus(); } }

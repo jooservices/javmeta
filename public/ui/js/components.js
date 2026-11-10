@@ -41,20 +41,32 @@ export const performerName = p => p.name_romaji || p.name_kanji || p.name_kana |
 /* ---------- cards and rows ---------- */
 /* codes of the movies that have a file on disk (loaded from the library); the cards show a badge for them */
 export const disk = { codes: new Set() };
+/* the first few genres, then a "+N" chip that shows every other genre of the movie when clicked (data-act expand-genres) */
+export function genreChips(genres, keep = 3, cls = '') {
+  const all = genres || [];
+  const extra = all.slice(keep);
+  return all.slice(0, keep).map(g => facetChip('genre', g, cls)).join('')
+    + (extra.length ? `<span class="chips-extra" hidden>${extra.map(g => facetChip('genre', g, cls)).join('')}</span><button type="button" class="chip more" data-act="expand-genres" aria-expanded="false" aria-label="${t('genres.expand', { count: all.length })}">+${extra.length}</button>` : '');
+}
+export function expandGenres(button) {
+  const extra = button.parentElement?.querySelector('.chips-extra');
+  if (extra) extra.hidden = false;
+  button.remove();
+}
 export function movieCard(m, i = 0) {
   const name = titleOf(m);
   const performers = (m.performers || []).slice(0, 3).map(p => a(href.performer(p.id), esc(performerName(p)))).join(', ');
-  const genres = (m.genres || []).slice(0, 2).map(g => facetChip('genre', g, 'g')).join('');
+  const genres = genreChips(m.genres, 3, 'g');
   return `<div class="mc" style="--i:${i % 14}"><a href="${href.movie(m.code)}" class="mc-main">${cover(m, { dur: true, alt: name })}<span class="t ell">${esc(name)}</span></a>
    <div class="m">${performers || `<span class="dim">${t('movie.no_performers')}</span>`}</div>
-   <div class="chips mini">${disk.codes.has(m.code) ? `<span class="chip ok">${t('movie.on_disk')}</span>` : ''}${genres}${(m.genres || []).length > 2 ? `<span class="chip">+${m.genres.length - 2}</span>` : ''}</div></div>`;
+   <div class="chips mini">${disk.codes.has(m.code) ? `<span class="chip ok">${t('movie.on_disk')}</span>` : ''}${genres}</div></div>`;
 }
 export function movieRow(m) {
   return `<tr class="row"><td class="mono">${a(href.movie(m.code), esc(codeLabel(m.code)))}</td><td>${esc(titleOf(m))}</td>
    <td class="muted">${(m.performers || []).slice(0, 3).map(p => a(href.performer(p.id), esc(performerName(p)))).join(', ')}</td>
    <td>${facetLink('maker', m.maker)}</td><td>${facetLink('series', m.series)}</td>
    <td class="mono">${esc(m.release_date || '—')}</td><td class="mono">${m.runtime_minutes ? m.runtime_minutes + '′' : '—'}</td>
-   <td class="mono">${m.community_score ?? '—'}</td><td><div class="chips mini">${(m.genres || []).slice(0, 3).map(g => facetChip('genre', g)).join('')}</div></td></tr>`;
+   <td class="mono">${m.community_score ?? '—'}</td><td><div class="chips mini">${genreChips(m.genres, 3)}</div></td></tr>`;
 }
 export const movieHead = () => `<tr><th>${t('movie.head.code')}</th><th>${t('movie.head.title')}</th><th>${t('movie.head.performers')}</th><th>${t('movie.head.maker')}</th><th>${t('movie.head.series')}</th><th>${t('movie.head.released')}</th><th>${t('movie.head.length')}</th><th>★</th><th>${t('movie.head.genres')}</th></tr>`;
 
@@ -76,7 +88,8 @@ export const stat = (value, label, note = '') => `<div class="stat"><b>${value}<
 export const kv = rows => `<dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
 
 /* ---------- infinite list: fetch a page, append, load the next when the footer is visible ---------- */
-export function infiniteList(root, { fetchPage, renderItems, wrapGrid, emptyHtml, countEl }) {
+export function infiniteList(root, { fetchPage, renderItems, wrapGrid, emptyHtml, countEl, first = null, onFirst = null }) {
+  let preload = first; // a first page the caller already fetched: drawn at once, no blank list while it loads
   let state = { cursor: null, page: 1, done: false, loading: false, shown: 0, total: null, gen: 0 };
   root.innerHTML = wrapGrid;
   const host = root.querySelector('[data-h]');
@@ -90,8 +103,10 @@ export function infiniteList(root, { fetchPage, renderItems, wrapGrid, emptyHtml
     const gen = state.gen;
     foot.innerHTML = '<span class="loader"><i></i><i></i><i></i></span>';
     try {
-      const r = await fetchPage(state);
+      const r = preload || await fetchPage(state);
+      preload = null;
       if (gen !== state.gen) return;
+      if (state.shown === 0 && onFirst) onFirst(r);
       state.total = r.total ?? state.total;
       state.cursor = r.cursor ?? null;
       state.page = r.page ?? state.page + 1;

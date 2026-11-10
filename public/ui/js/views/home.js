@@ -26,7 +26,7 @@ export default {
         api('status/summary'),
         api('movies', { sort: 'update_date', per_page: 12 }),
         api('performers', { sort: 'updated_at', per_page: 6 }),
-        api('meta/catalog/genres', { per_page: 12 }, { ttl: 120000 }),
+        api('meta/catalog/genres', { per_page: 12, min_count: 3 }, { ttl: 120000 }),
         api('movies', { sort: 'release_date', per_page: 5, released_to: new Date().toISOString().slice(0, 10) }),
       ]);
     } catch (e) { return { html: `<div class="wrap">${errorBox(e)}</div>` }; }
@@ -34,7 +34,7 @@ export default {
     const chips = suggestionChips(genres.data);
     const html = `<div class="wrap">
       <div class="hero"><h1>${t('home.title')}</h1><form class="bigq" id="hsearch"><input type="text" id="hsq" placeholder="${t('search.placeholder')}" autocomplete="off" aria-label="${t('home.search_label')}"><button class="btn pri" type="submit">${t('common.search')}</button></form>
-        ${chips.length ? `<div class="chips"><span class="dim" style="line-height:20px">${t('home.suggestions')}</span>${chips.map(g => a(href.search(g.name), esc(g.name), 'chip')).join('')}</div>` : ''}</div>
+        ${chips.length ? `<div class="chips"><span class="dim" style="line-height:20px">${t('home.suggestions')}</span>${chips.map(g => a(href.search(g.name), esc(g.name), 'chip')).join('')}${a('#/catalog/genres', t('search.all_genres'), 'chip more')}</div>` : ''}</div>
       <div class="panel"><div class="grid g6" style="gap:0">
         <div class="stat"><b>${cu(s.counts.movies)}</b><span>${t('home.stat.movies')}</span><em>${t('home.in_24h', { n: fmt(s.ingest.movies_24h) })}</em></div>
         <div class="stat"><b>${cu(s.counts.performers)}</b><span>${t('home.stat.performers')}</span><em>${t('home.in_24h', { n: fmt(s.ingest.performers_24h) })}</em></div>

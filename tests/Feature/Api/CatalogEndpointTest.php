@@ -52,12 +52,12 @@ final class CatalogEndpointTest extends TestCase
         Movie::factory()->create(['maker' => 'Alpha']);
 
         $first = $this->getJson('/api/v1/meta/catalog/makers', $this->headers())->assertOk()->json('data');
-        $key = 'javmeta:catalog:' . hash('sha256', json_encode(['makers', '', 'movie_count', 50, 1, false], JSON_THROW_ON_ERROR));
+        $key = 'javmeta:catalog:' . hash('sha256', json_encode(['makers', '', 'movie_count', 50, 1, false, 0, 'all'], JSON_THROW_ON_ERROR));
         $this->assertSame($first, \Illuminate\Support\Facades\Cache::get($key)['items']);
         $this->assertSame($first, $this->getJson('/api/v1/meta/catalog/makers', $this->headers())->assertOk()->json('data'));
 
         $sorted = $this->getJson('/api/v1/meta/catalog/makers?sort=name', $this->headers())->assertOk()->json('data');
-        $sortedKey = 'javmeta:catalog:' . hash('sha256', json_encode(['makers', '', 'name', 50, 1, false], JSON_THROW_ON_ERROR));
+        $sortedKey = 'javmeta:catalog:' . hash('sha256', json_encode(['makers', '', 'name', 50, 1, false, 0, 'all'], JSON_THROW_ON_ERROR));
         $this->assertNotSame($key, $sortedKey);
         $this->assertSame($sorted, \Illuminate\Support\Facades\Cache::get($sortedKey)['items']);
         $this->assertSame($first, \Illuminate\Support\Facades\Cache::get($key)['items']);
@@ -97,5 +97,54 @@ final class CatalogEndpointTest extends TestCase
 
         $this->assertSame([['name' => '2025', 'movie_count' => 1]], $response->json('data'));
         $this->assertSame(1, $response->json('meta.pagination.total'));
+    }
+
+    public function test_min_count_hides_the_long_tail_and_reports_how_many_are_hidden(): void
+    {
+        Movie::factory()->count(3)->create(['maker' => 'Alpha']);
+        Movie::factory()->count(1)->create(['maker' => 'Beta']);
+        Movie::factory()->count(2)->create(['maker' => 'Gamma']);
+
+        $response = $this->getJson('/api/v1/meta/catalog/makers?min_count=3', $this->headers())->assertOk();
+
+        $this->assertSame([['name' => 'Alpha', 'movie_count' => 3]], $response->json('data'));
+        $this->assertSame(1, $response->json('meta.pagination.total'));
+        $this->assertSame(2, $response->json('meta.pagination.hidden_below_min'));
+        $this->assertSame(3, $response->json('meta.pagination.min_count'));
+        $all = $this->getJson('/api/v1/meta/catalog/makers', $this->headers())->assertOk();
+        $this->assertSame(3, $all->json('meta.pagination.total'));
+        $this->assertSame(0, $all->json('meta.pagination.hidden_below_min'));
+        $this->getJson('/api/v1/meta/catalog/makers?min_count=-1', $this->headers())->assertStatus(400);
+    }
+
+    public function test_script_index_keeps_one_writing_system_and_combines_with_min_count(): void
+    {
+        Movie::factory()->count(3)->create(['maker' => 'Alpha']);
+        Movie::factory()->count(3)->create(['maker' => 'ハイビジョン']);
+        Movie::factory()->count(1)->create(['maker' => '中出し']);
+        Movie::factory()->count(3)->create(['maker' => '巨乳']);
+        Movie::factory()->count(1)->create(['maker' => '美女']);
+        Movie::factory()->count(3)->create(['maker' => '4K Studio']);
+        Movie::factory()->count(3)->create(['maker' => '★★★']);
+
+        $names = fn(string $script, string $extra = ''): array => array_column($this->getJson('/api/v1/meta/catalog/makers?sort=name&script=' . $script . $extra, $this->headers())->assertOk()->json('data'), 'name');
+
+        $this->assertSame(['4K Studio', 'Alpha'], $names('latin'));
+        // Han-only names (巨乳, 美女) are shared by Japanese and Chinese, so both indexes list them; kana is only Japanese.
+        $this->assertSame(['ハイビジョン', '中出し', '巨乳', '美女'], $names('ja'));
+        $this->assertSame(['巨乳', '美女'], $names('zh'));
+        $this->assertSame(['巨乳'], $names('zh', '&min_count=3'));
+        $this->assertSame(['★★★'], $names('other'));
+        $this->assertCount(7, $names('all'));
+        $response = $this->getJson('/api/v1/meta/catalog/makers?script=zh&min_count=3', $this->headers())->assertOk();
+        $this->assertSame(1, $response->json('meta.pagination.total'));
+        $this->assertSame(1, $response->json('meta.pagination.hidden_below_min'));
+        // Paging a script-filtered catalog slices one cached copy of the whole catalog.
+        $first = $this->getJson('/api/v1/meta/catalog/makers?sort=name&script=ja&per_page=2&page=1', $this->headers())->assertOk();
+        $second = $this->getJson('/api/v1/meta/catalog/makers?sort=name&script=ja&per_page=2&page=2', $this->headers())->assertOk();
+        $this->assertSame(['ハイビジョン', '中出し'], array_column($first->json('data'), 'name'));
+        $this->assertSame(['巨乳', '美女'], array_column($second->json('data'), 'name'));
+        $this->assertSame(4, $second->json('meta.pagination.total'));
+        $this->getJson('/api/v1/meta/catalog/makers?script=klingon', $this->headers())->assertStatus(400);
     }
 }

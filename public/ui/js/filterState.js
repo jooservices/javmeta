@@ -1,12 +1,41 @@
 import { esc } from './util.js';
 import { t } from './i18n.js';
 
-export const values = value => [...new Set(String(value || '').split(',').filter(Boolean))];
+/* The values of a comma separated filter. A filter that is matched exactly (exactKeys) can hold quoted terms: a term that
+   starts with a double quote runs to its closing quote, and inside it a backslash escapes a quote or a backslash, so names with
+   commas or quotes survive. Every other term, and every other filter, is plain text up to the next comma. */
+export const values = (value, key = '') => {
+  const text = String(value || '');
+  const out = [];
+  if (!exactKeys.includes(key)) return [...new Set(text.split(',').map(v => v.trim()).filter(Boolean))];
+  let i = 0;
+  while (i < text.length) {
+    while (text[i] === ' ') i += 1;
+    let term = '';
+    if (text[i] === '"') {
+      term = '"'; i += 1;
+      while (i < text.length && text[i] !== '"') { if (text[i] === '\\' && i + 1 < text.length) { term += text[i] + text[i + 1]; i += 2; } else { term += text[i]; i += 1; } }
+      term += '"'; i += 1;
+      while (i < text.length && text[i] !== ',') i += 1;
+    } else {
+      while (i < text.length && text[i] !== ',') { term += text[i]; i += 1; }
+      term = term.trim();
+    }
+    i += 1;
+    if (term !== '' && term !== '""') out.push(term);
+  }
+  return [...new Set(out)];
+};
 export const toggleValue = (value, item) => values(value).includes(String(item)) ? values(value).filter(v => v !== String(item)).join(',') : [...values(value), String(item)].join(',');
 export const movieKeys = 'q code genre genre_all actress actress_id maker series label source released_from released_to runtime_min runtime_max score_min tier_min censored on_disk has_cover has_magnet has_performers sort'.split(' ');
 export const performerKeys = 'q cup blood_type location age_min age_max height_min height_max bust_min bust_max waist_min waist_max hip_min hip_max debut_from debut_to status has_image has_bio movies_min source sort'.split(' ');
-export const multiKeys = ['genre', 'actress_id', 'source', 'cup', 'blood_type'];
-const labelKeys =new Set(['q', 'code', 'genre', 'genre_all', 'actress', 'actress_id', 'maker', 'series', 'label', 'source', 'released_from', 'released_to', 'runtime_min', 'runtime_max', 'score_min', 'tier_min', 'censored', 'on_disk', 'has_cover', 'has_magnet', 'has_performers', 'cup', 'blood_type', 'location', 'age_min', 'age_max', 'height_min', 'height_max', 'bust_min', 'bust_max', 'waist_min', 'waist_max', 'hip_min', 'hip_max', 'debut_from', 'debut_to', 'status', 'has_image', 'has_bio', 'movies_min']);
+export const multiKeys = ['genre', 'actress_id', 'source', 'cup', 'blood_type', 'location'];
+/* A value ticked in a facet list is sent in double quotes: the API then matches it exactly, so the movies found equal
+   the count shown beside the value. Typed keywords stay unquoted and keep the substring search. */
+export const exactKeys = ['genre', 'maker', 'series', 'label'];
+export const quoteExact = (key, value) => (exactKeys.includes(key) ? `"${String(value).replace(/[\\"]/g, '\\$&')}"` : value);
+export const unquoteExact = value => { const m = /^"(.*)"$/s.exec(String(value)); return m ? m[1].replace(/\\([\\"])/g, '$1') : String(value); };
+const labelKeys = new Set(['q', 'code', 'genre', 'genre_all', 'actress', 'actress_id', 'maker', 'series', 'label', 'source', 'released_from', 'released_to', 'runtime_min', 'runtime_max', 'score_min', 'tier_min', 'censored', 'on_disk', 'has_cover', 'has_magnet', 'has_performers', 'cup', 'blood_type', 'location', 'age_min', 'age_max', 'height_min', 'height_max', 'bust_min', 'bust_max', 'waist_min', 'waist_max', 'hip_min', 'hip_max', 'debut_from', 'debut_to', 'status', 'has_image', 'has_bio', 'movies_min']);
 export const label = key => t('filter.label.' + key);
 /* Compatibility for docs/smoke that read labels[key]: resolve through i18n. */
 export const labels = new Proxy({}, { get: (_t, key) => (typeof key === 'string' ? label(key) : undefined) });
@@ -25,11 +54,11 @@ export function performerParams(query) {
   return p;
 }
 export function activeFilters(query, names = {}) {
-  return Object.entries(query).filter(([k, v]) => labelKeys.has(k) && v !== '' && v !== undefined).flatMap(([k, v]) => (multiKeys.includes(k) ? values(v) : [String(v)]).map(value => ({ key: k, value, label: label(k) + ': ' + (k === 'actress_id' ? names[value] || '#' + value : value) })));
+  return Object.entries(query).filter(([k, v]) => labelKeys.has(k) && v !== '' && v !== undefined).flatMap(([k, v]) => (multiKeys.includes(k) ? values(v, k) : [String(v)]).map(value => ({ key: k, value, label: label(k) + ': ' + (k === 'actress_id' ? names[value] || '#' + value : exactKeys.includes(k) ? unquoteExact(value) : value) })));
 }
 export function removeFilter(query, key, value) {
   const next = { ...query };
-  if (multiKeys.includes(key) && value !== undefined) next[key] = values(next[key]).filter(v => v !== value).join(',');
+  if (multiKeys.includes(key) && value !== undefined) next[key] = values(next[key], key).filter(v => v !== value).join(',');
   else delete next[key];
   if (key === 'genre' && !next.genre) delete next.genre_all;
   return next;

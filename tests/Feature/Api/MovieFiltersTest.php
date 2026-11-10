@@ -47,9 +47,9 @@ final class MovieFiltersTest extends TestCase
 
     public function test_genres_any_or_all_source_score_tier_and_flags(): void
     {
-        $any = $this->codes('genre=' . urlencode('Sample Genre 01,Sample Genre 02'));
-        $one = $this->codes('genre=' . urlencode('Sample Genre 01'));
-        $all = $this->codes('genre=' . urlencode('Sample Genre 01,Sample Genre 02') . '&genre_all=1');
+        $any = $this->codes('genre=' . urlencode('Sample Genre 001,Sample Genre 002'));
+        $one = $this->codes('genre=' . urlencode('Sample Genre 001'));
+        $all = $this->codes('genre=' . urlencode('Sample Genre 001,Sample Genre 002') . '&genre_all=1');
         $this->assertGreaterThanOrEqual(count($one), count($any));
         $this->assertLessThanOrEqual(count($one), count($all));
 
@@ -67,6 +67,39 @@ final class MovieFiltersTest extends TestCase
         $this->assertNotEmpty($this->codes('has_cover=0'));
         $this->assertNotEmpty($this->codes('has_performers=1'));
         $this->assertNotEmpty($this->codes('has_magnet=1'));
+    }
+
+    public function test_a_quoted_value_matches_exactly_while_a_bare_value_keeps_the_substring_search(): void
+    {
+        // What a facet tick sends is quoted, so the movies found equal the count shown beside the value.
+        $name = (string) DB::table('genres')->whereIn('id', DB::table('movie_genres')->select('genre_id'))->orderBy('id')->value('label_raw');
+        $prefix = substr($name, 0, -1);
+
+        $bare = $this->codes('genre=' . urlencode($prefix));
+        $exact = $this->codes('genre=' . urlencode('"' . $name . '"'));
+
+        $this->assertNotEmpty($exact);
+        $this->assertGreaterThan(count($exact), count($bare), 'the bare prefix also finds the neighbouring genres');
+        $this->assertSame([], $this->codes('genre=' . urlencode('"' . $prefix . '"')), 'an exact prefix is not a genre');
+        $this->assertSame([], $this->codes('genre=' . urlencode('"' . strtoupper($name) . '"')), 'a facet tick is the value exactly as listed');
+
+        // A comma inside the quotes belongs to the value and is not a list separator.
+        $commaGenre = DB::table('genres')->insertGetId(['label_normalized' => 'foo-inc', 'label_raw' => 'Foo, Inc.']);
+        $movieId = (int) DB::table('movies')->value('id');
+        DB::table('movie_genres')->insert(['movie_id' => $movieId, 'genre_id' => $commaGenre, 'source_slug' => 'sample', 'crawled_at' => now()]);
+        $this->assertContains((string) DB::table('movies')->where('id', $movieId)->value('display_code'), $this->codes('genre=' . urlencode('"Foo, Inc."')));
+
+        // Embedded quotes travel escaped; a quote inside a bare term does not start a quoted term.
+        $quoted = DB::table('genres')->insertGetId(['label_normalized' => 'a-b-c-d', 'label_raw' => 'A" B, C" D']);
+        DB::table('movie_genres')->insert(['movie_id' => $movieId, 'genre_id' => $quoted, 'source_slug' => 'sample', 'crawled_at' => now()]);
+        $code = (string) DB::table('movies')->where('id', $movieId)->value('display_code');
+        $this->assertContains($code, $this->codes('genre=' . urlencode('"A\\" B, C\\" D"')));
+        $this->assertContains($code, $this->codes('genre=' . urlencode('Sample Genre 00x,"A\\" B, C\\" D"')), 'a list can mix a bare and a quoted term');
+        $this->assertNotContains($code, $this->codes('genre=' . urlencode('Action,Foo"Bar')), 'a bare term with a quote is still one substring term');
+
+        $maker = (string) DB::table('movies')->whereNotNull('maker')->value('maker');
+        $this->assertNotEmpty($this->codes('maker=' . urlencode('"' . $maker . '"')));
+        $this->assertSame([], $this->codes('maker=' . urlencode('"' . substr($maker, 0, -1) . '"')));
     }
 
     public function test_facets_count_inside_the_current_result_and_respect_the_filters(): void

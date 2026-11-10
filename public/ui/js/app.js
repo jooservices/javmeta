@@ -3,7 +3,8 @@ import { ic } from './icons.js';
 import { initLightbox } from './lightbox.js';
 import { api } from './api.js';
 import { initTheme, toggleTheme } from './theme.js';
-import { errorBox, loadingBox, performerName, href, avatar, disk } from './components.js';
+import { errorBox, loadingBox, performerName, href, avatar, disk, expandGenres } from './components.js';
+import { trySoftUpdate, markRendered } from './resultsRefresh.js';
 import home from './views/home.js';
 import movies from './views/movies.js';
 import movie from './views/movie.js';
@@ -126,6 +127,7 @@ function applyStaticI18n() {
 
 async function render() {
   if (cleanup) { try { cleanup(); } catch { /* ignore */ } cleanup = null; }
+  markRendered(); // soft query updates apply only to the route that is on screen
   const r = parse();
   const view = $('#view');
   drawShell(r.top);
@@ -195,7 +197,11 @@ initTheme();
 await initI18n(); // before the first render: the catalogs and <html lang> are ready
 applyStaticI18n();
 onLocaleChange(() => { applyStaticI18n(); omniClose(); live(); render(); });
-window.addEventListener('hashchange', render);
+/* back/forward or a link to the same list with other filters: the list view refreshes its results in place;
+   anything else (another route, a first load, a view without a soft handler) renders the route once */
+const navigate = () => { if (!trySoftUpdate()) render(); };
+window.addEventListener('hashchange', navigate);
+window.addEventListener('popstate', navigate);
 $('#omq').addEventListener('input', debounce(omniDraw, 250));
 $('#omq').addEventListener('keydown', e => {
   if (e.key === 'ArrowDown') { e.preventDefault(); omniMove(1); }
@@ -221,6 +227,7 @@ document.addEventListener('click', e => {
   if (act === 'menu') setSideOpen(!$('#side').classList.contains('open'));
   if (act === 'reload') render();
   if (act === 'copy') copyText(actEl.dataset.v);
+  if (act === 'expand-genres') expandGenres(actEl);
   if (act === 'help') openHelp();
   if (act === 'locale') switchLocale(actEl.dataset.v);
 });

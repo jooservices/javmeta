@@ -4,17 +4,19 @@ declare(strict_types=1);
 
 namespace App\Repositories;
 
+use App\Data\Facets\FacetListQuery;
 use App\Models\Movie;
 use App\Models\MovieCode;
 use App\Models\MovieMedia;
 use App\Models\MovieSource;
+use App\Support\Catalog\NameScript;
 use DateTimeImmutable;
 use DateTimeInterface;
+use InvalidArgumentException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use App\Support\Code\NormalizedCode;
-use InvalidArgumentException;
 
 /**
  * Movie search (REQ-4, AD-11): filtered, sorted, keyset-paginated reads.
@@ -48,8 +50,57 @@ final class MovieRepository extends BusinessQueryRepository
         parent::__construct($model);
     }
 
-    /** @return array{items: list<array{name: string, movie_count: int}>, total: int} */
-    public function movieCatalog(string $kind, string $query, string $sort, int $perPage, int $page): array
+    /**
+     * @return array{items: list<array{name: string, movie_count: int}>, total: int, hidden: int}
+     *
+     * Entries below $minCount movies are left out and counted in `hidden`; $script keeps one writing system (see NameScript).
+     */
+    public function movieCatalog(string $kind, string $query, string $sort, int $perPage, int $page, int $minCount = 0, string $script = 'all'): array
+    {
+        if ($script !== 'all') {
+            $whole = $this->movieCatalogWhole($kind, $query, $sort, $minCount, $script);
+
+            return [
+                'items' => array_slice($whole['items'], ($page - 1) * $perPage, $perPage),
+                'total' => count($whole['items']),
+                'hidden' => $whole['hidden'],
+            ];
+        }
+
+        [$base, $order] = $this->movieCatalogBase($kind, $query, $sort);
+        $all = (int) DB::query()->fromSub(clone $base, 'c')->count();
+        $visible = DB::query()->fromSub(clone $base, 'c')->when($minCount > 0, static fn($rows) => $rows->where('movie_count', '>=', $minCount));
+        $total = $minCount > 0 ? (int) (clone $visible)->count() : $all;
+        $rows = $visible->orderByRaw($order)->forPage($page, $perPage)->get(['name', 'movie_count']);
+
+        /** @var list<array{name: string, movie_count: int}> $items */
+        $items = $rows->map(static fn(object $row): array => ['name' => (string) $row->name, 'movie_count' => (int) $row->movie_count])->values()->all();
+
+        return ['items' => $items, 'total' => $total, 'hidden' => $all - $total];
+    }
+
+    /**
+     * The whole catalog of one writing system, ordered and without the entries below $minCount (counted in `hidden`).
+     * The script is decided in PHP (there is no portable SQL for it), so every entry of the kind is read; the caller caches
+     * the result independently of the page. Bounded by the number of distinct values of the kind (genres: about 13,400).
+     *
+     * @return array{items: list<array{name: string, movie_count: int}>, hidden: int}
+     */
+    public function movieCatalogWhole(string $kind, string $query, string $sort, int $minCount, string $script): array
+    {
+        [$base, $order] = $this->movieCatalogBase($kind, $query, $sort);
+        $named = DB::query()->fromSub($base, 'c')->orderByRaw($order)->get(['name', 'movie_count'])
+            ->filter(static fn(object $row): bool => NameScript::matches((string) $row->name, $script))->values();
+        $kept = $named->filter(static fn(object $row): bool => (int) $row->movie_count >= $minCount)->values();
+
+        /** @var list<array{name: string, movie_count: int}> $items */
+        $items = $kept->map(static fn(object $row): array => ['name' => (string) $row->name, 'movie_count' => (int) $row->movie_count])->values()->all();
+
+        return ['items' => $items, 'hidden' => $named->count() - $kept->count()];
+    }
+
+    /** @return array{0: \Illuminate\Database\Query\Builder, 1: string} the grouped query and its ORDER BY */
+    private function movieCatalogBase(string $kind, string $query, string $sort): array
     {
         $nameColumn = match ($kind) {
             'genres' => 'COALESCE(genres.label_raw, genres.label_normalized)',
@@ -75,14 +126,7 @@ final class MovieRepository extends BusinessQueryRepository
                 : $base->whereRaw('LOWER(' . $nameColumn . ') LIKE ?', [$pattern]);
         }
 
-        $total = (int) DB::query()->fromSub(clone $base, 'c')->count();
-        $order = $sort === 'name' ? ($kind === 'years' ? 'name DESC' : 'name ASC') : 'movie_count DESC, name ASC';
-        $rows = DB::query()->fromSub($base, 'c')->orderByRaw($order)->forPage($page, $perPage)->get(['name', 'movie_count']);
-
-        /** @var list<array{name: string, movie_count: int}> $items */
-        $items = $rows->map(static fn(object $row): array => ['name' => (string) $row->name, 'movie_count' => (int) $row->movie_count])->all();
-
-        return ['items' => $items, 'total' => $total];
+        return [$base, $sort === 'name' ? ($kind === 'years' ? 'name DESC' : 'name ASC') : 'movie_count DESC, name ASC'];
     }
 
     public function countAll(): int
@@ -276,12 +320,20 @@ final class MovieRepository extends BusinessQueryRepository
 
         $like = $this->likeOperator();
 
-        $genres = self::list($filters['genre'] ?? null);
+        $genres = self::quotedList($filters['genre'] ?? null);
         if ($genres !== []) {
             $all = (string) ($filters['genre_all'] ?? '0') === '1';
             $one = static function (Builder $query, string $genre) use ($like): void {
-                $pattern = '%' . self::escapeLike($genre) . '%';
-                $query->whereHas('genres', static function (Builder $g) use ($like, $pattern): void {
+                [$exact, $text] = self::exactTerm($genre);
+                $query->whereHas('genres', static function (Builder $g) use ($like, $exact, $text): void {
+                    if ($exact) {
+                        // A facet tick sends the value exactly as the facet list read it from the data, so equality is exact
+                        // (no case folding: LOWER() is ASCII-only on SQLite and on PostgreSQL with the C locale).
+                        $g->whereRaw('COALESCE(label_raw, label_normalized) = ?', [$text]);
+
+                        return;
+                    }
+                    $pattern = '%' . self::escapeLike($text) . '%';
                     $g->where('label_normalized', $like, $pattern)->orWhere('label_raw', $like, $pattern);
                 });
             };
@@ -347,7 +399,10 @@ final class MovieRepository extends BusinessQueryRepository
         foreach (['maker', 'series', 'label'] as $column) {
             $value = $filters[$column] ?? null;
             if (is_string($value) && $value !== '') {
-                $query->where($column, $like, '%' . $value . '%');
+                [$exact, $text] = self::exactTerm($value);
+                $exact
+                    ? $query->where($column, '=', $text)
+                    : $query->where($column, $like, '%' . $value . '%');
             }
         }
 
@@ -383,12 +438,76 @@ final class MovieRepository extends BusinessQueryRepository
         }
     }
 
+    /**
+     * A value wrapped in double quotes is an exact match (what a facet tick sends, so the movies found equal the count
+     * shown next to the value); any other value keeps the substring search every filter has always had.
+     *
+     * @return array{0: bool, 1: string}
+     */
+    private static function exactTerm(string $term): array
+    {
+        if (strlen($term) >= 2 && $term[0] === '"' && str_ends_with($term, '"')) {
+            return [true, (string) preg_replace('/\\\\([\\\\"])/', '$1', substr($term, 1, -1))];
+        }
+
+        return [false, $term];
+    }
+
     /** @return list<string> comma separated values, trimmed and without blanks */
     private static function list(mixed $value): array
     {
         $parts = is_array($value) ? $value : explode(',', (string) $value);
 
         return array_values(array_unique(array_filter(array_map(static fn($p): string => trim((string) $p), $parts), static fn(string $p): bool => $p !== '')));
+    }
+
+    /**
+     * The terms of a comma separated filter that can hold exact (quoted) terms: a term that starts with a double quote runs to
+     * its closing quote, where a backslash escapes a quote or a backslash; any other term is plain text up to the next comma.
+     * This is the same rule as `values()` in public/ui/js/filterState.js.
+     *
+     * @return list<string> terms with their quotes kept (see exactTerm)
+     */
+    private static function quotedList(mixed $value): array
+    {
+        if (is_array($value)) {
+            return self::list($value);
+        }
+        $text = (string) $value;
+        $length = strlen($text);
+        $terms = [];
+        for ($i = 0; $i < $length; $i++) {
+            while ($i < $length && $text[$i] === ' ') {
+                $i++;
+            }
+            $term = '';
+            if ($i < $length && $text[$i] === '"') {
+                $term = '"';
+                for ($i++; $i < $length && $text[$i] !== '"'; $i++) {
+                    if ($text[$i] === '\\' && $i + 1 < $length) {
+                        $term .= $text[$i] . $text[++$i];
+
+                        continue;
+                    }
+                    $term .= $text[$i];
+                }
+                $term .= '"';
+                while ($i + 1 < $length && $text[$i + 1] !== ',') {
+                    $i++;
+                }
+                $i++;
+            } else {
+                while ($i < $length && $text[$i] !== ',') {
+                    $term .= $text[$i++];
+                }
+                $term = trim($term);
+            }
+            if ($term !== '' && $term !== '""') {
+                $terms[] = $term;
+            }
+        }
+
+        return array_values(array_unique($terms));
     }
 
     /** @return list<int> */
@@ -451,6 +570,128 @@ final class MovieRepository extends BusinessQueryRepository
                 ->selectRaw("performers.id, COALESCE(performers.name_romaji, performers.name_kanji, performers.name_kana) AS name, COUNT(DISTINCT movie_performers.movie_id) AS c")->groupBy('performers.id', 'performers.name_romaji', 'performers.name_kanji', 'performers.name_kana')->orderByDesc('c')->limit(12)->get()
                 ->map(static fn($r): array => ['id' => (int) $r->id, 'name' => (string) $r->name, 'count' => (int) $r->c])->all(),
         ];
+    }
+
+    /**
+     * One paginated facet value list scoped to the current movie filters.
+     *
+     * @return array{items: list<array<string, mixed>>, total: int, hidden_below_min: int, facet: string}
+     */
+    public function facetValues(FacetListQuery $query): array
+    {
+        $filters = $query->filters;
+        $movieQuery = $this->newQuery();
+        $q = isset($filters['q']) && is_string($filters['q']) ? trim($filters['q']) : null;
+        $this->applyFilters($movieQuery, $filters, $q === '' ? null : $q);
+        $ids = $movieQuery->toBase()->select('movies.id');
+        $scoped = $filters !== [];
+
+        $rows = match ($query->facet) {
+            'genres' => $this->genreFacetPairs($scoped ? $ids : null),
+            'makers' => $this->columnFacetPairs('maker', $scoped ? $ids : null),
+            'series' => $this->columnFacetPairs('series', $scoped ? $ids : null),
+            'labels' => $this->columnFacetPairs('label', $scoped ? $ids : null),
+            'years' => $this->yearFacetPairs($scoped ? $ids : null),
+            'sources' => $this->sourceFacetPairs($scoped ? $ids : null),
+            'performers' => $this->performerFacetPairs($scoped ? $ids : null),
+            default => throw new InvalidArgumentException('Unknown movie facet: ' . $query->facet),
+        };
+
+        $needle = mb_strtolower($query->query);
+        $matched = [];
+        $hidden = 0;
+        foreach ($rows as $row) {
+            $name = (string) $row['name'];
+            $count = (int) $row['count'];
+            if ($needle !== '' && ! str_contains(mb_strtolower($name), $needle)) {
+                continue;
+            }
+            if ($count < $query->minCount) {
+                $hidden++;
+                continue;
+            }
+            $matched[] = $row;
+        }
+
+        usort($matched, static function (array $left, array $right) use ($query): int {
+            if ($query->sort === 'name') {
+                return strcmp((string) $left['name'], (string) $right['name'])
+                    ?: ((int) $right['count'] <=> (int) $left['count'])
+                    ?: ((int) ($left['id'] ?? 0) <=> (int) ($right['id'] ?? 0));
+            }
+
+            return ((int) $right['count'] <=> (int) $left['count'])
+                ?: strcmp((string) $left['name'], (string) $right['name'])
+                ?: ((int) ($left['id'] ?? 0) <=> (int) ($right['id'] ?? 0));
+        });
+
+        $total = count($matched);
+        $page = max(1, $query->page);
+        $items = array_slice($matched, ($page - 1) * $query->perPage, $query->perPage);
+
+        return [
+            'items' => $items,
+            'total' => $total,
+            'hidden_below_min' => $hidden,
+            'facet' => $query->facet,
+        ];
+    }
+
+    /** @return list<array{name: string, count: int}> */
+    private function genreFacetPairs(?\Illuminate\Database\Query\Builder $ids): array
+    {
+        $pairs = DB::table('movie_genres')->join('genres', 'genres.id', '=', 'movie_genres.genre_id')
+            ->when($ids !== null, static fn($rows) => $rows->whereIn('movie_genres.movie_id', clone $ids))
+            ->selectRaw('COALESCE(genres.label_raw, genres.label_normalized) AS name, movie_genres.movie_id')->distinct();
+
+        return DB::query()->fromSub($pairs, 'genre_pairs')->selectRaw('name, COUNT(*) AS c')->groupBy('name')->get()
+            ->map(static fn($r): array => ['name' => (string) $r->name, 'count' => (int) $r->c])->all();
+    }
+
+    /** @return list<array{name: string, count: int}> */
+    private function columnFacetPairs(string $column, ?\Illuminate\Database\Query\Builder $ids): array
+    {
+        $base = $ids === null
+            ? DB::table('movies')
+            : DB::table('movies')->whereIn('id', clone $ids);
+
+        return $base->whereNotNull($column)->where($column, '<>', '')
+            ->selectRaw($column . ' AS name, COUNT(*) AS c')->groupBy($column)->get()
+            ->map(static fn($r): array => ['name' => (string) $r->name, 'count' => (int) $r->c])->all();
+    }
+
+    /** @return list<array{name: string, count: int}> */
+    private function yearFacetPairs(?\Illuminate\Database\Query\Builder $ids): array
+    {
+        $year = $this->yearExpression();
+        $base = $ids === null
+            ? DB::table('movies')
+            : DB::table('movies')->whereIn('id', clone $ids);
+
+        return $base->whereNotNull('release_date')
+            ->selectRaw($year . ' AS name, COUNT(*) AS c')->groupByRaw($year)->get()
+            ->map(static fn($r): array => ['name' => (string) $r->name, 'count' => (int) $r->c])->all();
+    }
+
+    /** @return list<array{name: string, count: int}> */
+    private function sourceFacetPairs(?\Illuminate\Database\Query\Builder $ids): array
+    {
+        return DB::table('movie_codes')
+            ->when($ids !== null, static fn($rows) => $rows->whereIn('movie_id', clone $ids))
+            ->selectRaw('source_slug AS name, COUNT(DISTINCT movie_id) AS c')->groupBy('source_slug')->get()
+            ->map(static fn($r): array => ['name' => (string) $r->name, 'count' => (int) $r->c])->all();
+    }
+
+    /** @return list<array{id: int, name: string, count: int}> */
+    private function performerFacetPairs(?\Illuminate\Database\Query\Builder $ids): array
+    {
+        return DB::table('movie_performers')->join('performers', 'performers.id', '=', 'movie_performers.performer_id')
+            ->when($ids !== null, static fn($rows) => $rows->whereIn('movie_performers.movie_id', clone $ids))
+            ->whereNull('performers.canonical_performer_id')
+            ->selectRaw("performers.id, COALESCE(performers.name_romaji, performers.name_kanji, performers.name_kana) AS name, COUNT(DISTINCT movie_performers.movie_id) AS c")
+            ->groupBy('performers.id', 'performers.name_romaji', 'performers.name_kanji', 'performers.name_kana')
+            ->get()
+            ->map(static fn($r): array => ['id' => (int) $r->id, 'name' => (string) $r->name, 'count' => (int) $r->c])->all();
     }
 
     private function applyTextSearch(Builder $query, string $q): void

@@ -50,9 +50,20 @@ const sources = [
   { slug: 'avfan', name: 'Avfan', enabled: false, gap_seconds_current: 5, gap_seconds_min: 2, gap_seconds_max: 30, last_success_at: null, last_error_at: null, last_error: null, queue: { pending: 0, claimed: 0, done: 0, failed: 0 } },
 ];
 
+const facetRows = {
+  genres: [{ name: 'Drama', count: 12 }, { name: '<b>School</b>', count: 3 }, { name: 'Rare', count: 1 }], makers: [{ name: 'Maker One', count: 10 }], series: [{ name: 'Series One', count: 9 }], labels: [{ name: 'Label One', count: 8 }],
+  years: [{ name: '2025', count: 7 }], sources: [{ name: 'javdb', count: 6 }, { name: 'javbus', count: 4 }], performers: [{ id: 92, name: 'Eimi <b>x</b>', count: 5 }],
+  cups: [{ name: 'D', count: 5 }], blood_types: [{ name: 'O', count: 4 }], locations: [{ name: 'Tokyo', count: 3 }], status: [{ name: 'active', count: 7 }, { name: 'retired', count: 3 }],
+};
 const route = url => {
   const u = new URL(url, 'https://x.test');
   const p = u.pathname.replace('/ui-api/', '');
+  if (p.endsWith('/facets/values')) {
+    const group = u.searchParams.get('facet'), needle = (u.searchParams.get('q') || '').toLowerCase(), min = Number(u.searchParams.get('min_count') || 0);
+    const per = Number(u.searchParams.get('per_page') || 20), page = Number(u.searchParams.get('page') || 1);
+    const all = (facetRows[group] || []).filter(r => r.name.toLowerCase().includes(needle)), items = all.filter(r => r.count >= min);
+    return { data: { items: items.slice((page - 1) * per, page * per), total: items.length, hidden_below_min: all.length - items.length, facet: group }, meta: { pagination: { total: items.length, per_page: per, page, last_page: Math.max(1, Math.ceil(items.length / per)), min_count: min } } };
+  }
   if (p === 'movies/facets') return { data: { total: u.searchParams.get('q') === 'empty' ? 0 : 12, genres: [{ name: 'Drama', count: 12 }, { name: '<b>School</b>', count: 3 }], makers: [{ name: 'Maker One', count: 10 }], series: [{ name: 'Series One', count: 9 }], labels: [{ name: 'Label One', count: 8 }], years: [{ name: '2025', count: 7 }], sources: [{ name: 'javdb', count: 6 }], performers: [{ id: 92, name: 'Eimi <b>x</b>', count: 5 }] } };
   if (p === 'performers/facets') return { data: { total: 7, cups: [{ name: 'D', count: 5 }], blood_types: [{ name: 'O', count: 4 }], locations: [{ name: 'Tokyo', count: 3 }], sources: [{ name: 'javdb', count: 2 }], status: [{ name: 'active', count: 7 }], with_image: 6, with_bio: 4 } };
   if (p === 'scenes/search') return { data: [{ movie_code: 'AAA-001', library_file_id: 1, start_sec: 12, description: '<b>red room</b>', thumb_url: null }] };
@@ -135,8 +146,20 @@ assert.match(home, /Gợi ý[\s\S]*School/, 'U-03: Discover chips use a genre th
 assert.match(home, /<h1>Khám phá<\/h1>/, 'U-17: Discover has an h1');
 assert.match(home, /id="hsq"[^>]*aria-label="/, 'U-17: the Discover search box has an accessible name');
 assert.doesNotMatch(home, /class="cu" data-to="4469">0</, 'U-21: counters start at the real total');
+assert.match(home, /href="#\/catalog\/genres" class="chip more">Mọi thể loại/, 'JOOXCR-407: Discover suggestions link to the genre catalog');
 await run('movies', await load('views/movies.js'), { params: {}, query: { genre: 'Drama' } });
 assert.match(out.movies, /Bộ lọc/); assert.match(out.movies, /data-drop="genre" data-value="Drama"/); assert.match(out.movies, /Thể loại: Drama/);
+// JOOXCR-407: every facet is one FacetList; filters refresh only the results region without a route render
+for (const group of ['genres', 'makers', 'series', 'labels', 'years', 'sources']) assert.match(out.movies, new RegExp(`<fieldset[^>]*data-facet-list="${group}"`), group + ' is a FacetList fieldset');
+assert.match(out.movies, /data-fl-all/); assert.doesNotMatch(out.movies, /data-top=|name="maker"|data-choices=/, 'no tag rows or typed facet fields');
+assert.match(out.movies, /data-results[^>]*aria-busy="false"/); assert.match(out.movies, /data-results-error[^>]*hidden/); assert.match(out.movies, /Đang lọc/);
+const uiSources = { search: await readFile(new URL('../public/ui/js/searchBrowser.js', import.meta.url), 'utf8'), app: await readFile(new URL('../public/ui/js/app.js', import.meta.url), 'utf8') };
+assert.match(uiSources.search, /softNavigate\(path, q/); assert.doesNotMatch(uiSources.search, /location\.hash = /, 'a filter change never remounts the view through the hash');
+assert.match(uiSources.app, /trySoftUpdate/); assert.match(uiSources.app, /addEventListener\('popstate', navigate\)/); assert.match(uiSources.app, /addEventListener\('hashchange', navigate\)/);
+const resultsRefresh = await import('../public/ui/js/resultsRefresh.js');
+for (const name of ['softNavigate', 'bindQuerySoftUpdate', 'refreshResultsRegion', 'trySoftUpdate', 'markRendered']) assert.equal(typeof resultsRefresh[name], 'function', name);
+const facetListModule = await import('../public/ui/js/facetList.js');
+assert.equal(facetListModule.PER_PAGE, 20, 'the product page size is 20'); assert.equal(typeof facetListModule.mountFacetList, 'function');
 const detail = await run('movie', await load('views/movie.js'), { params: { code: 'AAA-001' }, query: {} });
 assert.match(detail, /Title of AAA-001/); assert.match(detail, /class="cols detail"/, 'detail uses the fluid cover column'); assert.match(detail, /data-zoom="https:\/\/img\.test\/AAA-001\.jpg"/, 'cover opens the zoom viewer'); assert.match(detail, /role="button"[^>]*aria-label="Phóng to ảnh bìa AAA-001"/); assert.match(detail, /Eimi Fukada/); assert.match(detail, /#\/facet\/genre\/Drama/);
 assert.doesNotMatch(detail, /chờ crawl/, 'U-20: missing fields do not promise a crawl');

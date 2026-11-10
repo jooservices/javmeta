@@ -819,7 +819,70 @@
         "x-scope": "catalog",
         "responses": {
           "200": {
-            "description": "Success"
+            "description": "Catalog entries with pagination metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "movie_count": {
+                            "type": "integer"
+                          },
+                          "performer_count": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "pagination": {
+                          "type": "object",
+                          "properties": {
+                            "total": {
+                              "type": "integer"
+                            },
+                            "per_page": {
+                              "type": "integer"
+                            },
+                            "page": {
+                              "type": "integer"
+                            },
+                            "last_page": {
+                              "type": "integer"
+                            },
+                            "sort": {
+                              "type": "string"
+                            },
+                            "min_count": {
+                              "type": "integer",
+                              "description": "Values below this many results were left out"
+                            },
+                            "hidden_below_min": {
+                              "type": "integer",
+                              "description": "How many values the minimum hid (catalog only)"
+                            },
+                            "script": {
+                              "type": "string",
+                              "description": "Writing system filter applied (catalog only)"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid API key"
@@ -829,6 +892,9 @@
           },
           "429": {
             "description": "Rate limited"
+          },
+          "400": {
+            "description": "Invalid sort, per_page, min_count or script"
           }
         },
         "parameters": [
@@ -885,6 +951,35 @@
             "schema": {
               "type": "boolean",
               "default": false
+            }
+          },
+          {
+            "name": "min_count",
+            "in": "query",
+            "required": false,
+            "description": "Hide entries with fewer movies or performers than this (0 to 1,000,000; default 0)",
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "minimum": 0,
+              "maximum": 1000000
+            }
+          },
+          {
+            "name": "script",
+            "in": "query",
+            "required": false,
+            "description": "Keep one writing system: all, latin, ja, zh or other (default all). Han-only names belong to both ja and zh",
+            "schema": {
+              "type": "string",
+              "default": "all",
+              "enum": [
+                "all",
+                "latin",
+                "ja",
+                "zh",
+                "other"
+              ]
             }
           }
         ]
@@ -970,21 +1065,175 @@
       "get": {
         "summary": "Effective configuration for browser services",
         "description": "Poll every poll_interval_seconds (30 seconds by default), send If-None-Match, and retain the last good response when the API is unavailable. Requires the config scope.",
-        "tags": ["configuration"],
-        "security": [{"ApiKey": []}],
+        "tags": [
+          "configuration"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
         "x-scope": "config",
         "parameters": [
-          {"name": "If-None-Match", "in": "header", "required": false, "schema": {"type": "string"}, "description": "The ETag from the previous 200 response."}
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ETag from the previous 200 response."
+          }
         ],
         "responses": {
           "200": {
             "description": "Effective browser and watchdog limits, with a version and ETag",
-            "headers": {"ETag": {"schema": {"type": "string"}}, "Cache-Control": {"schema": {"type": "string"}}},
-            "content": {"application/json": {"schema": {"type": "object", "required": ["data"], "properties": {"data": {"type": "object", "required": ["concurrency", "queues", "timeouts", "thresholds", "retry", "cleanup", "poll_interval_seconds", "version"], "properties": {"concurrency": {"type": "object", "properties": {"browser_max": {"type": "integer"}}}, "queues": {"type": "object", "properties": {"browser_max": {"type": "integer"}, "crawl_depth_max": {"type": "integer"}}}, "timeouts": {"type": "object", "properties": {"playwright_request_ms": {"type": "integer"}, "flaresolverr_max_ms": {"type": "integer"}, "gateway_wait_ms": {"type": "integer"}, "gateway_client_ms": {"type": "integer"}, "config_client_ms": {"type": "integer"}}}, "thresholds": {"type": "object", "properties": {"max_requests_per_browser": {"type": "integer"}, "client_inflight": {"type": "integer"}, "lane_browser_percent": {"type": "integer"}, "lane_min_attempts": {"type": "integer"}}}, "retry": {"type": "object", "properties": {"queue_tries": {"type": "integer"}, "backoff_seconds": {"type": "integer"}, "retry_after_seconds": {"type": "integer"}, "crawl_max_attempts": {"type": "integer"}}}, "cleanup": {"type": "object", "properties": {"temp_data_max_age_hours": {"type": "integer"}, "watchdog_stall_after_minutes": {"type": "integer"}}}, "poll_interval_seconds": {"type": "integer"}, "version": {"type": "string"}}}}}}}
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "concurrency",
+                        "queues",
+                        "timeouts",
+                        "thresholds",
+                        "retry",
+                        "cleanup",
+                        "poll_interval_seconds",
+                        "version"
+                      ],
+                      "properties": {
+                        "concurrency": {
+                          "type": "object",
+                          "properties": {
+                            "browser_max": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "queues": {
+                          "type": "object",
+                          "properties": {
+                            "browser_max": {
+                              "type": "integer"
+                            },
+                            "crawl_depth_max": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "timeouts": {
+                          "type": "object",
+                          "properties": {
+                            "playwright_request_ms": {
+                              "type": "integer"
+                            },
+                            "flaresolverr_max_ms": {
+                              "type": "integer"
+                            },
+                            "gateway_wait_ms": {
+                              "type": "integer"
+                            },
+                            "gateway_client_ms": {
+                              "type": "integer"
+                            },
+                            "config_client_ms": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "thresholds": {
+                          "type": "object",
+                          "properties": {
+                            "max_requests_per_browser": {
+                              "type": "integer"
+                            },
+                            "client_inflight": {
+                              "type": "integer"
+                            },
+                            "lane_browser_percent": {
+                              "type": "integer"
+                            },
+                            "lane_min_attempts": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "retry": {
+                          "type": "object",
+                          "properties": {
+                            "queue_tries": {
+                              "type": "integer"
+                            },
+                            "backoff_seconds": {
+                              "type": "integer"
+                            },
+                            "retry_after_seconds": {
+                              "type": "integer"
+                            },
+                            "crawl_max_attempts": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "cleanup": {
+                          "type": "object",
+                          "properties": {
+                            "temp_data_max_age_hours": {
+                              "type": "integer"
+                            },
+                            "watchdog_stall_after_minutes": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "poll_interval_seconds": {
+                          "type": "integer"
+                        },
+                        "version": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
-          "304": {"description": "Configuration has not changed", "headers": {"ETag": {"schema": {"type": "string"}}}},
-          "401": {"description": "Missing or invalid API key"},
-          "403": {"description": "The key has no access to this scope"}
+          "304": {
+            "description": "Configuration has not changed",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          }
         }
       }
     },
@@ -1754,6 +2003,824 @@
           },
           "403": {
             "description": "The key has no access to this scope"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
+      }
+    },
+    "/api/v1/movies/facets/values": {
+      "get": {
+        "summary": "Search and page facet values within the current result set",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "movies",
+        "parameters": [
+          {
+            "name": "facet",
+            "in": "query",
+            "required": true,
+            "description": "Facet to list: genres, makers, series, labels, years, sources, performers",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "genres",
+                "makers",
+                "series",
+                "labels",
+                "years",
+                "sources",
+                "performers"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Search facet labels",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "description": "Filter the result set by a keyword (minimum 2 characters)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "count or name; defaults to count",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "count",
+                "name"
+              ],
+              "default": "count"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "One-based page; defaults to 1",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "description": "1 to 200; defaults to 20",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "min_count",
+            "in": "query",
+            "required": false,
+            "description": "Minimum facet count; defaults to 3",
+            "schema": {
+              "type": "integer",
+              "default": 3
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "description": "Movie code",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "genre",
+            "in": "query",
+            "required": false,
+            "description": "Genre name; several separated by commas",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actress",
+            "in": "query",
+            "required": false,
+            "description": "Part of a performer name, kana, kanji or alias",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "maker",
+            "in": "query",
+            "required": false,
+            "description": "Maker",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "series",
+            "in": "query",
+            "required": false,
+            "description": "Series",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "label",
+            "in": "query",
+            "required": false,
+            "description": "Label",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "released_from",
+            "in": "query",
+            "required": false,
+            "description": "Start release date (YYYY-MM-DD)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "released_to",
+            "in": "query",
+            "required": false,
+            "description": "End release date (YYYY-MM-DD)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "runtime_min",
+            "in": "query",
+            "required": false,
+            "description": "Minimum runtime in minutes",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "runtime_max",
+            "in": "query",
+            "required": false,
+            "description": "Maximum runtime in minutes",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "censored",
+            "in": "query",
+            "required": false,
+            "description": "0, 1, censored or uncensored",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1",
+                "censored",
+                "uncensored"
+              ]
+            }
+          },
+          {
+            "name": "on_disk",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            }
+          },
+          {
+            "name": "actress_id",
+            "in": "query",
+            "required": false,
+            "description": "Performer ids separated by commas",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "genre_all",
+            "in": "query",
+            "required": false,
+            "description": "1 = match all selected genres",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "description": "Source slugs separated by commas",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "score_min",
+            "in": "query",
+            "required": false,
+            "description": "Minimum community score 0 to 10",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "tier_min",
+            "in": "query",
+            "required": false,
+            "description": "Minimum completeness tier 0 to 3",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "has_cover",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            }
+          },
+          {
+            "name": "has_magnet",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            }
+          },
+          {
+            "name": "has_performers",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Facet values and pagination metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "description": "One value with its result count",
+                            "additionalProperties": true,
+                            "properties": {
+                              "id": {
+                                "description": "Value id when the facet has one (a performer id for the performer facet)",
+                                "oneOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "integer"
+                                  }
+                                ]
+                              },
+                              "name": {
+                                "type": "string",
+                                "description": "Display value"
+                              },
+                              "count": {
+                                "type": "integer",
+                                "description": "Results that carry this value inside the current filters"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "count"
+                            ]
+                          }
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "hidden_below_min": {
+                          "type": "integer"
+                        },
+                        "facet": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "pagination": {
+                          "type": "object",
+                          "properties": {
+                            "total": {
+                              "type": "integer"
+                            },
+                            "per_page": {
+                              "type": "integer"
+                            },
+                            "page": {
+                              "type": "integer"
+                            },
+                            "last_page": {
+                              "type": "integer"
+                            },
+                            "sort": {
+                              "type": "string"
+                            },
+                            "min_count": {
+                              "type": "integer",
+                              "description": "Values below this many results were left out"
+                            },
+                            "hidden_below_min": {
+                              "type": "integer",
+                              "description": "How many values the minimum hid (catalog only)"
+                            },
+                            "script": {
+                              "type": "string",
+                              "description": "Writing system filter applied (catalog only)"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "400": {
+            "description": "Invalid facet or filter"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
+      }
+    },
+    "/api/v1/performers/facets/values": {
+      "get": {
+        "summary": "Search and page facet values within the current result set",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "performers",
+        "parameters": [
+          {
+            "name": "facet",
+            "in": "query",
+            "required": true,
+            "description": "Facet to list: cups, blood_types, locations, sources, status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "cups",
+                "blood_types",
+                "locations",
+                "sources",
+                "status"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Search facet labels",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "description": "Filter the result set by a keyword (minimum 2 characters)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "description": "count or name; defaults to count",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "count",
+                "name"
+              ],
+              "default": "count"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "One-based page; defaults to 1",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "description": "1 to 200; defaults to 20",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "min_count",
+            "in": "query",
+            "required": false,
+            "description": "Minimum facet count; defaults to 3",
+            "schema": {
+              "type": "integer",
+              "default": 3
+            }
+          },
+          {
+            "name": "cup",
+            "in": "query",
+            "required": false,
+            "description": "Cup; comma-separated values match any",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "blood_type",
+            "in": "query",
+            "required": false,
+            "description": "Blood type; comma-separated values match any",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "required": false,
+            "description": "Location",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "description": "Source slugs separated by commas",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "active or retired",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "retired"
+              ]
+            }
+          },
+          {
+            "name": "age_min",
+            "in": "query",
+            "required": false,
+            "description": "Min age",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "age_max",
+            "in": "query",
+            "required": false,
+            "description": "Max age",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "height_min",
+            "in": "query",
+            "required": false,
+            "description": "Min height",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "height_max",
+            "in": "query",
+            "required": false,
+            "description": "Max height",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "bust_min",
+            "in": "query",
+            "required": false,
+            "description": "Min bust",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "bust_max",
+            "in": "query",
+            "required": false,
+            "description": "Max bust",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "waist_min",
+            "in": "query",
+            "required": false,
+            "description": "Min waist",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "waist_max",
+            "in": "query",
+            "required": false,
+            "description": "Max waist",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "hip_min",
+            "in": "query",
+            "required": false,
+            "description": "Min hip",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "hip_max",
+            "in": "query",
+            "required": false,
+            "description": "Max hip",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "debut_from",
+            "in": "query",
+            "required": false,
+            "description": "First debut year",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "debut_to",
+            "in": "query",
+            "required": false,
+            "description": "Last debut year",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "has_image",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            }
+          },
+          {
+            "name": "has_bio",
+            "in": "query",
+            "required": false,
+            "description": "1 or 0",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "0",
+                "1"
+              ]
+            }
+          },
+          {
+            "name": "movies_min",
+            "in": "query",
+            "required": false,
+            "description": "Minimum linked movies",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "include_unknown",
+            "in": "query",
+            "required": false,
+            "description": "Include the otherwise hidden Unknown blood type bucket",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Facet values and pagination metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "description": "One value with its result count",
+                            "additionalProperties": true,
+                            "properties": {
+                              "id": {
+                                "description": "Value id when the facet has one (a performer id for the performer facet)",
+                                "oneOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "integer"
+                                  }
+                                ]
+                              },
+                              "name": {
+                                "type": "string",
+                                "description": "Display value"
+                              },
+                              "count": {
+                                "type": "integer",
+                                "description": "Results that carry this value inside the current filters"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "count"
+                            ]
+                          }
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "hidden_below_min": {
+                          "type": "integer"
+                        },
+                        "facet": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "pagination": {
+                          "type": "object",
+                          "properties": {
+                            "total": {
+                              "type": "integer"
+                            },
+                            "per_page": {
+                              "type": "integer"
+                            },
+                            "page": {
+                              "type": "integer"
+                            },
+                            "last_page": {
+                              "type": "integer"
+                            },
+                            "sort": {
+                              "type": "string"
+                            },
+                            "min_count": {
+                              "type": "integer",
+                              "description": "Values below this many results were left out"
+                            },
+                            "hidden_below_min": {
+                              "type": "integer",
+                              "description": "How many values the minimum hid (catalog only)"
+                            },
+                            "script": {
+                              "type": "string",
+                              "description": "Writing system filter applied (catalog only)"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "400": {
+            "description": "Invalid facet or filter"
           },
           "429": {
             "description": "Rate limited"

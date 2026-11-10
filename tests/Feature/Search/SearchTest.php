@@ -37,7 +37,7 @@ final class SearchTest extends TestCase
 
         $this->assertSame('SMP-0007', $i->interpret('smp-0007 please')['filters']['code']);
         $this->assertSame(['released_from' => '2020-01-01', 'released_to' => '2023-12-31'], array_intersect_key($i->interpret('drama 2020-2023')['filters'], array_flip(['released_from', 'released_to'])));
-        $this->assertSame('Sample Genre 05', $i->interpret('Sample Genre 05')['filters']['genre']);
+        $this->assertSame('Sample Genre 005', $i->interpret('Sample Genre 005')['filters']['genre']);
         $this->assertSame('sunset beach', $i->interpret('sunset beach')['keywords']);
         $this->assertSame([], $i->interpret('sunset beach')['filters']);
     }

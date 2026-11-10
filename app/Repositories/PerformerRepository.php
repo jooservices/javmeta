@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Repositories;
 
+use App\Data\Facets\FacetListQuery;
 use App\Models\Performer;
 use App\Services\Normalize\PerformerAttributeNormalizer;
 use DateTimeInterface;
+use InvalidArgumentException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
@@ -317,6 +319,103 @@ final class PerformerRepository extends BusinessQueryRepository
             'with_image' => (int) DB::table('performers')->whereIn('id', clone $ids)->whereNotNull('image_url')->where('image_url', '<>', '')->count(),
             'with_bio' => (int) DB::table('performers')->whereIn('id', clone $ids)->whereNotNull('bio_text')->where('bio_text', '<>', '')->count(),
         ];
+    }
+
+    /**
+     * One paginated facet value list scoped to the current performer filters.
+     *
+     * @return array{items: list<array<string, mixed>>, total: int, hidden_below_min: int, facet: string}
+     */
+    public function facetValues(FacetListQuery $query): array
+    {
+        $filters = $query->filters;
+        $builder = $this->newQuery()->whereNull('canonical_performer_id');
+        $this->applyFilters($builder, $filters);
+        $ids = $builder->toBase()->select('performers.id');
+        $includeUnknown = filter_var($filters['include_unknown'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        $rows = match ($query->facet) {
+            'cups' => $this->allCanonicalFacetCounts($ids, 'cup', 'cup', false),
+            'blood_types' => $this->allCanonicalFacetCounts($ids, 'blood_type', 'blood_type', $includeUnknown),
+            'locations' => $this->allCanonicalFacetCounts($ids, 'location', 'location', false),
+            'sources' => DB::table('performer_sources')->whereIn('performer_id', clone $ids)
+                ->selectRaw('site_slug AS name, COUNT(DISTINCT performer_id) AS c')->groupBy('site_slug')->get()
+                ->map(static fn($r): array => ['name' => (string) $r->name, 'count' => (int) $r->c])->all(),
+            'status' => [
+                ['name' => 'active', 'count' => (int) DB::table('performers')->whereIn('id', clone $ids)->whereNull('retired_date')->count()],
+                ['name' => 'retired', 'count' => (int) DB::table('performers')->whereIn('id', clone $ids)->whereNotNull('retired_date')->count()],
+            ],
+            default => throw new InvalidArgumentException('Unknown performer facet: ' . $query->facet),
+        };
+
+        $needle = mb_strtolower($query->query);
+        $matched = [];
+        $hidden = 0;
+        foreach ($rows as $row) {
+            $name = (string) $row['name'];
+            $count = (int) $row['count'];
+            if ($needle !== '' && ! str_contains(mb_strtolower($name), $needle)) {
+                continue;
+            }
+            if ($count < $query->minCount) {
+                $hidden++;
+                continue;
+            }
+            $matched[] = $row;
+        }
+
+        usort($matched, static function (array $left, array $right) use ($query): int {
+            if ($query->sort === 'name') {
+                return strcmp((string) $left['name'], (string) $right['name'])
+                    ?: ((int) $right['count'] <=> (int) $left['count']);
+            }
+
+            return ((int) $right['count'] <=> (int) $left['count'])
+                ?: strcmp((string) $left['name'], (string) $right['name']);
+        });
+
+        $total = count($matched);
+        $items = array_slice($matched, (max(1, $query->page) - 1) * $query->perPage, $query->perPage);
+
+        return [
+            'items' => $items,
+            'total' => $total,
+            'hidden_below_min' => $hidden,
+            'facet' => $query->facet,
+        ];
+    }
+
+    /**
+     * @param  \Illuminate\Database\Query\Builder  $ids
+     * @return list<array{name: string, count: int}>
+     */
+    private function allCanonicalFacetCounts(\Illuminate\Database\Query\Builder $ids, string $column, string $field, bool $includeUnknown): array
+    {
+        $normalizedColumn = 'LOWER(' . $column . ')';
+        $groups = DB::table('performers')->whereIn('id', clone $ids)->whereNotNull($column)->where($column, '<>', '')
+            ->selectRaw($normalizedColumn . ' AS raw_name, COUNT(*) AS c')->groupByRaw($normalizedColumn)->get();
+        $counts = [];
+        $unknownCount = $field === 'blood_type' && $includeUnknown
+            ? (int) DB::table('performers')->whereIn('id', clone $ids)->where(static function ($query): void {
+                $query->whereNull('blood_type')->orWhere('blood_type', '=', '');
+            })->count()
+            : 0;
+        foreach ($groups as $group) {
+            $name = $this->attributeNormalizer->facetValue($field, $group->raw_name);
+            if ($name !== null) {
+                $counts[$name] = ($counts[$name] ?? 0) + (int) $group->c;
+            } elseif ($field === 'blood_type') {
+                $unknownCount += (int) $group->c;
+            }
+        }
+        if ($field === 'blood_type' && $includeUnknown) {
+            $counts['Unknown'] = $unknownCount;
+        }
+
+        return array_map(
+            static fn(string $name): array => ['name' => $name, 'count' => $counts[$name]],
+            array_keys($counts),
+        );
     }
 
     /** @param \Illuminate\Database\Query\Builder $ids

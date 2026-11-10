@@ -108,8 +108,10 @@ export const expectCatalogEmpty = defineStep('expectCatalogEmpty', async ctx => 
   await catalogSettled(ctx.page);
   const count = parseCount(await ctx.page.$eval('#view [data-count]', e => e.textContent));
   if (count !== 0) throw new Error(`The catalog still lists ${count} entries.`);
-  const body = await viewText(ctx.page);
-  if (!body.includes('Không có mục nào')) throw new Error('The empty catalog does not say there are no entries.');
+  await ctx.page.waitForFunction(() => {
+    const text = document.querySelector('#view')?.innerText || '';
+    return text.includes('Không có mục nào') || text.includes('No items');
+  }, null, { timeout: 8000 }).catch(() => { throw new Error('The empty catalog does not say there are no entries.'); });
 });
 
 export const expectUnknownCatalog = defineStep('expectUnknownCatalog', async ctx => {
@@ -242,4 +244,30 @@ export const expectCalendarIgnoresBadMonth = defineStep('expectCalendarIgnoresBa
     const sub = document.querySelector('#view .sub')?.textContent || '';
     return /\d+\s*phim/.test(sub) && !sub.includes(bad);
   }, month, { timeout: 8000 }).catch(() => { throw new Error(`The calendar kept the invalid month ${month}.`); });
+});
+
+/** The script index (Latin / 日本語 / 中文 / other): one button asks the API for that script and goes into the address. */
+export const chooseCatalogScript = defineStep('chooseCatalogScript', async (ctx, script) => {
+  const button = ctx.page.locator(`#view button[data-script="${script}"]`);
+  await button.waitFor({ state: 'visible', timeout: 8000 });
+  const pending = waitForList(ctx.page, '/ui-api/meta/catalog/', script === 'all' ? [] : [`script=${script}`]);
+  await button.click();
+  await pending.catch(() => { throw new Error(`Choosing the ${script} script did not request the catalog.`); });
+  if (await button.getAttribute('aria-pressed') !== 'true') throw new Error(`The ${script} button is not marked pressed.`);
+  await catalogSettled(ctx.page);
+});
+
+/** The min-count switch is on by default (hides entries with fewer than 3 movies); the total can only grow when it is turned off. */
+export const toggleCatalogMinCount = defineStep('toggleCatalogMinCount', async ctx => {
+  const box = ctx.page.locator('#view #cmin');
+  await box.waitFor({ state: 'visible', timeout: 8000 });
+  const wasOn = await box.isChecked();
+  const before = await waitForCount(ctx.page);
+  const pending = waitForList(ctx.page, '/ui-api/meta/catalog/', [`min_count=${wasOn ? 0 : 3}`]);
+  await box.setChecked(!wasOn);
+  await pending.catch(() => { throw new Error('Toggling the min-count switch did not request the catalog.'); });
+  await catalogSettled(ctx.page);
+  const after = await waitForCount(ctx.page);
+  if (wasOn && after < before) throw new Error(`Showing low counts lowered the total (${before} → ${after}).`);
+  if (!wasOn && after > before) throw new Error(`Hiding low counts raised the total (${before} → ${after}).`);
 });
