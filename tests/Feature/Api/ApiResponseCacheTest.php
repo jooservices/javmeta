@@ -197,6 +197,34 @@ final class ApiResponseCacheTest extends TestCase
         $this->assertGreaterThan(0, $domainSelects, 'A distinct API key and scope set must get an isolated cache entry.');
     }
 
+    public function test_facet_and_catalog_query_parameters_use_distinct_cache_entries(): void
+    {
+        $apiKey = (object) ['id' => 'facet-catalog-cache-keys', 'scopes' => ['movies', 'catalog']];
+        $variants = [
+            ['/api/v1/movies/facets/values?facet=makers&sort=count&page=1&per_page=20&min_count=0', '/api/v1/movies/facets/values?facet=series&sort=count&page=1&per_page=20&min_count=0'],
+            ['/api/v1/movies/facets/values?facet=makers&sort=count&page=1&per_page=20&min_count=0&keyword=Alpha', '/api/v1/movies/facets/values?facet=makers&sort=count&page=1&per_page=20&min_count=0&keyword=Bravo'],
+            ['/api/v1/movies/facets/values?facet=makers&sort=count&page=1&per_page=20&min_count=0', '/api/v1/movies/facets/values?facet=makers&sort=count&page=1&per_page=20&min_count=1'],
+            ['/api/v1/meta/catalog/makers?min_count=0', '/api/v1/meta/catalog/makers?min_count=1'],
+            ['/api/v1/meta/catalog/makers?script=all', '/api/v1/meta/catalog/makers?script=latin'],
+            ['/api/v1/meta/catalog/blood_types?include_unknown=0', '/api/v1/meta/catalog/blood_types?include_unknown=1'],
+        ];
+
+        foreach ($variants as [$firstPath, $secondPath]) {
+            Cache::store('array')->flush();
+            $builds = 0;
+            $build = function () use (&$builds): SymfonyResponse {
+                $builds++;
+
+                return new SymfonyResponse('{"build":' . $builds . '}', 200, ['Content-Type' => 'application/json']);
+            };
+
+            $this->runCachedApiRequest($apiKey, $firstPath, $build);
+            $this->runCachedApiRequest($apiKey, $secondPath, $build);
+
+            $this->assertSame(2, $builds, "Expected separate cache entries for {$firstPath} and {$secondPath}.");
+        }
+    }
+
     public function test_expired_entries_are_rebuilt_after_the_fresh_ttl(): void
     {
         app(SampleDataset::class)->load();
