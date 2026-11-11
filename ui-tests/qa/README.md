@@ -1,8 +1,11 @@
 # Browser E2E: steps, scenarios, suites
 
 Runs against the real stack (no mocks): `docker/qa` starts Postgres, Mongo, Redis, Elasticsearch, OpenObserve and the app on
-`http://localhost:${JAVMETA_QA_PORT:-8099}` with the sample dataset and an owner account. Set `JAVMETA_QA_PORT` (and matching
-`QA_BASE`) when the default host port is busy; do not use `javmeta-qa2` / `:8098`.
+`http://localhost:${JAVMETA_QA_PORT:-8099}` with the sample dataset and an owner account. The stack uses the fixed Compose
+project `javmeta-qa`; the current scripts have no lifecycle lock. Serialize `qa-up`, the browser suite, and `qa-down`, and let
+only the invocation that started the stack tear it down. A different `JAVMETA_QA_PORT` (and matching `QA_BASE`) changes only
+the host port and does not isolate stack data. See [`docker/qa/README.md`](../../docker/qa/README.md) for the assessment and
+the design needed before enabling parallel runs.
 
 ```bash
 JAVMETA_QA_PORT=18099 docker/qa/qa-up          # omit JAVMETA_QA_PORT to keep the default :8099
@@ -55,5 +58,6 @@ error or a failed request. `expectTabShowsControls` fails on a hidden pane, a wr
 native checkbox outside the shared `.switch`.
 
 Environment: `QA_BASE` (default `http://localhost:8099`; set it to the same host port as `JAVMETA_QA_PORT`), `QA_EMAIL`,
-`QA_PASSWORD_FILE` (default `.tmp/qa-password`), `QA_SHOTS`, `CHROME_PATH` (default: the local Playwright Chromium).
+`QA_PASSWORD_FILE` (default `.tmp/qa-password`), `QA_SHOTS` (default `.tmp/qa-shots`), `CHROME_PATH` (default: the local
+Playwright Chromium). These paths are not run-specific by default.
 Login is throttled to 6 attempts a minute, as in production.
