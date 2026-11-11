@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Tests\Unit\Architecture;
 
 use PHPStan\Analyser\Scope;
+use PHPStan\Reflection\FunctionReflection;
 use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\MultipleNodeTypesRule;
 use PHPStan\Rules\RuleErrorBuilder;
 use PhpParser\Node;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\ArrayDimFetch;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\Closure;
 use PhpParser\Node\Expr\Instanceof_;
@@ -60,6 +62,7 @@ final class ControllerModelBoundaryRule implements MultipleNodeTypesRule
             NullsafeMethodCall::class,
             PropertyFetch::class,
             NullsafePropertyFetch::class,
+            ArrayDimFetch::class,
         ];
     }
 
@@ -72,6 +75,8 @@ final class ControllerModelBoundaryRule implements MultipleNodeTypesRule
         if ($controller === null) {
             return [];
         }
+
+        $phpDocErrors = $this->errorsForFunctionPhpDoc($scope, $controller, $node);
 
         if ($node instanceof Use_) {
             if ($node->type !== Use_::TYPE_NORMAL) {
@@ -122,7 +127,15 @@ final class ControllerModelBoundaryRule implements MultipleNodeTypesRule
             }
 
             if ($class instanceof Expr) {
-                return $this->errorsForTypes($scope, $controller, $scope->getType($class)->getObjectClassNames(), $node->getStartLine());
+                return array_merge(
+                    $phpDocErrors,
+                    $this->errorsForTypes(
+                        $scope,
+                        $controller,
+                        $scope->getType($class)->getObjectTypeOrClassStringObjectType()->getObjectClassNames(),
+                        $node->getStartLine(),
+                    ),
+                );
             }
         }
 
@@ -143,22 +156,85 @@ final class ControllerModelBoundaryRule implements MultipleNodeTypesRule
                 );
             }
 
-            return $errors;
+            return array_merge($phpDocErrors, $errors);
         }
 
         if ($node instanceof MethodCall
             || $node instanceof NullsafeMethodCall
             || $node instanceof PropertyFetch
-            || $node instanceof NullsafePropertyFetch) {
-            return $this->errorsForTypes(
-                $scope,
-                $controller,
-                $scope->getType($node->var)->getObjectClassNames(),
-                $node->getStartLine(),
+            || $node instanceof NullsafePropertyFetch
+            || $node instanceof ArrayDimFetch) {
+            return array_merge(
+                $phpDocErrors,
+                $this->errorsForTypes(
+                    $scope,
+                    $controller,
+                    $scope->getType($node->var)->getObjectClassNames(),
+                    $node->getStartLine(),
+                ),
             );
         }
 
-        return [];
+        return $phpDocErrors;
+    }
+
+    /**
+     * @param class-string $controller
+     * @return list<IdentifierRuleError>
+     */
+    private function errorsForFunctionPhpDoc(Scope $scope, string $controller, Node $node): array
+    {
+        if (! $node instanceof ClassMethod
+            && ! $node instanceof Function_
+            && ! $node instanceof Closure
+            && ! $node instanceof ArrowFunction) {
+            return [];
+        }
+
+        $function = $scope->getFunction();
+        if (! $function instanceof FunctionReflection || $function->getDocComment() === null) {
+            return [];
+        }
+
+        $errors = [];
+        foreach ($function->getVariants() as $variant) {
+            foreach ($variant->getParameters() as $parameter) {
+                $errors = array_merge(
+                    $errors,
+                    $this->errorsForTypes(
+                        $scope,
+                        $controller,
+                        $parameter->getType()->getReferencedClasses(),
+                        $node->getStartLine(),
+                    ),
+                );
+            }
+
+            $errors = array_merge(
+                $errors,
+                $this->errorsForTypes(
+                    $scope,
+                    $controller,
+                    $variant->getReturnType()->getReferencedClasses(),
+                    $node->getStartLine(),
+                ),
+            );
+        }
+
+        $throwType = $function->getThrowType();
+        if ($throwType !== null) {
+            $errors = array_merge(
+                $errors,
+                $this->errorsForTypes(
+                    $scope,
+                    $controller,
+                    $throwType->getReferencedClasses(),
+                    $node->getStartLine(),
+                ),
+            );
+        }
+
+        return $errors;
     }
 
     /**

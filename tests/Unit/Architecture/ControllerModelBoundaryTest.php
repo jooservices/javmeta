@@ -244,6 +244,31 @@ final class ControllerModelBoundaryTest extends TestCase
         self::assertStringContainsString('App\\Models\\Movie', $analysis['output']);
     }
 
+    public function test_existing_exception_rejects_a_new_phpdoc_model_parameter(): void
+    {
+        $analysis = $this->analyseFixture(<<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            namespace App\Models {
+                final class Movie {}
+            }
+
+            namespace App\Http\Controllers {
+                final class PhpDocModelController
+                {
+                    /** @param \App\Models\Movie $movie */
+                    public function acceptMovie($movie): void {}
+                }
+            }
+            PHP);
+
+        self::assertNotSame(0, $analysis['exitCode'], $analysis['output']);
+        self::assertStringContainsString('PhpDocModelController', $analysis['output']);
+        self::assertStringContainsString('App\\Models\\Movie', $analysis['output']);
+    }
+
     public function test_controller_cannot_import_a_model_without_using_it_in_all_import_forms(): void
     {
         $fixtures = [
@@ -372,6 +397,114 @@ final class ControllerModelBoundaryTest extends TestCase
         self::assertNotSame(0, $analysis['exitCode'], $analysis['output']);
         self::assertStringContainsString('ModelAccessController', $analysis['output']);
         self::assertStringContainsString('App\\Models\\AccessFixtureModel', $analysis['output']);
+    }
+
+    public function test_model_array_offset_reads_and_writes_fail_architecture_analysis(): void
+    {
+        $analysis = $this->analyseFixture(<<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            namespace App\Models {
+                final class AccessFixtureModel implements \ArrayAccess
+                {
+                    public function offsetExists(mixed $offset): bool { return true; }
+                    public function offsetGet(mixed $offset): mixed { return 'title'; }
+                    public function offsetSet(mixed $offset, mixed $value): void {}
+                    public function offsetUnset(mixed $offset): void {}
+                }
+            }
+
+            namespace App\Services {
+                use App\Models\AccessFixtureModel;
+
+                final class AccessFixtureService
+                {
+                    public function find(): AccessFixtureModel
+                    {
+                        return new AccessFixtureModel();
+                    }
+                }
+            }
+
+            namespace App\Http\Controllers\Fixtures {
+                use App\Services\AccessFixtureService;
+
+                final class ModelOffsetController
+                {
+                    public function access(AccessFixtureService $service): void
+                    {
+                        $model = $service->find();
+                        $title = $model['title'];
+                        $model['title'] = 'updated';
+                    }
+                }
+            }
+            PHP, 'ModelOffsetController.php');
+
+        self::assertNotSame(0, $analysis['exitCode'], $analysis['output']);
+        self::assertSame(
+            2,
+            substr_count(
+                $analysis['output'],
+                'Controller App\\Http\\Controllers\\Fixtures\\ModelOffsetController must not depend directly on model App\\Models\\AccessFixtureModel',
+            ),
+            $analysis['output'],
+        );
+    }
+
+    public function test_dynamic_model_class_strings_fail_for_static_calls_and_instantiation(): void
+    {
+        $analysis = $this->analyseFixture(<<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            namespace App\Models {
+                final class ForbiddenFixtureModel
+                {
+                    public static function query(): void {}
+                }
+            }
+
+            namespace App\Services {
+                use App\Models\ForbiddenFixtureModel;
+
+                final class ModelClassStringService
+                {
+                    /** @return class-string<ForbiddenFixtureModel> */
+                    public function modelClass(): string
+                    {
+                        return ForbiddenFixtureModel::class;
+                    }
+                }
+            }
+
+            namespace App\Http\Controllers\Fixtures {
+                use App\Services\ModelClassStringService;
+
+                final class DynamicModelClassController
+                {
+                    public function access(ModelClassStringService $service): void
+                    {
+                        $class = $service->modelClass();
+                        $class::query();
+                        new $class();
+                    }
+                }
+            }
+            PHP, 'DynamicModelClassController.php');
+
+        self::assertNotSame(0, $analysis['exitCode'], $analysis['output']);
+        self::assertSame(
+            2,
+            substr_count(
+                $analysis['output'],
+                'Controller App\\Http\\Controllers\\Fixtures\\DynamicModelClassController must not depend directly on model App\\Models\\ForbiddenFixtureModel',
+            ),
+            $analysis['output'],
+        );
     }
 
     public function test_existing_model_baseline_locations_remain_allowed(): void
