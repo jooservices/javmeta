@@ -37,11 +37,11 @@ final class SourceThrottleIntegrationTest extends IntegrationTestCase
         $this->configureMetrics();
         Http::fake(['*' => Http::response([], 200)]);
 
-        $source = $this->source(0.5, 0.5, 15.0);
+        $source = $this->throttleSource(0.5, 0.5, 15.0);
         $previousGap = (float) $source->gap_seconds_current;
         for ($index = 0; $index < 5; $index++) {
             $row = $this->listingRow($source);
-            $this->runListingJob($row, $this->successfulResult([$this->attempt(3000)]));
+            $this->runListingJob($row, $this->successfulResult([$this->latencyAttempt(3000)]));
             $source = Source::query()->findOrFail($source->getKey());
 
             if ($index < 2) {
@@ -69,11 +69,11 @@ final class SourceThrottleIntegrationTest extends IntegrationTestCase
         $this->configureMetrics();
         Http::fake(['*' => Http::response([], 200)]);
 
-        $source = $this->source(10.0, 2.0, 60.0);
+        $source = $this->throttleSource(10.0, 2.0, 60.0);
         for ($index = 0; $index < 4; $index++) {
             $this->runListingJob(
                 $this->listingRow($source),
-                $this->successfulResult([$this->attempt(3000)]),
+                $this->successfulResult([$this->latencyAttempt(3000)]),
             );
         }
 
@@ -85,20 +85,20 @@ final class SourceThrottleIntegrationTest extends IntegrationTestCase
         for ($index = 0; $index < 3; $index++) {
             $this->runListingJob(
                 $this->listingRow($source),
-                $this->successfulResult([$this->attempt(100)]),
+                $this->successfulResult([$this->latencyAttempt(100)]),
             );
         }
         $afterWindowCleared = (float) Source::query()->findOrFail($source->getKey())->gap_seconds_current;
 
         $this->runListingJob(
             $this->listingRow($source),
-            $this->successfulResult([$this->attempt(100)]),
+            $this->successfulResult([$this->latencyAttempt(100)]),
         );
         $afterFirstRecovery = (float) Source::query()->findOrFail($source->getKey())->gap_seconds_current;
 
         $this->runListingJob(
             $this->listingRow($source),
-            $this->successfulResult([$this->attempt(100)]),
+            $this->successfulResult([$this->latencyAttempt(100)]),
         );
         $afterSecondRecovery = (float) Source::query()->findOrFail($source->getKey())->gap_seconds_current;
 
@@ -120,12 +120,12 @@ final class SourceThrottleIntegrationTest extends IntegrationTestCase
         $this->configureMetrics();
         Http::fake(['*' => Http::response([], 200)]);
 
-        $source = $this->source(2.0, 2.0, 60.0);
+        $source = $this->throttleSource(2.0, 2.0, 60.0);
         $previousGap = 2.0;
         for ($index = 0; $index < 5; $index++) {
             $this->runListingJob(
                 $this->listingRow($source),
-                $this->successfulResult([$this->attempt(3000)]),
+                $this->successfulResult([$this->latencyAttempt(3000)]),
             );
             $currentGap = (float) Source::query()->findOrFail($source->getKey())->gap_seconds_current;
 
@@ -149,7 +149,7 @@ final class SourceThrottleIntegrationTest extends IntegrationTestCase
         $this->configureMetrics();
         Http::fake(['*' => Http::response([], 200)]);
 
-        $source = $this->source(10.0, 2.0, 60.0);
+        $source = $this->throttleSource(10.0, 2.0, 60.0);
         $workerA = Source::query()->findOrFail($source->getKey());
         $workerB = Source::query()->findOrFail($source->getKey());
         $throttle = new SourceThrottle();
@@ -184,10 +184,10 @@ final class SourceThrottleIntegrationTest extends IntegrationTestCase
         $this->configureMetrics();
         Http::fake(['*' => Http::response([], 200)]);
 
-        $source = $this->source(20.0, 2.0, 60.0);
+        $source = $this->throttleSource(20.0, 2.0, 60.0);
         $this->runListingJob(
             $this->listingRow($source),
-            $this->successfulResult([$this->attempt(-1)]),
+            $this->successfulResult([$this->latencyAttempt(-1)]),
         );
         $this->runListingJob($this->listingRow($source), $this->successfulResult([]));
 
@@ -204,10 +204,10 @@ final class SourceThrottleIntegrationTest extends IntegrationTestCase
         $this->configureMetrics();
         Http::fake(static fn(): never => throw new ConnectionException('telemetry unavailable'));
 
-        $source = $this->source(2.0, 2.0, 60.0);
+        $source = $this->throttleSource(2.0, 2.0, 60.0);
         for ($index = 0; $index < 3; $index++) {
             $row = $this->listingRow($source);
-            $this->runListingJob($row, $this->successfulResult([$this->attempt(3000)]));
+            $this->runListingJob($row, $this->successfulResult([$this->latencyAttempt(3000)]));
         }
 
         self::assertSame(2.3, (float) Source::query()->findOrFail($source->getKey())->gap_seconds_current);
@@ -241,7 +241,7 @@ final class SourceThrottleIntegrationTest extends IntegrationTestCase
         ]);
     }
 
-    private function source(float $current, float $minimum, float $maximum): Source
+    private function throttleSource(float $current, float $minimum, float $maximum): Source
     {
         $slug = 'latency_' . Str::lower(Str::random(8));
 
@@ -292,7 +292,7 @@ final class SourceThrottleIntegrationTest extends IntegrationTestCase
     }
 
     /** @return array<string, mixed> */
-    private function attempt(int $durationMs): array
+    private function latencyAttempt(int $durationMs): array
     {
         return [
             'method' => 'http',
