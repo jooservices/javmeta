@@ -45,23 +45,42 @@ only the recorded examples, not current site behavior
 
 ### Scheduling and request pacing
 
-The scheduler invokes `crawler:feed-pool --scheduled` every five seconds, but
-the command applies the configured ten-second feed interval. The feed pool
-scales its 50-per-minute dispatch limit across that interval, uses a rolling
-60-second pacing window, and limits unfinished claims to four per source and
-kind (`routes/console.php:64-65`; `config/javmeta_queues.php:76-93`;
-`app/Console/Commands/Crawler/FeedPoolCommand.php:40-49,78-99,424-458`).
-Per-source waiting work and recent request starts count toward the rolling
-budget; the feed pool delays later work using the source's effective gap
-(`app/Console/Commands/Crawler/FeedPoolCommand.php:300-339`).
+The scheduler invokes `crawler:feed-pool --scheduled` every five seconds, while
+the command gates work on the configured feed interval (default ten seconds).
+The default 50-per-minute global dispatch ceiling is scaled across that
+interval and applied separately to the `direct` and `browser` lanes; `retry`
+has a separate default ceiling of five per minute. These are lane ceilings, not
+measured or guaranteed rates (`routes/console.php:64-65`;
+`config/javmeta_queues.php:35-38,84-101`;
+`app/Console/Commands/Crawler/FeedPoolCommand.php:78-84,160-179,195-217,424-458`).
 
-Both sources configure a ten-second default gap, with five- to 45-second
-minimum/maximum bounds. The throttle raises the gap on rate limits, blocks,
-challenges, timeouts, and network failures, and reduces it after success
+Direct and browser work share source-level pacing: queued work and recent
+starts count against a rolling 60-second per-source budget. Non-retry claims
+are limited to four unfinished jobs per source; browser work also has an
+eight-claim in-flight cap. Retry has a separate in-flight cap of one job per
+source, a rolling 60-second budget, and twice the source's effective gap.
+Later work is delayed using its lane's effective gap, so retry's effective
+dispatch can be lower still (`config/javmeta_queues.php:33-39,79-93`;
+`app/Console/Commands/Crawler/FeedPoolCommand.php:89-109,195-217,300-339,411-420`;
+`app/Repositories/CrawlQueueRepository.php:213-249,526-554`).
+
+Both configured source definitions have a ten-second default gap and five- to
+45-second minimum/maximum bounds. These are not the effective hard bounds for
+all failures: without a source-gap override, rate limits, blocks, and
+challenges double the current gap up to the greater of the source maximum and
+the configured blocked ceiling (600 seconds by default); timeouts and network
+failures increase it by 50% up to the source maximum. With an override, its
+min/default/max replace the source definition and its maximum caps both blocked
+and other gap increases, so the default blocked ceiling does not apply
 (`config/javmeta_sources.php:79-96`;
-`app/Services/Crawl/SourceThrottle.php:34-54,57-94`). These are configured
-bounds and scheduling rules, not measured throughput. Current database
-overrides or gap values and observed request rates were not inspected.
+`config/javmeta_settings.php:146`;
+`config/javmeta_queues.php:100-101`;
+`app/Services/Crawl/SourceGapPolicy.php:35-68,77-100`;
+`app/Services/Crawl/SourceThrottle.php:34-54,61-89`). Successful requests
+reduce the gap toward the applicable minimum. Current runtime settings,
+database overrides, and stored gap values were not inspected, and no request
+rates or throughput were measured; configured defaults and bounds do not
+establish effective runtime limits or achievable throughput.
 
 ### Coverage evidence and unknowns
 
