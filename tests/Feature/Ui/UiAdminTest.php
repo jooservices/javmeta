@@ -48,4 +48,14 @@ final class UiAdminTest extends TestCase
         $created = $this->postJson('/ui-admin/keys', ['label' => 'browser-config', 'scopes' => ['config']])->assertCreated();
         $this->assertSame(['config'], ApiKey::query()->find($created->json('data.id'))->scopes);
     }
+
+    public function test_unknown_report_type_returns_a_safe_not_found_message(): void
+    {
+        $owner = User::factory()->create(['role' => 'super_administrator']);
+        $this->actingAs($owner);
+
+        $this->getJson('/ui-admin/report/legacy')
+            ->assertNotFound()
+            ->assertExactJson(['message' => 'Không tìm thấy báo cáo yêu cầu.']);
+    }
 }

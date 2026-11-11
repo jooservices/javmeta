@@ -360,6 +360,8 @@
   "library.watch_later": "Watch later",
   "libraryPage.all_matched": "Every file is matched.",
   "libraryPage.by_folder": "Size by folder",
+  "libraryPage.disabled": "Library is off",
+  "libraryPage.disabled_hint": "Turn on the Library in Settings → Library & media.",
   "libraryPage.empty.hint": "Go to Settings → Library & media to choose folders and turn scanning on. The server scans on the schedule you set.",
   "libraryPage.empty.not_configured": "No folder configured",
   "libraryPage.empty.not_scanned": "No scan has finished yet",

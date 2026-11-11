@@ -353,6 +353,8 @@
   "library.watch_later": "Xem sau",
   "libraryPage.all_matched": "Mọi tệp đã ghép.",
   "libraryPage.by_folder": "Dung lượng theo thư mục",
+  "libraryPage.disabled": "Thư viện đang tắt",
+  "libraryPage.disabled_hint": "Bật thư viện trong Cài đặt → Thư viện & media.",
   "libraryPage.empty.hint": "Vào Cài đặt → Thư viện & media để chọn thư mục và bật quét. Máy sẽ quét theo lịch đã đặt.",
   "libraryPage.empty.not_configured": "Chưa cấu hình thư mục",
   "libraryPage.empty.not_scanned": "Chưa quét xong lần nào",
