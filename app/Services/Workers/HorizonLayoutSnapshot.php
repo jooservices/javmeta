@@ -14,7 +14,11 @@ final class HorizonLayoutSnapshot
     // Keep the Redis key stable while older releases may still hold the fleet lock.
     public const FLEET_RECONCILE_LOCK = 'javmeta:horizon:reconcile:fleet-restart';
 
-    public const NODE_REGISTRY_KEY = 'javmeta:horizon:worker-layout:nodes';
+    public const LEGACY_NODE_REGISTRY_KEY = 'javmeta:horizon:worker-layout:nodes';
+
+    public const NODE_REGISTRY_KEY = 'javmeta:horizon:worker-layout:nodes:v2';
+
+    private const NODE_REGISTRY_TTL_SECONDS = 604_800;
 
     public function handle(MasterSupervisorLooped $event, ?SupervisorRepository $supervisors = null): void
     {
@@ -58,7 +62,14 @@ final class HorizonLayoutSnapshot
             180,
             json_encode(['snapshot' => $snapshot, 'pid' => getmypid() ?: 0], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
         );
-        $redis->sadd(self::NODE_REGISTRY_KEY, (string) $snapshot['node']);
+        $now = now()->timestamp;
+        $redis->zadd(self::NODE_REGISTRY_KEY, $now, (string) $snapshot['node']);
+        $redis->zremrangebyscore(self::NODE_REGISTRY_KEY, '-inf', now()->subDay()->timestamp);
+        $redis->zremrangebyrank(self::NODE_REGISTRY_KEY, 0, -201);
+        $redis->expire(self::NODE_REGISTRY_KEY, self::NODE_REGISTRY_TTL_SECONDS);
+        if ((int) $redis->ttl(self::LEGACY_NODE_REGISTRY_KEY) === -1) {
+            $redis->expire(self::LEGACY_NODE_REGISTRY_KEY, self::NODE_REGISTRY_TTL_SECONDS);
+        }
         $pending = (string) $redis->get(self::FLEET_RECONCILE_LOCK);
         $expected = json_decode($pending, true);
         if (($expected['node'] ?? null) === ($snapshot['node'] ?? null)

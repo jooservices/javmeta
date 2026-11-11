@@ -238,6 +238,14 @@ assert.doesNotMatch(adm, /khoá dùng được mọi thứ/, 'U-07: empty scopes
 assert.match(adm, /value="catalog" checked/, 'U-07: catalog is the default explicit scope');
 const lib = await run('library', await load('views/library.js'), { params: { kind: 'favourite' }, query: {} });
 assert.match(lib, /Yêu thích/); assert.match(lib, /AAA-001/);
+const previousLibraryFetch = globalThis.fetch;
+globalThis.fetch = async url => url.startsWith('/ui-me/movies/favourite')
+  ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => ({ data: [], meta: { total: 51, pagination: { current_page: 1, per_page: 50, last_page: 2, has_more: true } } }) }
+  : previousLibraryFetch(url);
+const emptyMarkedPage = await (await load('views/library.js')).render({ params: { kind: 'favourite' }, query: {} });
+assert.match(emptyMarkedPage.html, /page=2/, 'an empty page with later marked movies keeps its next-page navigation');
+assert.match(emptyMarkedPage.html, /Trang này chưa có phim/, 'an empty page is distinct from a library with no marks');
+globalThis.fetch = previousLibraryFetch;
 const feedHtml = await run('feed', await load('views/feed.js'), { params: {}, query: {} });
 assert.match(feedHtml, /Theo dõi/);
 assert.match(feedHtml, /data-feed-seen/, 'U-14: feed marks seen from an explicit control');

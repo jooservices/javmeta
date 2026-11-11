@@ -12,10 +12,12 @@ Invalid filters return HTTP 400 with type `invalid_filter`, a `detail` message, 
 | Route | Success contract | Documented errors |
 |---|---|---|
 | `GET /api/v1/movies/{code}` | Returns one movie resource in `data`. Codes are normalized before lookup; lowercase, omitted hyphens, surrounding spaces, and omitted leading zeros resolve to the stored display code. | `401 unauthorized`, `404 movie_not_found`, `429 rate_limited` |
+| `GET /api/v1/movies/{code}/media` | Returns one page of media rows; `kind` is required and accepts `magnet`, `hls`, `sample` or `gallery`. | `400 invalid_filter`, `401 unauthorized`, `404 movie_not_found`, `429 rate_limited` |
 | `GET /api/v1/movies` | Returns movie summaries in `data` and pagination metadata in `meta.pagination`. Keyword search is the default; `q` matches code, Japanese or English title, and performer name. Add `semantic=true` with `q` to search by meaning through the embedder and Elasticsearch. Semantic mode accepts only `q` and `per_page` and does not use cursors. If the embedder or Elasticsearch is unavailable, search falls back to keyword search; if search is switched off, database search remains available. | `400 invalid_filter` for invalid filters, `401 unauthorized`, `429 rate_limited`, `503 dependency_unavailable` when PostgreSQL is unavailable |
 | `POST /api/v1/movies:bulk` | Accepts a `codes` array and returns one `found` or `not_found` entry for each unique normalized code, with the movie resource or `null`. | `400 invalid_filter` for an invalid `codes` value, `401 unauthorized`, `413 bulk_limit_exceeded` above 100 codes, `429 rate_limited` |
 | `GET /api/v1/performers` | Returns performer summaries in `data` and pagination metadata in `meta.pagination`. | `400 invalid_filter` for invalid filters, `401 unauthorized`, `429 rate_limited` |
 | `GET /api/v1/performers/{id}` | Returns one performer resource in `data`; `id` accepts the numeric identifier or UUID. | `401 unauthorized`, `404 performer_not_found`, `429 rate_limited` |
+| `GET /api/v1/performers/{id}/photos` | Returns one page of gallery photos by default, or profile images with `kind=image`; `per_page` defaults to 50 and is capped at 200, and `page` defaults to 1. `meta.pagination` includes total rows and `has_more`. | `400 invalid_filter`, `401 unauthorized`, `404 performer_not_found`, `429 rate_limited` |
 | `GET /api/v1/meta/genres` | Returns a sorted, deduplicated array containing the union of raw genre labels, falling back to normalized labels when no raw label exists. | `401 unauthorized`, `429 rate_limited` |
 | `GET /api/v1/auth/verify` | Returns `data.status: "ok"` for an active key. | `401 unauthorized`, `429 rate_limited` |
 | `GET /api/health` | Public health payload reports `ok`, `degraded`, or `down`; `ok` and `degraded` return HTTP 200, while `down` returns HTTP 503. | None |
@@ -45,9 +47,12 @@ empty array); keys are never omitted. Changes are additive: existing keys keep t
 | `community_score` | number or null | Community score |
 | `completeness_tier` | string or null | How complete the record is |
 | `attrs` | object | Sparse source-specific extras |
-| `magnets`, `hls_stream_urls`, `gallery` | array | Media links |
+| `magnets`, `hls_stream_urls`, `gallery` | array | Bounded media previews; magnets and HLS each include at most 100 rows |
+| `media_totals` | object | Total, returned preview count and truncation flag for magnet, HLS and sample rows |
 | `downloads` | object | Link availability, result count, search state, cooldown and whether on-demand search is enabled |
 | `photos` | object | Images and galleries |
+| `gallery_total` | integer | Total gallery media rows available for the movie |
+| `truncated` | boolean | Whether gallery media was omitted from the bounded detail preview |
 | `crawled_at`, `delisted_at` | datetime or null | ISO 8601 |
 | `needs_review` | boolean | Flagged for manual review |
 
@@ -72,7 +77,14 @@ empty array); keys are never omitted. Changes are additive: existing keys keep t
 | `attrs` | object | Sparse source-specific extras |
 | `linked_title_count` | integer or null | Number of linked movies, when counted |
 | `profile_url`, `image_url` | string or null | Source profile and image |
-| `photos` | object | Images and galleries |
+| `photos` | object | Bounded preview of images and galleries; images and gallery rows are each capped at 24 |
+| `photos_total` | integer | Total gallery and profile image rows available from the paginated photos endpoint |
+| `gallery_photos_total`, `profile_photos_total` | integer | Totals by photo kind |
+| `truncated` | boolean | Whether profile or gallery photos were omitted from the detail preview |
+
+`GET /api/v1/movies/{code}/media?kind=magnet|hls|sample|gallery` returns a paginated page of full media rows. `per_page` defaults to 50 and is capped at 200. The detail and bulk lookup paths do not hydrate unbounded media lists.
+
+`GET /api/v1/performers/{id}/photos` returns gallery images by default; pass `kind=image` to retrieve profile images. Gallery items include `gallery_id`, `gallery_title`, `gallery_url` and `position`, and pages are ordered by gallery identity then image position.
 
 ## OpenAPI
 

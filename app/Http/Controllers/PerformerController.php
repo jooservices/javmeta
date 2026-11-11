@@ -79,6 +79,8 @@ final class PerformerController extends BaseApiController
             throw new PerformerNotFoundException($id);
         }
 
+        $performer = $performers->withPhotoPreview($performer);
+
         return $this->respondWithResource(
             resource: new PerformerResource($performer),
             message: 'Performer retrieved successfully.',

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Repositories;
 
+use App\Data\Api\MovieMediaDto;
 use App\Data\Facets\FacetListQuery;
 use App\Models\Movie;
 use App\Models\MovieCode;
@@ -149,6 +150,47 @@ final class MovieRepository extends BusinessQueryRepository
         return is_numeric($movieId) ? (int) $movieId : null;
     }
 
+    public function movieIdByNormalizedCode(string $normalizedCode): ?int
+    {
+        $movieId = $this->modelQuery(MovieCode::class)
+            ->where('code_normalized', $normalizedCode)
+            ->value('movie_id');
+
+        return is_numeric($movieId) ? (int) $movieId : null;
+    }
+
+    /** @return array{items: list<MovieMediaDto>, total: int, page: int, per_page: int, last_page: int, has_more: bool} */
+    public function mediaPage(int $movieId, string $kind, int $perPage, int $page): array
+    {
+        $query = $this->modelQuery(MovieMedia::class)
+            ->where('movie_id', $movieId)
+            ->where('kind', $kind);
+        $total = (clone $query)->count();
+        $items = $query->orderBy('id')->forPage($page, $perPage)->get()
+            ->map(static function (MovieMedia $media): MovieMediaDto {
+                $meta = $media->getAttribute('meta');
+                $crawledAt = $media->getAttribute('crawled_at');
+
+                return new MovieMediaDto(
+                    kind: (string) $media->getAttribute('kind'),
+                    url: (string) $media->getAttribute('url'),
+                    thumbnailUrl: is_array($meta) && is_string($meta['thumbnail_url'] ?? null) ? $meta['thumbnail_url'] : null,
+                    crawledAt: $crawledAt instanceof DateTimeInterface ? $crawledAt->format(DATE_ATOM) : (is_string($crawledAt) ? $crawledAt : null),
+                    source: (string) ($media->source_slug ?: 'unknown'),
+                );
+            })->all();
+        $lastPage = max(1, (int) ceil($total / $perPage));
+
+        return [
+            'items' => $items,
+            'total' => $total,
+            'page' => $page,
+            'per_page' => $perPage,
+            'last_page' => $lastPage,
+            'has_more' => $page < $lastPage,
+        ];
+    }
+
     public function downloadSearchDisplayCode(int $movieId): ?string
     {
         $code = $this->newQuery()->whereKey($movieId)->value('display_code');
@@ -264,7 +306,7 @@ final class MovieRepository extends BusinessQueryRepository
         // the deterministic fallback so a bare /movies call still sorts well.
         $effectiveSort = $sort === 'relevance' && $q === null ? 'release_date' : $sort;
 
-        $query = $this->newQuery()->with(['codes', 'performers.aliases', 'performers.sources', 'genres', 'media']);
+        $query = $this->newQuery()->with(['codes', 'performers.aliases', 'performers.sources', 'genres', 'coverMedia']);
         $this->applyFilters($query, $filters, $q);
         $total = $query->count();
 

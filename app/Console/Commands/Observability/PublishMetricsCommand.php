@@ -202,7 +202,7 @@ final class PublishMetricsCommand extends Command
         try {
             $redis = Redis::connection(config('horizon.use', 'default'));
             $snapshots = [];
-            foreach ((array) $redis->smembers(HorizonLayoutSnapshot::NODE_REGISTRY_KEY) as $node) {
+            foreach ((array) $redis->zrangebyscore(HorizonLayoutSnapshot::NODE_REGISTRY_KEY, CarbonImmutable::now()->subSeconds(180)->timestamp, '+inf') as $node) {
                 if (! is_string($node) || $node === '') {
                     continue;
                 }

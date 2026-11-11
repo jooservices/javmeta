@@ -28,7 +28,6 @@ final class MovieResource extends JsonResource
     public function toArray(Request $request): array
     {
         $resource = $this->resource;
-
         if ($resource instanceof MovieResourceData) {
             return $resource->toArray();
         }
@@ -36,6 +35,13 @@ final class MovieResource extends JsonResource
         if (! $resource instanceof Movie) {
             return is_array($resource) ? $resource : [];
         }
+
+        $magnets = $this->media($resource, MovieMedia::KIND_MAGNET);
+        $hlsUrls = $this->media($resource, MovieMedia::KIND_HLS);
+        $samples = $this->media($resource, MovieMedia::KIND_SAMPLE);
+        $magnetTotal = (int) ($resource->getAttribute('magnet_total') ?? 0);
+        $hlsTotal = (int) ($resource->getAttribute('hls_total') ?? 0);
+        $sampleTotal = (int) ($resource->getAttribute('sample_total') ?? 0);
 
         return [
             'uuid' => $resource->uuid,
@@ -65,12 +71,19 @@ final class MovieResource extends JsonResource
             'community_score' => $resource->community_score === null ? null : (float) $resource->community_score,
             'completeness_tier' => $resource->completeness_tier,
             'attrs' => $this->attrsArray($resource->getAttribute('attrs')),
-            'magnets' => $this->media($resource, MovieMedia::KIND_MAGNET),
+            'magnets' => $magnets,
             'downloads' => app(DownloadLinkSearchService::class)->summarize((int) $resource->id)->toArray(),
-            'hls_stream_urls' => $this->media($resource, MovieMedia::KIND_HLS),
+            'hls_stream_urls' => $hlsUrls,
             'gallery' => $this->media($resource, MovieMedia::KIND_GALLERY),
+            'gallery_total' => (int) ($resource->getAttribute('gallery_total') ?? 0),
+            'truncated' => (int) ($resource->getAttribute('gallery_total') ?? 0) > 100,
+            'media_totals' => [
+                'magnets' => ['total' => $magnetTotal, 'returned' => count($magnets), 'truncated' => $magnetTotal > count($magnets)],
+                'hls_stream_urls' => ['total' => $hlsTotal, 'returned' => count($hlsUrls), 'truncated' => $hlsTotal > count($hlsUrls)],
+                'samples' => ['total' => $sampleTotal, 'returned' => count($samples), 'truncated' => $sampleTotal > count($samples)],
+            ],
             'photos' => $this->photos(
-                $resource->relationLoaded('media') ? $resource->media : new Collection(),
+                $this->photoMedia($resource),
                 [MovieMedia::KIND_SAMPLE],
                 MovieMedia::KIND_GALLERY,
             )->toArray(),
@@ -86,10 +99,13 @@ final class MovieResource extends JsonResource
             return $movie->cover_url;
         }
 
+        if ($movie->relationLoaded('coverMedia')) {
+            return is_string($movie->coverMedia?->url) ? $movie->coverMedia->url : null;
+        }
+
         if (! $movie->relationLoaded('media')) {
             return null;
         }
-
         $media = $movie->media->firstWhere('kind', MovieMedia::KIND_SAMPLE);
 
         return is_string($media?->url) ? $media->url : null;
@@ -113,12 +129,18 @@ final class MovieResource extends JsonResource
     /** @return list<array{url: string, crawled_at: string|null, thumbnail_url?: string|null}> */
     private function media(Movie $movie, string $kind): array
     {
-        if (! $movie->relationLoaded('media')) {
+        $relation = match ($kind) {
+            MovieMedia::KIND_MAGNET => 'magnetMedia',
+            MovieMedia::KIND_HLS => 'hlsMedia',
+            MovieMedia::KIND_SAMPLE => 'sampleMedia',
+            MovieMedia::KIND_GALLERY => 'galleryPreview',
+            default => null,
+        };
+        if ($relation === null || ! $movie->relationLoaded($relation)) {
             return [];
         }
 
-        return $movie->media
-            ->where('kind', $kind)
+        return $movie->getRelation($relation)
             ->map(function ($media) use ($kind): array {
                 $item = [
                     'url' => $media->url,
@@ -136,5 +158,23 @@ final class MovieResource extends JsonResource
             })
             ->values()
             ->all();
+    }
+
+    /** @return Collection<int, \Illuminate\Database\Eloquent\Model> */
+    private function photoMedia(Movie $movie): Collection
+    {
+        $items = [];
+        foreach (['sampleMedia', 'galleryPreview'] as $relation) {
+            if (! $movie->relationLoaded($relation)) {
+                continue;
+            }
+            /** @var iterable<\Illuminate\Database\Eloquent\Model> $loaded */
+            $loaded = $movie->getRelation($relation);
+            foreach ($loaded as $item) {
+                $items[] = $item;
+            }
+        }
+
+        return new Collection($items);
     }
 }

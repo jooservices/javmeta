@@ -204,7 +204,10 @@ final class PublishMetricsCommandTest extends TestCase
         $minute = CarbonImmutable::now()->startOfMinute()->subMinute();
         $key = 'javmeta:feed-pool:diagnostics:' . $minute->timestamp;
         $redis = Mockery::mock();
-        $redis->shouldReceive('smembers')->once()->with(HorizonLayoutSnapshot::NODE_REGISTRY_KEY)->andReturn([]);
+        $redis->shouldReceive('zrangebyscore')->once()->withArgs(
+            static fn(string $key, mixed $minimum, string $maximum): bool
+            => $key === HorizonLayoutSnapshot::NODE_REGISTRY_KEY && is_int($minimum) && $maximum === '+inf',
+        )->andReturn([]);
         $redis->shouldReceive('hgetall')->once()->with($key)->andReturn([
             's|ffjav|budget' => 60,
             's|ffjav|started' => 33,
@@ -401,7 +404,10 @@ final class PublishMetricsCommandTest extends TestCase
             ],
         ];
         $redis = Mockery::mock();
-        $redis->shouldReceive('smembers')->once()->with(HorizonLayoutSnapshot::NODE_REGISTRY_KEY)->andReturn(['unavailable-node', 'worker-node-one']);
+        $redis->shouldReceive('zrangebyscore')->once()->withArgs(
+            static fn(string $key, mixed $minimum, string $maximum): bool
+            => $key === HorizonLayoutSnapshot::NODE_REGISTRY_KEY && is_int($minimum) && $maximum === '+inf',
+        )->andReturn(['unavailable-node', 'worker-node-one']);
         $redis->shouldReceive('hgetall')->once()->andReturn([]);
         $redis->shouldReceive('get')->once()->with(HorizonLayoutSnapshot::key('unavailable-node'))->andThrow(new \RuntimeException('Node snapshot unavailable.'));
         $redis->shouldReceive('get')->once()->with(HorizonLayoutSnapshot::key('worker-node-one'))->andReturn(json_encode(['snapshot' => $snapshot], JSON_THROW_ON_ERROR));

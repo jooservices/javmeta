@@ -365,6 +365,88 @@
               "type": "string"
             }
           }
+        ],
+        "description": "Returns movie details with at most 100 rows per media kind. media_totals reports magnet, HLS and sample counts and truncation; gallery_total and truncated describe gallery previews. Fetch additional media from the paginated media endpoint."
+      }
+    },
+    "/api/v1/movies/{code}/media": {
+      "get": {
+        "summary": "List a movie media page",
+        "description": "Returns one page of movie media ordered by row id. Detail and bulk lookup responses use bounded previews. per_page defaults to 50 and must be between 1 and 200.",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "movies",
+        "responses": {
+          "200": {
+            "description": "Success; data contains media rows and meta contains total and pagination information"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "422": {
+            "description": "Invalid media kind or pagination parameters"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "description": "DVD or amateur code",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": true,
+            "description": "Movie media kind",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "magnet",
+                "hls",
+                "sample",
+                "gallery"
+              ]
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "description": "Items per page (default 50, maximum 200)",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "One-based page number",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          }
         ]
       }
     },
@@ -772,6 +854,87 @@
             "description": "Numeric id or UUID",
             "schema": {
               "type": "string"
+            }
+          }
+        ],
+        "description": "Returns performer details with at most 24 profile images and 24 gallery rows. photos_total reports both kinds; profile_photos_total and gallery_photos_total separate them. Use the paginated photos endpoint to retrieve omitted rows."
+      }
+    },
+    "/api/v1/performers/{id}/photos": {
+      "get": {
+        "summary": "List a performer photo page",
+        "description": "Returns one page of gallery photos by default; kind=image returns profile images. Gallery rows include gallery identity and position metadata. per_page defaults to 50 and must be between 1 and 200.",
+        "tags": [
+          "api"
+        ],
+        "security": [
+          {
+            "ApiKey": []
+          }
+        ],
+        "x-scope": "performers",
+        "responses": {
+          "200": {
+            "description": "Success; data contains photos and meta contains total and pagination information"
+          },
+          "401": {
+            "description": "Missing or invalid API key"
+          },
+          "403": {
+            "description": "The key has no access to this scope"
+          },
+          "422": {
+            "description": "Invalid pagination parameters"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Numeric id or UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "description": "Photo kind (default gallery)",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "gallery",
+                "image"
+              ],
+              "default": "gallery"
+            }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "description": "Items per page (default 50, maximum 200)",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "One-based page number",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
             }
           }
         ]
