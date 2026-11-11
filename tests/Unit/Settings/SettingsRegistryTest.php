@@ -83,6 +83,35 @@ final class SettingsRegistryTest extends TestCase
         self::assertSame([], config('javmeta_queues.source_gap_overrides'));
     }
 
+    public function test_latency_gap_settings_are_registered_in_the_crawl_group_and_default_off(): void
+    {
+        $definitions = config('javmeta_settings.definitions');
+
+        foreach ([
+            'crawl.latency_gap.enabled',
+            'crawl.latency_gap.sample_window_size',
+            'crawl.latency_gap.sustained_samples',
+            'crawl.latency_gap.slow_threshold_ms',
+            'crawl.latency_gap.healthy_threshold_ms',
+            'crawl.latency_gap.increase_percent',
+            'crawl.latency_gap.recovery_percent',
+            'crawl.latency_gap.window_ttl_seconds',
+        ] as $key) {
+            self::assertArrayHasKey($key, $definitions);
+            self::assertSame('crawl', $definitions[$key]['group']);
+        }
+
+        self::assertSame(['javmeta_queues.latency_gap.enabled'], $definitions['crawl.latency_gap.enabled']['config']);
+        self::assertFalse(config('javmeta_queues.latency_gap.enabled'));
+        self::assertSame(10, config('javmeta_queues.latency_gap.sample_window_size'));
+        self::assertSame(8, config('javmeta_queues.latency_gap.sustained_samples'));
+        self::assertSame(2000, config('javmeta_queues.latency_gap.slow_threshold_ms'));
+        self::assertSame(1000, config('javmeta_queues.latency_gap.healthy_threshold_ms'));
+        self::assertSame(15, config('javmeta_queues.latency_gap.increase_percent'));
+        self::assertSame(5, config('javmeta_queues.latency_gap.recovery_percent'));
+        self::assertSame(3600, config('javmeta_queues.latency_gap.window_ttl_seconds'));
+    }
+
     public function test_egress_observability_settings_are_registered_with_safe_defaults(): void
     {
         $definitions = config('javmeta_settings.definitions');

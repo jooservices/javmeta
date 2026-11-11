@@ -54,7 +54,7 @@ return [
     ],
     'source_gap_overrides' => [],
     'latency_gap' => [
-        'enabled' => filter_var(env('JAVMETA_LATENCY_GAP_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'enabled' => false,
         'sample_window_size' => 10,
         'sustained_samples' => 8,
         'slow_threshold_ms' => 2000,

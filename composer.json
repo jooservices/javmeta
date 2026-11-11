@@ -62,7 +62,7 @@
         "lint:pint": "pint --test",
         "lint:pint:fix": "pint",
         "lint:phpcs": "phpcs --standard=phpcs.xml",
-        "lint:phpmd": "vendor/bin/phpmd analyze app tests --format text --ruleset phpmd.xml --no-progress",
+        "lint:phpmd": "vendor/bin/phpmd analyze tests app --format text --ruleset phpmd.xml --no-progress",
         "lint:phpstan": "php tools/quality/phpstan-ratchet.php",
         "lint:phpstan:baseline": "php tools/quality/phpstan-ratchet.php --update-baseline",
         "lint:architecture": "XDEBUG_MODE=off phpstan analyse --configuration=tools/quality/phpstan-architecture.neon --memory-limit=512M",
