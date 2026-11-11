@@ -3,9 +3,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createBrowserEnvironment, openBrowser } from './context.mjs';
-import { defineStep, defineScenario, defineSuite, label } from './step.mjs';
+import { defineStep, defineStepGroup, defineScenario, defineScenarioFromGroups, defineSuite, label } from './step.mjs';
 import { runSelection, runSuite, report } from './runner.mjs';
-import { runCommand, parseArguments } from '../run.mjs';
+import { runCommand, parseArguments, suiteLoaders } from '../run.mjs';
 
 const fakeEnv = () => {
   const shots = [];
@@ -317,4 +317,88 @@ test('the documented step selector resolves from the registered main suite', asy
 
   assert.deepEqual(routes, ['**/ops/data**', '**/ops/nodes**']);
   assert.ok(output.some(line => line.includes('1/1 scenarios passed')));
+});
+
+test('named groups run alone or compose into one ordered scenario context', async () => {
+  const observed = [];
+  let runId = 0;
+  const record = defineStep('record', async (ctx, value) => {
+    observed.push({ run: ctx.state.run, value });
+  });
+  const signIn = defineStepGroup('sign-in', [record('open sign-in')]);
+  const dashboard = defineStepGroup('dashboard', [record('open dashboard')]);
+  const suite = defineSuite('composition', [
+    defineScenarioFromGroups(signIn.name, [signIn]),
+    defineScenarioFromGroups(dashboard.name, [dashboard]),
+    defineScenarioFromGroups('sign-in then dashboard', [signIn, dashboard]),
+  ]);
+  const open = async () => {
+    const currentRun = ++runId;
+    return {
+      shots: '/tmp/qa-runner-test',
+      async newScenarioContext() {
+        return { state: { run: currentRun }, page: { screenshot: async () => {} }, context: { close: async () => {} } };
+      },
+      async close() {},
+    };
+  };
+
+  await runSelection(suite, { kind: 'scenario', name: 'sign-in' }, {}, open);
+  await runSelection(suite, { kind: 'scenario', name: 'dashboard' }, {}, open);
+  await runSelection(suite, { kind: 'scenario', name: 'sign-in then dashboard' }, {}, open);
+
+  assert.deepEqual(observed, [
+    { run: 1, value: 'open sign-in' },
+    { run: 2, value: 'open dashboard' },
+    { run: 3, value: 'open sign-in' },
+    { run: 3, value: 'open dashboard' },
+  ]);
+});
+
+test('composition rejects invalid group members before browser setup', () => {
+  assert.throws(() => defineStepGroup('', []), /non-empty name/);
+  assert.throws(() => defineStepGroup('broken', [{ name: 'missing runner' }]), /executable steps/);
+  assert.throws(() => defineScenarioFromGroups('broken', [{ name: 'unbranded', steps: [] }]), /defineStepGroup/);
+});
+
+test('a failure in a chained group stops all later groups in that scenario', async () => {
+  const order = [];
+  const first = defineStepGroup('first', [defineStep('record first', async () => { order.push('first'); })()]);
+  const failing = defineStepGroup('failing', [defineStep('fail', async () => {
+    order.push('failure');
+    throw new Error('group failed');
+  })()]);
+  const last = defineStepGroup('last', [defineStep('record last', async () => { order.push('last'); })()]);
+  const suite = defineSuite('composition', [defineScenarioFromGroups('chain', [first, failing, last])]);
+
+  const results = await runSelection(suite, { kind: 'scenario', name: 'chain' }, {}, async () => fakeEnv());
+
+  assert.deepEqual(order, ['first', 'failure']);
+  assert.equal(results[0].ok, false);
+  assert.match(results[0].steps[1].error, /group failed/);
+});
+
+test('the composition suite is registered while the legacy main suite remains the default', async () => {
+  assert.deepEqual(parseArguments([]), { suiteName: 'main', selection: { kind: 'suite' } });
+  assert.equal(typeof suiteLoaders.main, 'function');
+  assert.equal(typeof suiteLoaders.composition, 'function');
+
+  const { default: composition } = await suiteLoaders.composition();
+  const [signInForm, dashboard, chain] = composition.scenarios;
+  assert.equal(composition.name, 'composition');
+  assert.deepEqual(chain.steps.map(step => step.name), [
+    ...signInForm.steps.map(step => step.name),
+    ...dashboard.steps.map(step => step.name),
+  ]);
+
+  let browserCalls = 0;
+  const errors = [];
+  const exitCode = await runCommand(['composition', '--scenario', 'unknown'], {
+    open: async () => { browserCalls += 1; return fakeEnv(); },
+    writeError: error => errors.push(String(error)),
+  });
+
+  assert.equal(exitCode, 2);
+  assert.equal(browserCalls, 0);
+  assert.match(errors[0], /Unknown scenario/);
 });
