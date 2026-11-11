@@ -1,13 +1,109 @@
 #!/usr/bin/env bash
-# Run the Integration suite against the Workspaces SHARED services in the shared PHP runtime.
-#   docker/ci/integration-shared                          # javmeta_test
-#   JAVMETA_MODE=wt:<id> docker/ci/integration-shared     # a worktree database
-#   docker/ci/integration-shared --filter Movie           # extra PHPUnit arguments
-#
-# Prerequisite (once per project/worktree): scripts/docker/shared provision-project javmeta --postgres --mongodb --redis [--db <id>]
-# Databases are verified with check-project before anything runs. The Mongo outage test is skipped
-# (it would stop a shared service); it still runs in GitHub CI through docker/ci/integration.
+# Run exact integration tests against the provisioned JavMeta integration identity.
+# Smoke subset: one PostgreSQL repository test, one MongoDB credential-storage
+# test, and one PostgreSQL/Elasticsearch search test. Redis is not included
+# until its dedicated integration identity is provisioned.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-exec "$root/docker/dev/shared-run" --mode "${JAVMETA_MODE:-test}" -- vendor/bin/phpunit --configuration phpunit.integration.xml "$@"
+
+usage() {
+  cat <<'EOF'
+Usage: JAVMETA_MODE=wt:<id> docker/ci/integration-shared [--all|--smoke|--filter <test>]
+
+Select one PHPUnit test by its exact fully qualified class and method:
+  JAVMETA_MODE=wt:t08 docker/ci/integration-shared --filter 'Tests\Integration\MovieRepositoryPostgresTest::test_postgres_text_search_ranks_results_and_advances_with_a_rank_cursor'
+
+Selections:
+  --filter <test>  Run only the exact Tests\Integration\...::test_... method.
+  --smoke          Run the documented smoke subset:
+                   MovieRepositoryPostgresTest::test_postgres_text_search_ranks_results_and_advances_with_a_rank_cursor
+                   SourceLoginCookieStoreTest::test_cookies_are_encrypted_at_rest_in_mongo
+                   SearchBehaviorTest::test_rest_and_mcp_keyword_search_find_movie_by_code_japanese_title_english_title_and_performer
+  --all            Run the full integration suite. This is also the default.
+
+JAVMETA_MODE must be wt:<id>; only the provisioned JAVMETA_IT_* identity is used.
+The PostgreSQL and MongoDB integration databases are shared. Every shared integration run
+must pass through docker/dev/shared-run, which serializes callers across repository worktrees.
+An empty or unknown test selection fails through PHPUnit's fail-on-empty option.
+Targeted selections fail if any selected test is skipped; the full suite keeps
+its intentional skips.
+EOF
+}
+
+fail() {
+  printf '%s\n' "$1" >&2
+  exit 2
+}
+
+if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
+  usage
+  exit 0
+fi
+
+mode="${JAVMETA_MODE:-}"
+[[ "$mode" =~ ^wt:[a-z0-9]{1,12}$ ]] || fail 'JAVMETA_MODE must be set to wt:<id> for an isolated worktree database.'
+
+selection="all"
+filter=""
+case "${1:-}" in
+  "") ;;
+  --all)
+    selection="all"
+    shift
+    ;;
+  --smoke)
+    selection="smoke"
+    shift
+    ;;
+  --filter)
+    selection="filter"
+    shift
+    [[ $# -eq 1 && -n "$1" ]] || fail 'Usage: --filter Tests\\Integration\\ClassTest::test_method'
+    filter="$1"
+    shift
+    ;;
+  *) fail 'Unknown integration selector.' ;;
+esac
+[[ $# -eq 0 ]] || fail 'Choose exactly one integration selector and do not pass extra PHPUnit arguments.'
+
+phpunit=(vendor/bin/phpunit --configuration phpunit.integration.xml --fail-on-empty-test-suite)
+require_redis=false
+case "$selection" in
+  filter)
+    [[ "$filter" =~ ^Tests\\Integration\\([A-Z][A-Za-z0-9]*\\)*[A-Z][A-Za-z0-9]*Test::test_[a-z0-9_]+$ ]] \
+      || fail 'Filter must be one exact Tests\\Integration\\ClassTest::test_method name.'
+    escaped_filter="${filter//\\/\\\\}"
+    phpunit+=(--fail-on-skipped --filter "^${escaped_filter}( with .*)?$")
+    case "$filter" in
+      Tests\\Integration\\RedisConnectionTest::*|Tests\\Integration\\SourceRequestPacerRedisTest::*|Tests\\Integration\\RedisQueueTest::*|Tests\\Integration\\CrawlLaneTest::*|Tests\\Integration\\HorizonWorkerReconcileTest::*)
+        require_redis=true
+        ;;
+    esac
+    ;;
+  smoke)
+    smoke_tests=(
+      'Tests\Integration\MovieRepositoryPostgresTest::test_postgres_text_search_ranks_results_and_advances_with_a_rank_cursor'
+      'Tests\Integration\SourceLoginCookieStoreTest::test_cookies_are_encrypted_at_rest_in_mongo'
+      'Tests\Integration\Search\SearchBehaviorTest::test_rest_and_mcp_keyword_search_find_movie_by_code_japanese_title_english_title_and_performer'
+    )
+    ;;
+esac
+
+if [[ "$selection" == all ]]; then
+  require_redis=true
+fi
+
+if [[ "$selection" == smoke ]]; then
+  for test in "${smoke_tests[@]}"; do
+    "$root/docker/dev/shared-run" --mode "$mode" --integration -- \
+      vendor/bin/phpunit --configuration phpunit.integration.xml --fail-on-empty-test-suite \
+      --fail-on-skipped --filter "^${test//\\/\\\\}( with .*)?$"
+  done
+  exit 0
+fi
+
+if [[ "$require_redis" == true ]]; then
+  exec "$root/docker/dev/shared-run" --mode "$mode" --integration --require-redis -- "${phpunit[@]}"
+fi
+exec "$root/docker/dev/shared-run" --mode "$mode" --integration -- "${phpunit[@]}"
