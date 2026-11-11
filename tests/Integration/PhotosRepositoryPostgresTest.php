@@ -200,7 +200,22 @@ final class PhotosRepositoryPostgresTest extends BaseTestCase
 
             self::assertSame([(int) $matchingPerformer->id], array_column($performers['items'], 'id'));
             self::assertSame([(int) $matchingMovie->id], array_column($movies['items'], 'id'));
-            self::assertCount(2, $galleryGroups['items']);
+            self::assertSame(4, $galleryGroups['total']);
+            self::assertCount(4, $galleryGroups['items']);
+            self::assertSame(
+                [(int) $matchingPerformer->id, (int) $matchingPerformer->id],
+                array_values(array_filter(array_map(
+                    static fn(array $group): ?int => $group['performer']['id'] ?? null,
+                    $galleryGroups['items'],
+                ))),
+            );
+            self::assertSame(
+                [(int) $matchingMovie->id, (int) $matchingMovie->id],
+                array_values(array_filter(array_map(
+                    static fn(array $group): ?int => $group['movie']['id'] ?? null,
+                    $galleryGroups['items'],
+                ))),
+            );
             self::assertSame(1, $performerGalleries['total']);
             self::assertSame([$label . '-match.jpg'], $performerGalleries['items'][0]['preview_urls']);
             self::assertSame(1, $movieGalleries['total']);
