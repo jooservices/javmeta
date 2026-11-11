@@ -120,17 +120,66 @@ const reportSample = {
     history: [],
   },
 };
+let emptyAdminKeys = false;
+let interactiveAdminKeys = null;
+let failedAdminCursor = null;
+let interactiveAdminPageRequests = [];
 const adminSample = u => {
   if (u.includes('/ui-admin/settings')) return settingsSample;
   if (u === '/ui-admin/notifications') return { data: [{ key: 'crawl.success_rate_low', name: 'Tỷ lệ crawl thành công thấp', usage: 'Gửi khi tỷ lệ thành công xuống dưới ngưỡng.', channel: 'telegram', enabled: true, tier: 'warning', cooldown_minutes: 120, escalation_minutes: 60, include_in_periodic_report: true, include_in_daily_report: true, send_resolved: false, last_sent_at: '2026-11-02 17:40:00', updated_at: '2026-11-02 17:00:00' }] };
   if (u === '/ui-admin/report/daily') return { ...reportSample, data: { ...reportSample.data, text: 'Daily report preview · last 24 h' } };
   if (u === '/ui-admin/report/periodic') return reportSample;
   if (u.includes('report/quality')) return { data: { movies: 100, performers: 50, movies_by_source: { javdb: 60 }, core_fields: { code: { filled: 100, percent: 100 }, maker: { filled: 80, percent: 80 } }, movies_with_8_of_11: { count: 70, percent: 70 }, completeness_tiers: { 1: 20, 2: 80 }, needs_review: 3 } };
-  return { data: [{ id: 1, prefix: 'jvm_abc', label: 'Key <b>one</b>', status: 'active', abuse_rpm: 60, scopes: ['catalog'], created_at: '2026-10-24T00:00:00Z' }] };
+  if (u.startsWith('/ui-admin/keys')) {
+    const url = new URL(u, 'https://x.test'), cursor = Number(url.searchParams.get('cursor') || Number.MAX_SAFE_INTEGER);
+    const perPage = Math.max(1, Number(url.searchParams.get('per_page') || 25));
+    const all = emptyAdminKeys ? [] : Array.from({ length: 26 }, (_, index) => ({
+      id: index + 1, prefix: index === 25 ? 'jvm_abc' : `jvm_${String(index).padStart(8, '0')}`,
+      label: index === 25 ? 'Key <b>one</b>' : `Key ${index + 1}`, status: 'active', abuse_rpm: 60,
+      scopes: ['catalog'], created_at: '2026-10-24T00:00:00Z',
+    }));
+    const rows = [...(interactiveAdminKeys ?? all)].filter(key => key.id < cursor).sort((a, b) => b.id - a.id);
+    const selected = rows.slice(0, perPage + 1), hasMore = selected.length > perPage;
+    if (hasMore) selected.pop();
+    return { data: selected, meta: { pagination: { per_page: perPage, has_more: hasMore, next_cursor: hasMore ? String(selected.at(-1).id) : null } } };
+  }
+  return { data: [] };
 };
 const libSample = u => u.endsWith('/library') ? { data: { files: 3, matched: 2, unmatched: 1, missing: 0, bytes: 5012, by_folder: [{ folder: '/media/<b>a</b>', files: 3, bytes: 5012 }], last_scan_at: '2026-10-24 03:00:00', configured: true } } : u.includes('/codes') ? { data: ['AAA-001'] } : u.includes('/on-disk') ? { data: [{ code: 'AAA-001', files: 1, bytes: 5000 }] } : { data: [{ path: '/media/a/x.mp4', size: 7, folder: '/media/a' }], meta: { total: 1, page: 1, per_page: 100 } };
 const dlSample = u => u.endsWith('/status') ? { data: { enabled: true, files_enabled: true } } : { data: { items: [{ hash: 'aa', name: 'Video <b>x</b>', movie_code: 'AAA-001', state: 'downloading', progress: 42.5, size: 1e9, speed: 2e6, eta: 600, completed: false }, { hash: 'bb', name: 'Done', movie_code: null, state: 'completed', progress: 100, size: 2e9, speed: 0, eta: null, completed: true }] } };
-globalThis.fetch = async url => url.startsWith('/ui-me/media/files') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => ({ data: { data: [{ id: 1, code: 'AAA-001', path: '/generated/video.mp4' }] } }) } : url.startsWith('/ui-me/downloads') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => dlSample(url) } : url.startsWith('/ui-me/library') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => libSample(url) } : url.startsWith('/ui-me/') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => (url.includes('/marks') ? { data: [{ kind: 'favourite', subject: 'movie', key: 'AAA-001' }] } : { data: [movie('AAA-001')], meta: { follows: 2, new_since_last_visit: 1, total: 1 } }) } : url.startsWith('/ui-admin/') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => adminSample(url) } : ({ ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => route(url) });
+const mockJsonResponse = (body, status = 200) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  redirected: false,
+  headers: { get: () => 'application/json' },
+  json: async () => body,
+});
+globalThis.fetch = async (url, options = {}) => {
+  if (url.startsWith('/ui-admin/')) {
+    const revokedKey = url.match(/^\/ui-admin\/keys\/(\d+)$/);
+    if (options.method === 'DELETE' && revokedKey && interactiveAdminKeys !== null) {
+      interactiveAdminKeys = interactiveAdminKeys.filter(key => key.id !== Number(revokedKey[1]));
+      return mockJsonResponse(null, 204);
+    }
+
+    const requestUrl = new URL(url, 'https://x.test');
+    const cursor = requestUrl.searchParams.get('cursor');
+    if (requestUrl.pathname === '/ui-admin/keys' && interactiveAdminKeys !== null) interactiveAdminPageRequests.push(cursor);
+    if (requestUrl.pathname === '/ui-admin/keys' && failedAdminCursor !== null && failedAdminCursor === cursor) {
+      failedAdminCursor = null;
+      return mockJsonResponse({ message: 'API key page unavailable' }, 503);
+    }
+
+    return mockJsonResponse(adminSample(url));
+  }
+
+  if (url.startsWith('/ui-me/media/files')) return mockJsonResponse({ data: { data: [{ id: 1, code: 'AAA-001', path: '/generated/video.mp4' }] } });
+  if (url.startsWith('/ui-me/downloads')) return mockJsonResponse(dlSample(url));
+  if (url.startsWith('/ui-me/library')) return mockJsonResponse(libSample(url));
+  if (url.startsWith('/ui-me/')) return mockJsonResponse(url.includes('/marks') ? { data: [{ kind: 'favourite', subject: 'movie', key: 'AAA-001' }] } : { data: [movie('AAA-001')], meta: { follows: 2, new_since_last_visit: 1, total: 1 } });
+
+  return mockJsonResponse(route(url));
+};
 
 const load = async f => (await import('../public/ui/js/' + f)).default;
 const out = {};
@@ -233,9 +282,83 @@ assert.match(calEmpty, /Tháng này chưa có phim/, 'U-11: an empty month is na
 assert.match(calEmpty, /Tới tháng có phim/, 'U-11: an empty month offers a jump to a month with releases');
 const adm = await run('admin', await load('views/admin.js'), { params: {}, query: {} });
 assert.match(adm, /Chất lượng dữ liệu/); assert.match(adm, /Cấu hình dịch vụ/); assert.match(adm, /jvm_abc/); assert.ok(!adm.includes('<b>one</b>'), 'key labels are escaped');
+assert.match(adm, /data-key-direction="next"/, 'the admin key list exposes more results');
+assert.match(adm, /data-key-direction="previous" disabled/, 'the first key page cannot navigate backward');
 assert.match(adm, /Chọn ít nhất một quyền/, 'U-07: the API key form requires a scope');
 assert.doesNotMatch(adm, /khoá dùng được mọi thứ/, 'U-07: empty scopes are not advertised as full access');
 assert.match(adm, /value="catalog" checked/, 'U-07: catalog is the default explicit scope');
+emptyAdminKeys = true;
+const admEmpty = await run('admin-empty-keys', await load('views/admin.js'), { params: {}, query: {} });
+assert.match(admEmpty, /Chưa có\./, 'an empty active-key page shows the empty state');
+emptyAdminKeys = false;
+interactiveAdminKeys = Array.from({ length: 26 }, (_, index) => ({
+  id: index + 1, prefix: `fixture-${index + 1}`, label: `Fixture key ${index + 1}`, status: 'active', abuse_rpm: 60,
+  scopes: ['catalog'], created_at: '2026-10-24T00:00:00Z',
+})).reverse();
+interactiveAdminPageRequests = [];
+const adminView = await load('views/admin.js');
+const interactiveAdmin = await adminView.render({ params: {}, query: {} });
+const interactiveNode = () => {
+  const listeners = new Map();
+
+  return {
+    innerHTML: '', textContent: '', dataset: {}, disabled: false, listeners,
+    addEventListener: (name, listener) => listeners.set(name, listener),
+    querySelector: () => null,
+  };
+};
+const adminNodes = new Map(['#kf', '#newkey', '#keyrows', '#usage', '#keyTotal', '#keyPagination', '#keyListError'].map(selector => [selector, interactiveNode()]));
+const adminRootListeners = new Map();
+const adminRoot = {
+  querySelector: selector => adminNodes.get(selector) ?? null,
+  addEventListener: (name, listener) => adminRootListeners.set(name, listener),
+};
+adminNodes.get('#keyrows').innerHTML = interactiveAdmin.html.match(/<tbody id="keyrows">([\s\S]*?)<\/tbody>/)?.[1] ?? '';
+adminNodes.get('#keyTotal').textContent = interactiveAdmin.html.match(/<span id="keyTotal"[^>]*>([\s\S]*?)<\/span>/)?.[1] ?? '';
+adminNodes.get('#keyPagination').innerHTML = interactiveAdmin.html.match(/<nav id="keyPagination"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? '';
+interactiveAdmin.mount(adminRoot);
+const clickAdminPage = async (direction, disabled = false) => {
+  const button = { dataset: { keyDirection: direction }, disabled };
+  await adminNodes.get('#keyPagination').listeners.get('click')({
+    target: { closest: selector => selector === '[data-key-direction]' ? button : null },
+  });
+};
+const keyRows = adminNodes.get('#keyrows');
+const keyTotal = adminNodes.get('#keyTotal');
+const keyPagination = adminNodes.get('#keyPagination');
+const keyListError = adminNodes.get('#keyListError');
+assert.match(keyRows.innerHTML, /Fixture key 26/);
+assert.match(keyPagination.innerHTML, /1\+/);
+assert.match(keyPagination.innerHTML, /data-key-direction="previous" disabled/, 'the first page disables Previous');
+failedAdminCursor = '2';
+await clickAdminPage('next');
+assert.deepEqual(interactiveAdminPageRequests.slice(-1), ['2'], 'Next sends the next keyset cursor');
+assert.equal(keyListError.textContent, 'API key page unavailable', 'a failed page request is announced');
+assert.match(keyRows.innerHTML, /Fixture key 26/, 'a failed request leaves the current rows visible');
+assert.match(keyPagination.innerHTML, /1\+/, 'a failed request leaves the current page visible');
+await clickAdminPage('next');
+assert.match(keyRows.innerHTML, /Fixture key 1/, 'Next loads the second page');
+assert.equal(keyListError.textContent, '', 'a successful retry clears the page error');
+assert.match(keyPagination.innerHTML, /mono">2<\/span>/, 'the second page is marked as the last page');
+assert.match(keyPagination.innerHTML, /data-key-direction="next" disabled/, 'the last page disables Next');
+const requestsBeforeDisabledNext = interactiveAdminPageRequests.length;
+await clickAdminPage('next', true);
+assert.equal(interactiveAdminPageRequests.length, requestsBeforeDisabledNext, 'a disabled Next control does not request another page');
+await clickAdminPage('previous');
+assert.match(keyRows.innerHTML, /Fixture key 26/, 'Previous returns to the first page');
+await clickAdminPage('next');
+globalThis.confirm = () => true;
+await adminRootListeners.get('click')({ target: { closest: selector => selector === '[data-revoke]' ? { dataset: { revoke: '1' } } : null } });
+assert.doesNotMatch(keyRows.innerHTML, /data-revoke="1"/, 'revoking the last row refreshes the visible list');
+assert.match(keyRows.innerHTML, /Fixture key 26/, 'revocation clamps the now-invalid last page to the first page');
+assert.equal(keyTotal.textContent, '25', 'the list shows the bounded visible row count');
+assert.match(keyPagination.innerHTML, /mono">1<\/span>/, 'revocation refreshes and clamps the current page');
+interactiveAdminKeys = [];
+const interactiveEmptyAdmin = await adminView.render({ params: {}, query: {} });
+assert.match(interactiveEmptyAdmin.html, /Chưa có\./, 'an empty active-key page renders its empty state');
+assert.match(interactiveEmptyAdmin.html, /<span id="keyTotal" class="chip mono">0<\/span>/, 'an empty active-key page shows no rows');
+interactiveAdminKeys = null;
+interactiveAdminPageRequests = [];
 const lib = await run('library', await load('views/library.js'), { params: { kind: 'favourite' }, query: {} });
 assert.match(lib, /Yêu thích/); assert.match(lib, /AAA-001/);
 const feedHtml = await run('feed', await load('views/feed.js'), { params: {}, query: {} });

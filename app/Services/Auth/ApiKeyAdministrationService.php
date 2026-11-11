@@ -15,6 +15,10 @@ use App\Repositories\ApiUsageRepository;
 /** Owner-facing API key administration use cases. */
 final class ApiKeyAdministrationService
 {
+    public const DEFAULT_PAGE_SIZE = ApiKeyAdministrationRepository::DEFAULT_PAGE_SIZE;
+
+    public const MAX_PAGE_SIZE = ApiKeyAdministrationRepository::MAX_PAGE_SIZE;
+
     public function __construct(
         private readonly ApiKeyAdministrationRepository $keys,
         private readonly ApiUsageRepository $usage,
@@ -25,6 +29,11 @@ final class ApiKeyAdministrationService
     public function index(): ApiKeyList
     {
         return $this->keys->allForAdministration();
+    }
+
+    public function activePage(?int $cursor = null, int $perPage = self::DEFAULT_PAGE_SIZE): ApiKeyList
+    {
+        return $this->keys->activePageForAdministration($cursor, $perPage);
     }
 
     public function create(ApiKeyCreateData $data): CreatedApiKeySnapshot
