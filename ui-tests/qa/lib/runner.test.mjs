@@ -1,8 +1,11 @@
 // node --test lib/runner.test.mjs : the runner itself, with fake steps and a fake browser (no real browser needed).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { defineStep, defineScenario, defineSuite, label } from './step.mjs';
-import { runSuite, report } from './runner.mjs';
+import { spawnSync } from 'node:child_process';
+import { createBrowserEnvironment, openBrowser } from './context.mjs';
+import { defineStep, defineStepGroup, defineScenario, defineScenarioFromGroups, defineSuite, label } from './step.mjs';
+import { runSelection, runSuite, report } from './runner.mjs';
+import { runCommand, parseArguments, suiteLoaders } from '../run.mjs';
 
 const fakeEnv = () => {
   const shots = [];
@@ -37,6 +40,118 @@ test('the same step is reused by several scenarios without being copied', async 
   assert.equal(runs, 3);
 });
 
+test('partial scenario setup closes its context and the acquired browser', async () => {
+  let contextCloses = 0;
+  let browserCloses = 0;
+  const context = {
+    async newPage() { throw new Error('page setup failed'); },
+    async close() { contextCloses += 1; },
+  };
+  const browser = {
+    async newContext() { return context; },
+    async close() { browserCloses += 1; },
+  };
+  const env = createBrowserEnvironment(browser, {
+    base: 'http://localhost', email: 'qa@example.test', password: 'test-only', shots: '/tmp/qa-runner-test',
+  });
+  const suite = defineSuite('s', [defineScenario('setup', [])]);
+
+  await assert.rejects(runSuite(suite, {}, async () => env), /page setup failed/);
+
+  assert.equal(contextCloses, 1);
+  assert.equal(browserCloses, 1);
+});
+
+test('a missing password file fails before Chromium is launched', async () => {
+  const previousPasswordFile = process.env.QA_PASSWORD_FILE;
+  process.env.QA_PASSWORD_FILE = `/tmp/qa-runner-missing-password-${process.pid}`;
+  let launchCalls = 0;
+  try {
+    await assert.rejects(
+      openBrowser({ shots: '/tmp/qa-runner-test' }, async () => { launchCalls += 1; }),
+      /ENOENT/,
+    );
+  } finally {
+    if (previousPasswordFile === undefined) delete process.env.QA_PASSWORD_FILE;
+    else process.env.QA_PASSWORD_FILE = previousPasswordFile;
+  }
+
+  assert.equal(launchCalls, 0);
+});
+
+test('a failed step still closes its scenario context and browser', async () => {
+  let contextCloses = 0;
+  let browserCloses = 0;
+  const fail = defineStep('fail', async () => { throw new Error('expected step failure'); });
+  const suite = defineSuite('s', [defineScenario('broken', [fail()])]);
+  const env = {
+    shots: '/tmp/qa-runner-test',
+    async newScenarioContext() {
+      return {
+        page: { screenshot: async () => {} },
+        context: { close: async () => { contextCloses += 1; } },
+      };
+    },
+    async close() { browserCloses += 1; },
+  };
+
+  const results = await runSuite(suite, {}, async () => env);
+
+  assert.equal(results[0].ok, false);
+  assert.equal(contextCloses, 1);
+  assert.equal(browserCloses, 1);
+});
+
+test('a context close failure preserves its useful error and still closes the browser', async () => {
+  let browserCloses = 0;
+  const fail = defineStep('fail', async () => { throw new Error('expected step failure'); });
+  const suite = defineSuite('s', [defineScenario('broken', [fail()])]);
+  const env = {
+    shots: '/tmp/qa-runner-test',
+    async newScenarioContext() {
+      return {
+        page: { screenshot: async () => {} },
+        context: { close: async () => { throw new Error('context close failed'); } },
+      };
+    },
+    async close() { browserCloses += 1; },
+  };
+
+  await assert.rejects(runSuite(suite, {}, async () => env), error => {
+    assert.match(error.message, /expected step failure/);
+    assert.match(error.message, /context close failed/);
+    return true;
+  });
+
+  assert.equal(browserCloses, 1);
+});
+
+test('a browser setup failure closes acquired resources and lets the CLI process terminate', () => {
+  const runModule = new URL('../run.mjs', import.meta.url).href;
+  const stepModule = new URL('./step.mjs', import.meta.url).href;
+  const script = `
+    import { runCommand } from ${JSON.stringify(runModule)};
+    import { defineScenario, defineStep, defineSuite } from ${JSON.stringify(stepModule)};
+    const suite = defineSuite('main', [defineScenario('setup', [defineStep('unused', async () => {})()])]);
+    const handle = setInterval(() => {}, 1000);
+    const open = async () => ({
+      async newScenarioContext() { throw new Error('context setup failed'); },
+      async close() { clearInterval(handle); },
+    });
+    process.exitCode = await runCommand([], {
+      loaders: { main: async () => ({ default: suite }) },
+      open,
+    });
+  `;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    encoding: 'utf8', timeout: 5000,
+  });
+
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 2, result.stderr);
+  assert.match(result.stderr, /context setup failed/);
+});
+
 test('a failing step stops its scenario, saves a screenshot, and the next scenario still runs', async () => {
   const env = fakeEnv();
   const ok = defineStep('ok', async () => {});
@@ -68,4 +183,222 @@ test('the report says whether the whole suite passed', async () => {
   } finally { console.log = original; }
   assert.ok(lines.some(l => l.includes('1/1 scenarios passed')));
   assert.ok(lines.some(l => l.includes('0/1 scenarios passed')));
+});
+
+test('a unique scenario selector runs only that scenario through the CLI command', async () => {
+  const order = [];
+  const record = defineStep('record', async (_ctx, value) => { order.push(value); });
+  const suite = defineSuite('s', [
+    defineScenario('target', [record('target')]),
+    defineScenario('other', [record('other')]),
+  ]);
+  const output = [];
+  const original = console.log;
+  console.log = message => output.push(String(message));
+  try {
+    const exitCode = await runCommand(['--scenario', 'target'], {
+      loaders: { main: async () => ({ default: suite }) },
+      open: async () => fakeEnv(),
+      writeError: message => output.push(String(message)),
+    });
+    assert.equal(exitCode, 0);
+  } finally { console.log = original; }
+
+  assert.deepEqual(order, ['target']);
+  assert.ok(output.some(line => line.includes('1/1 scenarios passed')));
+});
+
+test('a unique step selector runs only that registered step', async () => {
+  const order = [];
+  const record = defineStep('record', async (_ctx, value) => { order.push(value); });
+  const suite = defineSuite('s', [
+    defineScenario('target', [record('before'), defineStep('selected', async () => { order.push('selected'); })(), record('after')]),
+    defineScenario('other', [record('other')]),
+  ]);
+
+  const results = await runSelection(suite, { kind: 'step', name: 'selected' }, {}, async () => fakeEnv());
+
+  assert.deepEqual(order, ['selected']);
+  assert.deepEqual(results.map(result => result.steps.map(step => step.step)), [['selected']]);
+});
+
+test('a failed selected scenario returns failure and does not run another scenario', async () => {
+  const order = [];
+  const fail = defineStep('fail', async () => { order.push('fail'); throw new Error('expected failure'); });
+  const record = defineStep('record', async (_ctx, value) => { order.push(value); });
+  const suite = defineSuite('s', [
+    defineScenario('target', [fail(), record('after')]),
+    defineScenario('other', [record('other')]),
+  ]);
+  const output = [];
+  const original = console.log;
+  console.log = message => output.push(String(message));
+  try {
+    const exitCode = await runCommand(['--scenario', 'target'], {
+      loaders: { main: async () => ({ default: suite }) },
+      open: async () => fakeEnv(),
+      writeError: message => output.push(String(message)),
+    });
+    assert.equal(exitCode, 1);
+  } finally { console.log = original; }
+
+  assert.deepEqual(order, ['fail']);
+  assert.ok(output.some(line => line.includes('0/1 scenarios passed')));
+});
+
+test('unknown or ambiguous scenario and step selectors fail before opening a browser', async () => {
+  const noop = defineStep('noop', async () => {});
+  const suite = defineSuite('s', [
+    defineScenario('duplicate', [noop()]),
+    defineScenario('duplicate', [defineStep('reused', async () => {})()]),
+    defineScenario('other', [defineStep('reused', async () => {})()]),
+  ]);
+  const cases = [
+    { args: ['--scenario', 'missing'], message: /Unknown scenario/ },
+    { args: ['--scenario', 'duplicate'], message: /Ambiguous scenario/ },
+    { args: ['--step', 'missing'], message: /Unknown step/ },
+    { args: ['--step', 'reused'], message: /Ambiguous step/ },
+  ];
+
+  for (const { args, message } of cases) {
+    let browserCalls = 0;
+    const errors = [];
+    const exitCode = await runCommand(args, {
+      loaders: { main: async () => ({ default: suite }) },
+      open: async () => { browserCalls += 1; return fakeEnv(); },
+      writeError: error => errors.push(String(error)),
+    });
+
+    assert.equal(exitCode, 2);
+    assert.equal(browserCalls, 0);
+    assert.match(errors[0], message);
+  }
+});
+
+test('the suite positional form stays compatible and unknown suite paths are not imported', async () => {
+  assert.deepEqual(parseArguments([]), { suiteName: 'main', selection: { kind: 'suite' } });
+  assert.deepEqual(parseArguments(['main']), { suiteName: 'main', selection: { kind: 'suite' } });
+  assert.deepEqual(parseArguments(['main', '--scenario', 'target']), {
+    suiteName: 'main', selection: { kind: 'scenario', name: 'target' },
+  });
+
+  let loaderCalls = 0;
+  let browserCalls = 0;
+  const errors = [];
+  const exitCode = await runCommand(['../../outside'], {
+    loaders: { main: async () => { loaderCalls += 1; return { default: defineSuite('s', []) }; } },
+    open: async () => { browserCalls += 1; return fakeEnv(); },
+    writeError: error => errors.push(String(error)),
+  });
+
+  assert.equal(exitCode, 2);
+  assert.equal(loaderCalls, 0);
+  assert.equal(browserCalls, 0);
+  assert.match(errors[0], /Unknown suite/);
+});
+
+test('the documented step selector resolves from the registered main suite', async () => {
+  const routes = [];
+  const env = fakeEnv();
+  env.newScenarioContext = async () => ({
+    page: { route: async pattern => { routes.push(pattern); } },
+    context: { close: async () => {} }, issues: [], state: {},
+  });
+  const output = [];
+  const original = console.log;
+  console.log = message => output.push(String(message));
+  try {
+    const exitCode = await runCommand(['--step', 'mockOperationsDashboardData'], {
+      open: async () => env,
+      writeError: message => output.push(String(message)),
+    });
+    assert.equal(exitCode, 0);
+  } finally { console.log = original; }
+
+  assert.deepEqual(routes, ['**/ops/data**', '**/ops/nodes**']);
+  assert.ok(output.some(line => line.includes('1/1 scenarios passed')));
+});
+
+test('named groups run alone or compose into one ordered scenario context', async () => {
+  const observed = [];
+  let runId = 0;
+  const record = defineStep('record', async (ctx, value) => {
+    observed.push({ run: ctx.state.run, value });
+  });
+  const signIn = defineStepGroup('sign-in', [record('open sign-in')]);
+  const dashboard = defineStepGroup('dashboard', [record('open dashboard')]);
+  const suite = defineSuite('composition', [
+    defineScenarioFromGroups(signIn.name, [signIn]),
+    defineScenarioFromGroups(dashboard.name, [dashboard]),
+    defineScenarioFromGroups('sign-in then dashboard', [signIn, dashboard]),
+  ]);
+  const open = async () => {
+    const currentRun = ++runId;
+    return {
+      shots: '/tmp/qa-runner-test',
+      async newScenarioContext() {
+        return { state: { run: currentRun }, page: { screenshot: async () => {} }, context: { close: async () => {} } };
+      },
+      async close() {},
+    };
+  };
+
+  await runSelection(suite, { kind: 'scenario', name: 'sign-in' }, {}, open);
+  await runSelection(suite, { kind: 'scenario', name: 'dashboard' }, {}, open);
+  await runSelection(suite, { kind: 'scenario', name: 'sign-in then dashboard' }, {}, open);
+
+  assert.deepEqual(observed, [
+    { run: 1, value: 'open sign-in' },
+    { run: 2, value: 'open dashboard' },
+    { run: 3, value: 'open sign-in' },
+    { run: 3, value: 'open dashboard' },
+  ]);
+});
+
+test('composition rejects invalid group members before browser setup', () => {
+  assert.throws(() => defineStepGroup('', []), /non-empty name/);
+  assert.throws(() => defineStepGroup('broken', [{ name: 'missing runner' }]), /executable steps/);
+  assert.throws(() => defineScenarioFromGroups('broken', [{ name: 'unbranded', steps: [] }]), /defineStepGroup/);
+});
+
+test('a failure in a chained group stops all later groups in that scenario', async () => {
+  const order = [];
+  const first = defineStepGroup('first', [defineStep('record first', async () => { order.push('first'); })()]);
+  const failing = defineStepGroup('failing', [defineStep('fail', async () => {
+    order.push('failure');
+    throw new Error('group failed');
+  })()]);
+  const last = defineStepGroup('last', [defineStep('record last', async () => { order.push('last'); })()]);
+  const suite = defineSuite('composition', [defineScenarioFromGroups('chain', [first, failing, last])]);
+
+  const results = await runSelection(suite, { kind: 'scenario', name: 'chain' }, {}, async () => fakeEnv());
+
+  assert.deepEqual(order, ['first', 'failure']);
+  assert.equal(results[0].ok, false);
+  assert.match(results[0].steps[1].error, /group failed/);
+});
+
+test('the composition suite is registered while the legacy main suite remains the default', async () => {
+  assert.deepEqual(parseArguments([]), { suiteName: 'main', selection: { kind: 'suite' } });
+  assert.equal(typeof suiteLoaders.main, 'function');
+  assert.equal(typeof suiteLoaders.composition, 'function');
+
+  const { default: composition } = await suiteLoaders.composition();
+  const [signInForm, dashboard, chain] = composition.scenarios;
+  assert.equal(composition.name, 'composition');
+  assert.deepEqual(chain.steps.map(step => step.name), [
+    ...signInForm.steps.map(step => step.name),
+    ...dashboard.steps.map(step => step.name),
+  ]);
+
+  let browserCalls = 0;
+  const errors = [];
+  const exitCode = await runCommand(['composition', '--scenario', 'unknown'], {
+    open: async () => { browserCalls += 1; return fakeEnv(); },
+    writeError: error => errors.push(String(error)),
+  });
+
+  assert.equal(exitCode, 2);
+  assert.equal(browserCalls, 0);
+  assert.match(errors[0], /Unknown scenario/);
 });
