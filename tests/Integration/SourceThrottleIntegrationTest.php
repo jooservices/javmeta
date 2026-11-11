@@ -258,6 +258,9 @@ final class SourceThrottleIntegrationTest extends IntegrationTestCase
 
     private function listingRow(Source $source): CrawlQueue
     {
+        // One (source, url) pair is unique in the queue: a fresh claimed row replaces the one of the previous fetch.
+        CrawlQueue::query()->where('source_slug', $source->slug)->where('url', 'https://latency.test/list')->delete();
+
         return CrawlQueue::factory()->create([
             'source_slug' => $source->slug,
             'url' => 'https://latency.test/list',
