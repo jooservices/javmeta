@@ -478,6 +478,8 @@ final class CrawlQueueServiceTest extends TestCase
 
     public function test_listing_loop_does_not_reset_a_retry_pending_seed(): void
     {
+        // A frozen clock: the final timestamp assertion must not depend on the second the test crosses.
+        Carbon::setTestNow('2026-10-19 10:00:00');
         $source = Source::factory()->create();
         $doneSeed = CrawlQueue::factory()->create([
             'source_slug' => $source->slug,
@@ -505,6 +507,7 @@ final class CrawlQueueServiceTest extends TestCase
         self::assertSame(CrawlQueue::STATUS_RETRY_PENDING, $retrySeed->refresh()->status);
         self::assertSame(1, $retrySeed->retry_round);
         self::assertSame(now()->addHour()->getTimestamp(), $retrySeed->next_attempt_at?->getTimestamp());
+        Carbon::setTestNow();
     }
 
     public function test_requeue_does_not_overwrite_a_row_that_is_no_longer_failed(): void
