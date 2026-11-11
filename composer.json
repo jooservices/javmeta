@@ -38,6 +38,7 @@
         "laravel/sail": "^1.41",
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.6",
+        "phpat/phpat": "^0.12.5",
         "phpmd/phpmd": "^3.0",
         "phpstan/phpstan": "^2.1",
         "phpstan/phpstan-phpunit": "^2.0",
@@ -63,12 +64,14 @@
         "lint:phpcs": "phpcs --standard=phpcs.xml",
         "lint:phpmd": "vendor/bin/phpmd analyze app tests --format text --ruleset phpmd.xml --no-progress",
         "lint:phpstan": "XDEBUG_MODE=off phpstan analyse --configuration=phpstan.neon --memory-limit=512M",
+        "lint:architecture": "XDEBUG_MODE=off phpstan analyse --configuration=tools/quality/phpstan-architecture.neon --memory-limit=512M",
         "lint:cs": "php-cs-fixer fix --config=.php-cs-fixer.dist.php --dry-run --diff --sequential",
         "lint:cs:fix": "php-cs-fixer fix --config=.php-cs-fixer.dist.php --sequential",
         "lint": [
             "@lint:pint",
             "@lint:phpcs",
             "@lint:phpmd",
+            "@lint:architecture",
             "@lint:phpstan",
             "@lint:cs"
         ],
