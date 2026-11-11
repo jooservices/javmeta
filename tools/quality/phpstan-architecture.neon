@@ -1,0 +1,22 @@
+includes:
+    - ../../phpstan.neon
+    - ../../vendor/phpat/phpat/extension.neon
+
+parameters:
+    tmpDir: ../../.tmp/phpstan-architecture
+    paths:
+        - ../../app
+        - ../../routes
+        - ../../tests/Unit/Architecture
+    phpat:
+        show_rule_names: true
+
+services:
+    -
+        class: Tests\Unit\Architecture\ControllerModelBoundaryArchitectureRules
+        tags:
+            - phpat.test
+    -
+        class: Tests\Unit\Architecture\ControllerModelBoundaryRule
+        tags:
+            - phpstan.rules.rule

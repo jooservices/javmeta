@@ -1,16 +1,29 @@
-# T08b fix round 4 handoff
+# T22 fix round 4 handoff
 
-## Defect class fixed
+## Defect classes fixed
 
-Removed the integration test's workstation-specific Redis username assertion. No other integration test hard-codes the `JAVMETA_IT_*` Redis username; the real Redis reservation and per-source lock assertions remain in place.
+- Method PHPDoc dependencies now use the declared method reflection, including PHPDoc-only parameters.
+- Property PHPDoc dependencies, including nullable model types, are checked against the source-location baseline.
+- Dynamic `class-string<Model>` values are resolved for static calls and instantiation.
+- Array-offset reads and writes on inferred model values are checked.
+- PHPDoc expansion fixtures use an existing controller/model exception pair and verify that each new dependency is rejected.
 
-## Files changed
+## Files changed for T22
 
-- `tests/Integration/SourceRequestPacerRedisTest.php`
+- `tests/Unit/Architecture/ControllerModelBoundaryRule.php`
+- `tests/Unit/Architecture/ControllerModelBoundaryTest.php`
 - `handoff-fix4.md`
 
-## Checks
+## Checks run
 
-- `composer lint` — passed.
-- Exact `SourceRequestPacerRedisTest::test_reservation_uses_real_redis_and_preserves_the_per_source_lock` — blocked before PHPUnit ran. The shared runner requires a registered exact-path JavMeta worktree manifest, while its `env-project` call does not provide the worktree path. It exited with: `BLOCKED/FAIL: JavMeta worktree environments require the exact registered worktree path.`
-- SonarQube via `sonar-locked.sh` with key `javmeta_wt_t08` — passed (quality gate).
+- `scripts/docker/runtime php vendor/bin/pint tests/Unit/Architecture/ControllerModelBoundaryRule.php tests/Unit/Architecture/ControllerModelBoundaryTest.php` — passed.
+- `scripts/docker/runtime php composer lint` — passed.
+- `scripts/docker/runtime php vendor/bin/phpunit tests/Unit/Architecture/ControllerModelBoundaryTest.php` — passed (15 tests, 57 assertions).
+
+## Existing develop handoff with the same filename
+
+The merged `origin/develop` side contained a T08b handoff. Its record is preserved here because both branches used `handoff-fix4.md`:
+
+- Defect: removed an integration test's workstation-specific Redis username assertion; real Redis reservation and per-source lock assertions remain.
+- Files: `tests/Integration/SourceRequestPacerRedisTest.php` and this handoff.
+- Checks: `composer lint` passed; scoped test blocked because the shared runner required an exact registered worktree path; locked SonarQube scan passed.
