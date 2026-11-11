@@ -30,3 +30,12 @@ Guest and owner UI API responses stay `private, no-store` and may include an ETa
 For Cloudflare, bypass every `/ui-api/*` request and purge previously cached UI API objects before enabling login. Do not enable edge caching for owner or guest UI API traffic. Disabling `api.response_cache.enabled` stops server-side cache reuse; purge any edge cache separately if an immediate purge is needed.
 
 There are no database migrations. Rollback is to disable `api.response_cache.enabled` (and remove the Cloudflare rule if it was separately enabled); old Redis entries expire automatically.
+
+### Rollback when the epoch write itself fails
+
+The epoch is stored in the database-backed `api-response-epoch` cache store and rotated inside the data transaction on purpose: a write whose invalidation cannot be recorded must not commit, otherwise cached responses would keep serving stale data. Disabling `api.response_cache.enabled` stops cache reads and writes but does **not** stop persistence from rotating the epoch, so it does not help when that store cannot be written (the cache table is missing or locked, or its connection is down). In that case movie, performer and gallery writes fail until one of these is done:
+
+1. Restore the `cache` table or its database connection (the store uses the application database; check migrations and the connection first).
+2. If it cannot be restored quickly, roll back to the previous release. The change adds no schema, so the previous release runs on the same database and simply ignores the epoch key.
+
+After either step, confirm that a crawl writes a movie again and keep `api.response_cache.enabled` off until the epoch store is healthy.
