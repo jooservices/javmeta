@@ -411,6 +411,38 @@ return [
             'label' => 'Khoảng request ghi đè theo nguồn (JSON)',
             'description' => 'Ánh xạ mã nguồn đã cấu hình hoặc đã lưu sang min, default và max từ 0,25 đến 600 giây; để trống thì giữ nhịp mặc định. 14 nguồn CrawlerX 1.5.0 bắt đầu ở 8 giây (min 4, max 60); chỉnh nhịp qua ánh xạ này.',
         ],
+        'crawl__latency_gap__enabled' => [
+            'label' => 'Bật điều chỉnh nhịp theo độ trễ',
+            'description' => 'Mặc định tắt. Khi bật, độ trễ fetch kéo dài sẽ giãn nhịp nguồn và phản hồi khỏe sẽ phục hồi dần.',
+        ],
+        'crawl__latency_gap__sample_window_size' => [
+            'label' => 'Số mẫu độ trễ trong cửa sổ',
+            'description' => 'Số mẫu fetch gần nhất được giữ để đánh giá độ trễ của nguồn.',
+        ],
+        'crawl__latency_gap__sustained_samples' => [
+            'label' => 'Số mẫu đạt ngưỡng trong cửa sổ',
+            'description' => 'Số mẫu đạt ngưỡng chậm hoặc khỏe ở bất kỳ vị trí nào trong cửa sổ để thay đổi nhịp (không cần liên tiếp nhau).',
+        ],
+        'crawl__latency_gap__slow_threshold_ms' => [
+            'label' => 'Ngưỡng fetch chậm (mili giây)',
+            'description' => 'Mẫu bằng hoặc cao hơn ngưỡng này được tính là chậm.',
+        ],
+        'crawl__latency_gap__healthy_threshold_ms' => [
+            'label' => 'Ngưỡng fetch khỏe (mili giây)',
+            'description' => 'Mẫu bằng hoặc thấp hơn ngưỡng này được tính là khỏe; ngưỡng hiệu lực luôn thấp hơn ngưỡng chậm.',
+        ],
+        'crawl__latency_gap__increase_percent' => [
+            'label' => 'Tỷ lệ tăng nhịp (%)',
+            'description' => 'Phần trăm tăng khoảng nghỉ sau khi cửa sổ ghi nhận đủ mẫu chậm.',
+        ],
+        'crawl__latency_gap__recovery_percent' => [
+            'label' => 'Tỷ lệ phục hồi (%)',
+            'description' => 'Phần trăm khoảng cách tới mức tối thiểu được phục hồi sau khi có đủ mẫu khỏe.',
+        ],
+        'crawl__latency_gap__window_ttl_seconds' => [
+            'label' => 'Thời hạn mẫu độ trễ (giây)',
+            'description' => 'Thời gian giữ mẫu độ trễ trong cache dùng chung.',
+        ],
         'queue__browser_inflight' => [
             'label' => 'Việc dùng trình duyệt cùng lúc (tổng)',
             'description' => 'Giới hạn chung các job dùng FlareSolverr hoặc Playwright để tránh quá tải dịch vụ.',

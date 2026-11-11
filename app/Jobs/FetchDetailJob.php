@@ -74,9 +74,9 @@ final class FetchDetailJob implements ShouldQueue
         }
 
         $result = $client->fetchQueueRow($row);
-        app(FetchAttemptRecorder::class)->record($row, $result);
+        $latencySampleId = app(FetchAttemptRecorder::class)->record($row, $result);
         if (! $result->ok || $result->movie === null) {
-            $this->onCrawlFailure($row, $source, $result, $activity, $throttle);
+            $this->onCrawlFailure($row, $source, $result, $activity, $throttle, $latencySampleId);
 
             return;
         }
@@ -86,7 +86,7 @@ final class FetchDetailJob implements ShouldQueue
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => 'no_normalizer']);
             $this->markFailed($row, CrawlErrorCode::NormalizerMissing, 'No normalizer for source slug.');
             $activity->recordFailure($source, 'No normalizer for source slug.');
-            $throttle->onFailure($source);
+            $throttle->onFailure($source, null, $latencySampleId);
 
             return;
         }
@@ -104,7 +104,7 @@ final class FetchDetailJob implements ShouldQueue
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => $message]);
             $this->markFailed($row, CrawlErrorCode::ParseFailed, $message);
             $activity->recordFailure($source, $message);
-            $throttle->onFailure($source);
+            $throttle->onFailure($source, null, $latencySampleId);
 
             return;
         } catch (NormalizationFailedException $exception) {
@@ -112,7 +112,7 @@ final class FetchDetailJob implements ShouldQueue
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => $message]);
             $this->markFailed($row, CrawlErrorCode::NormalizationFailed, $message);
             $activity->recordFailure($source, $message);
-            $throttle->onFailure($source);
+            $throttle->onFailure($source, null, $latencySampleId);
 
             return;
         }
@@ -120,7 +120,7 @@ final class FetchDetailJob implements ShouldQueue
         $this->deliverDraft($draft, $row->is_recrawl);
 
         $activity->recordSuccess($source);
-        $throttle->onSuccess($source);
+        $throttle->onSuccess($source, $latencySampleId);
         $this->onCrawlSuccess($row);
         $this->markDone($row);
     }
