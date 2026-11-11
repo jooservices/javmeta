@@ -123,3 +123,51 @@ Status now aggregates 24-hour run totals in SQL instead of hydrating every run. 
 `perf:warm` force-refreshes both existing cache keys every minute when `perf.warm_enabled` is true. An additional `perf:warm --status-only` event runs every ten seconds: a once-per-minute event alone would leave a 45-second hole in the existing 15-second status TTL. Facets keep their 60-second TTL; filtered facets remain on demand. Failed recomputation leaves the previous value intact until its original expiry and does not skip the other cache. Scheduler downtime, overlap or expiry can still expose a cold request.
 
 **Target assessment:** the observed first calls are under 1.5 s; recomputation p95 still exceeds 400 ms. No end-to-end warmed-cache result is claimed: the scheduler and changes have not been deployed. QA must repeat 30 HTTP requests, include a first request after expiry, and verify the subminute scheduler before accepting the target. Baseline `suggest?q=mi` was also profiled: p50 113.1 / p95 283.2 ms; no suggestion code was changed. Earlier direct runs yielded status p95 1,310.1 → 985.2 ms and facets 1,788.5 → 658.0 ms; the variation means these are observations rather than a controlled causal speedup.
+
+### JOOXCR-346: planned synthetic 2-million-movie scale run
+
+**Status — not measured.** No 2,000,000-movie dataset, scale p95, backup duration, or restore duration has been measured. The `<400 ms` target is **not assessed** at this size. Existing measurements above remain historical observations and must not be extrapolated into a scale result.
+
+#### Preconditions and isolation
+
+- Run only against an isolated, test-only worktree namespace with synthetic data. Provision the worktree database and any required Redis and Elasticsearch namespaces before the run; use the shared PHP runtime and `docker/dev/shared-run --mode wt:<id>` where repository commands need it. The runner expects its test environment to exist and applies worktree-specific namespaces; it does not authorize access to staging or production. See [`docker/dev/shared-run`](../../docker/dev/shared-run).
+- Record the application commit, migration level, database and search versions, relevant index definitions, CPU and memory limits, available disk, cache state, and background-work state. Keep other ingestion and benchmark workloads out of the measurement interval, or record the contention and mark the target assessment invalid.
+- Generate synthetic records only. Do not copy production or staging rows or backups. Use a least-privilege test API identity with only the scopes needed for these requests and enough test-only rate-limit capacity; never include its credential in logs or evidence.
+- The current [`tools/profile-performance.php`](../../tools/profile-performance.php) benchmark is restricted to its documented staging origin, so it is not a runner for this test. A separate test-only HTTP runner is a prerequisite; do not relax the staging guard as part of this documentation ticket.
+- Define whether backup/restore covers PostgreSQL alone or the full application data set. The [backup runbook](backup.md) says full restore also depends on an Elasticsearch filesystem snapshot repository, which is not currently provisioned for the shared service and is tracked by JOOS-114. Until a test-only snapshot path is ready, PostgreSQL-only timing is partial evidence and cannot be reported as full-service restore readiness.
+
+#### Synthetic dataset
+
+A separate implementation task should provide a deterministic generator that inserts exactly 2,000,000 movies into the test database in bounded batches (for example, no more than 5,000 rows per batch). Record the generator revision, fixed seed, batch size, and data profile so another run can reproduce it. Populate the fields and relationships required by the selected list, search, and detail paths, with common terms, rare terms, and no-match cases. Document their synthetic frequencies and relationship cardinalities; where measured traffic data is unavailable, label them as assumptions and do not call the profile production-representative. Do not add schema fields or migrations for the benchmark.
+
+At 500,000, 1,000,000, 1,500,000, and 2,000,000 rows, record the verified movie count, related-row counts, database and index bytes, and available disk. After loading, verify schema constraints and planner statistics before timing requests. A count mismatch, failed batch, or incomplete relationship set invalidates the run; retain the failure in its evidence.
+
+#### HTTP measurements
+
+Use the test-only HTTP origin and bounded page sizes from the [movie API contract](../developer-guide/api-cookbook.md). Measure at least:
+
+- `GET /api/v1/movies?per_page=24` for the default list;
+- `GET /api/v1/movies?q=<seeded-term>&per_page=24` for search, using fixed common and rare seeded terms;
+- `GET /api/v1/movies/{code}` for detail, using a fixed reproducible sample of generated codes.
+
+For each endpoint and cache condition, send 100 warm-up requests, then collect 1,000 measured requests in each of three independent runs using one sequential client. Keep cold-cache and warm-cache suites separate when the route is cached; warm-cache samples reuse primed keys, while cold-cache samples use unique seeded query keys or verified expiry in the isolated namespace. Keep cold-suite warm-ups on keys separate from its measured keys, and never flush a shared cache. If the cache condition cannot be verified, invalidate that suite. Never combine cache cohorts or average p95 values across endpoints. Time the full HTTP request with a monotonic clock, through response completion. Record the sample count, p50, p95, status and error counts, timeouts, query set, cache condition, request pacing, and load snapshot for every run.
+
+Calculate nearest-rank p95 separately for each run: sort its `N` measured latencies and select the value at one-based rank `ceil(0.95 × N)`. Report each run's p95; do not pool runs or drop failed requests. Any HTTP error, timeout, incomplete sample set, unexpected rate limit, or unverified cache condition remains recorded and invalidates the target assessment. Assess `<400 ms` per endpoint and run; do not hide a slow route in an overall average.
+
+#### Backup and restore timings
+
+After the test-only dataset and backup path are ready, run three separately identified backup/restore trials. Start backup timing when the test-only backup command begins; stop when the encrypted artifact and checksums are complete and verified. Start restore timing when restore begins; stop only after the target services report healthy and the restored movie and related-row counts match the generator manifest. Record backup and restore durations, artifact bytes, checksum result, validation result, and resource snapshots per trial. Keep every failed or partial attempt in the report; a retry is a new trial, not a replacement for the failure.
+
+No numeric restore-time objective is defined here. Report measured durations as evidence only until a separate owner-approved RTO target exists. If any trial is incomplete or restore validation fails, do not claim restore readiness.
+
+#### Evidence review and follow-ups
+
+Before interpreting the result, attach a sanitized run manifest containing the commit and schema level, generator profile and seed, namespace suffix, row-count checkpoints, endpoint and query cohorts, warm-up and sample counts, per-run percentiles and errors, cache conditions, load snapshots, backup checksums and timings, and all failures. Do not store credentials, production data, or raw response bodies.
+
+Review and retain evidence for each area below; the plan does not authorize schema, infrastructure, retention, or alert changes:
+
+- **Indexes:** query plans and timing for the measured paths, indexes used, index bytes, relevant table growth, and any observed write cost. Identify required index changes as a separately reviewed migration task.
+- **Retention:** retention rules for the synthetic database, backup artifacts, logs, and metrics; confirm the test namespace and exact cleanup scope before a later cleanup. Do not treat a test cleanup as permission to delete shared data.
+- **Alerts:** the metrics and thresholds reviewed for database size, disk headroom, request latency/errors, and backup age/duration; include test-only trigger and recovery evidence where available. Do not send test alerts to production channels.
+
+Keep the work split into independently verifiable follow-ups: build and validate the bounded synthetic generator and isolated namespace; add the test-only HTTP runner and collect p95 evidence; enable a complete test-only backup/restore rehearsal including the Elasticsearch prerequisite; then review index, retention, and alert evidence and publish the scale assessment. No follow-up results are implied by this plan.
