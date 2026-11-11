@@ -724,7 +724,8 @@ function methodSummary(): array
 
 function isLegacyProfilerInvocation(array $arguments): bool
 {
-    return isset($arguments[1]) && preg_match('/^-?\d+$/', (string) $arguments[1]) === 1;
+    return ! isset($arguments[1])
+        || preg_match('/^-?\d+$/', (string) $arguments[1]) === 1;
 }
 
 /** @param list<string> $arguments
@@ -732,10 +733,10 @@ function isLegacyProfilerInvocation(array $arguments): bool
  */
 function parseLegacyProfilerArguments(array $arguments, string $workingDirectory): array
 {
-    if (! isset($arguments[1]) || preg_match('/^-?\d+$/', (string) $arguments[1]) !== 1) {
+    if (isset($arguments[1]) && preg_match('/^-?\d+$/', (string) $arguments[1]) !== 1) {
         throw new InvalidArgumentException('Legacy profiling requires a positional iteration count.');
     }
-    $iterations = filter_var($arguments[1], FILTER_VALIDATE_INT);
+    $iterations = filter_var($arguments[1] ?? '30', FILTER_VALIDATE_INT);
     if ($iterations === false || $iterations < 1 || $iterations > 1000) {
         throw new InvalidArgumentException('Legacy profiling iterations must be between 1 and 1000.');
     }

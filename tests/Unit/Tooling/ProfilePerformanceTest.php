@@ -25,8 +25,15 @@ final class ProfilePerformanceTest extends TestCase
     public function test_legacy_positional_command_keeps_iteration_and_comparison_filters(): void
     {
         $script = 'tools/profile-performance.php';
+        self::assertTrue(isLegacyProfilerInvocation([$script]));
         self::assertTrue(isLegacyProfilerInvocation([$script, '30']));
         self::assertFalse(isLegacyProfilerInvocation([$script, '--base-url', 'https://jav.soulevil.com']));
+
+        $implicitDefaults = parseLegacyProfilerArguments([$script], base_path());
+        self::assertSame(30, $implicitDefaults['iterations']);
+        self::assertSame(base_path(), $implicitDefaults['comparison_root']);
+        self::assertNull($implicitDefaults['jobs']);
+        self::assertSame([], $implicitDefaults['files']);
 
         $defaults = parseLegacyProfilerArguments([$script, '30'], base_path());
         self::assertSame(30, $defaults['iterations']);
