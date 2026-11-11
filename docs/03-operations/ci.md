@@ -10,7 +10,7 @@ image is pushed. Deploy stays manual (`deploy/*.sh`).
 | `ci.yml` | push / PR to `develop`, manual | **Lint and test**: composer validate, `composer lint`, `composer test:coverage`, `composer coverage:check` (≥ 90%), coverage artifact · **Integration**: `docker/ci/integration` against real Postgres, Mongo, Elasticsearch and OpenObserve · **Secrets scan**: gitleaks with `.gitleaks.toml` · **Build app image**: `Dockerfile.production`, no push |
 | `embedder-image.yml` | changes under `embedder/` | build `embedder/Dockerfile.production`, no push |
 | `workflow-audit.yml` | changes under `.github/`, weekly | actionlint (pinned image), zizmor (action uploads SARIF to code scanning) |
-| `commitlint.yml` | pull requests | Conventional Commits, sentence-case subject (same rule as `captainhook.json`) |
+| `commitlint.yml` | pull requests | Conventional Commit headers, sentence-case subject |
 
 All actions are pinned by commit SHA.
 
@@ -105,3 +105,39 @@ executes the command in the runtime. No credential is written to a tracked file,
 Live mode is never accepted. The Mongo outage scenario stays CI-only because it stops the service.
 Elasticsearch 9 leaves `dense_vector` fields out of `_source`; tests that read vectors back pass
 `_source_exclude_vectors=false`.
+
+## Local Git convention checks
+
+`captainhook.json` runs the shared checker for every commit message and before
+every push. The push hook supplies Git's actual ref updates, so the checker
+validates every outgoing commit range, including merge commits. Existing refs
+use the remote's previous object ID; new refs use the local remote default
+branch, falling back to `origin/develop`. The checks use local Git objects and
+do not fetch.
+
+The checker enforces the allowed Conventional Commit types, optional scope and
+breaking marker, uppercase subject, commit header length, and footer trailers.
+It applies Git's comment cleanup before inspecting the whole message, so editor
+comments cannot hide prohibited AI or coauthor attribution such as
+`Co-Authored-By` and `Generated with`. A project ticket trailer such as
+`Ticket: T16` is allowed.
+
+Create PRs through the local wrapper. It requires and checks an explicit title
+before invoking `gh pr create`:
+
+```bash
+bash tools/quality/create-pr.sh --title 'feat(ui): Add a feature' --base develop
+```
+
+Merge commit headers are allowed because Git uses its own merge subject format;
+their messages still pass through the prohibited attribution checks. For a
+manual pre-check, validate a PR title and every commit in a local range:
+
+```bash
+bash tools/quality/check-git-conventions.sh title 'feat(ui): Add a feature'
+bash tools/quality/check-git-conventions.sh commits origin/develop..HEAD
+bash tests/Shell/git-conventions.test.sh
+```
+
+These commands use only the supplied title, commit message file or local Git
+objects. They do not call GitHub or fetch a branch.
