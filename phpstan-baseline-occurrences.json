@@ -101,49 +101,49 @@
         },
         {
             "path": "app/Repositories/MovieRepository.php",
-            "line": 315,
+            "line": 357,
             "identifier": "missingType.generics",
             "messageHash": "3836c03c38256542ed130db4734eb6c74844f65d961c6b413ddc8f76696f6828",
             "sourceHash": "87d4d1ad649bac9e2d2a7f5df552f7731131aafeb931664ab4c04324cf6e7c03"
         },
         {
             "path": "app/Repositories/MovieRepository.php",
-            "line": 697,
+            "line": 739,
             "identifier": "missingType.generics",
             "messageHash": "0226e9afca64d0013f0710ab0f49faff5c58adc27b557af1d064da8c4710c145",
             "sourceHash": "7c95dbd09725fe3129af05e5729952b5fbb241f74b8dd1ba4b5952ca0828340b"
         },
         {
             "path": "app/Repositories/MovieRepository.php",
-            "line": 719,
+            "line": 761,
             "identifier": "missingType.generics",
             "messageHash": "e4b2a2af8ced353322fb9e33eb9e3b59cb5ad54b82ed33063e193bd5b63d1b9a",
             "sourceHash": "73a10142afa04d246dbef1cc06ffcc092323407bf515810fa12f92012997bf90"
         },
         {
             "path": "app/Repositories/MovieRepository.php",
-            "line": 748,
+            "line": 790,
             "identifier": "missingType.generics",
             "messageHash": "fea8084d643ac30525c2969d3a6efce9afb1452d62b00946a3a026523d09a98d",
             "sourceHash": "91fa55cf1358bc5402fe64715bcf7fd92a24c8b9f32c7c51be34bd943c06ff68"
         },
         {
             "path": "app/Repositories/MovieRepository.php",
-            "line": 785,
+            "line": 827,
             "identifier": "missingType.generics",
             "messageHash": "58eac51e4e7ae0291dd1f90c218020e70d71db9005f7880f70f5c55f8ddfdd8e",
             "sourceHash": "e0e7cb6995749f63beefb9fc1668439a34d2c60d3ea7535732149f432794b954"
         },
         {
             "path": "app/Repositories/MovieRepository.php",
-            "line": 796,
+            "line": 838,
             "identifier": "missingType.generics",
             "messageHash": "28746f9eb50eca980fc7d1db36a66d6a318f93ca1b7e3f0c5e210ffe73ce9344",
             "sourceHash": "6ba989a52d29cfeb731bfc96c7ee96c77ff9dfab851662ee2794bb3366629ace"
         },
         {
             "path": "app/Repositories/MovieRepository.php",
-            "line": 817,
+            "line": 859,
             "identifier": "missingType.generics",
             "messageHash": "71430d79dd6d5b6f45ff48564002570d73cb1e301097fffd50c1e26aced2de3b",
             "sourceHash": "0094caa6181a7c81293bec03851f7dd467a6e177356fec76249bb01af767241d"
@@ -486,21 +486,21 @@
         },
         {
             "path": "app/Services/Mcp/McpToolService.php",
-            "line": 508,
+            "line": 510,
             "identifier": "missingType.iterableValue",
             "messageHash": "d31b7598cc9f11af77990c1ce1431420e576471afd83bc3f3f3619ef46682932",
             "sourceHash": "cbfee800e4830177103d16d6a37a452cc4086b94b25d8330cf47ae02964b7083"
         },
         {
             "path": "app/Services/Mcp/McpToolService.php",
-            "line": 627,
+            "line": 629,
             "identifier": "missingType.iterableValue",
             "messageHash": "24faf7b7ffe9579a9697031da37c841139bcf60a0b9d1e70e37ec348bb6789b0",
             "sourceHash": "b198145efa8d134069bf48e67bd95a1418f58842ba5fa3f8b2b74513b0985ef6"
         },
         {
             "path": "app/Services/Mcp/McpToolService.php",
-            "line": 673,
+            "line": 675,
             "identifier": "missingType.iterableValue",
             "messageHash": "4f212244ef2bf3aac50b8441db7df2613f138488675816f35bcfd7c32cd9899b",
             "sourceHash": "8a6adfa895f425836aa312ac142da904d2ac197588554b214ee4da186cac10a7"
@@ -591,7 +591,7 @@
         },
         {
             "path": "app/Services/Observability/NodeEgressProbe.php",
-            "line": 279,
+            "line": 285,
             "identifier": "missingType.iterableValue",
             "messageHash": "b441d58e8701950c8af60b2d1d7486fc76e1f2099e4608af102395a75553c12e",
             "sourceHash": "2cb98529eb8ae97fe5f7e6a03bb7883d374f59022b3ecd689af61cf59ff228bb"
