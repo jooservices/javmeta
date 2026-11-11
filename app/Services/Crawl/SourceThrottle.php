@@ -364,7 +364,7 @@ final class SourceThrottle
     {
         $slowSamples = count(array_filter(
             $window,
-            static fn(array $sample): bool => $sample['duration_ms'] > $settings['slow_threshold_ms'],
+            static fn(array $sample): bool => $sample['duration_ms'] >= $settings['slow_threshold_ms'],
         ));
         if ($slowSamples >= $settings['sustained_samples']) {
             return 'latency_high';

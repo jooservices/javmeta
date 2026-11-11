@@ -409,8 +409,8 @@ return [
             'description' => 'Số mẫu fetch gần nhất được giữ để đánh giá độ trễ của nguồn.',
         ],
         'crawl__latency_gap__sustained_samples' => [
-            'label' => 'Số mẫu đạt ngưỡng liên tục',
-            'description' => 'Số mẫu trong cửa sổ phải cùng đạt ngưỡng chậm hoặc khỏe để thay đổi nhịp.',
+            'label' => 'Số mẫu đạt ngưỡng trong cửa sổ',
+            'description' => 'Số mẫu đạt ngưỡng chậm hoặc khỏe ở bất kỳ vị trí nào trong cửa sổ để thay đổi nhịp (không cần liên tiếp nhau).',
         ],
         'crawl__latency_gap__slow_threshold_ms' => [
             'label' => 'Ngưỡng fetch chậm (mili giây)',

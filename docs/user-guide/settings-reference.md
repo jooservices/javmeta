@@ -482,9 +482,9 @@ Số mẫu fetch gần nhất được giữ để đánh giá độ trễ của
 
 Số nguyên; từ 3 đến 32. Mã mục: `crawl.latency_gap.sample_window_size`.
 
-### Số mẫu đạt ngưỡng liên tục
+### Số mẫu đạt ngưỡng trong cửa sổ
 
-Số mẫu trong cửa sổ phải cùng đạt ngưỡng chậm hoặc khỏe để thay đổi nhịp.
+Số mẫu đạt ngưỡng chậm hoặc khỏe ở bất kỳ vị trí nào trong cửa sổ để thay đổi nhịp (không cần liên tiếp nhau).
 
 Số nguyên; từ 2 đến 32. Mã mục: `crawl.latency_gap.sustained_samples`.
 

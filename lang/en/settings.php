@@ -409,8 +409,8 @@ return [
             'description' => 'Number of recent fetch samples retained to evaluate source latency.',
         ],
         'crawl__latency_gap__sustained_samples' => [
-            'label' => 'Sustained sample count',
-            'description' => 'Number of samples in the window that must meet slow or healthy conditions before changing the gap.',
+            'label' => 'Qualifying sample count in the window',
+            'description' => 'Number of samples anywhere in the window (not necessarily consecutive) that must meet the slow or healthy condition before the gap changes.',
         ],
         'crawl__latency_gap__slow_threshold_ms' => [
             'label' => 'Slow fetch threshold (milliseconds)',
