@@ -4,11 +4,7 @@
         "enabled": true,
         "actions": [
             {
-                "action": "\\CaptainHook\\App\\Hook\\Message\\Action\\Regex",
-                "options": {
-                    "regex": "/^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\\([^)\\r\\n]+\\))?!?:\\s[A-Z][^\\r\\n]{0,99}(\\R[\\s\\S]*)?$/",
-                    "error": "The first line must follow Conventional Commits with an uppercase subject: <type>(<scope>): Subject (a body and trailers may follow after a blank line)"
-                }
+                "action": "bash tools/quality/check-git-conventions.sh commit-message \"{$ARG|value-of:MESSAGE_FILE}\""
             }
         ]
     },
@@ -28,6 +24,10 @@
     "pre-push": {
         "enabled": true,
         "actions": [
+            {
+                "action": "bash tools/quality/check-git-conventions.sh pre-push origin {$STDIN}",
+                "conditions": []
+            },
             {
                 "action": "echo '🔒 Scanning commits for secrets...' && if ! command -v gitleaks >/dev/null 2>&1; then echo 'Note: gitleaks not available in this environment; CI still scans on push'; exit 0; fi; default_ref=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/@@'); gitleaks detect --verbose --redact --config=.gitleaks.toml --log-opts=\"${default_ref:-origin/develop}..HEAD\"",
                 "conditions": []
