@@ -400,6 +400,38 @@ return [
             'label' => 'Per-source request gap overrides (JSON)',
             'description' => 'Maps a configured or stored source code to min, default and max from 0.25 to 600 seconds; leave empty to keep the default pacing. The 14 CrawlerX 1.5.0 sources start at 8 seconds (min 4, max 60); adjust pacing through this map.',
         ],
+        'crawl__latency_gap__enabled' => [
+            'label' => 'Enable latency-based source gap adaptation',
+            'description' => 'Off by default. When enabled, slow fetches increase source pacing gaps, and healthy responses gradually recover them.',
+        ],
+        'crawl__latency_gap__sample_window_size' => [
+            'label' => 'Latency sample window size',
+            'description' => 'Number of recent fetch samples retained to evaluate source latency.',
+        ],
+        'crawl__latency_gap__sustained_samples' => [
+            'label' => 'Sustained sample count',
+            'description' => 'Number of samples in the window that must meet slow or healthy conditions before changing the gap.',
+        ],
+        'crawl__latency_gap__slow_threshold_ms' => [
+            'label' => 'Slow fetch threshold (milliseconds)',
+            'description' => 'A sample at or above this threshold counts as slow.',
+        ],
+        'crawl__latency_gap__healthy_threshold_ms' => [
+            'label' => 'Healthy fetch threshold (milliseconds)',
+            'description' => 'A sample at or below this threshold counts as healthy; the effective threshold is always lower than the slow threshold.',
+        ],
+        'crawl__latency_gap__increase_percent' => [
+            'label' => 'Gap increase percentage',
+            'description' => 'Percentage increase applied after the window records enough slow samples.',
+        ],
+        'crawl__latency_gap__recovery_percent' => [
+            'label' => 'Gap recovery percentage',
+            'description' => 'Percentage of the remaining distance to the source minimum recovered after enough healthy samples.',
+        ],
+        'crawl__latency_gap__window_ttl_seconds' => [
+            'label' => 'Latency sample lifetime (seconds)',
+            'description' => 'How long latency samples are retained in the shared cache.',
+        ],
         'queue__browser_inflight' => [
             'label' => 'Concurrent browser jobs (total)',
             'description' => 'Shared limit for jobs that use FlareSolverr or Playwright, to avoid overloading the services.',
