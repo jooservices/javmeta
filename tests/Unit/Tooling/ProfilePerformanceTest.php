@@ -19,6 +19,86 @@ final class ProfilePerformanceTest extends TestCase
 
         self::assertStringContainsString('target jav.soulevil.com', $process->getOutput());
         self::assertStringContainsString('JAVMETA_STAGING_API_KEY', $process->getOutput());
+        self::assertStringContainsString('legacy in-process profiler remains available', $process->getOutput());
+    }
+
+    public function test_legacy_positional_command_keeps_iteration_and_comparison_filters(): void
+    {
+        $script = 'tools/profile-performance.php';
+        self::assertTrue(isLegacyProfilerInvocation([$script, '30']));
+        self::assertFalse(isLegacyProfilerInvocation([$script, '--base-url', 'https://jav.soulevil.com']));
+
+        $defaults = parseLegacyProfilerArguments([$script, '30'], base_path());
+        self::assertSame(30, $defaults['iterations']);
+        self::assertSame(base_path(), $defaults['comparison_root']);
+        self::assertNull($defaults['jobs']);
+        self::assertSame([], $defaults['files']);
+
+        $filtered = parseLegacyProfilerArguments([
+            $script,
+            '5',
+            base_path(),
+            'facets,search',
+            'app/Repositories/PerformerRepository.php,app/Repositories/MovieRepository.php',
+        ], base_path());
+        self::assertSame(5, $filtered['iterations']);
+        self::assertSame(['facets', 'search'], $filtered['jobs']);
+        self::assertSame([
+            'app/Repositories/PerformerRepository.php',
+            'app/Repositories/MovieRepository.php',
+        ], $filtered['files']);
+    }
+
+    public function test_legacy_profiler_retains_jobs_and_read_only_guards(): void
+    {
+        $jobNames = [
+            'performers',
+            'performers-aiko',
+            'status',
+            'facets',
+            'suggest',
+            'search',
+        ];
+
+        self::assertSame($jobNames, LEGACY_PROFILE_JOB_NAMES);
+        self::assertSame($jobNames, array_keys(legacyProfilerJobs($this->app)));
+        self::assertSame([
+            'CACHE_STORE' => 'array',
+            'PGOPTIONS' => '-c default_transaction_read_only=on',
+        ], legacyReadOnlyRuntimeEnvironment());
+        self::assertSame('SET default_transaction_read_only = on', legacyReadOnlyDatabaseStatement());
+    }
+
+    public function test_legacy_positional_command_validates_iterations_before_bootstrap(): void
+    {
+        $process = new Process([
+            PHP_BINARY,
+            base_path('tools/profile-performance.php'),
+            '0',
+        ], base_path());
+        $process->run();
+
+        self::assertSame(2, $process->getExitCode());
+        self::assertStringContainsString('Legacy profiling failed: InvalidArgumentException', $process->getErrorOutput());
+    }
+
+    public function test_legacy_profiler_rejects_out_of_range_iterations_unknown_jobs_and_paths_outside_root(): void
+    {
+        $script = 'tools/profile-performance.php';
+        foreach ([
+            [$script, '0'],
+            [$script, '-1'],
+            [$script, '1001'],
+            [$script, '1', base_path(), 'unknown'],
+            [$script, '1', base_path(), 'facets', '../outside.php'],
+        ] as $arguments) {
+            try {
+                parseLegacyProfilerArguments($arguments, base_path());
+                self::fail('Unexpectedly accepted legacy profiler arguments.');
+            } catch (\InvalidArgumentException) {
+                self::assertTrue(true);
+            }
+        }
     }
 
     public function test_it_rejects_the_old_staging_hostname_before_dns_or_http(): void

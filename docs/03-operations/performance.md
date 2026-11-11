@@ -76,7 +76,17 @@ The keyword full-text and performer match branches now use a UNION, allowing ind
 
 **Target assessment:** first direct after-call is under 1.5 s, but uncached p95 remains above 400 ms. An earlier round yielded p95 611.4 → 576.0 ms: variability is material, and these are observations rather than a controlled causal speedup. No warmed HTTP p95 or post-deployment improvement is claimed. QA must repeat the HTTP measurement with cold result-cache requests and include result quality when tuning the budget.
 
-The preceding in-process service profile is historical and is not an HTTP measurement. Its old command is not supported by the current `tools/profile-performance.php`, which now runs the controlled HTTP benchmark described above. A first in-process call after bootstrap was never a cold PostgreSQL buffer-cache measurement. Historical SQL plans and catalog terms should remain private.
+The in-process service profiler remains available alongside the HTTP benchmark:
+`php tools/profile-performance.php 30 [comparison-root [job[,job...] [class.php[,class.php...]]]]`.
+Its optional job filter accepts `performers`, `performers-aiko`, `status`, `facets`,
+`suggest`, and `search`. When a comparison root is supplied, the optional class-file
+list selects files loaded from that checkout before application bootstrap; otherwise
+the current checkout is profiled. This mode forces the array cache and a read-only
+PostgreSQL session, logs SELECT queries slower than 50 ms without bindings, and runs
+`EXPLAIN (ANALYZE, BUFFERS)` for each distinct slow query. It does not contact staging
+or measure HTTP latency. A first in-process call after bootstrap is not a cold
+PostgreSQL buffer-cache measurement. Historical SQL plans and catalog terms should
+remain private.
 
 Before JOOXCR-255 the performer text search took 0.7 to 1.4 s for any text (it scanned every performer, bio and alias); trigram indexes and one indexed branch per column made it 6 to 70 ms in isolation.
 

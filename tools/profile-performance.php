@@ -9,6 +9,14 @@ const REQUEST_TIMEOUT_SECONDS = 15;
 const HEALTH_BODY_LIMIT = 65536;
 const LOAD_SNAPSHOT_MAX_AGE_SECONDS = 60;
 const CACHE_EXPIRY_SAFETY_SECONDS = 1;
+const LEGACY_PROFILE_JOB_NAMES = [
+    'performers',
+    'performers-aiko',
+    'status',
+    'facets',
+    'suggest',
+    'search',
+];
 
 const ROUTES = [
     'search' => [
@@ -87,6 +95,10 @@ function printUsage(): void
     echo <<<'USAGE'
 Measure JavMeta staging HTTP response times. Requests are GET-only and target jav.soulevil.com.
 The API key is read from JAVMETA_STAGING_API_KEY and is never printed.
+
+The legacy in-process profiler remains available without staging HTTP requests:
+  php tools/profile-performance.php 30 [comparison-root [job[,job...] [class.php[,class.php...]]]]
+It uses an in-memory cache and a read-only PostgreSQL session.
 
 Required options:
   --base-url https://jav.soulevil.com
@@ -710,8 +722,184 @@ function methodSummary(): array
     ];
 }
 
+function isLegacyProfilerInvocation(array $arguments): bool
+{
+    return isset($arguments[1]) && preg_match('/^-?\d+$/', (string) $arguments[1]) === 1;
+}
+
+/** @param list<string> $arguments
+ *  @return array{iterations: int, comparison_root: string, jobs: ?list<string>, files: list<string>}
+ */
+function parseLegacyProfilerArguments(array $arguments, string $workingDirectory): array
+{
+    if (! isset($arguments[1]) || preg_match('/^-?\d+$/', (string) $arguments[1]) !== 1) {
+        throw new InvalidArgumentException('Legacy profiling requires a positional iteration count.');
+    }
+    $iterations = filter_var($arguments[1], FILTER_VALIDATE_INT);
+    if ($iterations === false || $iterations < 1 || $iterations > 1000) {
+        throw new InvalidArgumentException('Legacy profiling iterations must be between 1 and 1000.');
+    }
+    if (count($arguments) > 5) {
+        throw new InvalidArgumentException('Legacy profiling accepts at most four positional arguments.');
+    }
+
+    $comparisonRoot = $workingDirectory;
+    if (isset($arguments[2])) {
+        $resolvedRoot = realpath($arguments[2]);
+        if ($resolvedRoot === false || ! is_dir($resolvedRoot)) {
+            throw new InvalidArgumentException('The legacy comparison root must be an existing directory.');
+        }
+        $comparisonRoot = $resolvedRoot;
+    }
+
+    $jobs = null;
+    if (isset($arguments[3])) {
+        $requestedJobs = array_values(array_unique(explode(',', $arguments[3])));
+        foreach ($requestedJobs as $job) {
+            if (! in_array($job, LEGACY_PROFILE_JOB_NAMES, true)) {
+                throw new InvalidArgumentException('Unknown legacy profile job: ' . $job);
+            }
+        }
+        $jobs = $requestedJobs;
+    }
+
+    $files = isset($arguments[2])
+        ? (isset($arguments[4])
+            ? explode(',', $arguments[4])
+            : ['app/Repositories/PerformerRepository.php'])
+        : [];
+    if (in_array('', $files, true)) {
+        throw new InvalidArgumentException('Legacy class file paths must not be empty.');
+    }
+    foreach ($files as $file) {
+        if (str_starts_with($file, '/') || in_array('..', explode('/', $file), true)) {
+            throw new InvalidArgumentException('Legacy class file paths must stay inside the comparison root.');
+        }
+        $resolvedFile = realpath($comparisonRoot . '/' . $file);
+        if ($resolvedFile === false
+            || ! is_file($resolvedFile)
+            || ! str_starts_with($resolvedFile, rtrim($comparisonRoot, '/') . '/')) {
+            throw new InvalidArgumentException('A legacy class file is missing from the comparison root.');
+        }
+    }
+
+    return [
+        'iterations' => $iterations,
+        'comparison_root' => $comparisonRoot,
+        'jobs' => $jobs,
+        'files' => $files,
+    ];
+}
+
+/** @return array<string, string> */
+function legacyReadOnlyRuntimeEnvironment(): array
+{
+    return [
+        'CACHE_STORE' => 'array',
+        'PGOPTIONS' => '-c default_transaction_read_only=on',
+    ];
+}
+
+function legacyReadOnlyDatabaseStatement(): string
+{
+    return 'SET default_transaction_read_only = on';
+}
+
+function legacyProfilerJobs(Illuminate\Foundation\Application $app): array
+{
+    return [
+        'performers' => fn() => $app->make(App\Repositories\PerformerRepository::class)->search([], 'name', null, 24),
+        'performers-aiko' => fn() => $app->make(App\Repositories\PerformerRepository::class)->search(['q' => 'aiko'], 'name', null, 24),
+        'status' => fn() => $app->make(App\Services\Crawl\CrawlStatusService::class)->status(),
+        'facets' => fn() => $app->make(App\Repositories\MovieRepository::class)->facets([]),
+        'suggest' => fn() => $app->make(App\Http\Controllers\SuggestController::class)->index(
+            Illuminate\Http\Request::create('/', 'GET', ['q' => 'mi']),
+        ),
+        'search' => fn() => $app->make(App\Services\Search\HybridSearchService::class)->search('beautiful office drama 2025'),
+    ];
+}
+
+function runLegacyProfiler(array $arguments, string $workingDirectory): void
+{
+    $options = parseLegacyProfilerArguments($arguments, $workingDirectory);
+    foreach (legacyReadOnlyRuntimeEnvironment() as $name => $value) {
+        putenv($name . '=' . $value);
+        $_ENV[$name] = $_SERVER[$name] = $value;
+    }
+
+    require $workingDirectory . '/vendor/autoload.php';
+    foreach ($options['files'] as $file) {
+        require_once $options['comparison_root'] . '/' . $file;
+    }
+
+    $app = require $workingDirectory . '/bootstrap/app.php';
+    $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+    Illuminate\Support\Facades\DB::statement(legacyReadOnlyDatabaseStatement());
+
+    $slow = [];
+    Illuminate\Support\Facades\DB::listen(static function ($query) use (&$slow): void {
+        if ($query->time > 50 && str_starts_with(strtolower(ltrim($query->sql)), 'select')) {
+            echo json_encode(['slow_query' => $query->sql, 'ms' => $query->time]) . PHP_EOL;
+            $slow[$query->sql] = ['sql' => $query->sql, 'bindings' => $query->bindings, 'ms' => $query->time];
+        }
+    });
+
+    $jobs = legacyProfilerJobs($app);
+    echo json_encode([
+        'machine' => gethostname(),
+        'counts' => $app->make(App\Services\Crawl\CrawlStatusService::class)->counts(),
+    ]) . PHP_EOL;
+    foreach ($jobs as $name => $job) {
+        if ($options['jobs'] !== null && ! in_array($name, $options['jobs'], true)) {
+            continue;
+        }
+
+        $times = [];
+        for ($iteration = 0; $iteration < $options['iterations']; $iteration++) {
+            $startedAt = hrtime(true);
+            try {
+                $job();
+            } catch (Throwable $error) {
+                echo json_encode(['endpoint' => $name, 'error_class' => $error::class]) . PHP_EOL;
+                break;
+            }
+            $times[] = (hrtime(true) - $startedAt) / 1_000_000;
+        }
+        if ($times !== []) {
+            $first = $times[0];
+            sort($times, SORT_NUMERIC);
+            echo json_encode([
+                'endpoint' => $name,
+                'calls' => count($times),
+                'first_ms' => $first,
+                'p50_ms' => $times[(int) ceil(count($times) * 0.5) - 1],
+                'p95_ms' => $times[(int) ceil(count($times) * 0.95) - 1],
+            ]) . PHP_EOL;
+        }
+    }
+
+    foreach ($slow as $query) {
+        echo json_encode(['explain_sql' => $query['sql'], 'last_ms' => $query['ms']]) . PHP_EOL;
+        $plan = Illuminate\Support\Facades\DB::select(
+            'EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ' . $query['sql'],
+            $query['bindings'],
+        );
+        echo json_encode(['plan' => $plan]) . PHP_EOL;
+    }
+}
+
 if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') !== __FILE__) {
     return;
+}
+
+if (isLegacyProfilerInvocation($argv)) {
+    try {
+        runLegacyProfiler($argv, getcwd() ?: __DIR__ . '/..');
+        exit(0);
+    } catch (Throwable $error) {
+        fwrite(STDERR, 'Legacy profiling failed: ' . $error::class . PHP_EOL);
+        exit(2);
+    }
 }
 
 try {
