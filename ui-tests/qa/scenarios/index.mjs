@@ -1,4 +1,5 @@
 import { defineScenario } from '../lib/step.mjs';
+import { openSignInForm, typeSyntheticPassword, activatePasswordToggle, expectPasswordMasked, expectPasswordVisible, expectSignInNotSubmitted } from '../steps/auth.mjs';
 import { login, loginWith, expectOnLoginPage, expectSignInEmailEmpty, expectFrontDoorIsXCrawlerInVietnamese, switchUiLanguage, expectUiLanguage, expectLanguagePersistsAfterReload } from '../steps/auth.mjs';
 import { openView, openPath, expectViewHealthy, resizeTo, expectNoConsoleErrors } from '../steps/navigation.mjs';
 import { openTab, expectTabShowsControls, tabNames, toggleFirstSwitch, saveSwitchGroup, expectSwitchPersisted, restoreSwitch } from '../steps/settings.mjs';
@@ -38,6 +39,15 @@ export const VIEWS = [
 export const SETTINGS_TABS = ['personal', 'crawl', 'notify', 'health', 'search', 'media', 'system'];
 
 export const loginRejectsAWrongPassword = defineScenario('login rejects a wrong password', [loginWith('definitely-wrong'), expectOnLoginPage()]);
+
+export const signInPasswordVisibilityControl = defineScenario('the sign-in password visibility control shows and hides the password', [
+  openSignInForm(), expectPasswordMasked(), typeSyntheticPassword(), expectPasswordMasked(),
+  activatePasswordToggle('pointer'), expectPasswordVisible(),
+  activatePasswordToggle('pointer'), expectPasswordMasked(),
+  activatePasswordToggle('enter'), expectPasswordVisible(),
+  activatePasswordToggle('space'), expectPasswordMasked(),
+  expectSignInNotSubmitted(),
+]);
 
 export const signInFormHasNoPrefilledEmail = defineScenario('the sign-in form has no prefilled email', [
   openPath('/login'), expectSignInEmailEmpty(),

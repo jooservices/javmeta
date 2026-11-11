@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { defineStep } from '../lib/step.mjs';
 
 /** Signs in as the owner. Login is throttled to 6 attempts a minute (as in production), so a 429 waits out the window once. */
@@ -81,4 +82,73 @@ export const expectLanguagePersistsAfterReload = defineStep('expectLanguagePersi
   await ctx.page.waitForSelector('#langsw', { timeout: 8000 });
   const lang = await ctx.page.evaluate(() => document.documentElement.lang);
   if (lang !== locale) throw new Error(`After reload lang is "${lang}", expected ${locale}.`);
+});
+
+/* ---------- S-04: the sign-in password visibility control ---------- */
+
+/** A random probe generated at run time (no fixed secret-like literal in the repository); it is typed into the field and only ever compared, never printed. */
+const TYPED_PROBE = `probe-${randomBytes(9).toString('hex')}`;
+
+const readToggle = (page, expected) => page.evaluate(probe => {
+  const input = document.getElementById('password');
+  const button = document.getElementById('pw-toggle');
+  return {
+    present: Boolean(input && button),
+    type: input ? input.type : null,
+    pressed: button ? button.getAttribute('aria-pressed') : null,
+    label: button ? (button.textContent || '').trim() : null,
+    show: button ? button.dataset.show : null,
+    hide: button ? button.dataset.hide : null,
+    preserved: input ? input.value === probe : false,
+  };
+}, expected);
+
+/** Opens the sign-in form and counts any submission of it, so a toggle that submits the form is caught. */
+export const openSignInForm = defineStep('openSignInForm', async ctx => {
+  const { page, base } = ctx;
+  ctx.state.signInSubmissions = 0;
+  page.on('request', request => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/login') ctx.state.signInSubmissions += 1;
+  });
+  await page.goto(base + '/login');
+  await page.waitForLoadState('load');
+});
+
+export const typeSyntheticPassword = defineStep('typeSyntheticPassword', async ctx => {
+  await ctx.page.fill('#password', TYPED_PROBE);
+  ctx.state.probeTyped = true;
+});
+
+/** Activates the control the way a person would: a pointer click, or the keyboard (Enter / Space) on the focused button. */
+export const activatePasswordToggle = defineStep('activatePasswordToggle', async (ctx, how) => {
+  const button = ctx.page.locator('#pw-toggle');
+  if (await button.count() === 0) throw new Error('The password visibility control (#pw-toggle) is missing from the sign-in form.');
+  if (how === 'pointer') {
+    await button.click();
+  } else if (how === 'enter' || how === 'space') {
+    await button.focus();
+    await ctx.page.keyboard.press(how === 'enter' ? 'Enter' : 'Space');
+  } else {
+    throw new Error(`Unknown activation "${how}"; use pointer, enter or space.`);
+  }
+});
+
+const expectToggleState = (visible) => async ctx => {
+  const state = await readToggle(ctx.page, TYPED_PROBE);
+  const word = visible ? 'visible' : 'masked';
+  if (!state.present) throw new Error('The password field or its visibility control is missing.');
+  if (state.type !== (visible ? 'text' : 'password')) throw new Error(`The password input type is "${state.type}", expected the ${word} state.`);
+  if (state.pressed !== (visible ? 'true' : 'false')) throw new Error(`aria-pressed is "${state.pressed}", expected "${visible ? 'true' : 'false'}" in the ${word} state.`);
+  const expectedLabel = visible ? state.hide : state.show;
+  if (!expectedLabel || state.label !== expectedLabel) throw new Error(`The button text is "${state.label}", expected the translated "${expectedLabel}" in the ${word} state.`);
+  if (ctx.state.probeTyped && !state.preserved) throw new Error(`The typed value was not preserved in the ${word} state.`);
+};
+
+export const expectPasswordMasked = defineStep('expectPasswordMasked', expectToggleState(false));
+export const expectPasswordVisible = defineStep('expectPasswordVisible', expectToggleState(true));
+
+/** Toggling must not submit the form or leave the sign-in page. */
+export const expectSignInNotSubmitted = defineStep('expectSignInNotSubmitted', async ctx => {
+  if (ctx.state.signInSubmissions !== 0) throw new Error(`The sign-in form was submitted ${ctx.state.signInSubmissions} time(s) by the visibility control.`);
+  if (!new URL(ctx.page.url()).pathname.endsWith('/login')) throw new Error(`The page left the sign-in form (${ctx.page.url()}).`);
 });
