@@ -174,7 +174,7 @@ check_pre_push() {
       fail "pre-push received a malformed ref update."
       return 1
     fi
-    if ! git check-ref-format "$local_ref" >/dev/null 2>&1 || ! git check-ref-format "$remote_ref" >/dev/null 2>&1; then
+    if ! git check-ref-format "$remote_ref" >/dev/null 2>&1; then
       fail "pre-push received an invalid ref update."
       return 1
     fi
@@ -183,11 +183,11 @@ check_pre_push() {
       continue
     fi
     if [[ ! "$local_sha" =~ ^([[:xdigit:]]{40}|[[:xdigit:]]{64})$ ]]; then
-      fail "pre-push received an invalid local object ID for '$local_ref'."
+      fail "pre-push received an invalid local object ID."
       return 1
     fi
     if ! head_sha="$(git rev-parse --verify --quiet "${local_sha}^{commit}")"; then
-      fail "pre-push could not resolve a commit for '$local_ref'."
+      fail "pre-push could not resolve the local commit."
       return 1
     fi
 

@@ -147,13 +147,15 @@ GOOD_HEAD="$(git -C "$REPO" rev-parse HEAD)"
   expect_pass "multiple local commits" bash "$CHECKER" commits "${BASE}..HEAD"
 )
 
-PUSH_INPUT="refs/heads/feature ${GOOD_HEAD} refs/heads/feature ${BASE}"
+PUSH_INPUT="HEAD ${GOOD_HEAD} refs/heads/feature ${BASE}"
+ZERO_OID="0000000000000000000000000000000000000000"
+PUSH_REVISION_INPUT="HEAD~0 ${GOOD_HEAD} refs/heads/revision ${ZERO_OID}"
 (
   cd "$REPO"
   expect_pass "pre-push checks the exact existing-branch range" bash "$CHECKER" pre-push origin "$PUSH_INPUT"
+  expect_pass "pre-push accepts a local revision expression as the source ref" bash "$CHECKER" pre-push origin "$PUSH_REVISION_INPUT"
 )
 
-ZERO_OID="0000000000000000000000000000000000000000"
 NEW_BRANCH_INPUT="refs/heads/new-feature ${GOOD_HEAD} refs/heads/new-feature ${ZERO_OID}"
 (
   cd "$REPO"
@@ -183,7 +185,7 @@ EDITOR_COMMENT_COMMIT="$(git -C "$REPO" commit-tree "${BASE}^{tree}" -p "$BASE" 
 (
   cd "$REPO"
   expect_fail_with "commit range rejects attribution before Git editor comments" 'Generated with' bash "$CHECKER" commits "${BASE}..${EDITOR_COMMENT_COMMIT}"
-  expect_fail_with "pre-push rejects an invalid new ref among multiple refs" 'Generated with' bash "$CHECKER" pre-push origin $'refs/heads/good\t'"${GOOD_HEAD}"$'\trefs/heads/good\t'"${BASE}"$'\nrefs/heads/bad\t'"${EDITOR_COMMENT_COMMIT}"$'\trefs/heads/bad\t'"${ZERO_OID}"
+  expect_fail_with "pre-push rejects an invalid new ref among multiple refs" 'Generated with' bash "$CHECKER" pre-push origin $'HEAD\t'"${GOOD_HEAD}"$'\trefs/heads/good\t'"${BASE}"$'\nrefs/heads/bad\t'"${EDITOR_COMMENT_COMMIT}"$'\trefs/heads/bad\t'"${ZERO_OID}"
 )
 
 # This literal is the CaptainHook action placeholder that the test exercises.
