@@ -6,17 +6,32 @@ namespace App\Http\Controllers\Ui;
 
 use App\Http\Controllers\Admin\ApiKeyController;
 use App\Http\Controllers\Admin\ReportController;
+use App\Services\Auth\ApiKeyAdministrationService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use JOOservices\LaravelController\Http\Controllers\BaseApiController;
 
 /**
- * What the owner's admin page needs (keys and reports) behind the signed-in session, so the browser never holds the
- * owner admin token. Each call runs the same controller as the token-protected /api/v1/admin route.
+ * Owner admin UI JSON endpoints behind the signed-in session, so the browser never holds the owner admin token.
+ * The key list is paginated here; mutations and reports use the token-protected admin controllers.
  */
-final class UiAdminController
+final class UiAdminController extends BaseApiController
 {
-    public function keys(): JsonResponse
+    public function keys(Request $request, ApiKeyAdministrationService $apiKeys): JsonResponse
     {
-        return app()->call([app(ApiKeyController::class), 'index']);
+        $validated = $request->validate([
+            'cursor' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:' . ApiKeyAdministrationService::MAX_PAGE_SIZE],
+        ]);
+        $page = $apiKeys->activePage(
+            isset($validated['cursor']) ? (int) $validated['cursor'] : null,
+            (int) ($validated['per_page'] ?? ApiKeyAdministrationService::DEFAULT_PAGE_SIZE),
+        );
+
+        return $this->respondWithData(
+            data: $page->toArray(),
+            meta: ['pagination' => $page->paginationMeta()],
+        );
     }
 
     public function createKey(): JsonResponse

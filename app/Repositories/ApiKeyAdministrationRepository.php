@@ -24,6 +24,9 @@ final class ApiKeyAdministrationRepository extends EloquentRepository implements
     use HasOrder;
     use HasRead;
     use HasRequestQuery;
+    public const DEFAULT_PAGE_SIZE = 25;
+
+    public const MAX_PAGE_SIZE = 100;
 
     public function __construct(ApiKey $model)
     {
@@ -39,6 +42,29 @@ final class ApiKeyAdministrationRepository extends EloquentRepository implements
             ->all();
 
         return new ApiKeyList($keys);
+    }
+
+    public function activePageForAdministration(?int $cursor, int $perPage): ApiKeyList
+    {
+        $perPage = min(max(1, $perPage), self::MAX_PAGE_SIZE);
+        $query = $this->newQuery()->where('status', ApiKey::STATUS_ACTIVE);
+        if ($cursor !== null) {
+            $query->where('id', '<', $cursor);
+        }
+
+        /** @var \Illuminate\Database\Eloquent\Collection<int, ApiKey> $records */
+        $records = $query->orderByDesc('id')->limit($perPage + 1)->get();
+        $hasMore = $records->count() > $perPage;
+        if ($hasMore) {
+            $records->pop();
+        }
+        /** @var list<ApiKeySnapshot> $keys */
+        $keys = $records->map(fn(ApiKey $key): ApiKeySnapshot => $this->snapshot($key))
+            ->all();
+
+        $nextCursor = $hasMore && $keys !== [] ? (string) $keys[array_key_last($keys)]->id : null;
+
+        return new ApiKeyList($keys, $perPage, $hasMore, $nextCursor);
     }
 
     public function assertExists(int $id): void
