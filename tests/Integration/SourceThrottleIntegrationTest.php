@@ -55,7 +55,7 @@ final class SourceThrottleIntegrationTest extends IntegrationTestCase
         self::assertGreaterThan(0.5, (float) $source->gap_seconds_current);
         self::assertSame(5, DB::table('crawl_fetch_attempts')->where('source_slug', $source->slug)->count());
         self::assertSame(CrawlQueue::STATUS_DONE, DB::table('crawl_queue')->where('source_slug', $source->slug)->latest('id')->value('status'));
-        Http::assertSentCount(3);
+        self::assertSame(3, $this->gapMetricRequests());
         Http::assertSent(static fn(\Illuminate\Http\Client\Request $request): bool => data_get(
             $request->data(),
             'resourceMetrics.0.scopeMetrics.0.metrics.0.name',
@@ -139,7 +139,7 @@ final class SourceThrottleIntegrationTest extends IntegrationTestCase
 
         self::assertGreaterThan(2.0, $previousGap);
         self::assertLessThanOrEqual(60.0, $previousGap);
-        Http::assertSentCount(3);
+        self::assertSame(3, $this->gapMetricRequests());
     }
 
     public function test_interleaved_workers_serialize_persisted_gap_changes_and_match_each_fetch_id(): void
@@ -174,7 +174,7 @@ final class SourceThrottleIntegrationTest extends IntegrationTestCase
         self::assertGreaterThan((float) $afterB->gap_seconds_current, (float) $afterA->gap_seconds_current);
         self::assertGreaterThan((float) $afterA->gap_seconds_current, (float) $afterC->gap_seconds_current);
         self::assertSame((float) $afterC->gap_seconds_current, $persistedGap);
-        Http::assertSentCount(3);
+        self::assertSame(3, $this->gapMetricRequests());
     }
 
     public function test_missing_and_invalid_attempts_do_not_trigger_or_consume_latency_adjustments(): void
@@ -194,7 +194,7 @@ final class SourceThrottleIntegrationTest extends IntegrationTestCase
         $source = Source::query()->findOrFail($source->getKey());
         self::assertSame(16.58, (float) $source->gap_seconds_current);
         self::assertSame(1, DB::table('crawl_fetch_attempts')->where('source_slug', $source->slug)->count());
-        Http::assertNothingSent();
+        self::assertSame(0, $this->gapMetricRequests());
     }
 
     public function test_telemetry_failure_does_not_fail_or_undo_a_successful_fetch(): void
@@ -202,7 +202,15 @@ final class SourceThrottleIntegrationTest extends IntegrationTestCase
         self::assertSame('pgsql', DB::getDriverName());
         $this->configureLatencyGap(['sample_window_size' => 3, 'sustained_samples' => 2]);
         $this->configureMetrics();
-        Http::fake(static fn(): never => throw new ConnectionException('telemetry unavailable'));
+        $telemetryAttempts = 0;
+        Http::fake(static function (\Illuminate\Http\Client\Request $request) use (&$telemetryAttempts) {
+            if (! str_starts_with($request->url(), 'https://openobserve.test')) {
+                return Http::response([], 200);
+            }
+            $telemetryAttempts++;
+
+            throw new ConnectionException('telemetry unavailable');
+        });
 
         $source = $this->throttleSource(2.0, 2.0, 60.0);
         for ($index = 0; $index < 3; $index++) {
@@ -212,7 +220,14 @@ final class SourceThrottleIntegrationTest extends IntegrationTestCase
 
         self::assertSame(2.3, (float) Source::query()->findOrFail($source->getKey())->gap_seconds_current);
         self::assertSame(CrawlQueue::STATUS_DONE, $row->fresh()->status);
-        Http::assertSentCount(1);
+        self::assertSame(1, $telemetryAttempts);
+    }
+
+    /** Requests that carry the gap-change metric; the job also talks to other fake or real services. */
+    private function gapMetricRequests(): int
+    {
+        return Http::recorded(static fn(\Illuminate\Http\Client\Request $request): bool => str_starts_with($request->url(), 'https://openobserve.test')
+            && data_get($request->data(), 'resourceMetrics.0.scopeMetrics.0.metrics.0.name') === 'javmeta_source_gap_changes_total')->count();
     }
 
     /** @param array<string, mixed> $overrides */
