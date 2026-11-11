@@ -449,4 +449,21 @@ final class CrawlQueueService
     {
         return $this->eventRepository ?? app(CrawlEventRepository::class);
     }
+
+    public const MAX_SSRF_REQUEUE_BATCH_SIZE = 500;
+
+    /** @return array{eligible: int, requeued: int} */
+    public function requeueSsrfBlockedFailures(bool $apply, ?string $source, int $batchSize): array
+    {
+        if ($batchSize < 1 || $batchSize > self::MAX_SSRF_REQUEUE_BATCH_SIZE) {
+            throw new RuntimeException('The SSRF requeue batch size is outside the supported range.');
+        }
+
+        return $this->queueRepository()->requeueSsrfBlockedFailures(
+            $apply,
+            $source,
+            $batchSize,
+            now()->addSeconds($this->retryRoundDelay(1)),
+        );
+    }
 }
