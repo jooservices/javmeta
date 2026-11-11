@@ -10,7 +10,7 @@ image is pushed. Deploy stays manual (`deploy/*.sh`).
 | `ci.yml` | push / PR to `develop`, manual | **Lint and test**: composer validate, `composer lint`, `composer test:coverage`, `composer coverage:check` (≥ 90%), coverage artifact · **Integration**: `docker/ci/integration` against real Postgres, Mongo, Elasticsearch and OpenObserve · **Secrets scan**: gitleaks with `.gitleaks.toml` · **Build app image**: `Dockerfile.production`, no push |
 | `embedder-image.yml` | changes under `embedder/` | build `embedder/Dockerfile.production`, no push |
 | `workflow-audit.yml` | changes under `.github/`, weekly | actionlint (pinned image), zizmor (action uploads SARIF to code scanning) |
-| `commitlint.yml` | pull requests | Conventional Commits, sentence-case subject (same rule as `captainhook.json`) |
+| `commitlint.yml` | pull requests | Conventional Commit headers, sentence-case subject |
 
 All actions are pinned by commit SHA.
 
@@ -105,3 +105,23 @@ executes the command in the runtime. No credential is written to a tracked file,
 Live mode is never accepted. The Mongo outage scenario stays CI-only because it stops the service.
 Elasticsearch 9 leaves `dense_vector` fields out of `_source`; tests that read vectors back pass
 `_source_exclude_vectors=false`.
+
+## Local Git convention checks
+
+`captainhook.json` runs the shared checker for every commit message. It checks
+the allowed Conventional Commit types, optional scope and breaking marker,
+uppercase subject, commit header length, and footer trailers. AI and coauthor
+attribution trailers such as `Co-Authored-By` and `Generated with` are rejected
+with an actionable message. A project ticket trailer such as `Ticket: T16` is
+allowed.
+
+Check a PR title and every non-merge commit in a local range before submission:
+
+```bash
+bash tools/quality/check-git-conventions.sh title 'feat(ui): Add a feature'
+bash tools/quality/check-git-conventions.sh commits origin/develop..HEAD
+bash tests/Shell/git-conventions.test.sh
+```
+
+These commands use only the supplied title, commit message file or local Git
+objects. They do not call GitHub or fetch a branch.

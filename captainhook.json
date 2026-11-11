@@ -4,11 +4,7 @@
         "enabled": true,
         "actions": [
             {
-                "action": "\\CaptainHook\\App\\Hook\\Message\\Action\\Regex",
-                "options": {
-                    "regex": "/^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\\([^)\\r\\n]+\\))?!?:\\s[A-Z][^\\r\\n]{0,99}(\\R[\\s\\S]*)?$/",
-                    "error": "The first line must follow Conventional Commits with an uppercase subject: <type>(<scope>): Subject (a body and trailers may follow after a blank line)"
-                }
+                "action": "bash tools/quality/check-git-conventions.sh commit-message \"{$ARG|value-of:MESSAGE_FILE}\""
             }
         ]
     },
