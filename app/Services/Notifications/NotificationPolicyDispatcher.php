@@ -71,7 +71,7 @@ final class NotificationPolicyDispatcher
             } elseif ($tier === 'info' && ! $digest) {
                 return $this->suppress($key, $policyKey, $causeKey, $quiet && ! $security ? 'quiet_mode' : 'digest_only', false);
             }
-            if ($quiet && ! $security && ! $digest && $tier !== 'critical') {
+            if ($quiet && ! $security && $tier !== 'critical') {
                 return $this->suppress($key, $policyKey, $causeKey, 'quiet_mode', false);
             }
             if ($digest) {
