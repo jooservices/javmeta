@@ -76,6 +76,15 @@ foreach ($lines as $path => $statementCounts) {
     $totalCovered += $covered;
 }
 
+if ($totalStatements === 0) {
+    fwrite(
+        STDERR,
+        "No measurable app statement lines found after normalising and merging the supplied Clover reports. "
+        . "Include app/ files with statement lines.\n",
+    );
+    exit(1);
+}
+
 usort($rows, static fn(array $left, array $right): int => $left[0] <=> $right[0]);
 $below = array_values(array_filter($rows, static fn(array $row): bool => $row[3] < $min));
 usort($below, static fn(array $left, array $right): int => ($right[1] - $right[2]) <=> ($left[1] - $left[2]));
