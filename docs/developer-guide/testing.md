@@ -40,3 +40,16 @@ The generator reads only the schema and does not boot Laravel, read defaults or 
 ```
 
 Keep failures and their evidence in the handoff. Do not lower assertions or run PHPCS/PHPMD for this assignment.
+
+## Static analysis and its baseline
+
+`composer lint:phpstan` runs Larastan/PHPStan at level 6 with the reviewed findings in
+`phpstan-baseline.neon` ignored. A new finding still fails the analysis. The configuration also reports baseline
+entries that no longer match: remove an entry in the same change that fixes its finding. Once the baseline is empty,
+raise PHPStan to level 7 in a follow-up change.
+
+Run this database-independent check from the worktree:
+
+```bash
+docker/ci/run composer lint:phpstan
+```

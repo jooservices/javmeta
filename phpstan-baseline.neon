@@ -1,0 +1,583 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Method App\\Console\\Commands\\Crawler\\FeedPoolCommand\:\:dispatchQueue\(\) has parameter \$latestStartedAt with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Console/Commands/Crawler/FeedPoolCommand.php
+
+		-
+			message: '#^Method App\\Console\\Commands\\Crawler\\FeedPoolCommand\:\:dispatchQueues\(\) has parameter \$retryBudgetUsed with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Console/Commands/Crawler/FeedPoolCommand.php
+
+		-
+			message: '#^Method App\\Console\\Commands\\Crawler\\FeedPoolCommand\:\:dispatchQueues\(\) has parameter \$retryLatestStartedAt with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Console/Commands/Crawler/FeedPoolCommand.php
+
+		-
+			message: '#^Method App\\Console\\Commands\\Crawler\\FeedPoolCommand\:\:dispatchQueues\(\) has parameter \$retryWaiting with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Console/Commands/Crawler/FeedPoolCommand.php
+
+		-
+			message: '#^Method App\\Console\\Commands\\Observability\\PublishMetricsCommand\:\:dependencyProbeMetrics\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Console/Commands/Observability/PublishMetricsCommand.php
+
+		-
+			message: '#^Unable to resolve the template type TCallbackReturnType in call to static method Illuminate\\Database\\Connection\:\:transaction\(\)$#'
+			identifier: argument.templateType
+			count: 1
+			path: app/Repositories/BusinessQueryRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\CrawlQueueRepository\:\:claimWithDiagnostics\(\) has parameter \$eligibleQuery with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Repositories/CrawlQueueRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\CrawlQueueRepository\:\:claimWithDiagnostics\(\) has parameter \$excludedSources with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Repositories/CrawlQueueRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\CrawlQueueRepository\:\:claimWithDiagnostics\(\) has parameter \$sourcesAtInflightLimit with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Repositories/CrawlQueueRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\CrawlQueueRepository\:\:sourcesHeldByBlockDelay\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Repositories/CrawlQueueRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\CrawlQueueRepository\:\:updateRetryableFailure\(\) has parameter \$attributes with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Repositories/CrawlQueueRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\CrawlQueueRepository\:\:whereHistoricallyRetryable\(\) has parameter \$retryableCodes with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Repositories/CrawlQueueRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\CrawlStatsServiceRepository\:\:storeHour\(\) has parameter \$global with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Repositories/CrawlStatsServiceRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\MovieRepository\:\:applyCursor\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Repositories/MovieRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\MovieRepository\:\:applyFilters\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Repositories/MovieRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\MovieRepository\:\:applyNullsFirstCursor\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Repositories/MovieRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\MovieRepository\:\:applyNullsLastCursor\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Repositories/MovieRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\MovieRepository\:\:applyRankCursor\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Repositories/MovieRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\MovieRepository\:\:applySort\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Repositories/MovieRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\MovieRepository\:\:applyTextSearch\(\) has parameter \$query with generic class Illuminate\\Database\\Eloquent\\Builder but does not specify its types\: TModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Repositories/MovieRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\NotificationPolicyServiceRepository\:\:touchCause\(\) has parameter \$safeContext with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Repositories/NotificationPolicyServiceRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\UiMarksMovieRepository\:\:feedCodes\(\) has parameter \$makers with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Repositories/UiMarksMovieRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\UiMarksMovieRepository\:\:feedCodes\(\) has parameter \$series with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Repositories/UiMarksMovieRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\UiMarksMovieRepository\:\:feedCodes\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Repositories/UiMarksMovieRepository.php
+
+		-
+			message: '#^Method App\\Repositories\\UiMarksMovieRepository\:\:summaries\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Repositories/UiMarksMovieRepository.php
+
+		-
+			message: '#^Method App\\Services\\Alerts\\AlertChannelDispatcher\:\:dispatch\(\) has parameter \$onlyChannels with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Alerts/AlertChannelDispatcher.php
+
+		-
+			message: '#^Method App\\Services\\Alerts\\AlertDispatcher\:\:dispatchChannels\(\) has parameter \$onlyChannels with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Alerts/AlertDispatcher.php
+
+		-
+			message: '#^Method App\\Services\\Alerts\\AlertEvaluationService\:\:attemptRecovery\(\) has parameter \$event with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Alerts/AlertEvaluationService.php
+
+		-
+			message: '#^Method App\\Services\\Alerts\\AlertEvaluationService\:\:channelState\(\) has parameter \$event with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Alerts/AlertEvaluationService.php
+
+		-
+			message: '#^Method App\\Services\\Alerts\\AlertEvaluationService\:\:notifyIfDue\(\) has parameter \$event with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Alerts/AlertEvaluationService.php
+
+		-
+			message: '#^Method App\\Services\\Alerts\\AlertEvaluationService\:\:resolve\(\) has parameter \$event with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Alerts/AlertEvaluationService.php
+
+		-
+			message: '#^Method App\\Services\\Archive\\MongoSiteArchive\:\:upsertMovie\(\) has parameter \$payload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Archive/MongoSiteArchive.php
+
+		-
+			message: '#^Method App\\Services\\Archive\\MongoSiteArchive\:\:upsertPerformer\(\) has parameter \$payload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Archive/MongoSiteArchive.php
+
+		-
+			message: '#^Method App\\Services\\Crawl\\CrawlQueueService\:\:claimNext\(\) has parameter \$excludeSources with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Crawl/CrawlQueueService.php
+
+		-
+			message: '#^Method App\\Services\\Crawl\\CrawlStatsAggregator\:\:finalize\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Crawl/CrawlStatsAggregator.php
+
+		-
+			message: '#^Method App\\Services\\Crawl\\CrawlStatsAggregator\:\:value\(\) has parameter \$row with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Crawl/CrawlStatsAggregator.php
+
+		-
+			message: '#^Method App\\Services\\Crawl\\CrawlStatsRollup\:\:databaseRow\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Crawl/CrawlStatsRollup.php
+
+		-
+			message: '#^Method App\\Services\\Crawl\\CrawlStatsRollup\:\:emptyAggregate\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Crawl/CrawlStatsRollup.php
+
+		-
+			message: '#^Method App\\Services\\Crawl\\FeedPoolDiagnostics\:\:emptyReport\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Crawl/FeedPoolDiagnostics.php
+
+		-
+			message: '#^Method App\\Services\\Dataset\\SampleDataset\:\:saveOwned\(\) has parameter \$keys with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Dataset/SampleDataset.php
+
+		-
+			message: '#^Method App\\Services\\Dependencies\\Probes\\RedisProbe\:\:cacheConnections\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Dependencies/Probes/RedisProbe.php
+
+		-
+			message: '#^Method App\\Services\\Dependencies\\Probes\\RedisProbe\:\:queueConnections\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Dependencies/Probes/RedisProbe.php
+
+		-
+			message: '#^Method App\\Services\\Downloads\\DownloadService\:\:filePaths\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Downloads/DownloadService.php
+
+		-
+			message: '#^Method App\\Services\\Downloads\\QBittorrentClient\:\:list\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Downloads/QBittorrentClient.php
+
+		-
+			message: '#^Method App\\Services\\Embedding\\OllamaClient\:\:json\(\) has parameter \$schema with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Embedding/OllamaClient.php
+
+		-
+			message: '#^Method App\\Services\\Embedding\\OllamaClient\:\:json\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Embedding/OllamaClient.php
+
+		-
+			message: '#^Method App\\Services\\Embedding\\OllamaClient\:\:jsonTelemetryResult\(\) has parameter \$data with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Embedding/OllamaClient.php
+
+		-
+			message: '#^Method App\\Services\\Embedding\\OllamaClient\:\:jsonWithTelemetry\(\) has parameter \$schema with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Embedding/OllamaClient.php
+
+		-
+			message: '#^Unable to resolve the template type TCacheValue in call to static method Illuminate\\Cache\\Repository\:\:remember\(\)$#'
+			identifier: argument.templateType
+			count: 1
+			path: app/Services/Facets/FacetListService.php
+
+		-
+			message: '#^Method App\\Services\\Health\\SourceHealthChecker\:\:firstUrl\(\) has parameter \$config with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Health/SourceHealthChecker.php
+
+		-
+			message: '#^Method App\\Services\\Health\\StartupHealthService\:\:checkSecondaries\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Health/StartupHealthService.php
+
+		-
+			message: '#^Method App\\Services\\Identity\\PerformerIdentityMatcher\:\:classify\(\) has parameter \$candidate with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Identity/PerformerIdentityMatcher.php
+
+		-
+			message: '#^Method App\\Services\\Identity\\PerformerIdentityMatcher\:\:nameSimilarity\(\) has parameter \$right with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Identity/PerformerIdentityMatcher.php
+
+		-
+			message: '#^Method App\\Services\\Identity\\PerformerIdentityMatcher\:\:sharesCrossLink\(\) has parameter \$right with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Identity/PerformerIdentityMatcher.php
+
+		-
+			message: '#^Method App\\Services\\Identity\\PerformerIdentityService\:\:relationOwners\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Identity/PerformerIdentityService.php
+
+		-
+			message: '#^Method App\\Services\\Identity\\PerformerIdentityService\:\:withCoCredit\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Identity/PerformerIdentityService.php
+
+		-
+			message: '#^Method App\\Services\\Library\\LibraryScanner\:\:codesIn\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Library/LibraryScanner.php
+
+		-
+			message: '#^Method App\\Services\\Mcp\\McpToolService\:\:call\(\) has parameter \$arguments with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Mcp/McpToolService.php
+
+		-
+			message: '#^Method App\\Services\\Mcp\\McpToolService\:\:getCatalog\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Mcp/McpToolService.php
+
+		-
+			message: '#^Method App\\Services\\Mcp\\McpToolService\:\:getCounts\(\) has parameter \$arguments with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Mcp/McpToolService.php
+
+		-
+			message: '#^Method App\\Services\\Mcp\\McpToolService\:\:getMovie\(\) has parameter \$arguments with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Mcp/McpToolService.php
+
+		-
+			message: '#^Method App\\Services\\Mcp\\McpToolService\:\:getPerformer\(\) has parameter \$arguments with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Mcp/McpToolService.php
+
+		-
+			message: '#^Method App\\Services\\Mcp\\McpToolService\:\:lookupMovies\(\) has parameter \$arguments with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Mcp/McpToolService.php
+
+		-
+			message: '#^Method App\\Services\\Mcp\\McpToolService\:\:lookupPerformers\(\) has parameter \$arguments with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Mcp/McpToolService.php
+
+		-
+			message: '#^Method App\\Services\\Mcp\\McpToolService\:\:movieFilters\(\) has parameter \$arguments with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Mcp/McpToolService.php
+
+		-
+			message: '#^Method App\\Services\\Mcp\\McpToolService\:\:performerFilters\(\) has parameter \$arguments with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Mcp/McpToolService.php
+
+		-
+			message: '#^Method App\\Services\\Mcp\\McpToolService\:\:releaseCalendar\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Mcp/McpToolService.php
+
+		-
+			message: '#^Method App\\Services\\Mcp\\McpToolService\:\:search\(\) has parameter \$arguments with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Mcp/McpToolService.php
+
+		-
+			message: '#^Method App\\Services\\Mcp\\McpToolService\:\:searchScenes\(\) has parameter \$arguments with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Mcp/McpToolService.php
+
+		-
+			message: '#^Method App\\Services\\Mcp\\McpToolService\:\:searchScenes\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Mcp/McpToolService.php
+
+		-
+			message: '#^Method App\\Services\\Mcp\\McpToolService\:\:suggest\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Mcp/McpToolService.php
+
+		-
+			message: '#^Method App\\Services\\Media\\MediaQueue\:\:claim\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Media/MediaQueue.php
+
+		-
+			message: '#^Method App\\Services\\Media\\MediaQueue\:\:finish\(\) has parameter \$result with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Media/MediaQueue.php
+
+		-
+			message: '#^Method App\\Services\\Media\\MediaQueue\:\:storeScenes\(\) has parameter \$scenes with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Media/MediaQueue.php
+
+		-
+			message: '#^Method App\\Services\\Media\\MediaQueue\:\:storeSubtitles\(\) has parameter \$subtitles with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Media/MediaQueue.php
+
+		-
+			message: '#^Method App\\Services\\Media\\SceneSearchService\:\:search\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Media/SceneSearchService.php
+
+		-
+			message: '#^Method App\\Services\\Normalize\\PerformerNormalizer\:\:cleanStringList\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Normalize/PerformerNormalizer.php
+
+		-
+			message: '#^Method App\\Services\\Notifications\\NotificationPolicyService\:\:touchCause\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Notifications/NotificationPolicyService.php
+
+		-
+			message: '#^Method App\\Services\\Notifications\\NotificationTemplateService\:\:reset\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Notifications/NotificationTemplateService.php
+
+		-
+			message: '#^Method App\\Services\\Notifications\\NotificationTemplateService\:\:restore\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Notifications/NotificationTemplateService.php
+
+		-
+			message: '#^Method App\\Services\\Notifications\\NotificationTemplateService\:\:save\(\) has parameter \$policy with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Notifications/NotificationTemplateService.php
+
+		-
+			message: '#^Method App\\Services\\Notifications\\TelegramBot\:\:callback\(\) has parameter \$query with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Notifications/TelegramBot.php
+
+		-
+			message: '#^Method App\\Services\\Notifications\\TelegramBot\:\:handle\(\) has parameter \$update with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Notifications/TelegramBot.php
+
+		-
+			message: '#^Method App\\Services\\Observability\\NodeEgressProbe\:\:lookupBrowserIp\(\) has parameter \$target with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Observability/NodeEgressProbe.php
+
+		-
+			message: '#^Method App\\Services\\Persist\\PerformerPersister\:\:archivePerformer\(\) has parameter \$rawPayload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Persist/PerformerPersister.php
+
+		-
+			message: '#^Method App\\Services\\Persist\\PerformerPersister\:\:persist\(\) has parameter \$rawPayload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Persist/PerformerPersister.php
+
+		-
+			message: '#^Method App\\Services\\Persist\\PerformerPersister\:\:persistPerformer\(\) has parameter \$rawPayload with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Persist/PerformerPersister.php
+
+		-
+			message: '#^Method App\\Services\\Search\\CursorCodec\:\:decode\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Search/CursorCodec.php
+
+		-
+			message: '#^Method App\\Services\\Search\\MovieSearchService\:\:canUseElasticsearch\(\) has parameter \$cursor with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Search/MovieSearchService.php
+
+		-
+			message: '#^Method App\\Services\\Search\\MovieSearchService\:\:semanticSearch\(\) has parameter \$prefetchedUuids with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Search/MovieSearchService.php
+
+		-
+			message: '#^Method App\\Services\\Search\\PerformerSearchService\:\:semanticSearch\(\) has parameter \$prefetchedUuids with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Search/PerformerSearchService.php
+
+		-
+			message: '#^Method App\\Services\\Search\\QueryInterpreter\:\:fromModel\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Search/QueryInterpreter.php
+
+		-
+			message: '#^Method App\\Services\\Settings\\SettingsService\:\:importDefaults\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Settings/SettingsService.php
+
+		-
+			message: '#^Method App\\Services\\Settings\\SettingsService\:\:legacyEntry\(\) has parameter \$definition with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Settings/SettingsService.php
+
+		-
+			message: '#^Method App\\Services\\Settings\\SettingsService\:\:legacyValue\(\) has parameter \$definition with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Settings/SettingsService.php
+
+		-
+			message: '#^Method App\\Services\\Settings\\SettingsService\:\:storedWorkerValue\(\) has parameter \$definition with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Settings/SettingsService.php
+
+		-
+			message: '#^Method App\\Services\\Workers\\HorizonWorkerLayout\:\:apply\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Services/Workers/HorizonWorkerLayout.php

@@ -1,9 +1,11 @@
 includes:
     - vendor/larastan/larastan/extension.neon
+    - phpstan-baseline.neon
 
 parameters:
     tmpDir: .tmp/phpstan
-    level: 5
+    level: 6
+    reportUnmatchedIgnoredErrors: true
     paths:
         - app
         - routes
