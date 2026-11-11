@@ -82,6 +82,8 @@ const route = url => {
   }
   if (p.endsWith('/related')) return { data: [movie('REL-001')] };
   if (p === 'performers') return { data: [performer(1), performer(2)], ...pg(2) };
+  if (p === 'performers/9') return { data: { ...performer(9), name_kanji: null, aliases: [], birth_date: null, height_cm: 158, bust: 84, waist: null, hip: null, cup: null, blood_type: null, location: null, debut_date: null, retired_date: null, bio_text: null, attrs: { weird_key: 1 } } };
+  if (p === 'performers/10') return { data: { ...performer(10), name_romaji: 'Nobody Known', name_kanji: null, aliases: [], birth_date: null, height_cm: null, bust: null, waist: null, hip: null, cup: null, blood_type: null, location: null, debut_date: null, retired_date: null, bio_text: null, attrs: {}, linked_title_count: 0 } };
   if (p.startsWith('performers/')) return { data: performer(1) };
   throw new Error('no sample for ' + p);
 };
@@ -184,6 +186,15 @@ globalThis.innerWidth = 1280;
 await run('performers', await load('views/performers.js'), { params: {}, query: { blood_type: 'O' } });
 const pd = await run('performer', await load('views/performer.js'), { params: { id: '1' }, query: {} });
 assert.match(pd, /Aaliyah Love/); assert.match(pd, /Tokyo/);
+assert.doesNotMatch(pd, /Độ đầy đủ hồ sơ|Profile completeness|performer\.completeness|performer\.awaiting_crawl|\bheight_cm\b|\bbio_text\b|\bimage_url\b/, 'JOOXCR-339: no completeness bar, crawl status or raw field key on a profile');
+const partial = await run('performer-partial', await load('views/performer.js'), { params: { id: '9' }, query: {} });
+assert.match(partial, /158 cm/); assert.match(partial, /B84/, 'a partial measurement shows only the known part');
+assert.doesNotMatch(partial, /none yet|chưa có|null|undefined|NaN|weird_key|birth_date|height_cm|image_url|Độ đầy đủ hồ sơ/i, 'JOOXCR-339: unknown values are omitted, never shown as a placeholder or a raw key');
+const emptyProfile = await run('performer-empty', await load('views/performer.js'), { params: { id: '10' }, query: {} });
+assert.equal((emptyProfile.match(/Chưa có thông tin hồ sơ\./g) || []).length, 1, 'JOOXCR-339: an empty profile shows one neutral message');
+assert.doesNotMatch(emptyProfile, /chưa có tín hiệu|null|undefined|NaN|birth_date|height_cm|image_url|Độ đầy đủ hồ sơ/i);
+const emptyBio = await run('performer-empty-bio', await load('views/performer.js'), { params: { id: '10' }, query: { tab: 'bio' } });
+assert.doesNotMatch(emptyBio, /Extra attributes|Thuộc tính|attrs|\{\}|null|undefined|NaN/, 'JOOXCR-339: the bio tab does not dump raw attributes');
 const crawl = await run('crawl', await load('views/crawl.js'), { params: {}, query: {} });
 assert.match(crawl, /JavBus/); assert.match(crawl, /600s/); assert.match(crawl, /Trình duyệt/); assert.match(crawl, /Trực tiếp/);
 assert.match(crawl, /Avfan[\s\S]*?<td>—<\/td>/);
