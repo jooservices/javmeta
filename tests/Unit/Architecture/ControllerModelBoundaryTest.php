@@ -111,6 +111,73 @@ final class ControllerModelBoundaryTest extends TestCase
         self::assertStringContainsString('App\\Models\\Performer', $analysis['output']);
     }
 
+    public function test_every_existing_exception_rejects_new_usage_of_its_baselined_model_pair(): void
+    {
+        $analysis = $this->analyseFixture(<<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            namespace App\Http\Controllers {
+                use App\Models\CrawlQueue;
+                use App\Models\Genre;
+                use App\Models\Movie;
+                use App\Models\Performer;
+                use App\Models\User;
+
+                final class MovieBulkController { public function probe(): void { Movie::query(); } }
+                final class MovieLookupController { public function probe(): void { Movie::query(); } }
+                final class MovieRelatedController
+                {
+                    public function probe(): void
+                    {
+                        Movie::query();
+                        Performer::query();
+                    }
+                }
+                final class PerformerController { public function probe(): void { Performer::query(); } }
+                final class StatusController { public function probe(): void { CrawlQueue::query(); } }
+                final class MetaGenreController { public function probe(): void { Genre::query(); } }
+            }
+
+            namespace App\Http\Controllers\Operations {
+                use App\Models\User;
+
+                final class LoginController { public function probe(): void { User::query(); } }
+                final class NodeController { public function probe(): void { User::query(); } }
+            }
+
+            namespace App\Http\Controllers\Ui {
+                use App\Models\User;
+
+                final class UiNotificationTemplateController { public function probe(): void { User::query(); } }
+                final class UiSettingsController { public function probe(): void { User::query(); } }
+            }
+            PHP);
+
+        $pairs = [
+            'App\\Http\\Controllers\\MovieBulkController' => ['App\\Models\\Movie'],
+            'App\\Http\\Controllers\\MovieLookupController' => ['App\\Models\\Movie'],
+            'App\\Http\\Controllers\\MovieRelatedController' => ['App\\Models\\Movie', 'App\\Models\\Performer'],
+            'App\\Http\\Controllers\\PerformerController' => ['App\\Models\\Performer'],
+            'App\\Http\\Controllers\\StatusController' => ['App\\Models\\CrawlQueue'],
+            'App\\Http\\Controllers\\Operations\\LoginController' => ['App\\Models\\User'],
+            'App\\Http\\Controllers\\Operations\\NodeController' => ['App\\Models\\User'],
+            'App\\Http\\Controllers\\Ui\\UiNotificationTemplateController' => ['App\\Models\\User'],
+            'App\\Http\\Controllers\\Ui\\UiSettingsController' => ['App\\Models\\User'],
+            'App\\Http\\Controllers\\MetaGenreController' => ['App\\Models\\Genre'],
+        ];
+
+        foreach ($pairs as $controller => $models) {
+            foreach ($models as $model) {
+                self::assertStringContainsString(
+                    sprintf('Controller %s must not depend directly on model %s', $controller, $model),
+                    $analysis['output'],
+                );
+            }
+        }
+    }
+
     public function test_existing_exception_rejects_a_new_operation_on_the_baselined_model(): void
     {
         $controllerPath = dirname(__DIR__, 3) . '/app/Http/Controllers/MovieLookupController.php';
@@ -132,6 +199,26 @@ final class ControllerModelBoundaryTest extends TestCase
         self::assertNotSame(0, $analysis['exitCode'], $analysis['output']);
         self::assertStringContainsString('MovieLookupController', $analysis['output']);
         self::assertStringContainsString('App\\Models\\Movie', $analysis['output']);
+    }
+
+    public function test_baselined_genre_query_rejects_added_chained_operations(): void
+    {
+        $controllerPath = dirname(__DIR__, 3) . '/app/Http/Controllers/MetaGenreController.php';
+        $source = file_get_contents($controllerPath);
+        if ($source === false) {
+            throw new RuntimeException('Unable to read the MetaGenreController baseline fixture.');
+        }
+
+        foreach (['where', 'delete'] as $operation) {
+            $mutatedSource = $this->mutateGenreQuery($source, $operation);
+            self::assertStringContainsString('$labels = Genre::query()', $mutatedSource);
+
+            $analysis = $this->analyseFixture($mutatedSource, 'MetaGenreController.php');
+
+            self::assertNotSame(0, $analysis['exitCode'], $operation . "\n" . $analysis['output']);
+            self::assertStringContainsString('MetaGenreController', $analysis['output']);
+            self::assertStringContainsString('App\\Models\\Genre', $analysis['output']);
+        }
     }
 
     public function test_existing_exception_rejects_a_new_model_type_declaration(): void
@@ -355,5 +442,43 @@ final class ControllerModelBoundaryTest extends TestCase
         } finally {
             (new Filesystem())->remove($temporaryDirectory);
         }
+    }
+
+    private function mutateGenreQuery(string $source, string $operation): string
+    {
+        $lines = explode("\n", $source);
+        $queryLine = null;
+        foreach ($lines as $lineNumber => $line) {
+            if (trim($line) === '$labels = Genre::query()') {
+                $queryLine = $lineNumber;
+                break;
+            }
+        }
+
+        if ($queryLine === null) {
+            throw new RuntimeException('Unable to find the Genre query baseline fixture.');
+        }
+
+        if ($operation === 'where') {
+            array_splice($lines, $queryLine + 1, 0, ["            ->where('id', '>', 0)"]);
+        } elseif ($operation === 'delete') {
+            $endLine = null;
+            for ($lineNumber = $queryLine + 1, $lineCount = count($lines); $lineNumber < $lineCount; $lineNumber++) {
+                if (trim($lines[$lineNumber]) === '->all();') {
+                    $endLine = $lineNumber;
+                    break;
+                }
+            }
+
+            if ($endLine === null) {
+                throw new RuntimeException('Unable to find the end of the Genre query baseline fixture.');
+            }
+
+            array_splice($lines, $queryLine + 1, $endLine - $queryLine, ['            ->delete();']);
+        } else {
+            throw new RuntimeException('Unsupported Genre query fixture mutation.');
+        }
+
+        return implode("\n", $lines);
     }
 }

@@ -10,10 +10,10 @@ final class ControllerModelBoundaryBaseline
 {
     /**
      * Existing controller/model accesses stay allowed only at these exact
-     * source locations. Keep the source text alongside each line so adding a
-     * second access to an existing pair cannot silently extend the baseline.
+     * source locations. Chained accesses list their complete source expression
+     * so adding an operation cannot silently extend the baseline.
      *
-     * @var array<string, array<string, array<int, string>>>
+     * @var array<string, array<string, array<int, string|list<string>>>>
      */
     private const ALLOWED_USAGES = [
         'App\\Http\\Controllers\\MovieBulkController' => [
@@ -88,7 +88,15 @@ final class ControllerModelBoundaryBaseline
         'App\\Http\\Controllers\\MetaGenreController' => [
             'App\\Models\\Genre' => [
                 7 => 'use App\\Models\\Genre;',
-                20 => '$labels = Genre::query()',
+                20 => [
+                    '$labels = Genre::query()',
+                    "->selectRaw('COALESCE(label_raw, label_normalized) AS label')",
+                    '->distinct()',
+                    "->pluck('label')",
+                    '->sort()',
+                    '->values()',
+                    '->all();',
+                ],
             ],
         ],
     ];
@@ -104,8 +112,19 @@ final class ControllerModelBoundaryBaseline
         }
 
         $sourceLines = self::sourceLines($scope->getFile());
+        $expectedLines = is_array($expectedSource) ? $expectedSource : [$expectedSource];
+        $actualLines = array_slice($sourceLines, $line - 1, count($expectedLines));
+        if (count($actualLines) !== count($expectedLines)) {
+            return false;
+        }
 
-        return isset($sourceLines[$line - 1]) && trim($sourceLines[$line - 1]) === $expectedSource;
+        foreach ($expectedLines as $index => $expectedLine) {
+            if (trim($actualLines[$index]) !== trim($expectedLine)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public static function controllerName(Scope $scope): ?string
