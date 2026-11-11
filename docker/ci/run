@@ -7,7 +7,191 @@
 # On GitHub Actions (or JAVMETA_CI_DOCKER=1): builds and runs the isolated CI image as before.
 set -euo pipefail
 
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+
+scope_usage() {
+  cat <<'USAGE'
+Usage: docker/ci/run test-scope <unit|feature> (--path PATH | --filter PATTERN | --all) [--filter PATTERN] [PHPUnit options]
+
+Examples:
+  docker/ci/run test-scope unit --path tests/Unit/QueueConfigurationTest.php
+  docker/ci/run test-scope feature --filter test_enrollment --testdox
+  docker/ci/run test-scope unit --all
+USAGE
+}
+
+scope_override_options=(
+  --testsuite
+  --configuration
+  --no-configuration
+  --test-directory
+  --test-suffix
+  --bootstrap
+  --test-files-file
+  --run-test-id
+  --test-id-filter-file
+  --do-not-fail-on-empty-test-suite
+)
+
+is_scope_override_option() {
+  local option="${1%%=*}"
+  local blocked_option
+
+  # PHPUnit accepts unambiguous long-option prefixes, so block those too.
+  for blocked_option in "${scope_override_options[@]}"; do
+    [[ "$blocked_option" == "$option"* ]] && return 0
+  done
+
+  return 1
+}
+
+if [[ "${1:-}" == "test-scope" ]]; then
+  shift
+  scope="${1:-}"
+  if [[ -z "$scope" ]]; then
+    scope_usage >&2
+    exit 2
+  fi
+  shift
+
+  case "$scope" in
+    unit) suite="Unit" ;;
+    feature) suite="Feature" ;;
+    --help|-h) scope_usage; exit 0 ;;
+    *) echo "Unknown test scope: $scope (expected unit or feature)." >&2; scope_usage >&2; exit 2 ;;
+  esac
+
+  selector_path=""
+  selector_filter=""
+  all_tests=0
+  selector_seen=0
+  forwarded=()
+  while (($#)); do
+    argument="$1"
+    shift
+    if is_scope_override_option "$argument"; then
+      echo "The PHPUnit option '$argument' could escape the selected scope and is not allowed." >&2
+      exit 2
+    fi
+    case "$argument" in
+      --path)
+        (($#)) || { echo "--path requires a non-empty path." >&2; exit 2; }
+        [[ -z "$selector_path" ]] || { echo "Only one --path selector is allowed." >&2; exit 2; }
+        selector_path="$1"
+        shift
+        [[ -n "$selector_path" ]] || { echo "--path requires a non-empty path." >&2; exit 2; }
+        selector_seen=1
+        ;;
+      --path=*)
+        [[ -z "$selector_path" ]] || { echo "Only one --path selector is allowed." >&2; exit 2; }
+        selector_path="${argument#*=}"
+        [[ -n "$selector_path" ]] || { echo "--path requires a non-empty path." >&2; exit 2; }
+        selector_seen=1
+        ;;
+      --filter)
+        (($#)) || { echo "--filter requires a non-empty pattern." >&2; exit 2; }
+        [[ -z "$selector_filter" ]] || { echo "Only one --filter selector is allowed." >&2; exit 2; }
+        selector_filter="$1"
+        shift
+        [[ -n "$selector_filter" ]] || { echo "--filter requires a non-empty pattern." >&2; exit 2; }
+        selector_seen=1
+        ;;
+      --filter=*)
+        [[ -z "$selector_filter" ]] || { echo "Only one --filter selector is allowed." >&2; exit 2; }
+        selector_filter="${argument#*=}"
+        [[ -n "$selector_filter" ]] || { echo "--filter requires a non-empty pattern." >&2; exit 2; }
+        selector_seen=1
+        ;;
+      --all)
+        ((all_tests == 0)) || { echo "Only one --all selector is allowed." >&2; exit 2; }
+        all_tests=1
+        selector_seen=1
+        ;;
+      -c|-c*)
+        echo "The PHPUnit option '$argument' could escape the selected scope and is not allowed." >&2
+        exit 2
+        ;;
+      --)
+        # Composer may include its argument separator; it is not a PHPUnit option.
+        ;;
+      -*)
+        forwarded+=("$argument")
+        case "$argument" in
+          -d|--extension|--include-path|--cache-directory|--generate-baseline|--use-baseline|--exclude-testsuite|--group|--exclude-group|--covers|--uses|--requires-php-extension|--list-tests-xml|--exclude-filter|--default-time-limit|--timeout|--order-by|--random-order-seed|--repeat|--retry|--columns|--diff-context|--log-junit|--log-otr|--log-teamcity|--testdox-html|--testdox-text|--log-events-text|--log-events-verbose-text|--coverage-clover|--coverage-openclover|--coverage-cobertura|--coverage-crap4j|--coverage-html|--coverage-jsonl|--coverage-php|--coverage-xml|--coverage-filter|--atleast-version)
+            (($#)) || { echo "$argument requires a value." >&2; exit 2; }
+            forwarded+=("$1")
+            shift
+            ;;
+        esac
+        ;;
+      *)
+        echo "Unexpected positional argument '$argument'; use --path or --filter to select tests." >&2
+        exit 2
+        ;;
+    esac
+  done
+
+  if ((selector_seen == 0)); then
+    echo "A test selector is required; use --path, --filter, or the explicit --all command." >&2
+    scope_usage >&2
+    exit 2
+  fi
+  if ((all_tests == 1)) && [[ -n "$selector_path$selector_filter" ]]; then
+    echo "--all cannot be combined with --path or --filter." >&2
+    exit 2
+  fi
+
+  test_command=(vendor/bin/phpunit --configuration phpunit.xml --fail-on-empty-test-suite)
+  if ((all_tests == 1)); then
+    test_command+=(--testsuite "$suite")
+  else
+    if [[ -n "$selector_path" ]]; then
+      if [[ "$selector_path" == /* ]]; then
+        requested_path="$selector_path"
+      else
+        requested_path="$root/$selector_path"
+      fi
+      test_root="$(realpath -e -- "$root/tests/$suite" 2>/dev/null)" || {
+        echo "Test directory for $suite is unavailable." >&2
+        exit 2
+      }
+      resolved_path="$(realpath -e -- "$requested_path" 2>/dev/null)" || {
+        echo "Unknown $suite test path: $selector_path" >&2
+        exit 2
+      }
+      if [[ "$resolved_path" != "$test_root" && "$resolved_path" != "$test_root"/* ]]; then
+        echo "Test path must stay inside tests/$suite: $selector_path" >&2
+        exit 2
+      fi
+      if [[ -f "$resolved_path" ]]; then
+        [[ "$resolved_path" == *Test.php ]] || { echo "Test file must end in Test.php: $selector_path" >&2; exit 2; }
+      elif [[ -d "$resolved_path" ]]; then
+        find "$resolved_path" -type f -name '*Test.php' -print -quit | grep -q . || {
+          echo "Test directory contains no *Test.php files: $selector_path" >&2
+          exit 2
+        }
+      else
+        echo "Test path must be a file or directory: $selector_path" >&2
+        exit 2
+      fi
+      relative_path="${resolved_path#"$root"/}"
+      test_command+=("$relative_path")
+    fi
+    if [[ -n "$selector_filter" ]]; then
+      if [[ -z "$selector_path" ]]; then
+        test_command+=(--testsuite "$suite")
+      fi
+      test_command+=(--filter "$selector_filter")
+    fi
+  fi
+  test_command+=("${forwarded[@]}")
+
+  if [[ "${JAVMETA_CI_RUNNER_IN_CONTAINER:-0}" == "1" ]]; then
+    cd "$root"
+    exec "${test_command[@]}"
+  fi
+  set -- "${test_command[@]}"
+fi
 
 if [[ "${GITHUB_ACTIONS:-}" != "true" && "${JAVMETA_CI_DOCKER:-0}" != "1" ]]; then
   dir="$root"
@@ -16,7 +200,8 @@ if [[ "${GITHUB_ACTIONS:-}" != "true" && "${JAVMETA_CI_DOCKER:-0}" != "1" ]]; th
       cd "$root"
       # The shared runtime ships pcov disabled; enable it for this process only (coverage gate).
       export PHP_INI_SCAN_DIR="/usr/local/etc/php/conf.d:${root}/docker/dev/php.d"
-      export RUNTIME_PASS_ENV="${RUNTIME_PASS_ENV:-} PHP_INI_SCAN_DIR"
+      export JAVMETA_CI_RUNNER_IN_CONTAINER=1
+      export RUNTIME_PASS_ENV="${RUNTIME_PASS_ENV:-} PHP_INI_SCAN_DIR JAVMETA_CI_RUNNER_IN_CONTAINER"
       exec "$dir/scripts/docker/runtime" php "$@"
     fi
     dir="$(dirname "$dir")"
@@ -46,6 +231,7 @@ fi
 exec docker run --rm \
   --user "$(id -u):$(id -g)" \
   --env HOME=/tmp \
+  --env JAVMETA_CI_RUNNER_IN_CONTAINER=1 \
   "${volumes[@]}" \
   --volume "${JAVMETA_CI_COMPOSER_CACHE:-javmeta-ci-composer-cache}:/tmp/composer-cache" \
   --workdir /app \
