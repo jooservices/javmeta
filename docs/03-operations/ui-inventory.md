@@ -13,7 +13,7 @@ QA sample limits: downloads and the file server are off; there are no library fi
 | S-01 | `/login` | page | page | empty email, Vietnamese XCrawler, private-catalog copy | `openPath('/login')`, `expectSignInEmailEmpty`, `expectFrontDoorIsXCrawlerInVietnamese` | the sign-in form has no prefilled email; the front door is Vietnamese XCrawler |
 | S-02 | `/login` | `#email` | input | empty, filled, invalid | `login`, `loginWith` | login rejects a wrong password |
 | S-03 | `/login` | `#password` | input | hidden, revealed | `login` | Discover is for browsing… (login step) |
-| S-04 | `/login` | `#pw-toggle` | button | Hiện / Ẩn | render-smoke `id="pw-toggle"`; login form used by `login` | the front door is Vietnamese XCrawler |
+| S-04 | `/login` | `#pw-toggle` | button | Hiện / Ẩn | render-smoke `id="pw-toggle"`; browser scenario `the sign-in password visibility control shows and hides the password` (masked, visible, masked again by pointer, then Enter and Space; value kept, `aria-pressed` and translated text match, form not submitted) | the front door is Vietnamese XCrawler |
 | S-05 | `/login` | submit Đăng nhập | button | success, wrong password, throttle 6/min | `login`, `loginWith`, `expectOnLoginPage` | login rejects a wrong password |
 | S-06 | `/login` | error | state | invalid credentials | `loginWith`, `expectOnLoginPage` | login rejects a wrong password |
 | SH-01 | `/app` shell | `#side` nav groups | menu | owner, guest | `expectVietnameseNav`, `expectSidebarLinksLead`, `expectGuestShell` | the theme button…; a guest can browse… |
