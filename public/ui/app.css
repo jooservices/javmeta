@@ -166,6 +166,12 @@ tr.sel td:first-child{box-shadow:inset 2px 0 var(--accent)}
 .qb .ibtn svg{width:12px;height:12px}
 .qb .ibtn.on{background:var(--accent);color:var(--accent-ink)}
 .strip{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(190px,230px);gap:10px;overflow-x:auto;padding:2px 2px 6px}
+.related-skeleton{display:flex;flex-direction:column;gap:7px;min-width:0}
+.related-skeleton-cover{display:block;width:100%;aspect-ratio:4/3}
+.related-skeleton-line{display:block;width:100%;height:12px}
+.related-skeleton-line.short{width:64%;height:10px}
+#relstrip.related-state-message{display:flex;align-items:center;overflow:visible}
+.related-error{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
 .avatar{width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,hsl(var(--h) 40% 34%),hsl(calc(var(--h) + 50) 40% 20%));display:grid;place-items:center;font-weight:600;font-size:15px;color:rgba(255,255,255,.85);flex:none}
 .avatar.lg{width:92px;height:92px;font-size:28px}
 .avatar.sm{width:30px;height:30px;font-size:11px}
