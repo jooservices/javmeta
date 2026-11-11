@@ -25,6 +25,17 @@ final class ApiKeyService
     public function create(string $label, int $abuseRpm = 60, array $scopes = []): CreatedApiKey
     {
         $plaintext = 'jvm_' . Str::random(48);
+        return $this->persist($plaintext, $label, $abuseRpm, $scopes);
+    }
+
+    public function createSmokeCheckKey(): CreatedApiKey
+    {
+        return $this->persist('jvm_smoke_' . Str::random(40), 'JavMeta deployment smoke check', 60, ['performers', 'mcp']);
+    }
+
+    /** @param list<string> $scopes */
+    private function persist(string $plaintext, string $label, int $abuseRpm, array $scopes): CreatedApiKey
+    {
         $keyHash = $this->hashPlaintext($plaintext);
         $prefix = substr($plaintext, 0, 12);
 
@@ -84,7 +95,15 @@ final class ApiKeyService
                 }
                 $revocationConfirmed = true;
             } catch (Throwable) {
-                // Preserve the deletion failure for the caller's safe cleanup result.
+                try {
+                    $repository->clearScopesByIdAndHash($id, $keyHash);
+                    if ($repository->hasActiveScopesByIdAndHash($id, $keyHash)) {
+                        throw new RuntimeException('The created API key remains authorized after scope removal.');
+                    }
+                    $revocationConfirmed = true;
+                } catch (Throwable) {
+                    // Preserve the deletion failure for the caller's safe cleanup result.
+                }
             }
 
             try {
@@ -120,6 +139,10 @@ final class ApiKeyService
         }
 
         $keyHash = $this->hashPlaintext($plain);
+        if (str_starts_with($plain, 'jvm_smoke_')) {
+            return $this->findActiveSmokeKey($keyHash);
+        }
+
         $cacheKey = $this->activeLookupCacheKey($keyHash);
         try {
             $cached = Cache::get($cacheKey);
@@ -144,10 +167,7 @@ final class ApiKeyService
             }
         }
 
-        $apiKey = app(ApiKeyServiceRepository::class)->modelQuery(ApiKey::class)
-            ->where('key_hash', $keyHash)
-            ->where('status', ApiKey::STATUS_ACTIVE)
-            ->first();
+        $apiKey = $this->findActiveKey($keyHash);
         if ($apiKey !== null) {
             try {
                 Cache::put($cacheKey, $apiKey, self::ACTIVE_LOOKUP_CACHE_SECONDS);
@@ -157,6 +177,21 @@ final class ApiKeyService
         }
 
         return $apiKey;
+    }
+
+    private function findActiveKey(string $keyHash): ?ApiKey
+    {
+        return app(ApiKeyServiceRepository::class)->modelQuery(ApiKey::class)
+            ->where('key_hash', $keyHash)
+            ->where('status', ApiKey::STATUS_ACTIVE)
+            ->first();
+    }
+
+    private function findActiveSmokeKey(string $keyHash): ?ApiKey
+    {
+        $apiKey = $this->findActiveKey($keyHash);
+
+        return $apiKey !== null && is_array($apiKey->scopes) && $apiKey->scopes !== [] ? $apiKey : null;
     }
 
     private function activeLookupCacheKey(string $keyHash): string

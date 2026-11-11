@@ -202,7 +202,7 @@ final class DeploymentSmokeCheck
     private function apiChecks(ApiKeyService $apiKeys): array
     {
         try {
-            $temporaryKey = $apiKeys->create('JavMeta deployment smoke check', 60, ['performers', 'mcp']);
+            $temporaryKey = $apiKeys->createSmokeCheckKey();
         } catch (Throwable) {
             return [
                 $this->check('api_lookup', 'fail', 'A temporary API key could not be created.'),

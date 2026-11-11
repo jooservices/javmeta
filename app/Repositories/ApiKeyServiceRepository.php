@@ -52,4 +52,24 @@ final class ApiKeyServiceRepository extends BusinessQueryRepository
             ->where('status', ApiKey::STATUS_ACTIVE)
             ->exists();
     }
+
+    /** Remove all authorization scopes as a durable fallback when status revocation fails. */
+    public function clearScopesByIdAndHash(int $id, string $keyHash): int
+    {
+        return $this->modelQuery(ApiKey::class)
+            ->whereKey($id)
+            ->where('key_hash', $keyHash)
+            ->update(['scopes' => json_encode([])]);
+    }
+
+    public function hasActiveScopesByIdAndHash(int $id, string $keyHash): bool
+    {
+        $apiKey = $this->modelQuery(ApiKey::class)
+            ->whereKey($id)
+            ->where('key_hash', $keyHash)
+            ->where('status', ApiKey::STATUS_ACTIVE)
+            ->first(['id', 'scopes']);
+
+        return $apiKey !== null && is_array($apiKey->scopes) && $apiKey->scopes !== [];
+    }
 }

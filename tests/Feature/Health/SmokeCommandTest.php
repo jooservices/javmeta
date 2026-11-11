@@ -400,6 +400,8 @@ final class SmokeCommandTest extends TestCase
                 ApiKey::STATUS_ACTIVE,
                 ApiKey::query()->where('label', 'JavMeta deployment smoke check')->sole()->status,
             );
+            self::assertSame([], ApiKey::query()->where('label', 'JavMeta deployment smoke check')->sole()->scopes);
+            Cache::flush();
             self::assertNull(app(ApiKeyService::class)->findActiveByPlaintext($this->apiKeys[0]));
             $this->getJson('/api/v1/auth/verify', ['X-API-Key' => $this->apiKeys[0]])->assertUnauthorized();
             self::assertStringNotContainsString('simulated key cleanup failure', $output);
@@ -443,6 +445,8 @@ final class SmokeCommandTest extends TestCase
                 ApiKey::STATUS_ACTIVE,
                 ApiKey::query()->where('label', 'JavMeta deployment smoke check')->sole()->status,
             );
+            self::assertSame([], ApiKey::query()->where('label', 'JavMeta deployment smoke check')->sole()->scopes);
+            Cache::flush();
             self::assertNull(app(ApiKeyService::class)->findActiveByPlaintext($this->apiKeys[0]));
             $this->getJson('/api/v1/auth/verify', ['X-API-Key' => $this->apiKeys[0]])->assertUnauthorized();
         } finally {
