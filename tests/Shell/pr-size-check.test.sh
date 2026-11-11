@@ -106,4 +106,23 @@ if run_check "${R100}" --base develop --warn 60 --fail 40 >/dev/null 2>&1; then
   fail '--warn above --fail must be refused'
 fi
 
+# A missing option value is a usage error with a message, not a silent exit.
+out="$(run_check "${R100}" --base 2>&1)" && fail 'a missing --base value must be refused'
+[[ "$out" == *'requires a value'* ]] || fail "missing-value message: ${out}"
+
+# The policy thresholds can be lowered but never raised.
+if run_check "${R100}" --base develop --warn 31 >/dev/null 2>&1; then
+  fail '--warn above the policy limit must be refused'
+fi
+if run_check "${R100}" --base develop --fail 1000 >/dev/null 2>&1; then
+  fail '--fail above the policy limit must be refused'
+fi
+
+# Only a documented mass-rename or generated-files exception passes at the limit.
+if run_check "${R100}" --base develop --reason 'ordinary feature work' >/dev/null 2>&1; then
+  fail 'an ordinary reason must not be accepted as an exception'
+fi
+out="$(run_check "${R100}" --base develop --reason 'mass-rename: split App namespace')" || fail "a documented mass-rename must pass: ${out}"
+[[ "$out" == *'exception accepted'* ]] || fail "exception message: ${out}"
+
 printf 'pr-size-check tests passed\n'

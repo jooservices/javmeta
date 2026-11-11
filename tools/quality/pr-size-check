@@ -35,10 +35,19 @@ reason=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --base) base="${2:-}"; shift 2 ;;
-    --warn) warn="${2:-}"; shift 2 ;;
-    --fail) fail="${2:-}"; shift 2 ;;
-    --reason) reason="${2:-}"; shift 2 ;;
+    --base|--warn|--fail|--reason)
+      if [[ $# -lt 2 ]]; then
+        printf 'pr-size-check: %s requires a value\n' "$1" >&2
+        usage >&2
+        exit 2
+      fi
+      case "$1" in
+        --base) base="$2" ;;
+        --warn) warn="$2" ;;
+        --fail) fail="$2" ;;
+        --reason) reason="$2" ;;
+      esac
+      shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
   esac
@@ -51,6 +60,11 @@ reason="${reason:-${PR_SIZE_REASON:-}}"
 
 if [[ ! "$warn" =~ ^[0-9]+$ ]] || [[ ! "$fail" =~ ^[0-9]+$ ]]; then
   printf 'pr-size-check: --warn and --fail must be non-negative integers\n' >&2
+  exit 2
+fi
+# The policy thresholds can be lowered for a stricter local check but never raised.
+if (( warn > 30 || fail > 100 )); then
+  printf 'pr-size-check: --warn may not exceed 30 and --fail may not exceed 100 (the policy limits)\n' >&2
   exit 2
 fi
 if (( warn > fail )); then
@@ -91,6 +105,12 @@ if (( count >= fail )); then
     printf "exception with --reason '<mass-rename|generated files>: ...'.\n" >&2
     exit 1
   fi
+  case "$reason" in
+    mass-rename:*|'generated files:'*) ;;
+    *)
+      printf "PR size check FAILED: the exception reason must start with 'mass-rename:' or 'generated files:' (ordinary feature work is not an exception).\n" >&2
+      exit 1 ;;
+  esac
   printf 'PR size exception accepted: %s\n' "$reason"
   exit 0
 fi

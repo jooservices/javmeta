@@ -44,8 +44,10 @@ Redis or Mongo service is needed.
 `tools/quality/pr-size-check` enforces the PR size policy: it counts the files
 changed between the merge base of the base ref and `HEAD`, warns at 30 changed
 files and fails at 100. Above the fail threshold it only passes with an
-explicit, documented exception (a mass-rename or generated-file change) passed
-as `--reason`; there is no silent bypass.
+explicit, documented exception passed as `--reason`, whose text must start with
+`mass-rename:` or `generated files:` (ordinary feature work is not an exception);
+there is no silent bypass. `--warn` and `--fail` may be lowered for a stricter
+local check but never raised above 30 and 100.
 
 ```bash
 tools/quality/pr-size-check --base origin/develop        # local run (also works on a worktree)
