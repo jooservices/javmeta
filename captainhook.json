@@ -25,6 +25,10 @@
         "enabled": true,
         "actions": [
             {
+                "action": "bash tools/quality/check-git-conventions.sh pre-push origin {$STDIN}",
+                "conditions": []
+            },
+            {
                 "action": "echo '🔒 Scanning commits for secrets...' && if ! command -v gitleaks >/dev/null 2>&1; then echo 'Note: gitleaks not available in this environment; CI still scans on push'; exit 0; fi; default_ref=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/@@'); gitleaks detect --verbose --redact --config=.gitleaks.toml --log-opts=\"${default_ref:-origin/develop}..HEAD\"",
                 "conditions": []
             },

@@ -108,14 +108,28 @@ Elasticsearch 9 leaves `dense_vector` fields out of `_source`; tests that read v
 
 ## Local Git convention checks
 
-`captainhook.json` runs the shared checker for every commit message. It checks
-the allowed Conventional Commit types, optional scope and breaking marker,
-uppercase subject, commit header length, and footer trailers. AI and coauthor
-attribution trailers such as `Co-Authored-By` and `Generated with` are rejected
-with an actionable message. A project ticket trailer such as `Ticket: T16` is
-allowed.
+`captainhook.json` runs the shared checker for every commit message and before
+every push. The push hook supplies Git's actual ref updates, so the checker
+validates every outgoing commit range. Existing refs use the remote's previous
+object ID; new refs use the local remote default branch, falling back to
+`origin/develop`. The checks use local Git objects and do not fetch.
 
-Check a PR title and every non-merge commit in a local range before submission:
+The checker enforces the allowed Conventional Commit types, optional scope and
+breaking marker, uppercase subject, commit header length, and footer trailers.
+It applies Git's comment cleanup before inspecting the whole message, so editor
+comments cannot hide prohibited AI or coauthor attribution such as
+`Co-Authored-By` and `Generated with`. A project ticket trailer such as
+`Ticket: T16` is allowed.
+
+Create PRs through the local wrapper. It requires and checks an explicit title
+before invoking `gh pr create`:
+
+```bash
+bash tools/quality/create-pr.sh --title 'feat(ui): Add a feature' --base develop
+```
+
+For a manual pre-check, validate a PR title and every non-merge commit in a
+local range:
 
 ```bash
 bash tools/quality/check-git-conventions.sh title 'feat(ui): Add a feature'

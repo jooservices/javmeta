@@ -54,6 +54,42 @@ expect_fail_with "one-character PR subject" 'at least two characters' bash "$CHE
 expect_fail_with "unknown type" 'allowed Conventional Commit type' bash "$CHECKER" title 'feature(ui): Add shared git checks'
 expect_fail_with "multiline title" 'single line' bash "$CHECKER" title $'feat(ui): Add checks\nbody'
 
+PR_WRAPPER="${ROOT}/tools/quality/create-pr.sh"
+FAKE_BIN="${TEST_TMP}/bin"
+GH_LOG="${TEST_TMP}/gh.log"
+mkdir -p "$FAKE_BIN"
+cat >"${FAKE_BIN}/gh" <<'GH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"${GH_LOG}"
+GH
+chmod +x "${FAKE_BIN}/gh"
+export GH_LOG
+PATH="${FAKE_BIN}:${PATH}"
+export PATH
+
+: >"${GH_LOG}"
+expect_pass "PR wrapper accepts --title" "$PR_WRAPPER" --title 'feat(ui): Add a checked pull request' --base develop
+grep -Fq 'pr create --title feat(ui): Add a checked pull request --base develop' "${GH_LOG}" || fail "PR wrapper must pass options to gh"
+
+: >"${GH_LOG}"
+expect_pass "PR wrapper accepts --title=value" "$PR_WRAPPER" --title='fix: Reject invalid local ranges' --draft
+grep -Fq 'pr create --title=fix: Reject invalid local ranges --draft' "${GH_LOG}" || fail "PR wrapper must preserve --title=value"
+
+: >"${GH_LOG}"
+expect_pass "PR wrapper accepts -t" "$PR_WRAPPER" -t 'docs: Document local submission checks'
+grep -Fq 'pr create -t docs: Document local submission checks' "${GH_LOG}" || fail "PR wrapper must preserve -t"
+
+: >"${GH_LOG}"
+expect_fail_with "PR wrapper rejects an invalid title before gh" 'uppercase ASCII subject' "$PR_WRAPPER" --title 'fix: lowercase title'
+[[ ! -s "${GH_LOG}" ]] || fail "PR wrapper must reject invalid titles before invoking gh"
+expect_fail_with "PR wrapper requires an explicit title" 'requires an explicit title' "$PR_WRAPPER" --base develop
+expect_fail_with "PR wrapper rejects an empty title before gh" 'allowed Conventional Commit type' "$PR_WRAPPER" --title ''
+expect_fail_with "PR wrapper does not mistake another option's value for the title" 'requires an explicit title' "$PR_WRAPPER" --body 'feat: Valid but only a body' --base develop
+expect_fail_with "PR wrapper skips attachment option values while finding the title" 'requires an explicit title' "$PR_WRAPPER" --attach --title 'feat: Valid but only an attachment path'
+expect_fail_with "PR wrapper blocks interactive title changes after validation" 'allows the submitted title to change' "$PR_WRAPPER" --title 'feat: Add a checked title' --web
+expect_fail_with "PR wrapper blocks alternate web mode values" 'allows the submitted title to change' "$PR_WRAPPER" --title 'feat: Add a checked title' --web=true
+[[ ! -s "${GH_LOG}" ]] || fail "PR wrapper must not invoke gh without a valid title"
+
 MESSAGE_FILE="${TEST_TMP}/message.txt"
 cat >"${MESSAGE_FILE}" <<'MESSAGE'
 feat: Add a local checker
@@ -73,8 +109,19 @@ cat >"${MESSAGE_FILE}" <<'MESSAGE'
 feat: Add a local checker
 
 Generated with Codex
+
+# Please enter the commit message for your changes. Lines starting with '#' will be ignored.
 MESSAGE
-expect_fail_with "generated-with trailer" 'Generated with' bash "$CHECKER" commit-message "$MESSAGE_FILE"
+expect_fail_with "generated-with trailer before Git editor comments" 'Generated with' bash "$CHECKER" commit-message "$MESSAGE_FILE"
+
+cat >"${MESSAGE_FILE}" <<'MESSAGE'
+feat: Add a local checker
+
+Generated with Codex
+
+Ticket: T16
+MESSAGE
+expect_fail_with "generated-with attribution before a later trailer paragraph" 'Generated with' bash "$CHECKER" commit-message "$MESSAGE_FILE"
 
 REPO="${TEST_TMP}/repo"
 mkdir -p "$REPO"
@@ -84,6 +131,8 @@ git -C "$REPO" config user.email 't16-test@example.invalid'
 git -C "$REPO" config commit.gpgsign false
 git -C "$REPO" commit --allow-empty -q -m 'chore: Create local test base'
 BASE="$(git -C "$REPO" rev-parse HEAD)"
+git -C "$REPO" update-ref refs/remotes/origin/develop "$BASE"
+git -C "$REPO" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/develop
 
 cat >"${MESSAGE_FILE}" <<'MESSAGE'
 feat: Add a valid trailer
@@ -92,9 +141,24 @@ Ticket: T16
 MESSAGE
 git -C "$REPO" commit --allow-empty -q -F "$MESSAGE_FILE"
 git -C "$REPO" commit --allow-empty -q -m 'fix: Keep a second commit local'
+GOOD_HEAD="$(git -C "$REPO" rev-parse HEAD)"
 (
   cd "$REPO"
   expect_pass "multiple local commits" bash "$CHECKER" commits "${BASE}..HEAD"
+)
+
+PUSH_INPUT="refs/heads/feature ${GOOD_HEAD} refs/heads/feature ${BASE}"
+(
+  cd "$REPO"
+  expect_pass "pre-push checks the exact existing-branch range" bash "$CHECKER" pre-push origin "$PUSH_INPUT"
+)
+
+ZERO_OID="0000000000000000000000000000000000000000"
+NEW_BRANCH_INPUT="refs/heads/new-feature ${GOOD_HEAD} refs/heads/new-feature ${ZERO_OID}"
+(
+  cd "$REPO"
+  expect_pass "pre-push checks a new branch against the local remote default" bash "$CHECKER" pre-push origin "$NEW_BRANCH_INPUT"
+  expect_pass "pre-push accepts branch deletion updates" bash "$CHECKER" pre-push origin "refs/heads/feature ${ZERO_OID} refs/heads/feature ${GOOD_HEAD}"
 )
 
 cat >"${MESSAGE_FILE}" <<'MESSAGE'
@@ -106,6 +170,55 @@ git -C "$REPO" commit --allow-empty -q -F "$MESSAGE_FILE"
 (
   cd "$REPO"
   expect_fail_with "multi-commit range with forbidden trailer" 'prohibited AI/coauthor trailer' bash "$CHECKER" commits "${BASE}..HEAD"
+)
+
+cat >"${MESSAGE_FILE}" <<'MESSAGE'
+feat: Reproduce a Git editor message
+
+Generated with Codex
+
+# Please enter the commit message for your changes. Lines starting with '#' will be ignored.
+MESSAGE
+EDITOR_COMMENT_COMMIT="$(git -C "$REPO" commit-tree "${BASE}^{tree}" -p "$BASE" <"${MESSAGE_FILE}")"
+(
+  cd "$REPO"
+  expect_fail_with "commit range rejects attribution before Git editor comments" 'Generated with' bash "$CHECKER" commits "${BASE}..${EDITOR_COMMENT_COMMIT}"
+  expect_fail_with "pre-push rejects an invalid new ref among multiple refs" 'Generated with' bash "$CHECKER" pre-push origin $'refs/heads/good\t'"${GOOD_HEAD}"$'\trefs/heads/good\t'"${BASE}"$'\nrefs/heads/bad\t'"${EDITOR_COMMENT_COMMIT}"$'\trefs/heads/bad\t'"${ZERO_OID}"
+)
+
+# This literal is the CaptainHook action placeholder that the test exercises.
+# shellcheck disable=SC2016
+CONFIGURED_PRE_PUSH_ACTION='bash tools/quality/check-git-conventions.sh pre-push origin {$STDIN}'
+if ! grep -Fq -- "$CONFIGURED_PRE_PUSH_ACTION" "${ROOT}/captainhook.json"; then
+  fail "CaptainHook must pass its real pre-push refs to the shared checker"
+fi
+mkdir -p "${REPO}/tools/quality"
+cp "$CHECKER" "${REPO}/tools/quality/check-git-conventions.sh"
+
+CAPTAINHOOK_CONFIG="${TEST_TMP}/captainhook.json"
+cat >"${CAPTAINHOOK_CONFIG}" <<CONFIG
+{
+  "pre-push": {
+    "enabled": true,
+    "actions": [{"action": "${CONFIGURED_PRE_PUSH_ACTION}"}]
+  }
+}
+CONFIG
+(
+  cd "$REPO"
+  if env -u CI CAPTAINHOOK_SKIP_HOOKS=0 "$ROOT/vendor/bin/captainhook" --configuration="$CAPTAINHOOK_CONFIG" --input="$PUSH_INPUT" hook:pre-push origin 'git@example.invalid:javmeta.git' >"${TEST_TMP}/captainhook-output" 2>&1; then
+    :
+  else
+    cat "${TEST_TMP}/captainhook-output" >&2
+    fail "CaptainHook must accept a valid pre-push range"
+  fi
+  if env -u CI CAPTAINHOOK_SKIP_HOOKS=0 "$ROOT/vendor/bin/captainhook" --configuration="$CAPTAINHOOK_CONFIG" --input="refs/heads/bad ${EDITOR_COMMENT_COMMIT} refs/heads/bad ${ZERO_OID}" hook:pre-push origin 'git@example.invalid:javmeta.git' >"${TEST_TMP}/captainhook-output" 2>&1; then
+    fail "CaptainHook must reject an invalid pre-push range"
+  fi
+  grep -Fq 'Generated with' "${TEST_TMP}/captainhook-output" || {
+    cat "${TEST_TMP}/captainhook-output" >&2
+    fail "CaptainHook must report the prohibited attribution from the outgoing range"
+  }
 )
 
 if grep -E 'git (fetch|pull|push)|curl|wget|gh ' "$CHECKER"; then
