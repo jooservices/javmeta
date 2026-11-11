@@ -1,0 +1,691 @@
+{
+    "schemaVersion": 1,
+    "identity": [
+        "path",
+        "line",
+        "identifier",
+        "messageHash",
+        "sourceHash"
+    ],
+    "occurrences": [
+        {
+            "path": "app/Console/Commands/Crawler/FeedPoolCommand.php",
+            "line": 195,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "1d5bd369081836bbe38d37fb3277caf37c8661d4d9be7f019fff419a8f1824cc",
+            "sourceHash": "d50dd905aecd46020d3fad5499850c67644852a561fe78399f4ff84c3d50188d"
+        },
+        {
+            "path": "app/Console/Commands/Crawler/FeedPoolCommand.php",
+            "line": 195,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "2fd348b7625f5aca595a9ad74782f8577dc678dc85303692d54017d0437a0378",
+            "sourceHash": "d50dd905aecd46020d3fad5499850c67644852a561fe78399f4ff84c3d50188d"
+        },
+        {
+            "path": "app/Console/Commands/Crawler/FeedPoolCommand.php",
+            "line": 195,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "c1dcda884db3cb5a7a6ed47c7f059df97dfefbb626a67298243a0c22f2decae8",
+            "sourceHash": "d50dd905aecd46020d3fad5499850c67644852a561fe78399f4ff84c3d50188d"
+        },
+        {
+            "path": "app/Console/Commands/Crawler/FeedPoolCommand.php",
+            "line": 300,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "db8492fae6c7632b5f43df4b63623d95ff5e7aa569bc77fe22acfb804715cfc4",
+            "sourceHash": "980bb50f2c4f146f6e0a0db27d091fb5c8e47466f022c7a1ec482fd76c188d12"
+        },
+        {
+            "path": "app/Console/Commands/Observability/PublishMetricsCommand.php",
+            "line": 749,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "e4c86a99306afc70b0315e5e7fa5d08afb106dca0904697cc69228e8b5cc9c21",
+            "sourceHash": "f5a70f697a6e35970c0e650846bf935964fc3f83d9f5cc9f11453e639c2a8347"
+        },
+        {
+            "path": "app/Repositories/BusinessQueryRepository.php",
+            "line": 73,
+            "identifier": "argument.templateType",
+            "messageHash": "25493171dc0d4991387f57e5320bd842a2ddece6dfbe8f728d29953eaca21427",
+            "sourceHash": "f6ffa53fa35750a1c150f6aba6cbf3e993e0cb8aa4063c699e8e3eecd76fc3fc"
+        },
+        {
+            "path": "app/Repositories/CrawlQueueRepository.php",
+            "line": 150,
+            "identifier": "missingType.generics",
+            "messageHash": "df0b976d1d864638dfcc932e33b0dfe1d2ad93602f90ad4c773be68b96b0613e",
+            "sourceHash": "2bb75c6fb4a05a520114bbd1ab43c02e9fb254337e521af8327530aded23cd24"
+        },
+        {
+            "path": "app/Repositories/CrawlQueueRepository.php",
+            "line": 150,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "745e602e662d495e013427fef91f030cc02b0cd6b6fd3eec0ff921f70574eb1a",
+            "sourceHash": "2bb75c6fb4a05a520114bbd1ab43c02e9fb254337e521af8327530aded23cd24"
+        },
+        {
+            "path": "app/Repositories/CrawlQueueRepository.php",
+            "line": 150,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "e6d483f04dc4dd545f86258ada7b0f72a779d66382679836af720f78015ddfcb",
+            "sourceHash": "2bb75c6fb4a05a520114bbd1ab43c02e9fb254337e521af8327530aded23cd24"
+        },
+        {
+            "path": "app/Repositories/CrawlQueueRepository.php",
+            "line": 452,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "bd45c4896ea71ac52615b7bcc71520862bb055fd9ab257088f22876fe6dfe9e7",
+            "sourceHash": "ff3f789195e1f02299615c7f4c74d922b0c74b6fbbcf3e68ed4374a7beaaba49"
+        },
+        {
+            "path": "app/Repositories/CrawlQueueRepository.php",
+            "line": 463,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "468ea4204d2148b7659c6703315cd35a729c5c820fea438877ee42366f40edeb",
+            "sourceHash": "ded6b64bdcb778fb117955f2989f149ee657855957bbfe50d92defb0865274d1"
+        },
+        {
+            "path": "app/Repositories/CrawlQueueRepository.php",
+            "line": 513,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "e25eeead851bb5249a9b0f0bf58211791d5e4da91e9ef653c1cb67423cd24629",
+            "sourceHash": "95bb2907b44a1655441ff9b44d2267765d9c8c82a0119305e27be9f4ee95eff4"
+        },
+        {
+            "path": "app/Repositories/CrawlStatsServiceRepository.php",
+            "line": 136,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "141c3faef0b507611d3337bea5774c03d9fd048dd7316338e7bc05af8acca321",
+            "sourceHash": "bc7a19bd5573e334c971da0854747c6c1b23944ae4a6cbc618f5c9f1eebb248f"
+        },
+        {
+            "path": "app/Repositories/MovieRepository.php",
+            "line": 315,
+            "identifier": "missingType.generics",
+            "messageHash": "3836c03c38256542ed130db4734eb6c74844f65d961c6b413ddc8f76696f6828",
+            "sourceHash": "87d4d1ad649bac9e2d2a7f5df552f7731131aafeb931664ab4c04324cf6e7c03"
+        },
+        {
+            "path": "app/Repositories/MovieRepository.php",
+            "line": 697,
+            "identifier": "missingType.generics",
+            "messageHash": "0226e9afca64d0013f0710ab0f49faff5c58adc27b557af1d064da8c4710c145",
+            "sourceHash": "7c95dbd09725fe3129af05e5729952b5fbb241f74b8dd1ba4b5952ca0828340b"
+        },
+        {
+            "path": "app/Repositories/MovieRepository.php",
+            "line": 719,
+            "identifier": "missingType.generics",
+            "messageHash": "e4b2a2af8ced353322fb9e33eb9e3b59cb5ad54b82ed33063e193bd5b63d1b9a",
+            "sourceHash": "73a10142afa04d246dbef1cc06ffcc092323407bf515810fa12f92012997bf90"
+        },
+        {
+            "path": "app/Repositories/MovieRepository.php",
+            "line": 748,
+            "identifier": "missingType.generics",
+            "messageHash": "fea8084d643ac30525c2969d3a6efce9afb1452d62b00946a3a026523d09a98d",
+            "sourceHash": "91fa55cf1358bc5402fe64715bcf7fd92a24c8b9f32c7c51be34bd943c06ff68"
+        },
+        {
+            "path": "app/Repositories/MovieRepository.php",
+            "line": 785,
+            "identifier": "missingType.generics",
+            "messageHash": "58eac51e4e7ae0291dd1f90c218020e70d71db9005f7880f70f5c55f8ddfdd8e",
+            "sourceHash": "e0e7cb6995749f63beefb9fc1668439a34d2c60d3ea7535732149f432794b954"
+        },
+        {
+            "path": "app/Repositories/MovieRepository.php",
+            "line": 796,
+            "identifier": "missingType.generics",
+            "messageHash": "28746f9eb50eca980fc7d1db36a66d6a318f93ca1b7e3f0c5e210ffe73ce9344",
+            "sourceHash": "6ba989a52d29cfeb731bfc96c7ee96c77ff9dfab851662ee2794bb3366629ace"
+        },
+        {
+            "path": "app/Repositories/MovieRepository.php",
+            "line": 817,
+            "identifier": "missingType.generics",
+            "messageHash": "71430d79dd6d5b6f45ff48564002570d73cb1e301097fffd50c1e26aced2de3b",
+            "sourceHash": "0094caa6181a7c81293bec03851f7dd467a6e177356fec76249bb01af767241d"
+        },
+        {
+            "path": "app/Repositories/NotificationPolicyServiceRepository.php",
+            "line": 37,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "4f6ab497c41f251f2942d7cec98c99c807bf802018e20e8fbe031d12486b084e",
+            "sourceHash": "1e868c71fa49c3b1db0c2c889b108ce3183bfb405a8ce5f4ce8b13c4110de0e6"
+        },
+        {
+            "path": "app/Repositories/UiMarksMovieRepository.php",
+            "line": 33,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "19e09fff641a2d69479c9ad96216c5182a0dc33e367c644fa587e82fe1a650fe",
+            "sourceHash": "f5f472c78ef4a2c162bdd2da02b19fb3cd9f7f89d751ab0c4e9f7e1b523cc5f3"
+        },
+        {
+            "path": "app/Repositories/UiMarksMovieRepository.php",
+            "line": 33,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "1be002a412a8f27cf679059380fc39d623853beb3c64e5f4ff958f6ecc305a8a",
+            "sourceHash": "f5f472c78ef4a2c162bdd2da02b19fb3cd9f7f89d751ab0c4e9f7e1b523cc5f3"
+        },
+        {
+            "path": "app/Repositories/UiMarksMovieRepository.php",
+            "line": 33,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "bd462c71ad08d05779ea4375191e1c02d17b431a2cc753ca60bc459a761ad77c",
+            "sourceHash": "f5f472c78ef4a2c162bdd2da02b19fb3cd9f7f89d751ab0c4e9f7e1b523cc5f3"
+        },
+        {
+            "path": "app/Repositories/UiMarksMovieRepository.php",
+            "line": 55,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "37bea8ddcdc5a6337e37d7387f09cfdae181b0d25da1ac8dc25a28cb6253dda5",
+            "sourceHash": "41ae883ed98357d408c471bde4d92809223481261274a7ff5dbd71a59a2c882e"
+        },
+        {
+            "path": "app/Services/Alerts/AlertChannelDispatcher.php",
+            "line": 19,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "05126e843bf274c312dd10aa937e7108eaa855d06e1a0f8e830798f4346c4eb3",
+            "sourceHash": "641e303310a90115f38f750cd9b690fb460a20512fc467a438ee1b6e06e25e7c"
+        },
+        {
+            "path": "app/Services/Alerts/AlertDispatcher.php",
+            "line": 29,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "048cf728e251c921d2957af3966a609ec42c16743d9ac5df310a284d1e8aa90c",
+            "sourceHash": "e1812e0dbc51533950d6fa8e600b87156f841cd337978924e52d6a5d0e26ffa2"
+        },
+        {
+            "path": "app/Services/Alerts/AlertEvaluationService.php",
+            "line": 92,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "59b9af5e0c8eb8309c27802492a397978236fd1a953a2f4ce43aa9acf6a287f1",
+            "sourceHash": "ac7dd2fe480c0d23c21bf0aaf97e6b6d8b98e20edf9000667908ab233adb0859"
+        },
+        {
+            "path": "app/Services/Alerts/AlertEvaluationService.php",
+            "line": 130,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "7463b19992ad735b8cf16516f4e908e0146a09ab0bc871a0065560ac4f8c55cc",
+            "sourceHash": "620df53372448fe64118f1ffdba66c2d8a6a02e7e5b9da3d98f4c83acefe4002"
+        },
+        {
+            "path": "app/Services/Alerts/AlertEvaluationService.php",
+            "line": 162,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "941dd7241240773372d0056b07e5007aba0f81e09cbfdb31528ace23de5c6a7b",
+            "sourceHash": "9989f973ffd6129e5a3cf55f1adb992528fd3d647824f41a87fd37c3d958631a"
+        },
+        {
+            "path": "app/Services/Alerts/AlertEvaluationService.php",
+            "line": 266,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "25d232a39c8c61600359c6c4169f9dcd14a0a034e804647316c64ef83988a8d1",
+            "sourceHash": "68eec9e379a7dd3046162c0bb8e13ab602363bcd171fa1639da2f22ee30f2c5f"
+        },
+        {
+            "path": "app/Services/Archive/MongoSiteArchive.php",
+            "line": 29,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "4ae8670c4944e7daa051ff89620ed58deecd5fffc9d82d71aeb8be8b4fac14d8",
+            "sourceHash": "49013b58a40ae0dcaad2c98971c9f2f2e0fa6fc8266b6c8bf9b00207e01646f4"
+        },
+        {
+            "path": "app/Services/Archive/MongoSiteArchive.php",
+            "line": 41,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "60e38feb49aed161dbf0df71bffe840cb2e3c77dd74f9a4bd13f52daf3a724f0",
+            "sourceHash": "6173038bc31e6678bbacacff389a8f119c933848a2c71eeea7fd607379a7520b"
+        },
+        {
+            "path": "app/Services/Crawl/CrawlQueueService.php",
+            "line": 43,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "fcf8601ee97df0b7ffb2c2e1056bc269c0cc3093603968c3f27a4d8adc9b71b9",
+            "sourceHash": "d6aa1b15fa4be3fd5be25c07fd8698f96ad720e3e292f8fccc061ce9dac9efc5"
+        },
+        {
+            "path": "app/Services/Crawl/CrawlStatsAggregator.php",
+            "line": 117,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "d23f7540898b77c764b3435e321d5675c687881a4f39e031fa14e010cfec622f",
+            "sourceHash": "517fc9db161cb9e15ff013d2698183cda41ba09ff7a230aab2aa5cc863e2b1c4"
+        },
+        {
+            "path": "app/Services/Crawl/CrawlStatsAggregator.php",
+            "line": 129,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "734d23ded1b04fbd7580085bdf6d115d16dab124f4aa80e050db358ed94b5366",
+            "sourceHash": "7a3d869c02996b0876b5b44810d923e44a5e18e3f812004f88465414d38d8dfa"
+        },
+        {
+            "path": "app/Services/Crawl/CrawlStatsRollup.php",
+            "line": 116,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "32fc6bcd188f07733fd247dd78499ee0fdf508df60df6ddc305442766a3ba706",
+            "sourceHash": "947540a986881d3b16e3fbd1a659490429f4365d1449e7428e2046e86b6e4f65"
+        },
+        {
+            "path": "app/Services/Crawl/CrawlStatsRollup.php",
+            "line": 133,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "de7c78d9fb4b62a120521bf3473bc212818fc759f441b1cd6f9996a79e6032a0",
+            "sourceHash": "ac8e36228acb6350689192bc70b1e824ffbc06be65c8e1cd5333addfa74cbd91"
+        },
+        {
+            "path": "app/Services/Crawl/FeedPoolDiagnostics.php",
+            "line": 272,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "5f21c6e14b812bda1c4518c8d5f3b338e1adbd8852067b795a591e940ffc61fb",
+            "sourceHash": "bbec969b4826a7a60074c9c72d0342ef7e53c858fe8e8bfdc87166ed7e1d6cc6"
+        },
+        {
+            "path": "app/Services/Dataset/SampleDataset.php",
+            "line": 309,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "34b027e2188ffc2970f0ef2fcedd7a78a1e65d678924574f780af90c1b2f9f75",
+            "sourceHash": "6980c313500646977b01d52b7f588975967bc0e8cbf3b86642cac1fe68bb2ba7"
+        },
+        {
+            "path": "app/Services/Dependencies/Probes/RedisProbe.php",
+            "line": 103,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "d41d4fc01c549cbfc9eb66ecbe489b2bca48dfa81c0e433d3a1da4cef2eac042",
+            "sourceHash": "f1d674fff17e291123abf11ad5b8470e274e03f9ef2b7c3bf7d6342be6259700"
+        },
+        {
+            "path": "app/Services/Dependencies/Probes/RedisProbe.php",
+            "line": 135,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "59b710caa0c85032ccce4c91e0918e57b72e2f6fda0cde99be67cfbe05ae8a7f",
+            "sourceHash": "810b097e86191893a868d50723959233dc72907042ec4816e679ef62d3a443bd"
+        },
+        {
+            "path": "app/Services/Downloads/DownloadService.php",
+            "line": 93,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "935a8ee76ac77701fc75207ec9a750c75d551ace13bf6bd246e6aaa1d6a2cc1b",
+            "sourceHash": "b0e5497384e03ca0d466ebf203991a19208726f88e84752328d650bfe154ee01"
+        },
+        {
+            "path": "app/Services/Downloads/QBittorrentClient.php",
+            "line": 24,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "3fd61fffac8e8fe0be723e734a15b715989d9acf732ac78ee1d2da4122335bf2",
+            "sourceHash": "e477393748bb7e1b6d485b020d4d3a1760a7997e780e8fecd0268cddbd7d5ae5"
+        },
+        {
+            "path": "app/Services/Embedding/OllamaClient.php",
+            "line": 80,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "2ac67afd92a244164e02eb72b298951501895a8e5b6d771d2c9fb29014e123f7",
+            "sourceHash": "6377677f68b1f673895766a78156cd8c61f8e5fa6b2beb0d049bab2351fdcf92"
+        },
+        {
+            "path": "app/Services/Embedding/OllamaClient.php",
+            "line": 80,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "eb3042828f7361bb63edaf177f0449103e654afcb09557d9828304438404c479",
+            "sourceHash": "6377677f68b1f673895766a78156cd8c61f8e5fa6b2beb0d049bab2351fdcf92"
+        },
+        {
+            "path": "app/Services/Embedding/OllamaClient.php",
+            "line": 90,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "ad499418da59ba9aec9378db04e7aea4aa128f51ab566bdf5acb993d157e353e",
+            "sourceHash": "7434d902f5f5974cda726c64e484182b357f2019b64b8f82a1dc5faafe8ed497"
+        },
+        {
+            "path": "app/Services/Embedding/OllamaClient.php",
+            "line": 137,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "0512c06092cab047b1cc6e7d8064db57637dad5a8e1870a11ce58f8edd42abb9",
+            "sourceHash": "5155cb1594a980dbb9f3666a78fa646ecfc3b60765fb158cf0d221cc720a469d"
+        },
+        {
+            "path": "app/Services/Facets/FacetListService.php",
+            "line": 60,
+            "identifier": "argument.templateType",
+            "messageHash": "41d0be741db8c885ab66051f709a32bb93bed26d4b6e8912f31eaf1103e3dc34",
+            "sourceHash": "214bca3babfd342c36c9736f7105069033c5f81c56d92d96ed45dfbb566346ca"
+        },
+        {
+            "path": "app/Services/Health/SourceHealthChecker.php",
+            "line": 108,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "30b8e62d0ed1318db40f6913742bb37e0013cdf84e06b058c047f97ce6c3d1d2",
+            "sourceHash": "311242a67f161e192ffb9e4cda839c7ae2c28ad417827ac710a3ae693a22ad67"
+        },
+        {
+            "path": "app/Services/Health/StartupHealthService.php",
+            "line": 132,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "8cace8ebee26d0d84f97f43dcce0ec82cbec2a7ce0dc48a094140eb697aba2d6",
+            "sourceHash": "ed6b61bae9035b8fdb2935fec0331385aeadeeef0ad7bf841a2d0cd9eb09208b"
+        },
+        {
+            "path": "app/Services/Identity/PerformerIdentityMatcher.php",
+            "line": 68,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "116f7ebabe1e8f62d2b34a212e271f8e906c86eef15742f6e3f99e76ee26e30d",
+            "sourceHash": "59a1ed831028cb5d8addc327f68068031dad038774c195288a90d2f4d68a915f"
+        },
+        {
+            "path": "app/Services/Identity/PerformerIdentityMatcher.php",
+            "line": 143,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "3351a8406ae0dc0314d0a4bbcbe910d5c377178f618000a92a8e6158e91e1e96",
+            "sourceHash": "00403f4888ac8502139313ebf054ca8f11154ed1bb313b52af60fab96a87793b"
+        },
+        {
+            "path": "app/Services/Identity/PerformerIdentityMatcher.php",
+            "line": 198,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "b61b42846efd6edebe38493cd3c5d023c4f95ceb4dc5082de585c0c93c630f8e",
+            "sourceHash": "66c38de93956ded11d12218706b5b63165fea0fa9cf09f1c44dd38f70f3d1e8c"
+        },
+        {
+            "path": "app/Services/Identity/PerformerIdentityService.php",
+            "line": 528,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "f13c7aed256899a0e4dd2a38cd7421018052cf7809874f5013ad49ac65e08b6c",
+            "sourceHash": "22b81556f0238fcc96678ff1313c12e588c407cddbd6690eef9d18968e9b0021"
+        },
+        {
+            "path": "app/Services/Identity/PerformerIdentityService.php",
+            "line": 778,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "4ae88774e19b30262fe4c99e1331d19681cd690fe6b249a3283a61c7c587cc86",
+            "sourceHash": "573091c5670429351117c5191e48f4e9ac5675f5dc991595b9cc220c9b8f6d2b"
+        },
+        {
+            "path": "app/Services/Library/LibraryScanner.php",
+            "line": 88,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "9b1ca25a4828dc9b1344c92a93d11ede472f98216ad1fd021dc016ed7e2fb75b",
+            "sourceHash": "41c923ef45df77ee32d95069cb3d9a349266ec903b70ff0a14b3d0ef707ed56e"
+        },
+        {
+            "path": "app/Services/Mcp/McpToolService.php",
+            "line": 237,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "badaef4d15517e25daf632b5c3b3cf268b08c19360f6b6f37c8eb772f5c39cbc",
+            "sourceHash": "ab746b68852d269ddbb9e246f6edec468daf225514e315010eb6a65a9ad15163"
+        },
+        {
+            "path": "app/Services/Mcp/McpToolService.php",
+            "line": 263,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "3aa4a20d6910a9e199ffc1de68bbbec58edd9572999ad365fcceb2def09bee12",
+            "sourceHash": "a11fb0896bad8b6953b5d9e063f9264d24c412607eb7038c9911f6eecfb30238"
+        },
+        {
+            "path": "app/Services/Mcp/McpToolService.php",
+            "line": 263,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "676e4a1a650d466c30b0eb54bcbf93264962044321b187457a0666dcdaa5e216",
+            "sourceHash": "a11fb0896bad8b6953b5d9e063f9264d24c412607eb7038c9911f6eecfb30238"
+        },
+        {
+            "path": "app/Services/Mcp/McpToolService.php",
+            "line": 274,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "007d5df3d3cd8875ffd4aadadbcd036aa2e693b398e1faca43170d29c88ddc09",
+            "sourceHash": "14233614942b81459a08e80b08396d8483847d68ef6a17bf5cab5599b1115135"
+        },
+        {
+            "path": "app/Services/Mcp/McpToolService.php",
+            "line": 282,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "13e63698a4b3ade6d7b43524c85121d33c2c8e6af12956c3b542788aa4bebd08",
+            "sourceHash": "65b852bc7f3d421afc2c5dbc2097aee21fe0a625d07b8437271aeca07701f757"
+        },
+        {
+            "path": "app/Services/Mcp/McpToolService.php",
+            "line": 295,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "fd6fb0e53218aaab7115b7420491727b910f7c316c8aa8b794a3aaf61cad76ec",
+            "sourceHash": "b63e380f5739326c47b44551f4a7eb0b8b363d124028949b3ce5b0ad445272e0"
+        },
+        {
+            "path": "app/Services/Mcp/McpToolService.php",
+            "line": 325,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "c6054f5d68bc3ccdb09724e698ad250342ffe5baa7b175314680851e677f298f",
+            "sourceHash": "f53d099480dcf6ccb1d21597ab8ebc12e558ddabf095aab2522dec84546eb232"
+        },
+        {
+            "path": "app/Services/Mcp/McpToolService.php",
+            "line": 364,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "02e27a6a21be8f03b6bbd558d86f92760fd4711840e696a297a437168f72ef07",
+            "sourceHash": "5a6bdffc73979661300b784f02b38d9ed260d14ded5a0476df7a5f5ccaecea9f"
+        },
+        {
+            "path": "app/Services/Mcp/McpToolService.php",
+            "line": 386,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "32652c50b65515c29e2577e156f8c661fd2ef9422be7fd2f09aaef2f50b1ff85",
+            "sourceHash": "2b831150cbb4a65876dffd35aa1d46545001c876653396e7cf90f7c660b98a39"
+        },
+        {
+            "path": "app/Services/Mcp/McpToolService.php",
+            "line": 452,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "7137dea0185bc6951f41f898b1c2bbf96103675529e7c44cf06edd47137b22eb",
+            "sourceHash": "c12c819de4456e3dc2a17bbeeaadabb80d071304bb829b8ff774fd4cc748a0cd"
+        },
+        {
+            "path": "app/Services/Mcp/McpToolService.php",
+            "line": 493,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "9e678d60a1bf26c700d7979e35b7ee16cd5d119027dc37a1522bf1f9c8a0f0cd",
+            "sourceHash": "29c271d5e8ca7323402ed6980f2bff211d4a3692f6968d0c8eaff90501f40578"
+        },
+        {
+            "path": "app/Services/Mcp/McpToolService.php",
+            "line": 508,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "d31b7598cc9f11af77990c1ce1431420e576471afd83bc3f3f3619ef46682932",
+            "sourceHash": "cbfee800e4830177103d16d6a37a452cc4086b94b25d8330cf47ae02964b7083"
+        },
+        {
+            "path": "app/Services/Mcp/McpToolService.php",
+            "line": 627,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "24faf7b7ffe9579a9697031da37c841139bcf60a0b9d1e70e37ec348bb6789b0",
+            "sourceHash": "b198145efa8d134069bf48e67bd95a1418f58842ba5fa3f8b2b74513b0985ef6"
+        },
+        {
+            "path": "app/Services/Mcp/McpToolService.php",
+            "line": 673,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "4f212244ef2bf3aac50b8441db7df2613f138488675816f35bcfd7c32cd9899b",
+            "sourceHash": "8a6adfa895f425836aa312ac142da904d2ac197588554b214ee4da186cac10a7"
+        },
+        {
+            "path": "app/Services/Media/MediaQueue.php",
+            "line": 43,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "a2a6f0d810bc367a89041faf7d8d3570a1febf01c44a02592404ca57f4a6e9aa",
+            "sourceHash": "1045533195a7dd4b1275a18700e0b4f029b4770be2f5521caab3f1f5828a3f97"
+        },
+        {
+            "path": "app/Services/Media/MediaQueue.php",
+            "line": 85,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "5da6fa8afaa1ced03acb1fe37ed33824aa963ac70b3ccb45a35545010dc3d3e1",
+            "sourceHash": "4d24219bb467b9076195ad2cc0089171bae74fcbd1614adedbd00acb470be578"
+        },
+        {
+            "path": "app/Services/Media/MediaQueue.php",
+            "line": 114,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "e7200c5240117eb3f7f934f4d7772c9e10533d429820f127911aa235083a52bf",
+            "sourceHash": "fc784acca7d752815684fcb41b07abc8a8f7173e33a192b132e99f8e6d455060"
+        },
+        {
+            "path": "app/Services/Media/MediaQueue.php",
+            "line": 138,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "ff12c545a61887a29e0b284b081c47ed8277f3f3ba264be8d0c54043f0999b86",
+            "sourceHash": "edf7ff8ce6bd700b1cef4ccc84f815ef117093ec04a3f8389b080675a89d6c74"
+        },
+        {
+            "path": "app/Services/Media/SceneSearchService.php",
+            "line": 50,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "373f87d9fa24a2a9bf9cf5ea347bf8baed378c29e38b2549ede6fd233fd4300b",
+            "sourceHash": "3740fc3e500e109b89417ff17b96be7596b9f6f815314d95b420af9e0c6373e0"
+        },
+        {
+            "path": "app/Services/Normalize/PerformerNormalizer.php",
+            "line": 96,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "54116c7148c6236f662dfffd270eeec80c16b7057bd9d586160c3c2e841d3cd1",
+            "sourceHash": "45f35e3a10fae2da21ffa1df4ea01d7f37c3893ca4f65adf27a4574f1d837078"
+        },
+        {
+            "path": "app/Services/Notifications/NotificationPolicyService.php",
+            "line": 146,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "97046332c09bdd1061679591ebdad227257a6449ecb4785ba2745c81e3981bb4",
+            "sourceHash": "bdee4301ed052e96031d7955508ff813eab828c973ae2c218fa674631e824cba"
+        },
+        {
+            "path": "app/Services/Notifications/NotificationTemplateService.php",
+            "line": 85,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "3d274f67eeef42f56465dc163fcd1b2449f978ed992d7ae0559a649f646bf93d",
+            "sourceHash": "d9ef5de2f6ce69889372f3ab6f268eac1413db82c027a2c219f3a55569660a92"
+        },
+        {
+            "path": "app/Services/Notifications/NotificationTemplateService.php",
+            "line": 110,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "8f4a9b0658d831d4574693fd080096fa5a79297fbda82348742e968f6ae30907",
+            "sourceHash": "d4aab121a9141c867896c9ef5c5de9f5d696edd494d510e1e2f473cac6e8a0d0"
+        },
+        {
+            "path": "app/Services/Notifications/NotificationTemplateService.php",
+            "line": 127,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "2458c81c8f0e31043834c0bb6e78972d7a0e43d11584099170223dc1a635088c",
+            "sourceHash": "e2550f0f31a1c7fd71732a211144c97a0911d49e31bc698a0c3cbc4f90b33e1f"
+        },
+        {
+            "path": "app/Services/Notifications/TelegramBot.php",
+            "line": 84,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "d4ed94656aa24701bc9b51005cf1f8e3db6b81bfe8969e80fe80b3a47eee5d6c",
+            "sourceHash": "038f2e9c2e7f32206e04f6bf92f7c84d6ddc3f9b3e73ecb4cc666b09bec054b8"
+        },
+        {
+            "path": "app/Services/Notifications/TelegramBot.php",
+            "line": 103,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "b264939ab9948e8cedcc7b807f3d2e8d3612f248ed56a262d9bcdd6847526f39",
+            "sourceHash": "c5ae85731c54670e95b496621eb1ab0c985201d17dda874eb62183228054cc7b"
+        },
+        {
+            "path": "app/Services/Observability/NodeEgressProbe.php",
+            "line": 279,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "b441d58e8701950c8af60b2d1d7486fc76e1f2099e4608af102395a75553c12e",
+            "sourceHash": "2cb98529eb8ae97fe5f7e6a03bb7883d374f59022b3ecd689af61cf59ff228bb"
+        },
+        {
+            "path": "app/Services/Persist/PerformerPersister.php",
+            "line": 49,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "4b931b8df00fe71cfb306caf97c414f30f187508957642017f2805824b60da24",
+            "sourceHash": "5f1b7369578a1587aa1ed4fe7cb6631b49c80e9a677162c73fa6a6eeed36c268"
+        },
+        {
+            "path": "app/Services/Persist/PerformerPersister.php",
+            "line": 54,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "5278fb3a5b2ecd679cf7a368ec4b04ad236cb63d4f5fc394249287541929085f",
+            "sourceHash": "03fd03dee3d27df52fd10599010fa0954d9c6ec4447c15737579a0d92fa36233"
+        },
+        {
+            "path": "app/Services/Persist/PerformerPersister.php",
+            "line": 86,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "7f5fe1184f6a9f40e379c698b26a19f58474d137e79f324dfbce80ee6a6c568a",
+            "sourceHash": "9636587e03ba82f90cf8ed0599137497dc1e0d728bc15bbedcbd87ef2f8cfc44"
+        },
+        {
+            "path": "app/Services/Search/CursorCodec.php",
+            "line": 49,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "4b71b2f8b0955b7eefeaaabaaf4e11c2999aaa9d4b6837211fd4365d76498123",
+            "sourceHash": "99972f7d37e1deaf8d97cf0aa10d72233569f268858de6ec84d98e0e5aa2692f"
+        },
+        {
+            "path": "app/Services/Search/MovieSearchService.php",
+            "line": 93,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "a74928ff80eced6f180262627b3c369644332c0821064c60dce371d06a4aa6e1",
+            "sourceHash": "2b0feb513f43f3aabc8cd4c14ad01c7bff0d7df3dab1ccba7b407068736b7d2b"
+        },
+        {
+            "path": "app/Services/Search/MovieSearchService.php",
+            "line": 142,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "0207dd460c4839d94b46e75b5aeede6fe93104ece8a6cac7376f3e1d2233c00f",
+            "sourceHash": "17f702a3468ed57f9bbcb412829107c5b0a4a1469529bda57a57e9eafc1028ee"
+        },
+        {
+            "path": "app/Services/Search/PerformerSearchService.php",
+            "line": 28,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "3fa6853901950ca1031320d5c27c3f8603788dfbce6b46bb05980902cd0d3609",
+            "sourceHash": "2b0feb513f43f3aabc8cd4c14ad01c7bff0d7df3dab1ccba7b407068736b7d2b"
+        },
+        {
+            "path": "app/Services/Search/QueryInterpreter.php",
+            "line": 269,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "8b5fb6706516814691fc43c46a859da26897668f34688effc1d045cace5cf370",
+            "sourceHash": "00b7839e0d8495555f546a6ebab2d41b39a082f157e53eae501ca02b0ffea7d4"
+        },
+        {
+            "path": "app/Services/Settings/SettingsService.php",
+            "line": 273,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "4e17e646e81ab17ba99eeb2bceb32e4b63893c41749825ea3884b1079f4733f7",
+            "sourceHash": "87bd381b9ca6ffcd1f29c9a42d74c48c6a172405da476455538f90e79ac7d401"
+        },
+        {
+            "path": "app/Services/Settings/SettingsService.php",
+            "line": 486,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "087b3e2d59529e59e72d6838045234d0409d08779abb8e5fbea8d63b5eae9b71",
+            "sourceHash": "9a32201c3524b8c905963f8b5d29cdc1091aa7c8b3df3f6dce2fb17eaad863cd"
+        },
+        {
+            "path": "app/Services/Settings/SettingsService.php",
+            "line": 572,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "5d2b1e07012eba4ada77a466bd4c7a3face26228592f8b40beb8709f552a2104",
+            "sourceHash": "3293aaca19e52c90209cfb124031a6355383da59e147079359872aad34dafaed"
+        },
+        {
+            "path": "app/Services/Settings/SettingsService.php",
+            "line": 874,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "78de432cc7b84b4acfa5974c0b16bf39bcaf1ee5b51189ea10f390fd714c32a3",
+            "sourceHash": "a40714f307d561adc1ab501ffb3440526e5cfb0f7576a196704a87b7fe4aef4d"
+        },
+        {
+            "path": "app/Services/Workers/HorizonWorkerLayout.php",
+            "line": 169,
+            "identifier": "missingType.iterableValue",
+            "messageHash": "031cc282acea772565d4174744d8bf94d5e287ba606753d86b76421634417870",
+            "sourceHash": "12c921d1806a204d2d10327d3e5ae2c54755e87fa8ede026a04f73e8f9415772"
+        }
+    ]
+}

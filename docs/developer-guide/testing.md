@@ -43,10 +43,17 @@ Keep failures and their evidence in the handoff. Do not lower assertions or run 
 
 ## Static analysis and its baseline
 
-`composer lint:phpstan` runs Larastan/PHPStan at level 6 with the reviewed findings in
-`phpstan-baseline.neon` ignored. A new finding still fails the analysis. The configuration also reports baseline
-entries that no longer match: remove an entry in the same change that fixes its finding. Once the baseline is empty,
-raise PHPStan to level 7 in a follow-up change.
+`composer lint:phpstan` runs Larastan/PHPStan at level 6 without suppressing findings, then compares every
+diagnostic with `phpstan-baseline-occurrences.json`. An occurrence is identified by relative path, line, PHPStan
+identifier, a SHA-256 fingerprint of the exact message, and a SHA-256 fingerprint of its source line. A new
+occurrence fails even when it has the same message as a finding elsewhere in that file; a removed or moved
+occurrence is reported as stale. This closes the replacement gap in PHPStan's generated
+`phpstan-baseline.neon`, which records counts per file but not line locations.
+
+When intentionally changing the existing findings, regenerate both reviewed baseline files with
+`composer lint:phpstan:baseline`, inspect the diff, and include only expected removals or explicitly approved additions.
+Removing an occurrence from the baseline makes a later reintroduction fail as new. Once all findings are fixed and
+the baseline is empty, raise PHPStan to level 7 in a follow-up change.
 
 Run this database-independent check from the worktree:
 
