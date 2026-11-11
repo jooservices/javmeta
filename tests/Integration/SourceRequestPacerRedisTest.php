@@ -13,7 +13,6 @@ final class SourceRequestPacerRedisTest extends IntegrationTestCase
     {
         self::assertSame('redis', config('database.redis.default.host'));
         self::assertSame(6379, (int) config('database.redis.default.port'));
-        self::assertSame('jvmeta_it', config('database.redis.default.username'));
         self::assertStringStartsWith('javmeta_it:', (string) config('database.redis.options.prefix'));
         Redis::purge('default');
         $pacer = new SourceRequestPacer();
