@@ -146,7 +146,7 @@ const adminSample = u => {
   }
   return { data: [] };
 };
-const libSample = u => u.endsWith('/library') ? { data: { files: 3, matched: 2, unmatched: 1, missing: 0, bytes: 5012, by_folder: [{ folder: '/media/<b>a</b>', files: 3, bytes: 5012 }], last_scan_at: '2026-10-24 03:00:00', configured: true } } : u.includes('/codes') ? { data: ['AAA-001'] } : u.includes('/on-disk') ? { data: [{ code: 'AAA-001', files: 1, bytes: 5000 }] } : { data: [{ path: '/media/a/x.mp4', size: 7, folder: '/media/a' }], meta: { total: 1, page: 1, per_page: 100 } };
+const libSample = u => u.endsWith('/library') ? { data: { enabled: true, files: 3, matched: 2, unmatched: 1, missing: 0, bytes: 5012, by_folder: [{ folder: '/media/<b>a</b>', files: 3, bytes: 5012 }], last_scan_at: '2026-10-24 03:00:00', configured: true } } : u.includes('/codes') ? { data: ['AAA-001'] } : u.includes('/on-disk') ? { data: [{ code: 'AAA-001', files: 1, bytes: 5000 }] } : { data: [{ path: '/media/a/x.mp4', size: 7, folder: '/media/a' }], meta: { total: 1, page: 1, per_page: 100 } };
 let downloadsEnabled = true;
 const dlSample = u => u.endsWith('/status') ? { data: { enabled: downloadsEnabled, files_enabled: true } } : { data: { items: [{ hash: 'aa', name: 'Video <b>x</b>', movie_code: 'AAA-001', state: 'downloading', progress: 42.5, size: 1e9, speed: 2e6, eta: 600, completed: false }, { hash: 'bb', name: 'Done', movie_code: null, state: 'completed', progress: 100, size: 2e9, speed: 0, eta: null, completed: true }] } };
 const mockJsonResponse = (body, status = 200) => ({
@@ -391,6 +391,15 @@ assert.match(statsHtml, /Thống kê/); assert.match(statsHtml, /Phim theo năm/
 const libHtml = await run('library-page', await load('views/libraryPage.js'), { params: {}, query: {} });
 assert.match(libHtml, /Thư viện/); assert.match(libHtml, /AAA-001/); assert.ok(!libHtml.includes('<b>a</b>'), 'folders are escaped');
 assert.doesNotMatch(libHtml, /php artisan|JOOXCR-223/, 'U-09: library copy has no artisan or ticket jargon');
+const libraryRequests = [];
+const libraryFetch = globalThis.fetch;
+globalThis.fetch = async url => { libraryRequests.push(url); return url === '/ui-me/library' ? mockJsonResponse({ data: { enabled: false } }) : libraryFetch(url); };
+const disabledLibrary = await run('library-disabled', await load('views/libraryPage.js'), { params: {}, query: {} });
+globalThis.fetch = libraryFetch;
+assert.match(disabledLibrary, /Thư viện đang tắt/, 'disabled Library shows a plain Vietnamese message');
+assert.match(disabledLibrary, /href="#\/settings"/, 'disabled Library links to Settings');
+assert.doesNotMatch(disabledLibrary, /php artisan|JOOXCR-\d+|LibraryScanCommand/, 'disabled Library hides implementation details');
+assert.deepEqual(libraryRequests, ['/ui-me/library'], 'disabled Library does not request library or media data');
 const disabledPageNavSource = uiSources.app;
 for (const navItem of [
   "['library', 'nav.library', 'layers', '#/library']",

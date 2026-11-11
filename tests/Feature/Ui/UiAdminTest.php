@@ -140,4 +140,20 @@ final class UiAdminTest extends TestCase
             ->assertNotFound()
             ->assertExactJson(['message' => 'Không tìm thấy báo cáo yêu cầu.']);
     }
+
+    public function test_library_availability_is_independent_of_automatic_scanning(): void
+    {
+        $owner = User::factory()->create(['role' => 'super_administrator']);
+        $this->actingAs($owner);
+        config(['javmeta_library.enabled' => false, 'javmeta_library.feature_enabled' => false]);
+
+        $this->getJson('/ui-me/library')
+            ->assertOk()
+            ->assertJsonPath('data.enabled', false);
+
+        config(['javmeta_library.feature_enabled' => true]);
+        $this->getJson('/ui-me/library')
+            ->assertOk()
+            ->assertJsonPath('data.enabled', true);
+    }
 }
