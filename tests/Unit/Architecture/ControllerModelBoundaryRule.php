@@ -6,6 +6,7 @@ namespace Tests\Unit\Architecture;
 
 use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\FunctionReflection;
+use PHPStan\Reflection\MethodReflection;
 use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\MultipleNodeTypesRule;
 use PHPStan\Rules\RuleErrorBuilder;
@@ -77,6 +78,12 @@ final class ControllerModelBoundaryRule implements MultipleNodeTypesRule
         }
 
         $phpDocErrors = $this->errorsForFunctionPhpDoc($scope, $controller, $node);
+        if ($node instanceof Property) {
+            $phpDocErrors = array_merge(
+                $phpDocErrors,
+                $this->errorsForPropertyPhpDoc($scope, $controller, $node),
+            );
+        }
 
         if ($node instanceof Use_) {
             if ($node->type !== Use_::TYPE_NORMAL) {
@@ -192,7 +199,15 @@ final class ControllerModelBoundaryRule implements MultipleNodeTypesRule
         }
 
         $function = $scope->getFunction();
-        if (! $function instanceof FunctionReflection || $function->getDocComment() === null) {
+        if ($node instanceof ClassMethod) {
+            $class = $scope->getClassReflection();
+            $function = $class !== null && $class->hasMethod($node->name->toString())
+                ? $class->getMethod($node->name->toString(), $scope)
+                : null;
+        }
+
+        if ((! $function instanceof FunctionReflection && ! $function instanceof MethodReflection)
+            || $function->getDocComment() === null) {
             return [];
         }
 
@@ -229,6 +244,38 @@ final class ControllerModelBoundaryRule implements MultipleNodeTypesRule
                     $scope,
                     $controller,
                     $throwType->getReferencedClasses(),
+                    $node->getStartLine(),
+                ),
+            );
+        }
+
+        return $errors;
+    }
+
+    /**
+     * @param class-string $controller
+     * @return list<IdentifierRuleError>
+     */
+    private function errorsForPropertyPhpDoc(Scope $scope, string $controller, Property $node): array
+    {
+        $class = $scope->getClassReflection();
+        if ($class === null || $node->getDocComment() === null) {
+            return [];
+        }
+
+        $errors = [];
+        foreach ($node->props as $property) {
+            $propertyName = $property->name->toString();
+            if (! $class->hasProperty($propertyName)) {
+                continue;
+            }
+
+            $errors = array_merge(
+                $errors,
+                $this->errorsForTypes(
+                    $scope,
+                    $controller,
+                    $class->getProperty($propertyName, $scope)->getPhpDocType()->getReferencedClasses(),
                     $node->getStartLine(),
                 ),
             );

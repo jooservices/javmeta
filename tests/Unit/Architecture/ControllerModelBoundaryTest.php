@@ -256,16 +256,45 @@ final class ControllerModelBoundaryTest extends TestCase
             }
 
             namespace App\Http\Controllers {
-                final class PhpDocModelController
+                use App\Models\Movie;
+
+                final class MovieLookupController
                 {
-                    /** @param \App\Models\Movie $movie */
+                    /** @param Movie $movie */
                     public function acceptMovie($movie): void {}
                 }
             }
             PHP);
 
         self::assertNotSame(0, $analysis['exitCode'], $analysis['output']);
-        self::assertStringContainsString('PhpDocModelController', $analysis['output']);
+        self::assertStringContainsString('MovieLookupController', $analysis['output']);
+        self::assertStringContainsString('App\\Models\\Movie', $analysis['output']);
+    }
+
+    public function test_existing_exception_rejects_a_new_phpdoc_model_property(): void
+    {
+        $analysis = $this->analyseFixture(<<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            namespace App\Models {
+                final class Movie {}
+            }
+
+            namespace App\Http\Controllers {
+                use App\Models\Movie;
+
+                final class MovieLookupController
+                {
+                    /** @var Movie|null */
+                    public $boundaryMovie = null;
+                }
+            }
+            PHP, 'MovieLookupController.php');
+
+        self::assertNotSame(0, $analysis['exitCode'], $analysis['output']);
+        self::assertStringContainsString('MovieLookupController', $analysis['output']);
         self::assertStringContainsString('App\\Models\\Movie', $analysis['output']);
     }
 
