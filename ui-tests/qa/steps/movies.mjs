@@ -35,6 +35,8 @@ async function verifyRelatedMoviesFailureRegression(ctx, code, originalHash) {
   const timeoutGate = deferred();
   const timeoutHandled = deferred();
   const firstRequestStarted = deferred();
+  const successfulRetryGate = deferred();
+  const successfulRetryHandled = deferred();
   const lateGate = deferred();
   const lateHandled = deferred();
   const lateRequestStarted = deferred();
@@ -50,6 +52,7 @@ async function verifyRelatedMoviesFailureRegression(ctx, code, originalHash) {
   const observedRelatedRequests = [];
   const failedRelatedRequests = new WeakSet();
   const requestFailureWaiters = new WeakMap();
+  const expectedConsoleDiagnostics = new Map();
 
   const matchesRelated = url => new URL(String(url)).pathname === relatedPath;
   const countMovieDetails = request => {
@@ -62,6 +65,17 @@ async function verifyRelatedMoviesFailureRegression(ctx, code, originalHash) {
     if (!matchesRelated(request.url())) return;
     failedRelatedRequests.add(request);
     requestFailureWaiters.get(request)?.resolve();
+  };
+  const observeRelatedConsole = message => {
+    if (message.type() !== 'error' || !message.text().includes('524')) return;
+    try {
+      if (new URL(message.location().url).pathname === relatedPath) {
+        const diagnostic = `console ${message.text().slice(0, 200)}`;
+        expectedConsoleDiagnostics.set(diagnostic, (expectedConsoleDiagnostics.get(diagnostic) || 0) + 1);
+      }
+    } catch {
+      // Console diagnostics without a valid source URL are not safe to suppress.
+    }
   };
   const waitForRelatedFailure = request => {
     if (failedRelatedRequests.has(request)) return Promise.resolve();
@@ -100,11 +114,16 @@ async function verifyRelatedMoviesFailureRegression(ctx, code, originalHash) {
       return;
     }
     if (relatedRequests === 4) {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ data: [{ code: 'J335A-RELATED', title_en: 'Retry Successful Related Movie', performers: [], genres: [] }] }),
-      });
+      try {
+        await successfulRetryGate.promise;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: [{ code: 'J335A-RELATED', title_en: 'Retry Successful Related Movie', performers: [], genres: [] }] }),
+        });
+      } finally {
+        successfulRetryHandled.resolve();
+      }
       return;
     }
     if (relatedRequests === 5) {
@@ -163,6 +182,7 @@ async function verifyRelatedMoviesFailureRegression(ctx, code, originalHash) {
     page.on('request', countMovieDetails);
     page.on('request', observeRelatedRequest);
     page.on('requestfailed', observeRelatedFailure);
+    page.on('console', observeRelatedConsole);
     await page.route(matchesRelated, relatedHandler);
     await setHash('#/movies');
     await page.locator('#view input[name=q]').waitFor();
@@ -199,6 +219,8 @@ async function verifyRelatedMoviesFailureRegression(ctx, code, originalHash) {
     if (!(await page.locator('#view h1').innerText()).trim() || await page.locator('#view #movie-downloads').count() !== 1) {
       throw new Error('Retry replaced movie details or another page block while loading.');
     }
+    successfulRetryGate.resolve();
+    await successfulRetryHandled.promise;
     const relatedCard = page.locator('#relstrip[data-related-state="success"] a[href$="#/movie/J335A-RELATED"]');
     await relatedCard.waitFor();
     if (!(await relatedCard.innerText()).includes('Retry Successful Related Movie')) {
@@ -250,18 +272,29 @@ async function verifyRelatedMoviesFailureRegression(ctx, code, originalHash) {
     if (!(await page.locator('#view h1').innerText()).trim()) throw new Error('The movie detail did not recover after returning from another view.');
   } finally {
     timeoutGate.resolve();
+    successfulRetryGate.resolve();
     lateGate.resolve();
     lateFailureGate.resolve();
     if (relatedRequests >= 1) await timeoutHandled.promise;
+    if (relatedRequests >= 4) await successfulRetryHandled.promise;
     if (relatedRequests >= 5) await lateHandled.promise;
     if (relatedRequests >= 6) await lateFailureHandled.promise;
     await page.unroute(matchesRelated, relatedHandler).catch(() => {});
     page.off('request', countMovieDetails);
     page.off('request', observeRelatedRequest);
     page.off('requestfailed', observeRelatedFailure);
+    page.off('console', observeRelatedConsole);
     for (let index = ctx.issues.length - 1; index >= issueStart; index -= 1) {
       const issue = ctx.issues[index];
-      if (issue.includes(relatedPath) && (issue.startsWith('requestfailed ') || issue.startsWith('http 524 '))) ctx.issues.splice(index, 1);
+      if (issue.includes(relatedPath) && (issue.startsWith('requestfailed ') || issue.startsWith('http 524 '))) {
+        ctx.issues.splice(index, 1);
+        continue;
+      }
+      const expectedCount = expectedConsoleDiagnostics.get(issue) || 0;
+      if (expectedCount > 0) {
+        ctx.issues.splice(index, 1);
+        expectedConsoleDiagnostics.set(issue, expectedCount - 1);
+      }
     }
   }
 }
