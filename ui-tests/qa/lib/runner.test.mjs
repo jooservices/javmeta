@@ -1,6 +1,8 @@
 // node --test lib/runner.test.mjs : the runner itself, with fake steps and a fake browser (no real browser needed).
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { createBrowserEnvironment, openBrowser } from './context.mjs';
 import { defineStep, defineScenario, defineSuite, label } from './step.mjs';
 import { runSelection, runSuite, report } from './runner.mjs';
 import { runCommand, parseArguments } from '../run.mjs';
@@ -36,6 +38,118 @@ test('the same step is reused by several scenarios without being copied', async 
   await runSuite(suite, {}, async () => fakeEnv());
 
   assert.equal(runs, 3);
+});
+
+test('partial scenario setup closes its context and the acquired browser', async () => {
+  let contextCloses = 0;
+  let browserCloses = 0;
+  const context = {
+    async newPage() { throw new Error('page setup failed'); },
+    async close() { contextCloses += 1; },
+  };
+  const browser = {
+    async newContext() { return context; },
+    async close() { browserCloses += 1; },
+  };
+  const env = createBrowserEnvironment(browser, {
+    base: 'http://localhost', email: 'qa@example.test', password: 'test-only', shots: '/tmp/qa-runner-test',
+  });
+  const suite = defineSuite('s', [defineScenario('setup', [])]);
+
+  await assert.rejects(runSuite(suite, {}, async () => env), /page setup failed/);
+
+  assert.equal(contextCloses, 1);
+  assert.equal(browserCloses, 1);
+});
+
+test('a missing password file fails before Chromium is launched', async () => {
+  const previousPasswordFile = process.env.QA_PASSWORD_FILE;
+  process.env.QA_PASSWORD_FILE = `/tmp/qa-runner-missing-password-${process.pid}`;
+  let launchCalls = 0;
+  try {
+    await assert.rejects(
+      openBrowser({ shots: '/tmp/qa-runner-test' }, async () => { launchCalls += 1; }),
+      /ENOENT/,
+    );
+  } finally {
+    if (previousPasswordFile === undefined) delete process.env.QA_PASSWORD_FILE;
+    else process.env.QA_PASSWORD_FILE = previousPasswordFile;
+  }
+
+  assert.equal(launchCalls, 0);
+});
+
+test('a failed step still closes its scenario context and browser', async () => {
+  let contextCloses = 0;
+  let browserCloses = 0;
+  const fail = defineStep('fail', async () => { throw new Error('expected step failure'); });
+  const suite = defineSuite('s', [defineScenario('broken', [fail()])]);
+  const env = {
+    shots: '/tmp/qa-runner-test',
+    async newScenarioContext() {
+      return {
+        page: { screenshot: async () => {} },
+        context: { close: async () => { contextCloses += 1; } },
+      };
+    },
+    async close() { browserCloses += 1; },
+  };
+
+  const results = await runSuite(suite, {}, async () => env);
+
+  assert.equal(results[0].ok, false);
+  assert.equal(contextCloses, 1);
+  assert.equal(browserCloses, 1);
+});
+
+test('a context close failure preserves its useful error and still closes the browser', async () => {
+  let browserCloses = 0;
+  const fail = defineStep('fail', async () => { throw new Error('expected step failure'); });
+  const suite = defineSuite('s', [defineScenario('broken', [fail()])]);
+  const env = {
+    shots: '/tmp/qa-runner-test',
+    async newScenarioContext() {
+      return {
+        page: { screenshot: async () => {} },
+        context: { close: async () => { throw new Error('context close failed'); } },
+      };
+    },
+    async close() { browserCloses += 1; },
+  };
+
+  await assert.rejects(runSuite(suite, {}, async () => env), error => {
+    assert.match(error.message, /expected step failure/);
+    assert.match(error.message, /context close failed/);
+    return true;
+  });
+
+  assert.equal(browserCloses, 1);
+});
+
+test('a browser setup failure closes acquired resources and lets the CLI process terminate', () => {
+  const runModule = new URL('../run.mjs', import.meta.url).href;
+  const stepModule = new URL('./step.mjs', import.meta.url).href;
+  const script = `
+    import { runCommand } from ${JSON.stringify(runModule)};
+    import { defineScenario, defineStep, defineSuite } from ${JSON.stringify(stepModule)};
+    const suite = defineSuite('main', [defineScenario('setup', [defineStep('unused', async () => {})()])]);
+    const handle = setInterval(() => {}, 1000);
+    const open = async () => ({
+      async newScenarioContext() { throw new Error('context setup failed'); },
+      async close() { clearInterval(handle); },
+    });
+    process.exitCode = await runCommand([], {
+      loaders: { main: async () => ({ default: suite }) },
+      open,
+    });
+  `;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    encoding: 'utf8', timeout: 5000,
+  });
+
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 2, result.stderr);
+  assert.match(result.stderr, /context setup failed/);
 });
 
 test('a failing step stops its scenario, saves a screenshot, and the next scenario still runs', async () => {

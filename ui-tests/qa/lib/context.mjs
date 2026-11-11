@@ -6,27 +6,66 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-/** One browser per run, a fresh signed-out page per scenario. Console errors and failed requests are collected on the page. */
-export async function openBrowser(options = {}) {
-  const chrome = process.env.CHROME_PATH || `${homedir()}/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome`;
-  const shots = options.shots || process.env.QA_SHOTS || resolve(here, '../../../.tmp/qa-shots');
-  mkdirSync(shots, { recursive: true });
-  const browser = await chromium.launch({ executablePath: chrome, args: ['--no-sandbox'] });
-  const base = options.base || process.env.QA_BASE || 'http://localhost:8099';
-  const email = options.email || process.env.QA_EMAIL || 'qa@javmeta.test';
-  const password = options.password || readFileSync(process.env.QA_PASSWORD_FILE || resolve(here, '../../../.tmp/qa-password'), 'utf8').trim();
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function withCleanupError(error, cleanupError, resource) {
+  if (error === undefined) return cleanupError;
+  return new AggregateError(
+    [error, cleanupError],
+    `${errorMessage(error)} (also failed to close ${resource}: ${errorMessage(cleanupError)})`,
+  );
+}
+
+/** Builds the browser environment separately so partial scenario setup can be tested without Chromium. */
+export function createBrowserEnvironment(browser, { base, email, password, shots }) {
   return {
     base, email, password, shots, browser,
     async newScenarioContext(viewport = { width: 1440, height: 900 }) {
-      const context = await browser.newContext({ viewport, locale: 'vi-VN' });
-      const page = await context.newPage();
-      const issues = [];
-      page.on('pageerror', e => issues.push('pageerror ' + String(e).slice(0, 200)));
-      page.on('console', m => { if (m.type() === 'error') issues.push('console ' + m.text().slice(0, 200)); });
-      page.on('response', r => { if (r.status() >= 400) issues.push(`http ${r.status()} ${r.url().replace(base, '').slice(0, 120)}`); });
-      page.on('requestfailed', r => issues.push('requestfailed ' + r.url().replace(base, '').slice(0, 120)));
-      return { base, email, password, shots, context, page, issues, state: {} };
+      let context;
+      try {
+        context = await browser.newContext({ viewport, locale: 'vi-VN' });
+        const page = await context.newPage();
+        const issues = [];
+        page.on('pageerror', e => issues.push('pageerror ' + String(e).slice(0, 200)));
+        page.on('console', m => { if (m.type() === 'error') issues.push('console ' + m.text().slice(0, 200)); });
+        page.on('response', r => { if (r.status() >= 400) issues.push(`http ${r.status()} ${r.url().replace(base, '').slice(0, 120)}`); });
+        page.on('requestfailed', r => issues.push('requestfailed ' + r.url().replace(base, '').slice(0, 120)));
+        return { base, email, password, shots, context, page, issues, state: {} };
+      } catch (error) {
+        if (context) {
+          try {
+            await context.close();
+          } catch (closeError) {
+            throw withCleanupError(error, closeError, 'partial scenario context');
+          }
+        }
+        throw error;
+      }
     },
     close: () => browser.close(),
   };
+}
+
+/** One browser per run, a fresh signed-out page per scenario. Console errors and failed requests are collected on the page. */
+export async function openBrowser(options = {}, launch = args => chromium.launch(args)) {
+  const chrome = process.env.CHROME_PATH || `${homedir()}/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome`;
+  const shots = options.shots || process.env.QA_SHOTS || resolve(here, '../../../.tmp/qa-shots');
+  const base = options.base || process.env.QA_BASE || 'http://localhost:8099';
+  const email = options.email || process.env.QA_EMAIL || 'qa@javmeta.test';
+  const password = options.password || readFileSync(process.env.QA_PASSWORD_FILE || resolve(here, '../../../.tmp/qa-password'), 'utf8').trim();
+  mkdirSync(shots, { recursive: true });
+
+  const browser = await launch({ executablePath: chrome, args: ['--no-sandbox'] });
+  try {
+    return createBrowserEnvironment(browser, { base, email, password, shots });
+  } catch (error) {
+    try {
+      await browser.close();
+    } catch (closeError) {
+      throw withCleanupError(error, closeError, 'browser');
+    }
+    throw error;
+  }
 }
