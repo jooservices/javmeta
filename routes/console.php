@@ -84,6 +84,5 @@ if (! app()->runningUnitTests()) {
     $scheduleCommand('telegram:poll')->everyMinute()->withoutOverlapping();
     $scheduleCommand('library:scan')->hourly()->withoutOverlapping();
     $scheduleCommand('ai:warm')->everyFifteenMinutes()->withoutOverlapping();
-    $scheduleCommand('perf:warm')->everyMinute()->withoutOverlapping();
     $scheduleCommand('follows:notify')->everyFiveMinutes()->withoutOverlapping();
 }

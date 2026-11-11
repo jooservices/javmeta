@@ -71,7 +71,7 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
             Route::get('movies/{code}', [MovieLookupController::class, 'show'])->middleware(CacheApiResponse::class);
             Route::post('movies:bulk', [MovieBulkController::class, 'store']);
             Route::get('meta/genres', [MetaGenreController::class, 'index'])->middleware(CacheApiResponse::class);
-            Route::get('meta/catalog/{kind}', [CatalogController::class, 'index'])->middleware(CacheApiResponse::class);
+            Route::get('meta/catalog/{kind}', [CatalogController::class, 'index']);
             Route::get('suggest', [SuggestController::class, 'index'])->middleware(CacheApiResponse::class);
             Route::get('search', [SearchController::class, 'index']);
         });

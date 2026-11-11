@@ -654,28 +654,28 @@
         },
         {
             "path": "app/Services/Settings/SettingsService.php",
-            "line": 281,
+            "line": 282,
             "identifier": "missingType.iterableValue",
             "messageHash": "4e17e646e81ab17ba99eeb2bceb32e4b63893c41749825ea3884b1079f4733f7",
             "sourceHash": "87bd381b9ca6ffcd1f29c9a42d74c48c6a172405da476455538f90e79ac7d401"
         },
         {
             "path": "app/Services/Settings/SettingsService.php",
-            "line": 494,
+            "line": 495,
             "identifier": "missingType.iterableValue",
             "messageHash": "087b3e2d59529e59e72d6838045234d0409d08779abb8e5fbea8d63b5eae9b71",
             "sourceHash": "9a32201c3524b8c905963f8b5d29cdc1091aa7c8b3df3f6dce2fb17eaad863cd"
         },
         {
             "path": "app/Services/Settings/SettingsService.php",
-            "line": 580,
+            "line": 581,
             "identifier": "missingType.iterableValue",
             "messageHash": "5d2b1e07012eba4ada77a466bd4c7a3face26228592f8b40beb8709f552a2104",
             "sourceHash": "3293aaca19e52c90209cfb124031a6355383da59e147079359872aad34dafaed"
         },
         {
             "path": "app/Services/Settings/SettingsService.php",
-            "line": 882,
+            "line": 883,
             "identifier": "missingType.iterableValue",
             "messageHash": "78de432cc7b84b4acfa5974c0b16bf39bcaf1ee5b51189ea10f390fd714c32a3",
             "sourceHash": "a40714f307d561adc1ab501ffb3440526e5cfb0f7576a196704a87b7fe4aef4d"

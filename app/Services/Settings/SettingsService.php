@@ -240,7 +240,8 @@ final class SettingsService
         foreach ((array) $definition['config'] as $configKey) {
             config([$configKey => $clean]);
         }
-        if ($key === 'normalization.location_aliases' && $old !== $clean) {
+        // The epoch rotates even when the value is unchanged: a retry after a failed rotation must still invalidate.
+        if (in_array($key, ['normalization.location_aliases', 'normalization.cups', 'normalization.blood_types'], true)) {
             $this->responseCacheEpoch->bump();
         }
         event(new SettingsApplied([$key]));

@@ -60,7 +60,6 @@ final class ScheduleTest extends TestCase
             'node:egress-probe' => '*/2 * * * *',
             'node:sample' => '* * * * *',
             'obs:publish-metrics' => '* * * * *',
-            'perf:warm' => '* * * * *',
             'report:send' => '* * * * *',
             'report:send-daily' => '0 8 * * *',
             'reports:field-conflicts' => '0 * * * *',
@@ -88,7 +87,6 @@ final class ScheduleTest extends TestCase
         $this->assertSame('America/Mexico_City', $scheduled['report:send-daily']->timezone);
         $this->assertTrue($scheduled['search:backfill-embeddings']->withoutOverlapping);
         $this->assertTrue($scheduled['staging:readiness']->withoutOverlapping);
-        $this->assertTrue($scheduled['perf:warm']->withoutOverlapping);
         foreach ($events as $event) {
             if (! str_contains((string) $event->command, 'report:send')) {
                 $this->assertFalse($event->onOneServer);

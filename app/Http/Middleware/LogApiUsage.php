@@ -44,7 +44,7 @@ final class LogApiUsage
 
             RateLimiter::hit($limiterKey, 60);
         } catch (Throwable) {
-            return response()->json([
+            $response = response()->json([
                 'type' => 'rate_limiter_unavailable',
                 'title' => 'Service temporarily unavailable',
                 'status' => Response::HTTP_SERVICE_UNAVAILABLE,
@@ -52,6 +52,9 @@ final class LogApiUsage
             ], Response::HTTP_SERVICE_UNAVAILABLE)
                 ->header('Retry-After', '1')
                 ->header('Cache-Control', 'no-store');
+            $this->record($request, $response, $startedAt, $apiKey instanceof ApiKey ? $apiKey : null);
+
+            return $response;
         }
 
         $response = $next($request);
