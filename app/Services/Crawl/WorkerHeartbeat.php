@@ -6,6 +6,7 @@ namespace App\Services\Crawl;
 
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Throwable;
 
 /**
  * Worker liveness tracking.
@@ -66,7 +67,11 @@ final class WorkerHeartbeat
     public function instances(?int $staleSeconds = null): array
     {
         $threshold = $staleSeconds ?? (int) config('javmeta_alerts.watchdog.heartbeat_stale_seconds', 600);
-        $index = Cache::get(self::INDEX_KEY, []);
+        try {
+            $index = Cache::get(self::INDEX_KEY, []);
+        } catch (Throwable) {
+            return [];
+        }
         if (! is_array($index)) {
             return [];
         }

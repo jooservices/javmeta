@@ -46,7 +46,7 @@ final class CatalogEndpointTest extends TestCase
         $this->assertSame([['name' => 'L1', 'movie_count' => 3]], $this->getJson('/api/v1/meta/catalog/labels', $this->headers())->json('data'));
     }
 
-    public function test_catalog_cache_key_is_deterministic_and_differs_for_different_params(): void
+    public function test_catalog_responses_preserve_query_parameters(): void
     {
         \Illuminate\Support\Facades\Cache::flush();
         Movie::factory()->create(['maker' => 'Alpha']);

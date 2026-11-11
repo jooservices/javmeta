@@ -61,7 +61,6 @@ final class ScheduleTest extends TestCase
             'node:sample' => '* * * * *',
             'obs:publish-metrics' => '* * * * *',
             'perf:warm' => '* * * * *',
-            'perf:warm --status-only' => '* * * * *',
             'report:send' => '* * * * *',
             'report:send-daily' => '0 8 * * *',
             'search:backfill-embeddings' => '0 * * * *',
@@ -88,7 +87,6 @@ final class ScheduleTest extends TestCase
         $this->assertTrue($scheduled['search:backfill-embeddings']->withoutOverlapping);
         $this->assertTrue($scheduled['staging:readiness']->withoutOverlapping);
         $this->assertTrue($scheduled['perf:warm']->withoutOverlapping);
-        $this->assertSame(10, $scheduled['perf:warm --status-only']->repeatSeconds);
         foreach ($events as $event) {
             if (! str_contains((string) $event->command, 'report:send')) {
                 $this->assertFalse($event->onOneServer);
@@ -98,7 +96,7 @@ final class ScheduleTest extends TestCase
 
     public function test_feed_pool_schedule_polls_at_five_seconds_independent_of_the_current_database_interval(): void
     {
-        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class));
+        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class), app(\App\Services\Api\ResponseCacheEpoch::class));
         $this->app->instance(SettingsService::class, $settings);
         $previousEnvironment = app('env');
         app()->instance('env', 'local');
@@ -141,7 +139,7 @@ final class ScheduleTest extends TestCase
 
     public function test_legacy_hourly_report_is_disabled_by_default_and_while_periodic_is_enabled(): void
     {
-        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class));
+        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class), app(\App\Services\Api\ResponseCacheEpoch::class));
         $settings->set('report.legacy_hourly_enabled', true);
         $settings->set('report.enabled', true);
         $this->app->instance(SettingsService::class, $settings);
@@ -159,7 +157,7 @@ final class ScheduleTest extends TestCase
 
     public function test_daily_report_schedule_uses_saved_time_and_timezone(): void
     {
-        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class));
+        $settings = new SettingsService(new FakeConfigStore(), app(\App\Services\Settings\JsonShapeValidator::class), app(\App\Services\Api\ResponseCacheEpoch::class));
         $settings->set('report.daily_time', '09:15');
         $settings->set('report.daily_timezone', 'UTC');
         $this->app->instance(SettingsService::class, $settings);

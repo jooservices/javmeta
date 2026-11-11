@@ -908,6 +908,50 @@ Tên chỉ mục lưu vector và dữ liệu diễn viên.
 
 Văn bản. Mã mục: `search.performers_index`.
 
+## Bộ nhớ đệm API
+
+### Bật bộ nhớ đệm response API
+
+Tắt để bỏ qua bộ nhớ đệm response; khi Redis lỗi API vẫn trả dữ liệu trực tiếp.
+
+Bật/tắt. Mã mục: `api.response_cache.enabled`.
+
+### TTL danh sách (giây)
+
+Thời gian lưu danh sách phim và performer.
+
+Số nguyên; từ 1 đến 60. Mã mục: `api.response_cache.ttl.lists`.
+
+### TTL bộ lọc (giây)
+
+Thời gian lưu facets phim và performer.
+
+Số nguyên; từ 1 đến 300. Mã mục: `api.response_cache.ttl.facets`.
+
+### TTL danh mục (giây)
+
+Thời gian lưu các mục catalog ít thay đổi.
+
+Số nguyên; từ 60 đến 3600. Mã mục: `api.response_cache.ttl.catalog`.
+
+### TTL gợi ý tìm kiếm (giây)
+
+Thời gian lưu response gợi ý tìm kiếm.
+
+Số nguyên; từ 1 đến 60. Mã mục: `api.response_cache.ttl.suggestions`.
+
+### TTL trạng thái (giây)
+
+Thời gian lưu tóm tắt trạng thái hệ thống.
+
+Số nguyên; từ 1 đến 15. Mã mục: `api.response_cache.ttl.status`.
+
+### TTL chi tiết phim (giây)
+
+Thời gian lưu chi tiết phim.
+
+Số nguyên; từ 1 đến 300. Mã mục: `api.response_cache.ttl.movie_detail`.
+
 ## Giám sát
 
 ### Gửi log và metric tới OpenObserve

@@ -11,6 +11,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 final class LogApiUsage
 {
@@ -33,14 +34,26 @@ final class LogApiUsage
         $limiterKey = $this->limiterKey($request, $apiKey);
         $maxAttempts = $apiKey instanceof ApiKey ? max(1, $apiKey->abuse_rpm) : 60;
 
-        if (RateLimiter::tooManyAttempts($limiterKey, $maxAttempts)) {
-            $response = (new RateLimitedException(RateLimiter::availableIn($limiterKey)))->render($request);
-            $this->record($request, $response, $startedAt, $apiKey instanceof ApiKey ? $apiKey : null);
+        try {
+            if (RateLimiter::tooManyAttempts($limiterKey, $maxAttempts)) {
+                $response = (new RateLimitedException(RateLimiter::availableIn($limiterKey)))->render($request);
+                $this->record($request, $response, $startedAt, $apiKey instanceof ApiKey ? $apiKey : null);
 
-            return $response;
+                return $response;
+            }
+
+            RateLimiter::hit($limiterKey, 60);
+        } catch (Throwable) {
+            return response()->json([
+                'type' => 'rate_limiter_unavailable',
+                'title' => 'Service temporarily unavailable',
+                'status' => Response::HTTP_SERVICE_UNAVAILABLE,
+                'detail' => 'Request limiting is temporarily unavailable. Please retry shortly.',
+            ], Response::HTTP_SERVICE_UNAVAILABLE)
+                ->header('Retry-After', '1')
+                ->header('Cache-Control', 'no-store');
         }
 
-        RateLimiter::hit($limiterKey, 60);
         $response = $next($request);
         $this->record($request, $response, $startedAt, $apiKey instanceof ApiKey ? $apiKey : null);
 

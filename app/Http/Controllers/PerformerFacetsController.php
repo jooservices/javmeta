@@ -9,7 +9,6 @@ use App\Http\Requests\PerformerSearchRequest;
 use App\Repositories\PerformerRepository;
 use App\Services\Facets\FacetListService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Cache;
 use JOOservices\LaravelController\Http\Controllers\BaseApiController;
 
 /** What the performers of a filter have in common (cups, blood types, locations, birth decades, sources, status) with counts. */
@@ -20,7 +19,7 @@ final class PerformerFacetsController extends BaseApiController
         $filters = $request->validated();
         $filters['include_unknown'] = $request->boolean('include_unknown');
         unset($filters['sort'], $filters['cursor'], $filters['page'], $filters['per_page']);
-        $data = Cache::remember('javmeta:pfacets:' . hash('sha256', json_encode($filters, JSON_THROW_ON_ERROR)), 60, fn(): array => $performers->facets($filters));
+        $data = $performers->facets($filters);
 
         return $this->respondWithData(data: $data, message: 'Facets retrieved successfully.');
     }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Settings;
 
+use App\Services\Api\ResponseCacheEpoch;
 use App\Events\SettingsApplied;
 use DateTimeZone;
 use InvalidArgumentException;
@@ -29,7 +30,11 @@ final class SettingsService
     /** @var list<string> */
     private array $invalidWorkerSettings = [];
 
-    public function __construct(private readonly ConfigStore $store, private readonly JsonShapeValidator $jsonShapes) {}
+    public function __construct(
+        private readonly ConfigStore $store,
+        private readonly JsonShapeValidator $jsonShapes,
+        private readonly ResponseCacheEpoch $responseCacheEpoch,
+    ) {}
 
     /** @return array<string, array<string, mixed>> */
     public function definitions(): array
@@ -234,6 +239,9 @@ final class SettingsService
         $this->store->set($path, $this->toStorage($definition, $clean), $this->storageType($definition));
         foreach ((array) $definition['config'] as $configKey) {
             config([$configKey => $clean]);
+        }
+        if ($key === 'normalization.location_aliases' && $old !== $clean) {
+            $this->responseCacheEpoch->bump();
         }
         event(new SettingsApplied([$key]));
 
