@@ -6,6 +6,7 @@ export default defineSuite('javmeta browser E2E', [
   s.frontDoorIsVietnameseXCrawler,
   s.languageSwitcherChangesUiAndPersists,
   s.loginRejectsAWrongPassword,
+  s.signInPasswordVisibilityControl,
   s.everyViewRendersOnDesktop,
   s.everyViewRendersOnPhone,
   s.discoverIsForBrowsingAndSearchWorks,
