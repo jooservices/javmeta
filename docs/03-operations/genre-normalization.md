@@ -343,3 +343,38 @@ when it is off or when a label has no alias.
 
 Suggested next steps after approval: add the migration and models in a worktree with its own database (`<slug>_wt<id>`), cover
 the key function and resolver with tests, run the seed on staging, compare counts, then schedule the production run.
+
+## JOOXCR-342 quality-framework inventory
+
+This inventory describes checked-in code at baseline commit `71be206` (`origin/develop`). It is based on repository
+inspection only; no runtime database or live data was accessed. The historical top-500 report and JOOXCR-407 proposal
+above are unchanged. “Current” below means implemented in that code snapshot.
+
+### Existing behavior by entity and surface
+
+| Entity or surface | Existing behavior and entry points | Status against the requested framework |
+|---|---|---|
+| Movies | `MoviePersister` calculates completeness from a fixed list of 11 fields and sets `needs_review` on a sharp field drop. `ReportService::quality()` reports field coverage, the 8-of-11 count, tiers, conflicts, and the movie review count. | Movie quality reporting and review flags exist. The inspected rules are code-defined; no shared configurable movie-rule catalog or per-rule evaluation report is present. `app/Services/Persist/MoviePersister.php:130-142,596-618`; `app/Services/Reports/ReportService.php:13-70` |
+| Performer profiles and identity | `javmeta_normalization` configures performer allow-lists, junk tokens, field ranges, and location aliases. Settings metadata and `PerformerNormalizationSettingsValidator` expose and validate those shapes; `PerformerAttributeNormalizer` applies them and counts rejections by entity, field, and source. Separately, `PerformerIdentityService` records open candidate comparisons and sets `needs_review`. | Configurable profile rules and identity review are separate, performer-specific mechanisms. Neither establishes a reusable policy contract across entities; the identity candidate records are not connected to the proposed taxonomy kind. `config/javmeta_normalization.php:7-31`; `config/javmeta_settings.php:312-317`; `app/Services/Settings/PerformerNormalizationSettingsValidator.php:9-56`; `app/Services/Normalize/PerformerAttributeNormalizer.php:11-26,380-405`; `app/Services/Identity/PerformerIdentityService.php:477-495` |
+| Genre labels | `MoviePersister::upsertGenres()` trims, collapses whitespace, lowercases, and stores the source label. `MetaGenreController` returns distinct raw-or-normalized labels; catalog, facet, and filter queries group or match those labels. | Raw-label normalization and browsing are implemented. Canonical aliases, NFKC/case-fold lookup, confidence application, and canonical filtering remain proposals in JOOXCR-407. `app/Services/Persist/MoviePersister.php:379-400`; `app/Http/Controllers/MetaGenreController.php:13-31`; `app/Repositories/MovieRepository.php:103-129,323-352,545-649` |
+| `format`, `studio_or_source`, `series_code`, and taxonomy `performer` | These are the other four of five proposed `kind` values, alongside `genre`. The proposal lists candidate labels, while the application represents movie maker, label, series, codes, and performer identity in separate fields and services. | The proposal does not connect these kinds to runtime canonical records or rule evaluation. Their ownership and mapping semantics are unverified; `studio_or_source` must not be assumed to mean the same thing as maker, label, or crawler source. The taxonomy `performer` kind is not shown to be wired to the separate performer identity service. `docs/03-operations/genre-normalization.md:145-197,262-289`; `app/Models/Movie.php:29-33`; `app/Models/MovieCode.php:17-27`; `app/Services/Identity/PerformerIdentityService.php:245-260` |
+| Reports and metrics | The admin quality report covers movie aggregates. The `performers:normalization-report` command and `NormalizationRejectionMetrics` expose performer rejection totals by field and source. Published quality metrics include movie `needs_review`, open `ReviewFlag` records, and completeness tiers. | These are separate, existing operational views; they do not report framework-wide rule outcomes or taxonomy coverage, unmapped aliases, or confidence distributions. `genres:aliases-report` is only a proposed command. `app/Http/Controllers/Admin/ReportController.php:12-28`; `app/Console/Commands/NormalizationReportCommand.php:11-42`; `app/Observability/NormalizationRejectionMetrics.php:9-26`; `app/Console/Commands/Observability/PublishMetricsCommand.php:607-629` |
+| Approval UI | The admin report view displays aggregate quality values. Movie `ReviewFlag` rows record sharp field drops or consecutive crawler failures; the recovery path resolves consecutive-failure rows. Performer identity candidates are recorded separately in `performer_identity_reviews`. | The checked-in admin API routes do not expose taxonomy or performer-identity candidate approval actions. These records and the aggregate movie report do not provide human approval decisions for normalization or taxonomy. `routes/api.php:40-47`; `public/ui/js/views/admin.js:10-23`; `app/Models/ReviewFlag.php:9-20`; `app/Services/Persist/MoviePersister.php:655-667`; `app/Repositories/CrawlTitleFailureServiceRepository.php:87-99`; `app/Services/Identity/PerformerIdentityService.php:477-495` |
+
+### Rule status
+
+- **Genre key folding:** current code lowercases and collapses whitespace. NFKC and Unicode case folding are proposed for alias lookup, not applied to persisted labels.
+- **Canonical taxonomy and visibility:** canonical keys, display names, `kind`, visibility, alias links, and compound mappings are design proposals. The baseline contains no runtime canonical-genre or alias model, migration, or resolver.
+- **Confidence and human review:** `H`/`M`/`L` confidence values and the rule that low-confidence rows are not automatically applied exist in the proposal and CSV notes. No checked-in evaluator consumes those values.
+- **Configuration:** performer rules are configurable and shape-validated. A cross-entity rule registry, shared precedence/conflict behavior, and rule-version semantics are not present in the inspected code.
+- **Failure and observability:** performer normalization can reject a field while keeping crawling available if its rejection counter cannot be written. Movie quality and open `ReviewFlag` records have aggregate metrics. A common per-rule result model spanning movies, performers, and taxonomy is missing.
+
+### Independently scoped follow-up work
+
+1. Define the cross-entity rule contract and its configuration lifecycle, including which entities and fields each rule may affect.
+2. Add separately reviewable rule adapters and acceptance coverage for movies, performer profiles, genre aliases, and any approved non-genre taxonomy kinds. Resolve whether maker, label, crawler source, series, and product-code prefixes are distinct targets before mapping them.
+3. Extend quality reports and bounded metrics to show rule outcomes and taxonomy coverage without conflating existing movie aggregates, performer rejections, and crawl failures.
+4. Design and implement a permission-checked human review workflow for proposed mappings, with explicit decisions and an audit trail; aggregate quality display alone is not approval.
+5. Treat applying the JOOXCR-407 genre mapping as its own implementation slice after the owner-reviewed mapping, taxonomy kinds, and compatibility behavior are settled.
+
+This is a gap inventory, not a complete rule-framework or taxonomy design. The entity semantics and approval policy above remain unverified until agreed in their follow-up work.

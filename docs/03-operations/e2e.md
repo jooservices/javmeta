@@ -62,6 +62,19 @@ configuration includes the reusable journey library as its own coverage source
 and `composer test:e2e` enforces at least 90% line coverage for it. The process
 bootstrap and fixture HTTP server are excluded from that library denominator.
 
+## Browser QA Compose stack
+
+The browser QA runner under `ui-tests/qa` uses the separate `docker/qa` Compose
+stack. Its fixed project name is `javmeta-qa`; changing `JAVMETA_QA_PORT` changes
+the host port only. The current `qa-up` and `qa-down` scripts have no lock or
+run-specific namespace, so serialize the complete start, browser-run, and
+teardown lifecycle. Only the session that started the stack should run
+`qa-down`. See [`docker/qa/README.md`](../../docker/qa/README.md) for the
+concurrency evidence and the compatible lock/isolation design.
+
+The worktree database and per-run prefixes described above apply to the PHP E2E
+runner. They do not isolate browser QA Compose services or browser-run files.
+
 To add a journey, compose typed `Step` objects in a named `Scenario`, share
 state only through `Context`, add a focused fake-HTTP unit test for every new
 step, and update the acceptance mapping above.
