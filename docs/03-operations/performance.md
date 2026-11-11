@@ -1,5 +1,40 @@
 # API response times on staging
 
+## JOOXCR-270 controlled HTTP baseline
+
+**Run status — 2026-11-11: invalid; no benchmark was run.** This run did not have authorization for staging activity or current evidence that staging and its host/database load were healthy and quiet. The latest Jira health observation is an HTTP 503 from 2026-10-28; it is historical, not current health evidence. No benchmark route requests were sent. For search, status, movie facets, and performer facets, warm and after-expiry p50/p95, route errors, and staging load are all **not measured**; the <400 ms target is **not assessed**. Earlier measurements below do not satisfy this baseline.
+
+| Route | Warm p50 / p95 / errors | After-expiry p50 / p95 / errors | Staging load | Target |
+|---|---|---|---|---|
+| `GET /api/v1/search` | Not measured — no route requests | Not measured — no route requests | Not measured | Not assessed |
+| `GET /api/v1/status/summary` | Not measured — no route requests | Not measured — no route requests | Not measured | Not assessed |
+| `GET /api/v1/movies/facets` | Not measured — no route requests | Not measured — no route requests | Not measured | Not assessed |
+| `GET /api/v1/performers/facets` | Not measured — no route requests | Not measured — no route requests | Not measured | Not assessed |
+
+### Running a controlled measurement
+
+Use `php tools/profile-performance.php --help` for the complete option list. The tool is deliberately restricted to `https://jav.soulev.com`; it rejects private or reserved DNS answers, pins the resolved public addresses, verifies TLS, does not follow redirects, and sends GET requests only. It checks `/api/health` for status `ok` and `/api/v1/auth/verify` for HTTP 200 before sampling. A failed preflight produces a JSON invalid-run report and sends no benchmark route requests.
+
+The API key must be supplied as `JAVMETA_STAGING_API_KEY` by an approved secret source, with access to the `movies`, `performers`, and `status` scopes and enough rate-limit capacity for the bounded run. The tool never prints the key or response bodies. Each route gets 30 sequential warm samples and 30 sequential samples after its cache TTL expires; the first after-expiry latency is also reported separately. The cold batch starts after the route TTL plus one second, measured from the initial cache-prime request. Its remaining 29 same-key calls may be cache hits, so its p50/p95 describe the full post-expiry batch and do not represent 30 independent cold misses. The tool stops on the first failed benchmark request to avoid adding load after an error.
+
+For a valid cold condition, verify that `perf:warm` is disabled for the run and that no other caller will repopulate these cache keys. Capture the host 1/5/15-minute load averages and PostgreSQL CPU/memory utilization from an approved read-only monitoring source, and confirm the host/database are quiet. The tool records the supplied load snapshot for every route; quiet status is an operator attestation because this ticket does not define numeric load thresholds. It also records the benchmark client's load average separately.
+
+Only after staging activity is authorized, staging is healthy, and a quiet load snapshot is available, run the tool with the secret injected into the process environment and the load values captured immediately before the run:
+
+```bash
+RUNTIME_PASS_ENV=JAVMETA_STAGING_API_KEY \
+  /home/joos/Workspaces/scripts/docker/runtime php@8.5 php tools/profile-performance.php \
+  --base-url https://jav.soulev.com \
+  --host-load-average "$HOST_LOAD_AVERAGE" \
+  --db-cpu-percent "$DB_CPU_PERCENT" \
+  --db-memory-percent "$DB_MEMORY_PERCENT" \
+  --load-captured-at "$LOAD_CAPTURED_AT" \
+  --load-source openobserve \
+  --authorized-staging --confirm-quiet-load --confirm-cold-cache
+```
+
+The four routes have response-cache TTLs of 60 seconds (search), 15 seconds (status), and 60 seconds (each facets route). The tool reports nearest-rank p50/p95, HTTP/transport errors, request count, cache TTL, load, and whether each p95 is strictly below 400 ms. Any failed request, incomplete batch, unhealthy preflight, or unverified cache condition invalidates the target assessment. Preserve the JSON summary without credentials or response bodies and record the accepted values here after a valid run.
+
 Measured 2026-10-24 (second round, after the performer search fix of JOOXCR-255) on the WSL staging host while 24 sources were crawling (load average 8 to 15): 30 sequential calls per endpoint through the web server with a key without a rate limit. The key used was revoked afterwards. The first round (JOOXCR-196) measured `performers?q=a`, which is a 400 (text too short), so it never exercised the performer text search; that gap is closed here.
 
 | Endpoint | p50 | p95 |
@@ -37,7 +72,7 @@ The keyword full-text and performer match branches now use a UNION, allowing ind
 
 **Target assessment:** first direct after-call is under 1.5 s, but uncached p95 remains above 400 ms. An earlier round yielded p95 611.4 → 576.0 ms: variability is material, and these are observations rather than a controlled causal speedup. No warmed HTTP p95 or post-deployment improvement is claimed. QA must repeat the HTTP measurement with cold result-cache requests and include result quality when tuning the budget.
 
-Reproduce direct profiling from a checkout with staging access, through the required runtime wrapper: `scripts/docker/runtime php@8.5 php tools/profile-performance.php 30`. The script uses an in-process array cache, enforces read-only PostgreSQL, logs each SQL query over 50 ms without bindings, and runs `EXPLAIN (ANALYZE, BUFFERS)` for distinct slow SELECTs. A first call here means the first operation after bootstrap; it is not a cold PostgreSQL buffer-cache measurement. Optional arguments select a separate worktree's class files for a read-only before/after comparison; no tracked staging file is modified. Keep raw output private because plans contain catalog terms.
+The preceding in-process service profile is historical and is not an HTTP measurement. Its old command is not supported by the current `tools/profile-performance.php`, which now runs the controlled HTTP benchmark described above. A first in-process call after bootstrap was never a cold PostgreSQL buffer-cache measurement. Historical SQL plans and catalog terms should remain private.
 
 Before JOOXCR-255 the performer text search took 0.7 to 1.4 s for any text (it scanned every performer, bio and alias); trigram indexes and one indexed branch per column made it 6 to 70 ms in isolation.
 
@@ -54,7 +89,7 @@ The new batch counts are restricted to returned IDs; count sorting retains the e
 
 **Pending QA:** no indexes were installed on staging. The isolated PostgreSQL provisioner failed persisting its metadata (`Invalid cross-device link`); its environment generator subsequently refused the worktree database. PostgreSQL index build/lock duration and after-index plans are therefore unmeasured. The migration uses transactional `CREATE INDEX IF NOT EXISTS`, without `CONCURRENTLY`; QA must measure the write-lock interval before deploying it. SQLite regression tests exercise equivalent B-tree definitions, idempotency, rollback and unchanged name order. End-to-end warm p95 and expired-cache cold timing remain unverified.
 
-To repeat the measurement, create a temporary key with a high `abuse_rpm`, call each endpoint with the `Host: jav.soulevil.com` header, and revoke the key.
+For a future HTTP rerun, use the JOOXCR-270 procedure above with an already authorized API key; key creation or revocation is a separate staging write and is not part of this benchmark tool.
 
 ### JOOXCR-341: performer normalization facets, 2026-11-03
 
