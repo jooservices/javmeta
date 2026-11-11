@@ -9,17 +9,6 @@ const size = b => b >= 1e12 ? (b / 1e12).toFixed(2) + ' TB' : b >= 1e9 ? (b / 1e
 /* what is on the disk: totals, use by folder, the movies that have a file, the files that matched no movie */
 export default {
   async render({ query = {} } = {}) {
-    let librarySetting;
-    try {
-      const settings = (await admin('/ui-admin/settings')).data?.settings;
-      librarySetting = Array.isArray(settings) ? settings.find(setting => setting.key === 'library.enabled') : null;
-    } catch {
-      return { html: `<div class="wrap">${head(t('libraryPage.title'), '')}${emptyBox(t('common.load_failed'), '', a('#/settings', t('common.open_settings'), 'btn'))}</div>` };
-    }
-    if (librarySetting?.value === false) {
-      return { html: `<div class="wrap">${head(t('libraryPage.title'), '')}${emptyBox(t('libraryPage.disabled'), t('libraryPage.disabled_hint'), a('#/settings', t('common.open_settings'), 'btn'))}</div>` };
-    }
-
     let sum, on, un, files;
     try { [sum, on, un, files] = (await Promise.all([admin('/ui-me/library'), admin('/ui-me/library/on-disk'), admin('/ui-me/library/unmatched'), admin('/ui-me/media/files?page=' + Math.max(1, Number(query.media_page) || 1))])).map(r => r); } catch (e) { return { html: `<div class="wrap">${head(t('libraryPage.title'), '')}${errorBox(e)}</div>` }; }
     const s = sum.data;

@@ -401,23 +401,27 @@ assert.match(disabledPageNavSource, /const groups = guestMode[\s\S]*?: NAV;/, 't
 
 const previousFetch = globalThis.fetch;
 const librarySetting = settingsSample.data.settings.find(setting => setting.key === 'library.enabled');
-const disabledLibraryRequests = [];
-globalThis.fetch = async url => { disabledLibraryRequests.push(url); return previousFetch(url); };
+const pausedScanLibraryRequests = [];
+globalThis.fetch = async url => { pausedScanLibraryRequests.push(url); return previousFetch(url); };
 librarySetting.value = false;
-const libraryDisabled = await run('library-disabled', await load('views/libraryPage.js'), { params: {}, query: {} });
+const libraryWithPausedScan = await run('library-scan-paused', await load('views/libraryPage.js'), { params: {}, query: {} });
 librarySetting.value = true;
 globalThis.fetch = previousFetch;
-assert.match(libraryDisabled, /Thư viện đang tắt/, 'a disabled library shows a plain Vietnamese message');
-assert.match(libraryDisabled, /href="#\/settings"/, 'a disabled library links to Settings');
-assert.doesNotMatch(libraryDisabled, /php artisan|JOOXCR-\d+|qBittorrent/, 'a disabled library hides implementation details');
-assert.deepEqual(disabledLibraryRequests, ['/ui-admin/settings'], 'a disabled library does not load feature data');
+assert.match(libraryWithPausedScan, /AAA-001/, 'existing library data stays available when automatic scanning is paused');
+assert.match(libraryWithPausedScan, /Thư viện/, 'the library page remains available when automatic scanning is paused');
+assert.doesNotMatch(libraryWithPausedScan, /Thư viện đang tắt/, 'the scan switch does not disable the library feature');
+assert.deepEqual(pausedScanLibraryRequests, ['/ui-me/library', '/ui-me/library/on-disk', '/ui-me/library/unmatched', '/ui-me/media/files?page=1'], 'the library loads existing data when automatic scanning is paused');
 
-globalThis.fetch = async url => url === '/ui-admin/settings' ? Promise.reject(new Error('internal settings failure')) : previousFetch(url);
-const librarySettingsFailure = await (await load('views/libraryPage.js')).render({ params: {}, query: {} });
+const settingsFailureLibraryRequests = [];
+globalThis.fetch = async url => {
+  settingsFailureLibraryRequests.push(url);
+  if (url === '/ui-admin/settings') throw new Error('internal settings failure');
+  return previousFetch(url);
+};
+const libraryWithUnavailableSettings = await (await load('views/libraryPage.js')).render({ params: {}, query: {} });
 globalThis.fetch = previousFetch;
-assert.match(librarySettingsFailure.html, /Không tải được dữ liệu/, 'a failed feature-state check has a safe fallback');
-assert.match(librarySettingsFailure.html, /href="#\/settings"/, 'the safe fallback links to Settings');
-assert.doesNotMatch(librarySettingsFailure.html, /internal settings failure/, 'settings errors are not shown to users');
+assert.match(libraryWithUnavailableSettings.html, /AAA-001/, 'the library remains available when Settings cannot load');
+assert.ok(!settingsFailureLibraryRequests.includes('/ui-admin/settings'), 'the library does not depend on Settings to choose its feature state');
 
 const dlHtml = await run('downloads', await load('views/downloads.js'), { params: {}, query: {} });
 assert.match(dlHtml, /Tải về/); assert.match(dlHtml, /42\.5%/); assert.match(dlHtml, /data-links/); assert.ok(!dlHtml.includes('<b>x</b>'), 'names are escaped');
