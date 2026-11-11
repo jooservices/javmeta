@@ -142,6 +142,8 @@ A separate implementation task should provide a deterministic generator that ins
 
 At 500,000, 1,000,000, 1,500,000, and 2,000,000 rows, record the verified movie count, related-row counts, database and index bytes, and available disk. After loading, verify schema constraints and planner statistics before timing requests. A count mismatch, failed batch, or incomplete relationship set invalidates the run; retain the failure in its evidence.
 
+When the run uses Elasticsearch, compare the document count of the configured movie index with the generator manifest before timing. Record any mismatch and invalidate the run: an empty index can trigger the PostgreSQL fallback and a partial index returns incomplete results, so search timings would be misleading.
+
 #### HTTP measurements
 
 Use the test-only HTTP origin and bounded page sizes from the [movie API contract](../developer-guide/api-cookbook.md). Measure at least:
@@ -154,9 +156,13 @@ For each endpoint and cache condition, send 100 warm-up requests, then collect 1
 
 Calculate nearest-rank p95 separately for each run: sort its `N` measured latencies and select the value at one-based rank `ceil(0.95 × N)`. Report each run's p95; do not pool runs or drop failed requests. Any HTTP error, timeout, incomplete sample set, unexpected rate limit, or unverified cache condition remains recorded and invalidates the target assessment. Assess `<400 ms` per endpoint and run; do not hide a slow route in an overall average.
 
+Validate every measured response before it counts. A search response must be non-empty and contain the expected matches of its seeded cohort (common or rare term); a detail response must return the requested code. The runner performs these checks without retaining response bodies, and a response that fails them is a failed request that invalidates the run, so an index or dataset problem can never produce a valid-looking p95.
+
 #### Backup and restore timings
 
 After the test-only dataset and backup path are ready, run three separately identified backup/restore trials. Start backup timing when the test-only backup command begins; stop when the encrypted artifact and checksums are complete and verified. Start restore timing when restore begins; stop only after the target services report healthy and the restored movie and related-row counts match the generator manifest. Record backup and restore durations, artifact bytes, checksum result, validation result, and resource snapshots per trial. Keep every failed or partial attempt in the report; a retry is a new trial, not a replacement for the failure.
+
+For a full-service trial, validate every service, not only service health and the PostgreSQL movie and related-row counts: compare the per-service counts required by the [backup runbook](backup.md) (PostgreSQL rows, MongoDB documents and Elasticsearch index documents) with the backup manifest. A trial with a missing or mismatching service count does not establish a full restore.
 
 No numeric restore-time objective is defined here. Report measured durations as evidence only until a separate owner-approved RTO target exists. If any trial is incomplete or restore validation fails, do not claim restore readiness.
 
