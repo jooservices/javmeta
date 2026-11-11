@@ -39,6 +39,27 @@ docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/zizmorcore/zizmor:latest --offl
 Tests use sqlite in-memory and an array cache (`phpunit.xml`), so no Postgres,
 Redis or Mongo service is needed.
 
+## PR size policy
+
+`tools/quality/pr-size-check` enforces the PR size policy: it counts the files
+changed between the merge base of the base ref and `HEAD`, warns at 30 changed
+files and fails at 100. Above the fail threshold it only passes with an
+explicit, documented exception passed as `--reason`, whose text must start with
+`mass-rename:` or `generated files:` (ordinary feature work is not an exception);
+there is no silent bypass. `--warn` and `--fail` may be lowered for a stricter
+local check but never raised above 30 and 100.
+
+```bash
+tools/quality/pr-size-check --base origin/develop        # local run (also works on a worktree)
+tools/quality/pr-size-check --reason 'mass-rename: split App namespace'
+```
+
+The base defaults to `origin/develop`, falling back to `origin/master`;
+`PR_SIZE_BASE`, `PR_SIZE_WARN`, `PR_SIZE_FAIL` and `PR_SIZE_REASON` override
+the defaults. The check compares the merge base, so it is correct on a branch
+that has drifted behind its base. CI invocation of this check is wired in a
+separate change.
+
 ## Test stability gate calibration
 
 The "Lint and test" job runs the full suite three times and compares each run with a baseline kept in
