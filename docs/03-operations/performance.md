@@ -13,27 +13,31 @@
 
 ### Running a controlled measurement
 
-Use `php tools/profile-performance.php --help` for the complete option list. The tool is deliberately restricted to `https://jav.soulev.com`; it rejects private or reserved DNS answers, pins the resolved public addresses, verifies TLS, does not follow redirects, and sends GET requests only. It checks `/api/health` for status `ok` and `/api/v1/auth/verify` for HTTP 200 before sampling. A failed preflight produces a JSON invalid-run report and sends no benchmark route requests.
+Use `php tools/profile-performance.php --help` for the complete option list. The tool is deliberately restricted to the documented staging origin `https://jav.soulevil.com`; it rejects private or reserved DNS answers, pins the resolved public addresses, verifies TLS, does not follow redirects, and sends GET requests only. It checks `/api/health` for status `ok` and `/api/v1/auth/verify` for HTTP 200 before sampling. A failed preflight produces a JSON invalid-run report and sends no benchmark route requests.
 
-The API key must be supplied as `JAVMETA_STAGING_API_KEY` by an approved secret source, with access to the `movies`, `performers`, and `status` scopes and enough rate-limit capacity for the bounded run. The tool never prints the key or response bodies. Each route gets 30 sequential warm samples and 30 sequential samples after its cache TTL expires; the first after-expiry latency is also reported separately. The cold batch starts after the route TTL plus one second, measured from the initial cache-prime request. Its remaining 29 same-key calls may be cache hits, so its p50/p95 describe the full post-expiry batch and do not represent 30 independent cold misses. The tool stops on the first failed benchmark request to avoid adding load after an error.
+The API key must be supplied as `JAVMETA_STAGING_API_KEY` by an approved secret source, with access to the `movies`, `performers`, and `status` scopes and enough rate-limit capacity for the bounded run. The tool never prints the key or response bodies. Each route gets 30 sequential warm samples and 30 independent after-expiry samples. Before priming each route, the tool ensures its pre-run cache key has been expired for at least one second; the operator attests that no other caller will refill it. Every warm response must complete before the earliest possible expiration measured from the start of the prime request. Each cold sample waits for the route TTL plus one second after the previous request that could have filled the cache; the report includes all 30 wait durations and calculates p50/p95 from all 30 verified cold samples. The tool stops on the first failed benchmark request or unverified cache condition to avoid adding load after an error. The 30 independent cold samples take about 100 minutes across all four routes, plus warm requests and request time.
 
-For a valid cold condition, verify that `perf:warm` is disabled for the run and that no other caller will repopulate these cache keys. Capture the host 1/5/15-minute load averages and PostgreSQL CPU/memory utilization from an approved read-only monitoring source, and confirm the host/database are quiet. The tool records the supplied load snapshot for every route; quiet status is an operator attestation because this ticket does not define numeric load thresholds. It also records the benchmark client's load average separately.
+For a valid cold condition, verify that `perf:warm` is disabled for the run and that no other caller will repopulate these cache keys. Capture timestamped host 1/5/15-minute load averages and PostgreSQL CPU/memory utilization from the same approved read-only monitoring source immediately before starting and again within 60 seconds after the routes finish. The start snapshot must be no more than 60 seconds old when measurement begins. At completion, paste a JSON line in the format shown by `--help`; it records the ending snapshot and requires an operator attestation that the host/database remained quiet throughout the complete measurement interval. The source and both snapshots are recorded at run and route level. A missing, stale, future-dated, mismatched-source or non-quiet confirmation invalidates the assessment. Quiet status is an operator attestation because this ticket does not define numeric load thresholds. The benchmark client's load average is recorded separately.
 
-Only after staging activity is authorized, staging is healthy, and a quiet load snapshot is available, run the tool with the secret injected into the process environment and the load values captured immediately before the run:
+Only after staging activity is authorized, staging is healthy, and the initial quiet load snapshot is available, run the tool with the secret injected into the process environment and the initial load values captured within 60 seconds before the run:
 
 ```bash
 RUNTIME_PASS_ENV=JAVMETA_STAGING_API_KEY \
   /home/joos/Workspaces/scripts/docker/runtime php@8.5 php tools/profile-performance.php \
-  --base-url https://jav.soulev.com \
+  --base-url https://jav.soulevil.com \
   --host-load-average "$HOST_LOAD_AVERAGE" \
   --db-cpu-percent "$DB_CPU_PERCENT" \
   --db-memory-percent "$DB_MEMORY_PERCENT" \
   --load-captured-at "$LOAD_CAPTURED_AT" \
   --load-source openobserve \
   --authorized-staging --confirm-quiet-load --confirm-cold-cache
+# After all samples complete, paste one JSON line with the ending load snapshot:
+# {"source":"openobserve","captured_at":"2026-11-11T12:00:00Z",
+#  "host_load_average_1m_5m_15m":"1,1,1","database_cpu_percent":10,
+#  "database_memory_percent":20,"operator_confirmed_quiet_for_interval":true}
 ```
 
-The four routes have response-cache TTLs of 60 seconds (search), 15 seconds (status), and 60 seconds (each facets route). The tool reports nearest-rank p50/p95, HTTP/transport errors, request count, cache TTL, load, and whether each p95 is strictly below 400 ms. Any failed request, incomplete batch, unhealthy preflight, or unverified cache condition invalidates the target assessment. Preserve the JSON summary without credentials or response bodies and record the accepted values here after a valid run.
+The four routes have response-cache TTLs of 60 seconds (search), 15 seconds (status), and 60 seconds (each facets route). The tool reports nearest-rank p50/p95, HTTP/transport errors, request count, cache TTL, timestamped start/end load evidence, and whether each p95 is strictly below 400 ms. Any failed request, incomplete batch, unhealthy preflight, stale or future load snapshot, non-quiet interval, or unverified cache condition invalidates the target assessment. Preserve the JSON summary without credentials or response bodies and record the accepted values here after a valid run.
 
 Measured 2026-10-24 (second round, after the performer search fix of JOOXCR-255) on the WSL staging host while 24 sources were crawling (load average 8 to 15): 30 sequential calls per endpoint through the web server with a key without a rate limit. The key used was revoked afterwards. The first round (JOOXCR-196) measured `performers?q=a`, which is a 400 (text too short), so it never exercised the performer text search; that gap is closed here.
 
