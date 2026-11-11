@@ -85,9 +85,12 @@ jobs:
           # 5 s polite delay inside the CrawlerX date-listing contract tests (the library sleeps even when HTTP
           # is faked), so the old 200 s baseline no longer describes the suite. Warn above +30% of 300 s and
           # fail above 480 s; speeding the contract tests up is tracked separately.
-          baseline_seconds=300.00
-          warning_seconds=400.00
-          maximum_seconds=480.00
+          # Re-measured 2026-11-12: the bounded-memory identity tests (210-400 performers each, about 60 s together
+          # on a laptop and more on a runner) and the memory work lifted a run to 480-600 s, so a clean run
+          # crossed 480 s. Baseline 420 s, warn above +30% (546 s), fail above 672 s.
+          baseline_seconds=420.00
+          warning_seconds=546.00
+          maximum_seconds=672.00
 
           for run in 1 2 3; do
             printf 'Composer test stability run %s/3\n' "${run}"
