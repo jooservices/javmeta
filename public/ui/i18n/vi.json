@@ -611,15 +611,14 @@
   },
   "omni.search_all": "Tìm “{q}” trong mọi thứ",
   "performer.age": "Tuổi",
+  "performer.profile_empty": "Chưa có thông tin hồ sơ.",
   "performer.age_years": {
     "other": "{n} tuổi"
   },
   "performer.aka": "aka",
-  "performer.awaiting_crawl": "Chưa có: {fields}",
   "performer.back": "Về danh sách",
   "performer.bio.kana": "Tên kana",
   "performer.bio.kanji": "Tên kanji",
-  "performer.bio.no_aliases": "không có",
   "performer.bio.romaji": "Tên romaji",
   "performer.bio_text": "Tiểu sử",
   "performer.birth_date": "Ngày sinh",
@@ -627,10 +626,8 @@
   "performer.card.sources": {
     "other": "{n} nguồn"
   },
-  "performer.completeness": "Độ đầy đủ hồ sơ",
   "performer.cup": "Cup",
   "performer.debut": "Debut",
-  "performer.extra_attrs": "Thuộc tính thêm",
   "performer.head.aliases": "Biệt danh",
   "performer.head.kanji": "Kanji",
   "performer.head.movies": "Số phim",
@@ -641,7 +638,6 @@
   "performer.measurements": "Số đo",
   "performer.movie_total": "Số phim",
   "performer.not_found": "Không tìm thấy diễn viên",
-  "performer.not_recorded": "chưa ghi nhận",
   "performer.retired": "Nghỉ",
   "performer.source.active": "còn",
   "performer.source.removed": "đã gỡ",
