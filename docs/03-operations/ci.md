@@ -110,9 +110,10 @@ Elasticsearch 9 leaves `dense_vector` fields out of `_source`; tests that read v
 
 `captainhook.json` runs the shared checker for every commit message and before
 every push. The push hook supplies Git's actual ref updates, so the checker
-validates every outgoing commit range. Existing refs use the remote's previous
-object ID; new refs use the local remote default branch, falling back to
-`origin/develop`. The checks use local Git objects and do not fetch.
+validates every outgoing commit range, including merge commits. Existing refs
+use the remote's previous object ID; new refs use the local remote default
+branch, falling back to `origin/develop`. The checks use local Git objects and
+do not fetch.
 
 The checker enforces the allowed Conventional Commit types, optional scope and
 breaking marker, uppercase subject, commit header length, and footer trailers.
@@ -128,8 +129,9 @@ before invoking `gh pr create`:
 bash tools/quality/create-pr.sh --title 'feat(ui): Add a feature' --base develop
 ```
 
-For a manual pre-check, validate a PR title and every non-merge commit in a
-local range:
+Merge commit headers are allowed because Git uses its own merge subject format;
+their messages still pass through the prohibited attribution checks. For a
+manual pre-check, validate a PR title and every commit in a local range:
 
 ```bash
 bash tools/quality/check-git-conventions.sh title 'feat(ui): Add a feature'

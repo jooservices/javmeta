@@ -75,9 +75,9 @@ is_forbidden_trailer() {
 validate_commit_message() {
   local message="$1"
   local source="$2"
+  local allow_merge_header="${3:-0}"
   local normalized
   local header
-  local body=""
   local line
   local token
   local trailers
@@ -88,10 +88,8 @@ validate_commit_message() {
   }
   header="${normalized%%$'\n'*}"
 
-  validate_header "$header" "commit header" || return 1
-
-  if [[ "$normalized" == *$'\n'* ]]; then
-    body="${normalized#*$'\n'}"
+  if [[ "$allow_merge_header" != "1" ]]; then
+    validate_header "$header" "commit header" || return 1
   fi
 
   while IFS= read -r line; do
@@ -105,7 +103,7 @@ validate_commit_message() {
       fail "$source contains prohibited AI/coauthor trailer 'Generated with'; remove the attribution trailer."
       return 1
     fi
-  done <<< "$body"
+  done <<< "$normalized"
 
   # Git parses the footer locally; project trailers such as Ticket: T16 pass.
   trailers="$(git interpret-trailers --parse <<< "$message" 2>/dev/null)" || {
@@ -245,21 +243,24 @@ check_commit_range() {
   local commits
   local commit
   local message
+  local commit_record
+  local allow_merge_header
   local checked=0
   local failed=0
+  local -a commit_parts=()
 
   if [[ ! "$range" =~ ^[[:alnum:]_./^~:+-]+\.\.\.?[[:alnum:]_./^~:+-]+$ ]]; then
     fail "commit range must be a local Git range such as origin/develop..HEAD."
     return 1
   fi
 
-  if ! commits="$(git rev-list --reverse --no-merges "$range" 2>/dev/null)"; then
+  if ! commits="$(git rev-list --reverse "$range" 2>/dev/null)"; then
     fail "could not resolve local commit range '$range'."
     return 1
   fi
 
   if [[ -z "$commits" ]]; then
-    printf 'PASS: no non-merge commits in %s.\n' "$range"
+    printf 'PASS: no commits in %s.\n' "$range"
     return 0
   fi
 
@@ -270,8 +271,18 @@ check_commit_range() {
       failed=1
       continue
     fi
+    if ! commit_record="$(git rev-list --parents -n 1 "$commit" 2>/dev/null)"; then
+      fail "could not inspect parents for local commit ${commit:0:7}."
+      failed=1
+      continue
+    fi
+    read -r -a commit_parts <<<"$commit_record"
+    allow_merge_header=0
+    if (( ${#commit_parts[@]} >= 3 )); then
+      allow_merge_header=1
+    fi
     checked=$((checked + 1))
-    if ! validate_commit_message "$message" "commit ${commit:0:7}"; then
+    if ! validate_commit_message "$message" "commit ${commit:0:7}" "$allow_merge_header"; then
       failed=1
     fi
   done <<< "$commits"

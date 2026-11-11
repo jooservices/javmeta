@@ -191,6 +191,11 @@ EDITOR_COMMENT_COMMIT="$(git -C "$REPO" commit-tree "${BASE}^{tree}" -p "$BASE" 
 # This literal is the CaptainHook action placeholder that the test exercises.
 # shellcheck disable=SC2016
 CONFIGURED_PRE_PUSH_ACTION='bash tools/quality/check-git-conventions.sh pre-push origin {$STDIN}'
+# shellcheck disable=SC2016
+CONFIGURED_COMMIT_MSG_ACTION='bash tools/quality/check-git-conventions.sh commit-message \"{$ARG|value-of:MESSAGE_FILE}\"'
+if ! grep -Fq -- "$CONFIGURED_COMMIT_MSG_ACTION" "${ROOT}/captainhook.json"; then
+  fail "CaptainHook must configure the shared commit-message checker"
+fi
 if ! grep -Fq -- "$CONFIGURED_PRE_PUSH_ACTION" "${ROOT}/captainhook.json"; then
   fail "CaptainHook must pass its real pre-push refs to the shared checker"
 fi
@@ -200,6 +205,10 @@ cp "$CHECKER" "${REPO}/tools/quality/check-git-conventions.sh"
 CAPTAINHOOK_CONFIG="${TEST_TMP}/captainhook.json"
 cat >"${CAPTAINHOOK_CONFIG}" <<CONFIG
 {
+  "commit-msg": {
+    "enabled": true,
+    "actions": [{"action": "${CONFIGURED_COMMIT_MSG_ACTION}"}]
+  },
   "pre-push": {
     "enabled": true,
     "actions": [{"action": "${CONFIGURED_PRE_PUSH_ACTION}"}]
@@ -208,6 +217,32 @@ cat >"${CAPTAINHOOK_CONFIG}" <<CONFIG
 CONFIG
 (
   cd "$REPO"
+  cat >"${REPO}/valid-message.txt" <<'MESSAGE'
+feat: Add a valid local message
+
+Ticket: T16
+MESSAGE
+  if env -u CI CAPTAINHOOK_SKIP_HOOKS=0 "$ROOT/vendor/bin/captainhook" --configuration="$CAPTAINHOOK_CONFIG" --input="${REPO}/valid-message.txt" hook:commit-msg "${REPO}/valid-message.txt" >"${TEST_TMP}/captainhook-output" 2>&1; then
+    :
+  else
+    cat "${TEST_TMP}/captainhook-output" >&2
+    fail "CaptainHook must accept a valid commit message"
+  fi
+  cat >"${REPO}/invalid-message.txt" <<'MESSAGE'
+feat: Add a local commit message
+
+Generated with Codex
+
+# Please enter the commit message for your changes. Lines starting with '#' will be ignored.
+MESSAGE
+  if env -u CI CAPTAINHOOK_SKIP_HOOKS=0 "$ROOT/vendor/bin/captainhook" --configuration="$CAPTAINHOOK_CONFIG" --input="${REPO}/invalid-message.txt" hook:commit-msg "${REPO}/invalid-message.txt" >"${TEST_TMP}/captainhook-output" 2>&1; then
+    fail "CaptainHook must reject prohibited attribution in a commit message"
+  fi
+  grep -Fq 'Generated with' "${TEST_TMP}/captainhook-output" || {
+    cat "${TEST_TMP}/captainhook-output" >&2
+    fail "CaptainHook must report prohibited commit attribution"
+  }
+
   if env -u CI CAPTAINHOOK_SKIP_HOOKS=0 "$ROOT/vendor/bin/captainhook" --configuration="$CAPTAINHOOK_CONFIG" --input="$PUSH_INPUT" hook:pre-push origin 'git@example.invalid:javmeta.git' >"${TEST_TMP}/captainhook-output" 2>&1; then
     :
   else
@@ -221,6 +256,22 @@ CONFIG
     cat "${TEST_TMP}/captainhook-output" >&2
     fail "CaptainHook must report the prohibited attribution from the outgoing range"
   }
+)
+
+# A normal merge header is allowed, but prohibited footer attribution is not.
+MERGE_SIDE="$(git -C "$REPO" commit-tree "${GOOD_HEAD}^{tree}" -p "$GOOD_HEAD" -m 'fix: Add first merge parent')"
+MERGE_MAIN="$(git -C "$REPO" commit-tree "${GOOD_HEAD}^{tree}" -p "$GOOD_HEAD" -m 'fix: Add second merge parent')"
+MERGE_TREE="$(git -C "$REPO" rev-parse "${GOOD_HEAD}^{tree}")"
+VALID_MERGE="$(printf "Merge branch 'feature/example'\n\nMerge the local example branch.\n" | git -C "$REPO" commit-tree "$MERGE_TREE" -p "$MERGE_SIDE" -p "$MERGE_MAIN")"
+INVALID_MERGE="$(printf "Merge branch 'feature/attributed'\n\nCo-authored-by: Tool <tool@example.invalid>\n" | git -C "$REPO" commit-tree "$MERGE_TREE" -p "$MERGE_SIDE" -p "$MERGE_MAIN")"
+INVALID_MERGE_HEADER="$(printf "Co-authored-by: Tool <tool@example.invalid>\n" | git -C "$REPO" commit-tree "$MERGE_TREE" -p "$MERGE_SIDE" -p "$MERGE_MAIN")"
+(
+  cd "$REPO"
+  expect_pass "merge commit with a standard merge header" bash "$CHECKER" commits "${GOOD_HEAD}..${VALID_MERGE}"
+  grep -Fq 'checked 3 commit(s)' "${TEST_TMP}/output" || fail "merge range must count both parents and the merge commit"
+  expect_fail_with "merge commit with prohibited coauthor trailer" 'prohibited AI/coauthor trailer' bash "$CHECKER" commits "${GOOD_HEAD}..${INVALID_MERGE}"
+  expect_fail_with "merge commit header with prohibited attribution" 'prohibited AI/coauthor trailer' bash "$CHECKER" commits "${GOOD_HEAD}..${INVALID_MERGE_HEADER}"
+  expect_fail_with "pre-push rejects prohibited merge attribution" 'prohibited AI/coauthor trailer' bash "$CHECKER" pre-push origin "refs/heads/merge ${INVALID_MERGE} refs/heads/merge ${GOOD_HEAD}"
 )
 
 if grep -E 'git (fetch|pull|push)|curl|wget|gh ' "$CHECKER"; then
