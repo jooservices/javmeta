@@ -86,12 +86,20 @@ async function verifyRelatedMoviesFailureRegression(ctx, code, originalHash) {
     if (relatedRequests === 2) {
       await route.fulfill({
         status: 524,
+        contentType: 'text/html',
+        body: `<h1>${rawMarker}</h1>`,
+      });
+      return;
+    }
+    if (relatedRequests === 3) {
+      await route.fulfill({
+        status: 524,
         contentType: 'application/json',
         body: JSON.stringify({ detail: `<svg data-j335a-upstream>${rawMarker}</svg>` }),
       });
       return;
     }
-    if (relatedRequests === 3) {
+    if (relatedRequests === 4) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -99,7 +107,7 @@ async function verifyRelatedMoviesFailureRegression(ctx, code, originalHash) {
       });
       return;
     }
-    if (relatedRequests === 4) {
+    if (relatedRequests === 5) {
       lateRequestStarted.resolve();
       try {
         await lateGate.promise;
@@ -115,7 +123,7 @@ async function verifyRelatedMoviesFailureRegression(ctx, code, originalHash) {
       }
       return;
     }
-    if (relatedRequests === 5) {
+    if (relatedRequests === 6) {
       lateFailureRequestStarted.resolve();
       try {
         await lateFailureGate.promise;
@@ -137,6 +145,19 @@ async function verifyRelatedMoviesFailureRegression(ctx, code, originalHash) {
     await page.evaluate(next => { location.hash = next; }, hash);
     await page.waitForFunction(expected => location.hash === expected, hash);
   };
+  const assertRelatedFailure = async (message, catalogs, marker, responseType) => {
+    await message.waitFor({ timeout: 8000 });
+    if (await message.innerText() !== catalogs['movie.related_failed']) {
+      throw new Error(`A ${responseType} upstream error did not show the generic localized failure message.`);
+    }
+    const viewText = await page.locator('#view').innerText();
+    if (viewText.includes(marker) || await page.locator('#view [data-j335a-upstream]').count() > 0) {
+      throw new Error(`Raw ${responseType} related-movies content was rendered.`);
+    }
+    if (!(await page.locator('#view h1').innerText()).trim() || await page.locator('#view #movie-downloads').count() !== 1) {
+      throw new Error(`The related-movies ${responseType} failure replaced movie details or another page block.`);
+    }
+  };
 
   try {
     page.on('request', countMovieDetails);
@@ -157,9 +178,9 @@ async function verifyRelatedMoviesFailureRegression(ctx, code, originalHash) {
       throw new Error('The related-movies loading state replaced movie details or another page block.');
     }
 
-    const timeoutMessage = page.locator('#relstrip[data-related-state="error"] [data-related-message]');
-    await timeoutMessage.waitFor({ timeout: 8000 });
-    if (await timeoutMessage.innerText() !== messages['movie.related_timeout']) {
+    const relatedError = page.locator('#relstrip[data-related-state="error"] [data-related-message]');
+    await relatedError.waitFor({ timeout: 8000 });
+    if (await relatedError.innerText() !== messages['movie.related_timeout']) {
       throw new Error('A related-movies timeout did not show its localized message.');
     }
     timeoutGate.resolve();
@@ -168,17 +189,10 @@ async function verifyRelatedMoviesFailureRegression(ctx, code, originalHash) {
     const retry = page.locator('#relstrip [data-related-retry]');
     if (await retry.innerText() !== messages['movie.related_retry']) throw new Error('The related-movies retry label is not localized.');
     await retry.click();
-    await page.locator('#relstrip[data-related-state="error"] [data-related-message]').waitFor();
-    if (await timeoutMessage.innerText() !== messages['movie.related_failed']) {
-      throw new Error('An upstream error did not show the generic localized failure message.');
-    }
-    const viewText = await page.locator('#view').innerText();
-    if (viewText.includes(rawMarker) || await page.locator('#view [data-j335a-upstream]').count() > 0) {
-      throw new Error('Raw related-movies upstream content was rendered.');
-    }
-    if (!(await page.locator('#view h1').innerText()).trim() || await page.locator('#view #movie-downloads').count() !== 1) {
-      throw new Error('The related-movies failure replaced movie details or another page block.');
-    }
+    await assertRelatedFailure(relatedError, messages, rawMarker, 'HTML');
+
+    await page.locator('#relstrip [data-related-retry]').click();
+    await assertRelatedFailure(relatedError, messages, rawMarker, 'JSON');
 
     await page.locator('#relstrip [data-related-retry]').click();
     await page.locator('#relstrip[data-related-state="loading"]').waitFor();
@@ -215,7 +229,7 @@ async function verifyRelatedMoviesFailureRegression(ctx, code, originalHash) {
       gate: lateGate,
       handled: lateHandled,
       started: lateRequestStarted,
-      requestIndex: 3,
+      requestIndex: 4,
       marker: staleMarker,
       description: 'success',
     });
@@ -223,7 +237,7 @@ async function verifyRelatedMoviesFailureRegression(ctx, code, originalHash) {
       gate: lateFailureGate,
       handled: lateFailureHandled,
       started: lateFailureRequestStarted,
-      requestIndex: 4,
+      requestIndex: 5,
       marker: staleFailureMarker,
       description: 'failure',
     });
@@ -239,8 +253,8 @@ async function verifyRelatedMoviesFailureRegression(ctx, code, originalHash) {
     lateGate.resolve();
     lateFailureGate.resolve();
     if (relatedRequests >= 1) await timeoutHandled.promise;
-    if (relatedRequests >= 4) await lateHandled.promise;
-    if (relatedRequests >= 5) await lateFailureHandled.promise;
+    if (relatedRequests >= 5) await lateHandled.promise;
+    if (relatedRequests >= 6) await lateFailureHandled.promise;
     await page.unroute(matchesRelated, relatedHandler).catch(() => {});
     page.off('request', countMovieDetails);
     page.off('request', observeRelatedRequest);
@@ -278,7 +292,14 @@ export const expectMovieDetail = defineStep('expectMovieDetail', async (ctx, cod
   if (title && !text.includes(title)) throw new Error(`The detail page does not show the title "${title}".`);
   if (!(await ctx.page.$('#view button:has-text("Yêu thích")'))) throw new Error('The detail page has no favourite button.');
   if (!relatedMoviesFailureRegressionPassed) {
-    await verifyRelatedMoviesFailureRegression(ctx, code, new URL(ctx.page.url()).hash);
+    const originalHash = new URL(ctx.page.url()).hash;
+    for (const locale of ['en', 'vi']) {
+      await ctx.page.evaluate(nextLocale => localStorage.setItem('xc-locale', nextLocale), locale);
+      await ctx.page.reload();
+      await ctx.page.waitForFunction(expected => document.documentElement.lang.split('-')[0] === expected, locale, { timeout: 8000 });
+      await ctx.page.locator('#view h1').waitFor({ timeout: 8000 });
+      await verifyRelatedMoviesFailureRegression(ctx, code, originalHash);
+    }
     relatedMoviesFailureRegressionPassed = true;
   }
 });
