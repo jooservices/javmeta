@@ -4,8 +4,9 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { report, runSelection } from './lib/runner.mjs';
 
-const suites = Object.freeze({
+export const suiteLoaders = Object.freeze({
   main: () => import('./suites/main.mjs'),
+  composition: () => import('./suites/composition.mjs'),
 });
 
 export function parseArguments(args) {
@@ -40,7 +41,7 @@ export async function runCommand(args, dependencies = {}) {
   const writeError = dependencies.writeError ?? (message => console.error(message));
   try {
     const { suiteName, selection } = parseArguments(args);
-    const loaders = dependencies.loaders ?? suites;
+    const loaders = dependencies.loaders ?? suiteLoaders;
     const loadSuite = Object.hasOwn(loaders, suiteName) ? loaders[suiteName] : undefined;
     if (typeof loadSuite !== 'function') {
       throw new Error(`Unknown suite ${JSON.stringify(suiteName)}.`);
