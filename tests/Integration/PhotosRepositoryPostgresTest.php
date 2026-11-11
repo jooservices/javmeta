@@ -313,6 +313,75 @@ final class PhotosRepositoryPostgresTest extends BaseTestCase
         }
     }
 
+    public function test_gallery_group_search_includes_kana_only_performer_names(): void
+    {
+        $performer = Performer::factory()->create([
+            'name_romaji' => 'Unrelated performer',
+            'name_kanji' => '別人',
+            'name_kana' => 'かな検索',
+        ]);
+        $this->addPerformerGallery($performer, 'source-a', 'kana-gallery', 'Kana gallery', 'kana.jpg');
+
+        $repository = app(PhotosRepository::class);
+        $performers = $repository->groups(new PhotosGroupQuery('performer', 'かな検索', '', null, null, 1, 20));
+        $galleries = $repository->groups(new PhotosGroupQuery('gallery', 'かな検索', '', null, null, 1, 20));
+
+        self::assertSame([(int) $performer->id], array_column($performers['items'], 'id'));
+        self::assertSame(1, $galleries['total']);
+        self::assertSame((int) $performer->id, $galleries['items'][0]['performer']['id']);
+        self::assertSame(['kana.jpg'], $galleries['items'][0]['preview_urls']);
+    }
+
+    public function test_gallery_group_page_batches_previews_and_owner_summaries(): void
+    {
+        $performers = [];
+        $movies = [];
+        for ($index = 1; $index <= 6; $index++) {
+            $performer = Performer::factory()->create();
+            $movie = Movie::factory()->create();
+            $performers[] = $performer;
+            $movies[] = $movie;
+            $this->addPerformerGallery($performer, 'source-a', 'performer-' . $index, 'Performer ' . $index, 'performer-' . $index . '.jpg');
+            $this->addMovieGallery($movie, 'source-a', 'movie-' . $index, 'Movie ' . $index, 'movie-' . $index . '.jpg');
+        }
+
+        $queryCount = 0;
+        DB::listen(static function () use (&$queryCount): void {
+            $queryCount++;
+        });
+
+        $result = app(PhotosRepository::class)->groups(new PhotosGroupQuery('gallery', '', '', null, null, 1, 20));
+
+        self::assertSame(12, $result['total']);
+        self::assertCount(12, $result['items']);
+        self::assertLessThanOrEqual(8, $queryCount);
+        foreach ($result['items'] as $item) {
+            self::assertCount(1, $item['preview_urls']);
+            self::assertSame($item['preview_urls'][0], $item['cover_url']);
+            self::assertNotNull($item['performer'] ?? $item['movie']);
+        }
+
+        $queryCount = 0;
+        $performerGroups = app(PhotosRepository::class)->groups(new PhotosGroupQuery('performer', '', '', null, null, 1, 20));
+        self::assertCount(6, $performerGroups['items']);
+        self::assertLessThanOrEqual(4, $queryCount);
+
+        $queryCount = 0;
+        $movieGroups = app(PhotosRepository::class)->groups(new PhotosGroupQuery('movie', '', '', null, null, 1, 20));
+        self::assertCount(6, $movieGroups['items']);
+        self::assertLessThanOrEqual(4, $queryCount);
+
+        $queryCount = 0;
+        $performerGalleries = app(PhotosRepository::class)->galleries(new PhotosGalleryQuery($performers[0]->id, null, '', '', 1, 20));
+        self::assertSame(1, $performerGalleries['total']);
+        self::assertLessThanOrEqual(4, $queryCount);
+
+        $queryCount = 0;
+        $movieGalleries = app(PhotosRepository::class)->galleries(new PhotosGalleryQuery(null, $movies[0]->display_code, '', '', 1, 20));
+        self::assertSame(1, $movieGalleries['total']);
+        self::assertLessThanOrEqual(5, $queryCount);
+    }
+
     public function test_movie_gallery_listing_filters_source_and_paginates_complete_gallery_identities(): void
     {
         $movie = Movie::factory()->create();

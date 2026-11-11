@@ -356,6 +356,21 @@ final class PhotosRepository extends BusinessQueryRepository
             ->forPage($query->page, $query->perPage)
             ->get();
 
+        $galleryRows = $pageRows->all();
+        $performerIds = [];
+        $movieIds = [];
+        foreach ($galleryRows as $row) {
+            if ($row->type === 'performer') {
+                $performerIds[] = (int) $row->owner_id;
+            } else {
+                $movieIds[] = (int) $row->owner_id;
+            }
+        }
+        $performerSummaries = $this->performerSummaries(array_values(array_unique($performerIds)));
+        $movieSummaries = $this->movieSummaries(array_values(array_unique($movieIds)));
+        $performerPreviews = $this->previewsForGalleryRows('performer', $galleryRows, 3);
+        $moviePreviews = $this->previewsForGalleryRows('movie', $galleryRows, 3);
+
         $items = [];
         foreach ($pageRows as $row) {
             $type = (string) $row->type;
@@ -363,7 +378,8 @@ final class PhotosRepository extends BusinessQueryRepository
             $source = (string) $row->source_slug;
             $galleryKey = (string) $row->gallery_key;
             $galleryId = GalleryId::fromMediaId($type, $ownerId, $source, (int) $row->media_id)->encode();
-            $preview = $this->previewUrls($type, $ownerId, $source, $galleryKey, 3);
+            $identity = $this->galleryRowIdentity($ownerId, $source, $galleryKey);
+            $preview = ($type === 'performer' ? $performerPreviews : $moviePreviews)[$identity] ?? [];
             $items[] = [
                 'by' => 'gallery',
                 'id' => $galleryId,
@@ -373,8 +389,8 @@ final class PhotosRepository extends BusinessQueryRepository
                 'preview_urls' => $preview,
                 'title' => $row->title !== null ? (string) $row->title : null,
                 'source' => $source,
-                'performer' => $type === 'performer' ? ($this->performerSummaries([$ownerId])[$ownerId] ?? null) : null,
-                'movie' => $type === 'movie' ? ($this->movieSummaries([$ownerId])[$ownerId] ?? null) : null,
+                'performer' => $type === 'performer' ? ($performerSummaries[$ownerId] ?? null) : null,
+                'movie' => $type === 'movie' ? ($movieSummaries[$ownerId] ?? null) : null,
             ];
         }
 
@@ -405,7 +421,8 @@ final class PhotosRepository extends BusinessQueryRepository
                 $base->join('performers as p', 'p.id', '=', 'm.performer_id')
                     ->where(function (Builder $w) use ($pattern): void {
                         $w->whereRaw("p.name_romaji like ? escape '!'", [$pattern])
-                            ->orWhereRaw("p.name_kanji like ? escape '!'", [$pattern]);
+                            ->orWhereRaw("p.name_kanji like ? escape '!'", [$pattern])
+                            ->orWhereRaw("p.name_kana like ? escape '!'", [$pattern]);
                     });
             } else {
                 $base->join('movies as mv', 'mv.id', '=', 'm.movie_id')
@@ -471,11 +488,17 @@ final class PhotosRepository extends BusinessQueryRepository
             ->get();
 
         $owner = $this->ownerSummary($type, $ownerId);
+        $galleryRows = $pageRows->map(static fn($row): array => [
+            'owner_id' => $ownerId,
+            'source_slug' => (string) $row->source_slug,
+            'gallery_key' => (string) $row->gallery_key,
+        ])->all();
+        $previews = $this->previewsForGalleryRows($type, $galleryRows, 3);
         $items = [];
         foreach ($pageRows as $row) {
             $source = (string) $row->source_slug;
             $galleryKey = (string) $row->gallery_key;
-            $preview = $this->previewUrls($type, $ownerId, $source, $galleryKey, 3);
+            $preview = $previews[$this->galleryRowIdentity($ownerId, $source, $galleryKey)] ?? [];
             $items[] = array_merge([
                 'id' => GalleryId::fromMediaId($type, $ownerId, $source, (int) $row->media_id)->encode(),
                 'type' => $type,
@@ -497,35 +520,97 @@ final class PhotosRepository extends BusinessQueryRepository
      */
     private function coversFor(string $type, array $ownerIds, string $source): array
     {
+        if ($ownerIds === []) {
+            return [];
+        }
+
+        $table = $type === 'performer' ? 'performer_media' : 'movie_media';
+        $ownerColumn = $type === 'performer' ? 'performer_id' : 'movie_id';
+        $position = $this->positionExpr('m');
+        $ranked = $this->tableQuery($table . ' as m')
+            ->where('m.kind', 'gallery')
+            ->whereIn('m.' . $ownerColumn, $ownerIds);
+        $this->applySource($ranked, $source, 'm');
+        $ranked->selectRaw(
+            'm.' . $ownerColumn . ' as owner_id, m.url, row_number() over (partition by m.' . $ownerColumn . ' order by ' . $position . ' asc, m.id asc) as preview_rank',
+        );
+        $rows = $this->databaseQuery()->fromSub($ranked, 'previews')
+            ->where('preview_rank', '<=', 3)
+            ->orderBy('owner_id')
+            ->orderBy('preview_rank')
+            ->get();
+
+        $out = array_fill_keys($ownerIds, ['cover_url' => null, 'preview_urls' => []]);
+        foreach ($rows as $row) {
+            $id = (int) $row->owner_id;
+            $out[$id]['preview_urls'][] = (string) $row->url;
+        }
+        foreach ($out as &$cover) {
+            $cover['cover_url'] = $cover['preview_urls'][0] ?? null;
+        }
+        unset($cover);
+
+        return $out;
+    }
+
+    /**
+     * @param list<object|array<string, mixed>> $rows
+     * @return array<string, list<string>>
+     */
+    private function previewsForGalleryRows(string $type, array $rows, int $limit): array
+    {
+        $identities = [];
+        foreach ($rows as $row) {
+            $typeValue = is_array($row) ? ($row['type'] ?? $type) : ($row->type ?? $type);
+            if ($typeValue !== $type) {
+                continue;
+            }
+            $ownerId = (int) (is_array($row) ? $row['owner_id'] : $row->owner_id);
+            $source = (string) (is_array($row) ? $row['source_slug'] : $row->source_slug);
+            $galleryKey = (string) (is_array($row) ? $row['gallery_key'] : $row->gallery_key);
+            $identities[] = [$ownerId, $source, $galleryKey];
+        }
+        if ($identities === []) {
+            return [];
+        }
+
+        $table = $type === 'performer' ? 'performer_media' : 'movie_media';
+        $ownerColumn = $type === 'performer' ? 'performer_id' : 'movie_id';
+        $key = $this->galleryKeyExpr('m');
+        $position = $this->positionExpr('m');
+        $query = $this->tableQuery($table . ' as m')->where('m.kind', 'gallery')
+            ->where(static function (Builder $match) use ($identities, $ownerColumn, $key): void {
+                foreach ($identities as [$ownerId, $source, $galleryKey]) {
+                    $match->orWhere(static function (Builder $identity) use ($ownerColumn, $key, $ownerId, $source, $galleryKey): void {
+                        $identity->where('m.' . $ownerColumn, $ownerId)
+                            ->where('m.source_slug', $source)
+                            ->whereRaw($key . ' = ?', [$galleryKey]);
+                    });
+                }
+            })
+            ->selectRaw(
+                'm.' . $ownerColumn . ' as owner_id, m.source_slug, ' . $key . ' as gallery_key, m.url, row_number() over (partition by m.' . $ownerColumn . ', m.source_slug, ' . $key . ' order by ' . $position . ' asc, m.id asc) as preview_rank',
+            );
+
+        $results = $this->databaseQuery()->fromSub($query, 'previews')
+            ->where('preview_rank', '<=', $limit)
+            ->orderBy('owner_id')
+            ->orderBy('source_slug')
+            ->orderBy('gallery_key')
+            ->orderBy('preview_rank')
+            ->get();
         $out = [];
-        foreach ($ownerIds as $id) {
-            $out[$id] = ['cover_url' => null, 'preview_urls' => $this->previewUrls($type, $id, $source !== '' ? $source : null, null, 3)];
-            $out[$id]['cover_url'] = $out[$id]['preview_urls'][0] ?? null;
+        foreach ($results as $row) {
+            $identity = $this->galleryRowIdentity((int) $row->owner_id, (string) $row->source_slug, (string) $row->gallery_key);
+            $out[$identity][] = (string) $row->url;
         }
 
         return $out;
     }
 
-    /** @return list<string> */
-    private function previewUrls(string $type, int $ownerId, ?string $source, ?string $galleryKey, int $limit): array
+    private function galleryRowIdentity(int $ownerId, string $source, string $galleryKey): string
     {
-        $table = $type === 'performer' ? 'performer_media' : 'movie_media';
-        $ownerColumn = $type === 'performer' ? 'performer_id' : 'movie_id';
-        $q = $this->tableQuery($table . ' as m')
-            ->where('m.kind', 'gallery')
-            ->where('m.' . $ownerColumn, $ownerId);
-        if ($source !== null) {
-            $q->where('m.source_slug', $source);
-        }
-        if ($galleryKey !== null) {
-            $q->whereRaw($this->galleryKeyExpr('m') . ' = ?', [$galleryKey]);
-        }
-        return $q->orderByRaw($this->positionExpr('m') . ' asc')
-            ->orderBy('m.id')
-            ->limit($limit)
-            ->pluck('m.url')
-            ->map(static fn($url): string => (string) $url)
-            ->all();
+        return json_encode([$ownerId, $source, $galleryKey], JSON_THROW_ON_ERROR);
     }
 
     /**
