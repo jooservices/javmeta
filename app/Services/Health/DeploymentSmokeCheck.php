@@ -212,7 +212,7 @@ final class DeploymentSmokeCheck
 
         $apiLookup = $this->check('api_lookup', 'fail', 'The authenticated performer lookup failed.');
         $mcpInitialize = $this->check('mcp_initialize', 'fail', 'MCP initialize failed.');
-        $cleanup = $this->check('temporary_api_key', 'pass', 'The temporary API key was revoked.');
+        $cleanup = $this->check('temporary_api_key', 'pass', 'The temporary API key was removed.');
         try {
             $baseUrl = rtrim((string) config('app.smoke_url', config('app.url', '')), '/');
             $host = (string) parse_url((string) config('app.url', ''), PHP_URL_HOST);
@@ -223,9 +223,9 @@ final class DeploymentSmokeCheck
             $mcpInitialize = $this->check('mcp_initialize', 'fail', 'MCP initialize failed.');
         } finally {
             try {
-                $apiKeys->revoke((int) $temporaryKey->model->getKey());
+                $apiKeys->deleteCreated($temporaryKey);
             } catch (Throwable) {
-                $cleanup = $this->check('temporary_api_key', 'fail', 'The temporary API key could not be revoked.');
+                $cleanup = $this->check('temporary_api_key', 'fail', 'The temporary API key could not be removed.');
             }
         }
 

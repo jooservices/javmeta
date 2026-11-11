@@ -9,13 +9,17 @@ use App\Models\ApiKey;
 use App\Support\Auth\CreatedApiKey;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Throwable;
+use UnexpectedValueException;
 
 final class ApiKeyService
 {
     private const ACTIVE_LOOKUP_CACHE_SECONDS = 5;
 
     private const ACTIVE_LOOKUP_CACHE_PREFIX = 'javmeta:api-key:active:';
+
+    private const REVOKED_LOOKUP_CACHE_MARKER = 'revoked';
 
     /** @param list<string> $scopes An empty list grants no API scopes. */
     public function create(string $label, int $abuseRpm = 60, array $scopes = []): CreatedApiKey
@@ -50,11 +54,63 @@ final class ApiKeyService
 
         if (is_string($keyHash)) {
             try {
-                Cache::forget($this->activeLookupCacheKey($keyHash));
+                $this->clearActiveLookupCache($keyHash);
             } catch (Throwable) {
                 // The database update remains authoritative if cache invalidation fails.
             }
         }
+    }
+
+    public function deleteCreated(CreatedApiKey $createdKey): void
+    {
+        $keyHash = $createdKey->model->getAttribute('key_hash');
+        if (! is_string($keyHash)) {
+            throw new UnexpectedValueException('The created API key is missing its persistence hash.');
+        }
+
+        $repository = app(ApiKeyServiceRepository::class);
+        $id = (int) $createdKey->model->getKey();
+        try {
+            $deletedRows = $repository->deleteByIdAndHash($id, $keyHash);
+            if ($deletedRows === 0 && $repository->existsByIdAndHash($id, $keyHash)) {
+                throw new RuntimeException('The created API key remains after deletion.');
+            }
+        } catch (Throwable $deleteFailure) {
+            $revocationConfirmed = false;
+            try {
+                $repository->revokeByIdAndHash($id, $keyHash);
+                if ($repository->existsActiveByIdAndHash($id, $keyHash)) {
+                    throw new RuntimeException('The created API key remains active after revocation.');
+                }
+                $revocationConfirmed = true;
+            } catch (Throwable) {
+                // Preserve the deletion failure for the caller's safe cleanup result.
+            }
+
+            try {
+                if ($revocationConfirmed) {
+                    $this->clearActiveLookupCache($keyHash);
+                } else {
+                    Cache::forever(
+                        $this->activeLookupCacheKey($keyHash),
+                        self::REVOKED_LOOKUP_CACHE_MARKER,
+                    );
+                }
+            } catch (Throwable) {
+                try {
+                    Cache::forever(
+                        $this->activeLookupCacheKey($keyHash),
+                        self::REVOKED_LOOKUP_CACHE_MARKER,
+                    );
+                } catch (Throwable) {
+                    // Preserve the deletion failure if cache invalidation also fails.
+                }
+            }
+
+            throw $deleteFailure;
+        }
+
+        $this->clearActiveLookupCache($keyHash);
     }
 
     public function findActiveByPlaintext(string $plain): ?ApiKey
@@ -69,6 +125,9 @@ final class ApiKeyService
             $cached = Cache::get($cacheKey);
         } catch (Throwable) {
             $cached = null;
+        }
+        if ($cached === self::REVOKED_LOOKUP_CACHE_MARKER) {
+            return null;
         }
         if (
             $cached instanceof ApiKey
@@ -103,6 +162,11 @@ final class ApiKeyService
     private function activeLookupCacheKey(string $keyHash): string
     {
         return self::ACTIVE_LOOKUP_CACHE_PREFIX . hash('sha256', $keyHash);
+    }
+
+    private function clearActiveLookupCache(string $keyHash): void
+    {
+        Cache::forget($this->activeLookupCacheKey($keyHash));
     }
 
     private function hashPlaintext(string $plaintext): string
