@@ -156,6 +156,29 @@ PUSH_REVISION_INPUT="HEAD~0 ${GOOD_HEAD} refs/heads/revision ${ZERO_OID}"
   expect_pass "pre-push accepts a local revision expression as the source ref" bash "$CHECKER" pre-push origin "$PUSH_REVISION_INPUT"
 )
 
+# develop merged into an existing remote branch: the pushed range then also lists develop's own commits, which
+# were validated when they landed and must not be judged again (an old trailer there must not block the push).
+(
+  cd "$REPO"
+  git checkout -q -b merged-feature "$BASE"
+  git commit --allow-empty -q -m 'feat: Branch work before the merge'
+  OLD_BRANCH_HEAD="$(git rev-parse HEAD)"
+  git checkout -q "$BASE"
+  printf 'feat: Landed on develop earlier\n\nCo-Authored-By: Someone <someone@example.invalid>\n' > "$MESSAGE_FILE"
+  git commit --allow-empty -q -F "$MESSAGE_FILE"
+  git update-ref refs/remotes/origin/develop "$(git rev-parse HEAD)"
+  git checkout -q merged-feature
+  git merge -q --no-ff -m 'chore: Merge develop into the feature' origin/develop
+  MERGED_HEAD="$(git rev-parse HEAD)"
+  expect_pass "pre-push ignores commits that are already on the remote default branch" \
+    bash "$CHECKER" pre-push origin "refs/heads/merged-feature ${MERGED_HEAD} refs/heads/merged-feature ${OLD_BRANCH_HEAD}"
+  git checkout -q -b own-bad "$MERGED_HEAD"
+  printf 'feat: A bad commit of this branch\n\nCo-Authored-By: Someone <someone@example.invalid>\n' > "$MESSAGE_FILE"
+  git commit --allow-empty -q -F "$MESSAGE_FILE"
+  expect_fail_with "pre-push still rejects a bad commit that belongs to the branch" 'prohibited AI/coauthor trailer' \
+    bash "$CHECKER" pre-push origin "refs/heads/own-bad $(git rev-parse HEAD) refs/heads/merged-feature ${MERGED_HEAD}"
+)
+
 NEW_BRANCH_INPUT="refs/heads/new-feature ${GOOD_HEAD} refs/heads/new-feature ${ZERO_OID}"
 (
   cd "$REPO"

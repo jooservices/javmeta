@@ -150,6 +150,7 @@ check_pre_push() {
   local line
   local local_ref
   local local_sha
+  local exclude_sha
   local remote_ref
   local remote_sha
   local extra
@@ -205,7 +206,11 @@ check_pre_push() {
       fi
     fi
 
-    check_commit_range "${base_sha}..${head_sha}" || return 1
+    exclude_sha=""
+    if [[ ! "$remote_sha" =~ ^0+$ ]]; then
+      exclude_sha="$(resolve_default_remote_base "$remote" 2>/dev/null || true)"
+    fi
+    check_commit_range "${base_sha}..${head_sha}" "$exclude_sha" || return 1
     checked=$((checked + 1))
   done <<<"$ref_updates"
 
@@ -240,6 +245,7 @@ check_commit_message_file() {
 
 check_commit_range() {
   local range="$1"
+  local exclude="${2:-}"
   local commits
   local commit
   local message
@@ -254,7 +260,14 @@ check_commit_range() {
     return 1
   fi
 
-  if ! commits="$(git rev-list --reverse "$range" 2>/dev/null)"; then
+  if [[ -n "$exclude" ]]; then
+    # Commits already on the remote default branch (for example develop merged into this branch) were checked
+    # when they landed there and are not part of this push.
+    commits="$(git rev-list --reverse "$range" --not "$exclude" 2>/dev/null)" || commits="__unresolved__"
+  else
+    commits="$(git rev-list --reverse "$range" 2>/dev/null)" || commits="__unresolved__"
+  fi
+  if [[ "$commits" == "__unresolved__" ]]; then
     fail "could not resolve local commit range '$range'."
     return 1
   fi

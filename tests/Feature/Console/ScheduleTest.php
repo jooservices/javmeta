@@ -63,6 +63,8 @@ final class ScheduleTest extends TestCase
             'perf:warm' => '* * * * *',
             'report:send' => '* * * * *',
             'report:send-daily' => '0 8 * * *',
+            'reports:field-conflicts' => '0 * * * *',
+            'reports:field-conflicts' => '0 * * * *',
             'search:backfill-embeddings' => '0 * * * *',
             'staging:readiness' => '0 * * * *',
             'telegram:poll' => '* * * * *',

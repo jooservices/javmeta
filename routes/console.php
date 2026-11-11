@@ -37,6 +37,11 @@ Schedule::command('report:send-daily')
         Log::error('Scheduled command failed.', ['command' => 'report:send-daily']);
     });
 
+Schedule::command('reports:field-conflicts')->hourly()->withoutOverlapping()
+    ->onFailure(static function (): void {
+        Log::error('Scheduled command failed.', ['command' => 'reports:field-conflicts']);
+    });
+
 if ((bool) ($settings?->get('report.legacy_hourly_enabled') ?? config('javmeta_report.legacy_hourly_enabled', false))
     && ! (bool) ($settings?->get('report.enabled') ?? config('javmeta_report.enabled', true))) {
     Schedule::command('javmeta:hourly-report')->hourly()->withoutOverlapping()

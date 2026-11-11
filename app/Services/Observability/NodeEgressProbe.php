@@ -18,6 +18,12 @@ final class NodeEgressProbe
 {
     private const NODE_INDEX_KEY = 'javmeta:egress:nodes';
 
+    private const NODE_INDEX_LIMIT = 200;
+
+    private const LEGACY_NODE_META_KEY = 'javmeta:egress:legacy-meta-pending';
+
+    private const LEGACY_NODE_META_BATCH_SIZE = 200;
+
     public function __construct(
         private readonly ClientBuilder $clientBuilder,
         private readonly Ipv4Parser $ipv4 = new Ipv4Parser(),
@@ -223,7 +229,7 @@ final class NodeEgressProbe
         if ($kind === 'node') {
             $storedMeta['configured_node'] = $identity;
         }
-        Cache::forever($metaKey, $storedMeta);
+        Cache::put($metaKey, $storedMeta, CarbonImmutable::now()->addDays(30));
 
         if ($changed) {
             $this->publishChange($kind, $identity, $oldIp, $ip, $lastChangeAt);
@@ -577,14 +583,14 @@ final class NodeEgressProbe
                 return;
             }
             $nodes = $this->cachedNodeIds();
+            $this->expireLegacyNodeMetadata($nodes);
             $legacyNode = NodeIdentity::hostname();
             if ($legacyNode !== $node && ! $this->hasLiveNodeProbe($legacyNode)) {
                 $nodes = array_values(array_filter($nodes, static fn(string $cachedNode): bool => $cachedNode !== $legacyNode));
             }
+            $nodes = array_values(array_filter($nodes, static fn(string $cachedNode): bool => $cachedNode !== $node));
             $nodes[] = $node;
-            $nodes = array_values(array_unique($nodes));
-            sort($nodes);
-            Cache::forever(self::NODE_INDEX_KEY, $nodes);
+            Cache::put(self::NODE_INDEX_KEY, array_slice($nodes, -self::NODE_INDEX_LIMIT), CarbonImmutable::now()->addDays(7));
         } catch (Throwable) {
             // Node discovery is best effort; the local node remains visible in status output.
         } finally {
@@ -609,6 +615,30 @@ final class NodeEgressProbe
 
         return is_array($probe)
             && is_string($probe['last_probe_at'] ?? null);
+    }
+
+    /** @param list<string> $indexedNodes */
+    private function expireLegacyNodeMetadata(array $indexedNodes): void
+    {
+        $pending = Cache::get(self::LEGACY_NODE_META_KEY, []);
+        $pending = is_array($pending) ? array_values(array_filter($pending, 'is_string')) : [];
+        $identities = array_values(array_unique(array_merge($pending, $indexedNodes)));
+        foreach (array_slice($identities, 0, self::LEGACY_NODE_META_BATCH_SIZE) as $identity) {
+            $key = $this->nodeMetaKey($identity);
+            $metadata = Cache::get($key);
+            if (is_array($metadata)) {
+                Cache::put($key, $metadata, CarbonImmutable::now()->addDays(30));
+            }
+        }
+
+        $remaining = array_slice($identities, self::LEGACY_NODE_META_BATCH_SIZE);
+        if ($remaining === []) {
+            Cache::forget(self::LEGACY_NODE_META_KEY);
+
+            return;
+        }
+
+        Cache::put(self::LEGACY_NODE_META_KEY, $remaining, CarbonImmutable::now()->addDays(30));
     }
 
     private function isDue(mixed $lastProbeAt, int $interval): bool
