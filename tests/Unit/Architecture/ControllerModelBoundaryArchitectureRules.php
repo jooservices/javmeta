@@ -8,12 +8,17 @@ use App\Http\Controllers\MetaGenreController;
 use App\Http\Controllers\MovieBulkController;
 use App\Http\Controllers\MovieLookupController;
 use App\Http\Controllers\MovieRelatedController;
+use App\Http\Controllers\Operations\LoginController as OperationsLoginController;
+use App\Http\Controllers\Operations\NodeController as OperationsNodeController;
 use App\Http\Controllers\PerformerController;
 use App\Http\Controllers\StatusController;
+use App\Http\Controllers\Ui\UiNotificationTemplateController;
+use App\Http\Controllers\Ui\UiSettingsController;
 use App\Models\CrawlQueue;
 use App\Models\Genre;
 use App\Models\Movie;
 use App\Models\Performer;
+use App\Models\User;
 use PHPat\Selector\Selector;
 use PHPat\Selector\SelectorInterface;
 use PHPat\Test\Attributes\TestRule;
@@ -34,12 +39,25 @@ final class ControllerModelBoundaryArchitectureRules
         ],
         MovieRelatedController::class => [
             Movie::class => 'Related movie assembly reads Eloquent relationships and attributes in the controller.',
+            Performer::class => 'The related movie response reads performer attributes returned by the Eloquent relationship.',
         ],
         PerformerController::class => [
             Performer::class => 'The repository returns an Eloquent performer and the resource contract currently accepts that model.',
         ],
         StatusController::class => [
             CrawlQueue::class => 'The controller uses the model only for queue status constants when shaping the status response.',
+        ],
+        OperationsLoginController::class => [
+            User::class => 'The login flow checks the authenticated user role through the request user contract.',
+        ],
+        OperationsNodeController::class => [
+            User::class => 'The node enrollment records the authenticated user identifier from the request user contract.',
+        ],
+        UiNotificationTemplateController::class => [
+            User::class => 'Notification template changes record the authenticated user identifier from the request user contract.',
+        ],
+        UiSettingsController::class => [
+            User::class => 'The settings audit event records the authenticated user email from the request user contract.',
         ],
         MetaGenreController::class => [
             Genre::class => 'The endpoint currently builds its distinct genre-label response with a direct Eloquent query.',

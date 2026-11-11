@@ -16,3 +16,7 @@ services:
         class: Tests\Unit\Architecture\ControllerModelBoundaryArchitectureRules
         tags:
             - phpat.test
+    -
+        class: Tests\Unit\Architecture\ControllerModelBoundaryRule
+        tags:
+            - phpstan.rules.rule
