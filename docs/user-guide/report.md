@@ -25,7 +25,8 @@ công việc.
 - **Bản ghi nguồn** là số liên kết phim–nguồn đang được lưu. Một phim có mặt ở
   hai nguồn đóng góp một phim duy nhất và hai bản ghi nguồn. Tải lại cùng phim
   từ cùng nguồn cập nhật liên kết hiện có; đây không phải số lần crawl hay lịch
-  sử các lần crawl.
+  sử các lần crawl. Đây là định nghĩa số liệu nguồn dự kiến, không khẳng định
+  rằng các liên kết đang lưu đã ghi nhận đủ mọi lần phim xuất hiện ở nguồn.
 - **Độ phủ theo nguồn** chỉ tính được khi biết tổng catalog bên ngoài của nguồn:
   số canonical DVD ID khác nhau đã thấy ở nguồn đó chia cho số canonical DVD ID
   khác nhau trong catalog bên ngoài của nguồn, nhân 100%. Tổng phải cùng phạm vi
@@ -48,6 +49,16 @@ không đếm liên kết trong `movie_sources`, không có tổng catalog bên 
 nguồn và không đo phần giao giữa các catalog. Vì vậy các số liệu này mô tả dữ
 liệu và hoạt động crawl của JavMeta, không chứng minh độ phủ của catalog bên
 ngoài.
+
+Trong luồng lưu hiện tại, hàng phim được lưu trước khi ghi dữ liệu archive Mongo.
+Liên kết trong `movie_sources` chỉ được tạo hoặc cập nhật khi archive trả về ID
+tài liệu. Nếu archive lỗi hoặc không có ID, phim vẫn có thể đã được lưu nhưng
+không có liên kết nguồn; với phim xuất hiện ở nhiều nguồn, chỉ các nguồn archive
+thành công mới có thể được ghi nhận. Vì vậy số hàng `movie_sources` có thể thiếu
+so với số lần xuất hiện thực tế. Không có liên kết được lưu không chứng minh phim
+chưa từng xuất hiện ở nguồn đó. Cho đến khi các khoảng trống archive được đối
+soát, tổng liên kết và số liệu theo nguồn dựa trên bảng này là chưa đầy đủ hoặc
+không xác định.
 
 Các lần chạy báo cáo lưu thời điểm tạo và cửa sổ đo. Hãy đọc số tổng trong một
 bản cũ như số liệu tại thời điểm của bản đó; không trình bày nó như số hiện tại.
