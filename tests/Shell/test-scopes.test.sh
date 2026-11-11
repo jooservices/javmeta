@@ -130,7 +130,17 @@ assert_rejected 'Unknown path' unit --path tests/Unit/does-not-exist.php
 assert_rejected 'Cross-suite path' unit --path tests/Feature/Nodes/NodeEnrollmentEndpointsTest.php
 assert_rejected 'Empty filter' unit --filter ''
 assert_rejected 'Scope override' unit --filter test_queue --testsuite Feature
+assert_rejected 'Abbreviated scope override' unit --path tests/Unit/QueueConfigurationTest.php --testsuit=Feature
 assert_rejected 'Conflicting selectors' unit --all --path tests/Unit/QueueConfigurationTest.php
+
+ln -s "$ROOT" "${TMP_DIR}/javmeta-link"
+env -u JAVMETA_CI_RUNNER_IN_CONTAINER \
+  GITHUB_ACTIONS=true JAVMETA_CI_SKIP_BUILD=1 JAVMETA_CI_IMAGE="$IMAGE" \
+  CAPTURE="$CAPTURE" PATH="${TMP_DIR}/bin:${PATH}" \
+  "${TMP_DIR}/javmeta-link/docker/ci/run" test-scope unit --path tests/Unit/QueueConfigurationTest.php
+assert_command 'Symlinked checkout path selection' \
+  vendor/bin/phpunit --configuration phpunit.xml --fail-on-empty-test-suite \
+  tests/Unit/QueueConfigurationTest.php
 
 # The existing generic command path remains a direct command in the same CI image.
 env -u JAVMETA_CI_RUNNER_IN_CONTAINER \

@@ -7,7 +7,7 @@
 # On GitHub Actions (or JAVMETA_CI_DOCKER=1): builds and runs the isolated CI image as before.
 set -euo pipefail
 
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 
 scope_usage() {
   cat <<'USAGE'
@@ -18,6 +18,31 @@ Examples:
   docker/ci/run test-scope feature --filter test_enrollment --testdox
   docker/ci/run test-scope unit --all
 USAGE
+}
+
+scope_override_options=(
+  --testsuite
+  --configuration
+  --no-configuration
+  --test-directory
+  --test-suffix
+  --bootstrap
+  --test-files-file
+  --run-test-id
+  --test-id-filter-file
+  --do-not-fail-on-empty-test-suite
+)
+
+is_scope_override_option() {
+  local option="${1%%=*}"
+  local blocked_option
+
+  # PHPUnit accepts unambiguous long-option prefixes, so block those too.
+  for blocked_option in "${scope_override_options[@]}"; do
+    [[ "$blocked_option" == "$option"* ]] && return 0
+  done
+
+  return 1
 }
 
 if [[ "${1:-}" == "test-scope" ]]; then
@@ -44,6 +69,10 @@ if [[ "${1:-}" == "test-scope" ]]; then
   while (($#)); do
     argument="$1"
     shift
+    if is_scope_override_option "$argument"; then
+      echo "The PHPUnit option '$argument' could escape the selected scope and is not allowed." >&2
+      exit 2
+    fi
     case "$argument" in
       --path)
         (($#)) || { echo "--path requires a non-empty path." >&2; exit 2; }
@@ -78,7 +107,7 @@ if [[ "${1:-}" == "test-scope" ]]; then
         all_tests=1
         selector_seen=1
         ;;
-      --testsuite|--testsuite=*|--configuration|--configuration=*|--no-configuration|-c|-c*|--test-directory|--test-directory=*|--test-suffix|--test-suffix=*|--bootstrap|--bootstrap=*|--test-files-file|--test-files-file=*|--run-test-id|--run-test-id=*|--test-id-filter-file|--test-id-filter-file=*|--do-not-fail-on-empty-test-suite)
+      -c|-c*)
         echo "The PHPUnit option '$argument' could escape the selected scope and is not allowed." >&2
         exit 2
         ;;
