@@ -1181,16 +1181,16 @@
         },
         {
             "name": "jooservices/crawlerx",
-            "version": "v1.5.0",
+            "version": "v1.7.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/jooservices/crawlerx.git",
-                "reference": "5dba17151b8f70a96b735e3459f9cb1ce932cc4e"
+                "reference": "c27f7e4f7da7ed9d26b2169caa06792f4e38b7f7"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/jooservices/crawlerx/zipball/5dba17151b8f70a96b735e3459f9cb1ce932cc4e",
-                "reference": "5dba17151b8f70a96b735e3459f9cb1ce932cc4e",
+                "url": "https://api.github.com/repos/jooservices/crawlerx/zipball/c27f7e4f7da7ed9d26b2169caa06792f4e38b7f7",
+                "reference": "c27f7e4f7da7ed9d26b2169caa06792f4e38b7f7",
                 "shasum": ""
             },
             "require": {
@@ -1208,6 +1208,7 @@
             },
             "require-dev": {
                 "captainhook/captainhook": "^5.23",
+                "deptrac/deptrac": "^4.0",
                 "fakerphp/faker": "^1.24",
                 "friendsofphp/php-cs-fixer": "^3.65",
                 "laravel/pint": "^1.18",
@@ -1231,9 +1232,9 @@
             "description": "URL-driven crawl and parse library for JAV catalog sites.",
             "support": {
                 "issues": "https://github.com/jooservices/crawlerx/issues",
-                "source": "https://github.com/jooservices/crawlerx/tree/v1.5.0"
+                "source": "https://github.com/jooservices/crawlerx/tree/v1.7.1"
             },
-            "time": "2026-11-03T11:11:30+00:00"
+            "time": "2026-11-10T04:08:33+00:00"
         },
         {
             "name": "jooservices/dto",
