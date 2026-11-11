@@ -23,23 +23,23 @@ final class PhotosFacetListRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'facet' => ['required', Rule::in(['source', 'performer'])],
-            'q' => ['nullable', 'string', 'max:200'],
-            'page' => ['required', 'integer', 'min:1', 'max:' . self::MAX_PAGE],
-            'per_page' => ['required', 'integer', 'min:1', 'max:' . PhotosImagesQuery::MAX_PER_PAGE],
-            'sort' => ['required', Rule::in(['count', 'name'])],
-            'min_count' => ['required', 'integer', 'min:0', 'max:1000000'],
+            'facet' => ['bail', 'required', 'string', Rule::in(['source', 'performer'])],
+            'q' => ['bail', 'nullable', 'string', PhotoQueryInput::validTextRule(), 'max:200'],
+            'page' => ['bail', 'required', 'integer', 'min:1', 'max:' . self::MAX_PAGE],
+            'per_page' => ['bail', 'required', 'integer', 'min:1', 'max:' . PhotosImagesQuery::MAX_PER_PAGE],
+            'sort' => ['bail', 'required', 'string', Rule::in(['count', 'name'])],
+            'min_count' => ['bail', 'required', 'integer', 'min:0', 'max:1000000'],
         ];
     }
 
     protected function prepareForValidation(): void
     {
         $this->merge([
-            'facet' => (string) $this->query('facet', ''),
-            'q' => trim((string) $this->query('q', '')),
+            'facet' => $this->query('facet', ''),
+            'q' => PhotoQueryInput::trimmed($this->query('q', '')),
             'page' => $this->normalizedPage($this->query('page', 1)),
             'per_page' => $this->query('per_page', 20),
-            'sort' => (string) $this->query('sort', 'count'),
+            'sort' => $this->query('sort', 'count'),
             'min_count' => $this->query('min_count', 0),
         ]);
     }
@@ -48,6 +48,7 @@ final class PhotosFacetListRequest extends FormRequest
     {
         throw new InvalidFilterException(__('photos.invalid_facet'), [
             'facet' => ['source', 'performer'],
+            'q' => [__('photos.invalid_text_filter')],
             'per_page' => ['1 to ' . PhotosImagesQuery::MAX_PER_PAGE],
             'sort' => ['count', 'name'],
         ]);

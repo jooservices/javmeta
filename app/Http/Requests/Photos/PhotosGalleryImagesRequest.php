@@ -23,8 +23,8 @@ final class PhotosGalleryImagesRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'page' => ['required', 'integer', 'min:1', 'max:' . self::MAX_PAGE],
-            'per_page' => ['required', 'integer', 'min:1', 'max:' . PhotosImagesQuery::MAX_PER_PAGE],
+            'page' => ['bail', 'required', 'integer', 'min:1', 'max:' . self::MAX_PAGE],
+            'per_page' => ['bail', 'required', 'integer', 'min:1', 'max:' . PhotosImagesQuery::MAX_PER_PAGE],
         ];
     }
 

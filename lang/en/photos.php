@@ -14,4 +14,6 @@ return [
     'gallery_not_found' => 'Gallery not found.',
     'galleries_need_owner' => 'Provide performer or movie.',
     'invalid_facet' => 'Invalid photos facet.',
+    'invalid_movie_code' => 'Movie code must contain a prefix and numeric suffix.',
+    'invalid_text_filter' => 'Text filters must contain valid UTF-8 text without NUL bytes.',
 ];

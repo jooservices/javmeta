@@ -14,4 +14,6 @@ return [
     'gallery_not_found' => 'Không tìm thấy bộ ảnh.',
     'galleries_need_owner' => 'Cần chỉ định diễn viên hoặc phim.',
     'invalid_facet' => 'Facet ảnh không hợp lệ.',
+    'invalid_movie_code' => 'Mã phim phải có tiền tố và hậu tố dạng số.',
+    'invalid_text_filter' => 'Bộ lọc văn bản phải là UTF-8 hợp lệ và không chứa byte NUL.',
 ];

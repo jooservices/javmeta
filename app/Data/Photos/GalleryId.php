@@ -65,7 +65,7 @@ final class GalleryId
             $padded .= str_repeat('=', 4 - $pad);
         }
         $raw = base64_decode($padded, true);
-        if ($raw === false) {
+        if ($raw === false || ! self::isSafeText($raw)) {
             throw new InvalidFilterException(__('photos.invalid_gallery'));
         }
 
@@ -78,7 +78,7 @@ final class GalleryId
             $ownerId = filter_var($parts[2], FILTER_VALIDATE_INT);
             $source = self::base64UrlDecode($parts[3]);
             $mediaId = filter_var($parts[4], FILTER_VALIDATE_INT);
-            if ($ownerId === false || $ownerId < 1 || $source === null || $source === '' || $mediaId === false || $mediaId < 1) {
+            if ($ownerId === false || $ownerId < 1 || $source === null || ! self::isSafeText($source) || $mediaId === false || $mediaId < 1) {
                 throw new InvalidFilterException(__('photos.invalid_gallery'));
             }
 
@@ -115,5 +115,10 @@ final class GalleryId
         $decoded = base64_decode($padded, true);
 
         return $decoded === false ? null : $decoded;
+    }
+
+    private static function isSafeText(string $value): bool
+    {
+        return ! str_contains($value, "\0") && mb_check_encoding($value, 'UTF-8');
     }
 }

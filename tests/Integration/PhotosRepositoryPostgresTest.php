@@ -170,6 +170,44 @@ final class PhotosRepositoryPostgresTest extends BaseTestCase
         self::assertCount(4, array_unique([...$listingFirstIds, ...$listingSecondIds]));
     }
 
+    public function test_group_gallery_and_preview_searches_treat_like_wildcards_as_literal_text(): void
+    {
+        $repository = app(PhotosRepository::class);
+        $cases = [
+            '%' => 'Percent',
+            '_' => 'Underscore',
+            '!' => 'Bang',
+        ];
+
+        foreach ($cases as $wildcard => $label) {
+            $matchingPerformer = Performer::factory()->create(['name_romaji' => 'Performer ' . $wildcard . ' ' . $label]);
+            $decoyPerformer = Performer::factory()->create(['name_romaji' => 'Performer X ' . $label]);
+            $this->addPerformerGallery($matchingPerformer, 'source-a', $label . '-match', 'Album ' . $wildcard . ' ' . $label, $label . '-match.jpg');
+            $this->addPerformerGallery($matchingPerformer, 'source-a', $label . '-decoy', 'Album X ' . $label, $label . '-decoy.jpg');
+            $this->addPerformerGallery($decoyPerformer, 'source-a', $label . '-other', 'Other album', $label . '-other.jpg');
+
+            $matchingMovie = Movie::factory()->create(['title_en' => 'Movie ' . $wildcard . ' ' . $label]);
+            $decoyMovie = Movie::factory()->create(['title_en' => 'Movie X ' . $label]);
+            $this->addMovieGallery($matchingMovie, 'source-a', $label . '-movie-match', 'Movie album ' . $wildcard . ' ' . $label, $label . '-movie-match.jpg');
+            $this->addMovieGallery($matchingMovie, 'source-a', $label . '-movie-decoy', 'Movie album X ' . $label, $label . '-movie-decoy.jpg');
+            $this->addMovieGallery($decoyMovie, 'source-a', $label . '-movie-other', 'Other movie album', $label . '-movie-other.jpg');
+
+            $performers = $repository->groups(new PhotosGroupQuery('performer', $wildcard, '', null, null, 1, 20));
+            $movies = $repository->groups(new PhotosGroupQuery('movie', $wildcard, '', null, null, 1, 20));
+            $galleryGroups = $repository->groups(new PhotosGroupQuery('gallery', $wildcard, '', null, null, 1, 20));
+            $performerGalleries = $repository->galleries(new PhotosGalleryQuery($matchingPerformer->id, null, '', $wildcard, 1, 20));
+            $movieGalleries = $repository->galleries(new PhotosGalleryQuery(null, $matchingMovie->display_code, '', $wildcard, 1, 20));
+
+            self::assertSame([(int) $matchingPerformer->id], array_column($performers['items'], 'id'));
+            self::assertSame([(int) $matchingMovie->id], array_column($movies['items'], 'id'));
+            self::assertCount(2, $galleryGroups['items']);
+            self::assertSame(1, $performerGalleries['total']);
+            self::assertSame([$label . '-match.jpg'], $performerGalleries['items'][0]['preview_urls']);
+            self::assertSame(1, $movieGalleries['total']);
+            self::assertSame([$label . '-movie-match.jpg'], $movieGalleries['items'][0]['preview_urls']);
+        }
+    }
+
     public function test_movie_gallery_listing_filters_source_and_paginates_complete_gallery_identities(): void
     {
         $movie = Movie::factory()->create();

@@ -22,12 +22,12 @@ final class PhotosGalleriesRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'performer' => ['nullable', 'integer', 'min:1'],
-            'movie' => ['nullable', 'string', 'max:64'],
-            'source' => ['nullable', 'string', 'max:100'],
-            'q' => ['nullable', 'string', 'max:200'],
-            'page' => ['required', 'integer', 'min:1', 'max:' . self::MAX_PAGE],
-            'per_page' => ['required', 'integer', 'min:1', 'max:' . PhotosGalleryQuery::MAX_PER_PAGE],
+            'performer' => ['bail', 'nullable', 'integer', 'min:1'],
+            'movie' => ['bail', 'nullable', 'string', PhotoQueryInput::validTextRule(), 'max:64', PhotoQueryInput::validMovieCodeRule()],
+            'source' => ['bail', 'nullable', 'string', PhotoQueryInput::validTextRule(), 'max:100'],
+            'q' => ['bail', 'nullable', 'string', PhotoQueryInput::validTextRule(), 'max:200'],
+            'page' => ['bail', 'required', 'integer', 'min:1', 'max:' . self::MAX_PAGE],
+            'per_page' => ['bail', 'required', 'integer', 'min:1', 'max:' . PhotosGalleryQuery::MAX_PER_PAGE],
         ];
     }
 
@@ -35,9 +35,9 @@ final class PhotosGalleriesRequest extends FormRequest
     {
         $this->merge([
             'performer' => $this->query('performer') !== null && $this->query('performer') !== '' ? $this->query('performer') : null,
-            'movie' => trim((string) $this->query('movie', '')),
-            'source' => trim((string) $this->query('source', '')),
-            'q' => trim((string) $this->query('q', '')),
+            'movie' => PhotoQueryInput::trimmed($this->query('movie', '')),
+            'source' => PhotoQueryInput::trimmed($this->query('source', '')),
+            'q' => PhotoQueryInput::trimmed($this->query('q', '')),
             'page' => $this->normalizedPage($this->query('page', 1)),
             'per_page' => $this->query('per_page', 24),
         ]);
@@ -46,6 +46,9 @@ final class PhotosGalleriesRequest extends FormRequest
     protected function failedValidation(Validator $validator): void
     {
         throw new InvalidFilterException(__('photos.invalid_galleries_query'), [
+            'movie' => [__('photos.invalid_movie_code')],
+            'q' => [__('photos.invalid_text_filter')],
+            'source' => [__('photos.invalid_text_filter')],
             'per_page' => ['1 to ' . PhotosGalleryQuery::MAX_PER_PAGE],
         ]);
     }

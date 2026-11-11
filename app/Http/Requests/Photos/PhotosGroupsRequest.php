@@ -23,24 +23,24 @@ final class PhotosGroupsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'by' => ['required', Rule::in(PhotosGroupQuery::BY)],
-            'q' => ['nullable', 'string', 'max:200'],
-            'source' => ['nullable', 'string', 'max:100'],
-            'performer' => ['nullable', 'integer', 'min:1'],
-            'movie' => ['nullable', 'string', 'max:64'],
-            'page' => ['required', 'integer', 'min:1', 'max:' . self::MAX_PAGE],
-            'per_page' => ['required', 'integer', 'min:1', 'max:' . PhotosGroupQuery::MAX_PER_PAGE],
+            'by' => ['bail', 'required', 'string', Rule::in(PhotosGroupQuery::BY)],
+            'q' => ['bail', 'nullable', 'string', PhotoQueryInput::validTextRule(), 'max:200'],
+            'source' => ['bail', 'nullable', 'string', PhotoQueryInput::validTextRule(), 'max:100'],
+            'performer' => ['bail', 'nullable', 'integer', 'min:1'],
+            'movie' => ['bail', 'nullable', 'string', PhotoQueryInput::validTextRule(), 'max:64', PhotoQueryInput::validMovieCodeRule()],
+            'page' => ['bail', 'required', 'integer', 'min:1', 'max:' . self::MAX_PAGE],
+            'per_page' => ['bail', 'required', 'integer', 'min:1', 'max:' . PhotosGroupQuery::MAX_PER_PAGE],
         ];
     }
 
     protected function prepareForValidation(): void
     {
         $this->merge([
-            'by' => (string) $this->query('by', 'performer'),
-            'q' => trim((string) $this->query('q', '')),
-            'source' => trim((string) $this->query('source', '')),
+            'by' => $this->query('by', 'performer'),
+            'q' => PhotoQueryInput::trimmed($this->query('q', '')),
+            'source' => PhotoQueryInput::trimmed($this->query('source', '')),
             'performer' => $this->query('performer') !== null && $this->query('performer') !== '' ? $this->query('performer') : null,
-            'movie' => trim((string) $this->query('movie', '')),
+            'movie' => PhotoQueryInput::trimmed($this->query('movie', '')),
             'page' => $this->normalizedPage($this->query('page', 1)),
             'per_page' => $this->query('per_page', 24),
         ]);
@@ -50,6 +50,9 @@ final class PhotosGroupsRequest extends FormRequest
     {
         throw new InvalidFilterException(__('photos.invalid_groups_query'), [
             'by' => PhotosGroupQuery::BY,
+            'movie' => [__('photos.invalid_movie_code')],
+            'q' => [__('photos.invalid_text_filter')],
+            'source' => [__('photos.invalid_text_filter')],
             'per_page' => ['1 to ' . PhotosGroupQuery::MAX_PER_PAGE],
         ]);
     }

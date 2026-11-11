@@ -13,6 +13,7 @@ use App\Models\PerformerMedia;
 use App\Support\Code\NormalizedCode;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 /** Read-only photo/gallery aggregations over performer_media and movie_media. */
 final class PhotosRepository extends BusinessQueryRepository
@@ -39,7 +40,11 @@ final class PhotosRepository extends BusinessQueryRepository
             return $this->listGalleries('performer', $query->performerId, null, $query);
         }
 
-        $movieId = $this->movieIdByCode((string) $query->movieCode);
+        if ($query->movieCode === null || $query->movieCode === '') {
+            return ['items' => [], 'total' => 0];
+        }
+
+        $movieId = $this->movieIdByCode($query->movieCode);
         if ($movieId === null) {
             return ['items' => [], 'total' => 0];
         }
@@ -215,11 +220,11 @@ final class PhotosRepository extends BusinessQueryRepository
             $base->where('m.performer_id', $query->performerId);
         }
         if ($query->q !== '') {
-            $like = '%' . $query->q . '%';
-            $base->where(function (Builder $w) use ($like): void {
-                $w->where('p.name_romaji', 'like', $like)
-                    ->orWhere('p.name_kanji', 'like', $like)
-                    ->orWhere('p.name_kana', 'like', $like);
+            $pattern = $this->containsLikePattern($query->q);
+            $base->where(function (Builder $w) use ($pattern): void {
+                $w->whereRaw("p.name_romaji like ? escape '!'", [$pattern])
+                    ->orWhereRaw("p.name_kanji like ? escape '!'", [$pattern])
+                    ->orWhereRaw("p.name_kana like ? escape '!'", [$pattern]);
             });
         }
 
@@ -266,18 +271,21 @@ final class PhotosRepository extends BusinessQueryRepository
             ->where('m.kind', 'gallery');
         $this->applySource($base, $query->source, 'm');
         if ($query->movieCode !== null) {
-            $normalized = NormalizedCode::from($query->movieCode)->value();
+            $normalized = $this->normalizedMovieCode($query->movieCode);
+            if ($normalized === null) {
+                return ['items' => [], 'total' => 0];
+            }
             $base->where('mv.code_normalized', $normalized);
         }
         if ($query->performerId !== null) {
             $this->whereMovieHasPerformer($base, $query->performerId);
         }
         if ($query->q !== '') {
-            $like = '%' . $query->q . '%';
-            $base->where(function (Builder $w) use ($like): void {
-                $w->where('mv.display_code', 'like', $like)
-                    ->orWhere('mv.title_en', 'like', $like)
-                    ->orWhere('mv.title_jp', 'like', $like);
+            $pattern = $this->containsLikePattern($query->q);
+            $base->where(function (Builder $w) use ($pattern): void {
+                $w->whereRaw("mv.display_code like ? escape '!'", [$pattern])
+                    ->orWhereRaw("mv.title_en like ? escape '!'", [$pattern])
+                    ->orWhereRaw("mv.title_jp like ? escape '!'", [$pattern]);
             });
         }
 
@@ -319,6 +327,10 @@ final class PhotosRepository extends BusinessQueryRepository
     /** @return array{items: list<array<string, mixed>>, total: int} */
     private function galleryGroups(PhotosGroupQuery $query): array
     {
+        if ($query->movieCode !== null && $this->normalizedMovieCode($query->movieCode) === null) {
+            return ['items' => [], 'total' => 0];
+        }
+
         $performer = $this->galleryAggregate('performer', $query);
         $movie = $this->galleryAggregate('movie', $query);
         $union = $performer->unionAll($movie);
@@ -375,19 +387,19 @@ final class PhotosRepository extends BusinessQueryRepository
             $this->whereMovieHasPerformer($base, $query->performerId);
         }
         if ($query->q !== '') {
-            $like = '%' . $query->q . '%';
+            $pattern = $this->containsLikePattern($query->q);
             if ($type === 'performer') {
                 $base->join('performers as p', 'p.id', '=', 'm.performer_id')
-                    ->where(function (Builder $w) use ($like): void {
-                        $w->where('p.name_romaji', 'like', $like)
-                            ->orWhere('p.name_kanji', 'like', $like);
+                    ->where(function (Builder $w) use ($pattern): void {
+                        $w->whereRaw("p.name_romaji like ? escape '!'", [$pattern])
+                            ->orWhereRaw("p.name_kanji like ? escape '!'", [$pattern]);
                     });
             } else {
                 $base->join('movies as mv', 'mv.id', '=', 'm.movie_id')
-                    ->where(function (Builder $w) use ($like): void {
-                        $w->where('mv.display_code', 'like', $like)
-                            ->orWhere('mv.title_en', 'like', $like)
-                            ->orWhere('mv.title_jp', 'like', $like);
+                    ->where(function (Builder $w) use ($pattern): void {
+                        $w->whereRaw("mv.display_code like ? escape '!'", [$pattern])
+                            ->orWhereRaw("mv.title_en like ? escape '!'", [$pattern])
+                            ->orWhereRaw("mv.title_jp like ? escape '!'", [$pattern]);
                     });
             }
         }
@@ -412,8 +424,8 @@ final class PhotosRepository extends BusinessQueryRepository
             ->where('m.' . $ownerColumn, $ownerId);
         $this->applySource($base, $query->source, 'm');
         if ($query->q !== '') {
-            $like = '%' . $query->q . '%';
-            $base->whereRaw($title . ' like ?', [$like]);
+            $pattern = $this->containsLikePattern($query->q);
+            $base->whereRaw($title . " like ? escape '!'", [$pattern]);
         }
 
         $grouped = (clone $base)
@@ -480,7 +492,8 @@ final class PhotosRepository extends BusinessQueryRepository
             $q->whereRaw($this->galleryKeyExpr('m') . ' = ?', [$galleryKey]);
         }
         if ($titleQuery !== '') {
-            $q->whereRaw($this->jsonText('m', 'gallery_title') . ' like ?', ['%' . $titleQuery . '%']);
+            $pattern = $this->containsLikePattern($titleQuery);
+            $q->whereRaw($this->jsonText('m', 'gallery_title') . " like ? escape '!'", [$pattern]);
         }
 
         return $q->orderByRaw($this->positionExpr('m') . ' asc')
@@ -558,10 +571,23 @@ final class PhotosRepository extends BusinessQueryRepository
 
     private function movieIdByCode(string $code): ?int
     {
-        $normalized = NormalizedCode::from($code)->value();
+        $normalized = $this->normalizedMovieCode($code);
+        if ($normalized === null) {
+            return null;
+        }
+
         $id = $this->modelQuery(Movie::class)->where('code_normalized', $normalized)->value('id');
 
         return $id === null ? null : (int) $id;
+    }
+
+    private function normalizedMovieCode(string $code): ?string
+    {
+        try {
+            return NormalizedCode::from($code)->value();
+        } catch (InvalidArgumentException) {
+            return null;
+        }
     }
 
     private function applySource(Builder $query, string $source, string $alias): void
