@@ -95,5 +95,10 @@ final class MetricStreams
         'notifications_sent_total' => self::PREFIX . 'notifications_sent_total',
         'notifications_suppressed_total' => self::PREFIX . 'notifications_suppressed_total',
         'normalize_rejected_total' => self::PREFIX . 'normalize_rejected_total',
+        'api_response_cache_hits_total' => self::PREFIX . 'api_response_cache_hits_total',
+        'api_response_cache_misses_total' => self::PREFIX . 'api_response_cache_misses_total',
+        'api_response_cache_bypass_total' => self::PREFIX . 'api_response_cache_bypass_total',
+        'api_response_cache_stale_served_total' => self::PREFIX . 'api_response_cache_stale_served_total',
+        'api_response_cache_bytes_total' => self::PREFIX . 'api_response_cache_bytes_total',
     ];
 }

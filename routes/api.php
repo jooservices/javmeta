@@ -26,6 +26,7 @@ use App\Http\Controllers\SearchParseController;
 use App\Http\Controllers\StatusController;
 use App\Http\Controllers\SuggestController;
 use App\Http\Middleware\AuthenticateApiKey;
+use App\Http\Middleware\CacheApiResponse;
 use App\Http\Middleware\LogApiUsage;
 use App\Http\Middleware\OwnerAdminGuard;
 use App\Http\Middleware\TraceHttpRequest;
@@ -57,21 +58,21 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
 
         Route::middleware([AuthenticateApiKey::class, 'requires:postgres', LogApiUsage::class])->group(function (): void {
             Route::get('config/browser-services', \App\Http\Controllers\BrowserServicesConfigController::class);
-            Route::get('performers', [PerformerController::class, 'index']);
-            Route::get('performers/facets/values', [PerformerFacetsController::class, 'values']);
-            Route::get('performers/facets', [PerformerFacetsController::class, 'index']);
+            Route::get('performers', [PerformerController::class, 'index'])->middleware(CacheApiResponse::class);
+            Route::get('performers/facets/values', [PerformerFacetsController::class, 'values'])->middleware(CacheApiResponse::class);
+            Route::get('performers/facets', [PerformerFacetsController::class, 'index'])->middleware(CacheApiResponse::class);
             Route::get('performers/{id}/photos', PerformerPhotosController::class);
             Route::get('performers/{id}', [PerformerController::class, 'show']);
             Route::get('movies/calendar', [MovieCalendarController::class, 'index']);
-            Route::get('movies/facets/values', [MovieFacetsController::class, 'values']);
-            Route::get('movies/facets', [MovieFacetsController::class, 'index']);
+            Route::get('movies/facets/values', [MovieFacetsController::class, 'values'])->middleware(CacheApiResponse::class);
+            Route::get('movies/facets', [MovieFacetsController::class, 'index'])->middleware(CacheApiResponse::class);
             Route::get('movies/{code}/related', [MovieRelatedController::class, 'show']);
             Route::get('movies/{code}/media', MovieMediaController::class);
-            Route::get('movies/{code}', [MovieLookupController::class, 'show']);
+            Route::get('movies/{code}', [MovieLookupController::class, 'show'])->middleware(CacheApiResponse::class);
             Route::post('movies:bulk', [MovieBulkController::class, 'store']);
-            Route::get('meta/genres', [MetaGenreController::class, 'index']);
+            Route::get('meta/genres', [MetaGenreController::class, 'index'])->middleware(CacheApiResponse::class);
             Route::get('meta/catalog/{kind}', [CatalogController::class, 'index']);
-            Route::get('suggest', [SuggestController::class, 'index']);
+            Route::get('suggest', [SuggestController::class, 'index'])->middleware(CacheApiResponse::class);
             Route::get('search', [SearchController::class, 'index']);
         });
         Route::middleware([AuthenticateApiKey::class, LogApiUsage::class])
@@ -82,12 +83,12 @@ Route::middleware(TraceHttpRequest::class)->group(function (): void {
         });
 
         Route::middleware([AuthenticateApiKey::class, 'requires:postgres', LogApiUsage::class])->prefix('status')->group(function (): void {
-            Route::get('summary', [StatusController::class, 'summary']);
+            Route::get('summary', [StatusController::class, 'summary'])->middleware(CacheApiResponse::class);
             Route::get('sources', [StatusController::class, 'sources']);
         });
 
         Route::get('movies', [MovieSearchController::class, 'index'])
-            ->middleware([AuthenticateApiKey::class, 'requires:postgres', LogApiUsage::class]);
+            ->middleware([AuthenticateApiKey::class, 'requires:postgres', LogApiUsage::class, CacheApiResponse::class]);
     });
 });
 

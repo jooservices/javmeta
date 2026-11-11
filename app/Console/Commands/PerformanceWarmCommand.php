@@ -10,9 +10,9 @@ use Throwable;
 
 final class PerformanceWarmCommand extends Command
 {
-    protected $signature = 'perf:warm {--status-only : Refresh the 15-second status cache only}';
+    protected $signature = 'perf:warm {--status-only : No-op because status summaries are computed directly}';
 
-    protected $description = 'Refresh status and whole-catalog movie facets before their caches expire';
+    protected $description = 'Refresh whole-catalog movie facets before their cache expires';
 
     public function handle(PerformanceCache $cache): int
     {
@@ -21,18 +21,22 @@ final class PerformanceWarmCommand extends Command
 
             return self::SUCCESS;
         }
-        $failed = false;
-        foreach ($this->option('status-only') ? ['summary'] : ['summary', 'facets'] as $method) {
-            try {
-                $method === 'summary' ? $cache->summary(refresh: true) : $cache->facets(refresh: true);
-                $this->info($method . ' cache refreshed.');
-            } catch (Throwable) {
-                // Do not expose database connection details through scheduler output.
-                $this->error($method . ' cache refresh failed.');
-                $failed = true;
-            }
+        if ($this->option('status-only')) {
+            $this->info('Status summaries are computed directly; there is no status cache to warm.');
+
+            return self::SUCCESS;
         }
 
-        return $failed ? self::FAILURE : self::SUCCESS;
+        try {
+            $cache->facets(refresh: true);
+            $this->info('facets cache refreshed.');
+        } catch (Throwable) {
+            // Do not expose database connection details through scheduler output.
+            $this->error('facets cache refresh failed.');
+
+            return self::FAILURE;
+        }
+
+        return self::SUCCESS;
     }
 }
