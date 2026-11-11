@@ -8,9 +8,19 @@ Runs against the real stack (no mocks): `docker/qa` starts Postgres, Mongo, Redi
 JAVMETA_QA_PORT=18099 docker/qa/qa-up          # omit JAVMETA_QA_PORT to keep the default :8099
 cd ui-tests/qa && npm install
 QA_BASE=http://localhost:18099 node run.mjs    # the main suite; exit code 1 when anything fails
+QA_BASE=http://localhost:18099 node run.mjs --scenario "login rejects a wrong password"
+QA_BASE=http://localhost:18099 node run.mjs --step mockOperationsDashboardData
 node --test lib/runner.test.mjs                # the runner itself, with fake steps
 docker/qa/qa-down                              # drops the throw-away data
 ```
+
+The optional suite name stays positional (`node run.mjs main`); it defaults to `main`. Supported suite names are explicitly
+registered in `run.mjs`. Scenario names must match exactly and be unique in the selected suite. Step names match the name
+passed to `defineStep` and must occur exactly once in that suite. Unknown or ambiguous selectors exit with code 2 before a
+browser is opened. A selected scenario runs only its own steps. A selected step runs by itself in a fresh browser context;
+the runner does not execute setup steps or inherit login and page state. Select only self-contained steps, or run the
+containing scenario when earlier steps are prerequisites. The QA stack, Node dependencies, Chromium, `QA_BASE`, and the
+configured QA account/password are the same prerequisites as suite mode.
 
 ## How it is built
 
