@@ -87,10 +87,10 @@ jobs:
           # fail above 480 s; speeding the contract tests up is tracked separately.
           # Re-measured 2026-11-12: the bounded-memory identity tests (210-400 performers each, about 60 s together
           # on a laptop and more on a runner) and the memory work lifted a run to 480-600 s, so a clean run
-          # crossed 480 s. Baseline 420 s, warn above +30% (546 s), fail above 672 s.
+          # crossed 480 s. Baseline 420 s, warn above +30% (546 s), fail above 840 s (2x baseline, as the step name and ci.md state).
           baseline_seconds=420.00
           warning_seconds=546.00
-          maximum_seconds=672.00
+          maximum_seconds=840.00
 
           for run in 1 2 3; do
             printf 'Composer test stability run %s/3\n' "${run}"
