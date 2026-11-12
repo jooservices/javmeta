@@ -39,6 +39,95 @@ docker run --rm -v "$PWD:/repo" -w /repo ghcr.io/zizmorcore/zizmor:latest --offl
 Tests use sqlite in-memory and an array cache (`phpunit.xml`), so no Postgres,
 Redis or Mongo service is needed.
 
+## Current per-file unit and integration coverage
+
+The **95.28%** overall result recorded in [JOOXCR-374](https://jooservices.atlassian.net/browse/JOOXCR-374)
+on 2026-11-05 covered 15,076 of 15,823 statements on branch
+`JOOXCR-373-readiness`, with no app files below 85%. It is historical and does
+not describe the current `develop` head.
+
+On 2026-11-12, `origin/develop` at
+`381336f0a2d0528ea006693dca8f69e114cb30ef` was measured. The current combined
+unit and integration result is **unknown**: `docker/ci/run composer test:coverage`
+generated the unit and feature Clover report, but the integration report
+`build/integration.xml` is missing. The merged command fails with
+`Coverage file build/integration.xml not found.` Do not infer a pass or publish
+combined per-file percentages or missing-statement counts until both reports
+have independently passed the validation below.
+
+Reproduce the current inputs and validate each report before merging:
+
+```bash
+docker/ci/run composer test:coverage
+
+for report in build/coverage.xml build/integration.xml; do
+  test -s "$report" || { echo "Missing or empty report: $report" >&2; exit 1; }
+  docker/ci/run php -r '
+    $path = $argv[1];
+    $xml = simplexml_load_file($path);
+    $statements = 0;
+    $root = rtrim(str_replace("\\", "/", getcwd() ?: "."), "/");
+    if ($xml !== false && $xml->getName() === "coverage") {
+        foreach ($xml->xpath("//file") ?: [] as $file) {
+            $name = str_replace("\\", "/", (string) $file["name"]);
+            $isAppFile = str_starts_with($name, "app/")
+                || str_starts_with($name, "/app/app/")
+                || str_starts_with($name, $root . "/app/");
+            if (! $isAppFile) {
+                continue;
+            }
+            foreach ($file->line as $line) {
+                if ((string) $line["type"] === "stmt") {
+                    $statements++;
+                }
+            }
+        }
+    }
+    if ($xml === false || $xml->getName() !== "coverage" || $statements === 0) {
+        fwrite(STDERR, "Not a usable Clover app-coverage report: {$path}\n");
+        exit(1);
+    }
+    printf("%s: %d app statements\n", $path, $statements);
+  ' "$report" || exit 1
+done
+
+docker/ci/run composer coverage:per-file
+```
+
+The check requires a nonempty XML file with a Clover `<coverage>` root and at
+least one executable `stmt` line for an application file in each report. It
+recognizes repository-relative `app/...`, container `/app/app/...` and current
+worktree `<repo-root>/app/...` paths, and ignores other `/app/...` paths. Confirm the
+reports came from their respective unit/feature and integration suites at the
+same pinned commit. `coverage:per-file` in `composer.json` requires both
+`build/coverage.xml` and `build/integration.xml`;
+`tools/quality/coverage-per-file.php` checks only that each file exists and
+parses as XML, then merges statement lines it finds under `app/`. It does not
+validate the Clover root or ensure either input contains measurable app data:
+`<coverage/>` is accepted, two empty reports produce a 100% result across zero
+files, and an empty integration report with populated unit coverage produces a
+unit-only result. A valid XML document with no relevant app statements has the
+same issue. Treat any missing, empty, malformed, non-Clover, or irrelevant
+input as **unknown**, regardless of the merge command's exit code or output.
+Do not report percentages or missing-statement counts unless both reports
+pass validation and the merged command completes.
+
+The current CI integration job runs `docker/ci/integration` without generating
+an integration Clover file. The local shared integration runner uses the
+shared `jvmeta_it` PostgreSQL database for every worktree ID, so it cannot
+produce a report from the required per-worktree database. No integration run
+was started against that shared database.
+
+Bounded follow-up batches:
+
+1. Provide an integration coverage runner that writes Clover from an isolated
+   per-worktree database and test identity; keep missing and empty reports as
+   explicit failures.
+2. Rerun both reports on a pinned current `develop` commit and merge them with
+   `coverage:per-file`. Group any measured failures into batches of at most
+   five files by feature area, including each file's missing statement count.
+   Keep the 85% per-file and 90% overall thresholds unchanged.
+
 ## PR size policy
 
 `tools/quality/pr-size-check` enforces the PR size policy: it counts the files
