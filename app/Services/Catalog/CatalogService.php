@@ -42,7 +42,6 @@ final class CatalogService
             /** @var array{items: list<array<string, mixed>>, total: int, hidden: int} $result */
             $result = Cache::remember($key, 120, fn(): array => $this->load($query));
         }
-
         return new CatalogSnapshot($result['items'], [
             'total' => $result['total'],
             'per_page' => $query->perPage,

@@ -17,7 +17,7 @@ final class MovieFacetsController extends BaseApiController
     public function index(MovieSearchRequest $request, PerformanceCache $cache): JsonResponse
     {
         $filters = $request->filters();
-        $data = $cache->facets($filters);
+        $data = $cache->facetsForResponse($filters);
 
         return $this->respondWithData(data: $data, message: 'Facets retrieved successfully.');
     }

@@ -249,7 +249,7 @@ the row permanently `failed` after `retry.max_rounds` (default 3). The final
 | --- | --- |
 | `blocked`, `challenge` | Retryable; normal backoff first, then retry rounds. |
 | `rate_limited`, `timeout`, `network`, `worker_failed`, `worker_lost` | Retry only when the fetch result is marked retryable. |
-| `soft404`, `not_found`, `gone`, `parse_failed`, `normalization_failed`, `normalizer_missing`, `unsupported_url`, `ambiguous_url`, `adapter_not_found`, `auth_required`, `ssrf_blocked`, `unknown`, `unknown_source`, `legacy_unclassified` | Terminal; do not retry automatically or by requeue command. |
+| `soft404`, `not_found`, `gone`, `parse_failed`, `normalization_failed`, `normalizer_missing`, `unsupported_url`, `ambiguous_url`, `adapter_not_found`, `auth_required`, `ssrf_blocked`, `unknown`, `unknown_source`, `legacy_unclassified` | Terminal; do not retry automatically or by the generic requeue path. `ssrf_blocked` has a separate historical operator path below. |
 
 `retry.feed_pool_limit` (default 5 jobs per minute) and
 `retry.pacing_horizon_seconds` (60 seconds) are independent from direct/browser
@@ -286,6 +286,26 @@ permanent failures by retry round and egress label. `javmeta_retry_pending`,
 `javmeta_retry_success_total` and `javmeta_retry_failed_permanent_total` report
 recovery and egress labels; see [telemetry](telemetry.md#metrics). The regular
 `javmeta_crawl_queue_depth{status=retry_pending}` gauge also includes this work.
+
+### Historical SSRF failures (operator path)
+
+After the CrawlerX SSRF guard fix has been deployed, preview failed SSRF rows with
+`php artisan crawler:retry-requeue --ssrf-blocked [--source=slug] [--batch-size=100]`.
+The command defaults to a dry run. It validates a supplied source against the
+configured sources and reports eligible and requeued counts only; it never prints
+row URLs or failure details. The batch size must be from 1 through 500. Rows are
+selected in ascending ID order, and one invocation processes at most that batch
+size. Apply only after reviewing the preview by adding `--apply`; the update
+rechecks that each selected row is still `failed`, still has `ssrf_blocked`, and
+still matches the source filter. It retains the error code, failure message and
+failure timestamp. Subsequent runs exclude rows already moved to `retry_pending`.
+
+Deploy the CrawlerX guard fix and this operator path as separate reviewed changes,
+with the guard fix deployed first. Running the command against production is a
+separate production change and requires its own approval; development, review and
+deployment of this code do not authorize that execution. Disable the path by
+rolling back the operator-path deployment before use. The automatic SSRF retry
+policy and existing generic requeue command remain unchanged.
 
 ## Learned fetch method order
 

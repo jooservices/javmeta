@@ -17,6 +17,7 @@ use App\Observability\OpenObserveClient;
 use App\Observability\MetricStreams;
 use App\Observability\NotificationMetrics;
 use App\Observability\NormalizationRejectionMetrics;
+use App\Observability\ResponseCacheMetrics;
 use App\Services\Alerts\AlertMetrics;
 use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Crawl\CrawlerxFetchMethodPlan;
@@ -77,6 +78,7 @@ final class PublishMetricsCommand extends Command
         NormalizationRejectionMetrics $normalizationMetrics,
         HorizonWorkerLayout $workerLayout,
         PostgresConnectionBudget $connectionBudget,
+        ResponseCacheMetrics $responseCacheMetrics,
     ): int {
         try {
             $statsSampler->sample();
@@ -118,6 +120,7 @@ final class PublishMetricsCommand extends Command
             $this->dependencyProbeMetrics($elasticsearch),
             $notificationMetrics->points(),
             $normalizationMetrics->points(),
+            $responseCacheMetrics->points(),
             [[
                 'name' => MetricStreams::NAMES['elasticsearch_request_failures'],
                 'value' => $elasticsearchHealth->failureCount(),

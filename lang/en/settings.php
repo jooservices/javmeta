@@ -17,6 +17,7 @@ return [
         'report' => 'Reports',
         'readiness' => 'Readiness checks',
         'search' => 'Search',
+        'api_cache' => 'API response cache',
         'observability' => 'Observability',
         'stats' => 'Crawl statistics',
         'backup' => 'Backups',
@@ -124,6 +125,16 @@ return [
             'label' => 'Cache warming',
             'description' => 'Refreshes the status and whole-catalog filters on a schedule, reducing wait time when the cache expires.',
         ],
+        'api__response_cache__enabled' => [
+            'label' => 'Enable API response cache',
+            'description' => 'Turn off to bypass response caching; the API continues to serve data directly when Redis is unavailable.',
+        ],
+        'api__response_cache__ttl__lists' => ['label' => 'List TTL (seconds)', 'description' => 'How long movie and performer lists are cached.'],
+        'api__response_cache__ttl__facets' => ['label' => 'Facet TTL (seconds)', 'description' => 'How long movie and performer facets are cached.'],
+        'api__response_cache__ttl__catalog' => ['label' => 'Catalog TTL (seconds)', 'description' => 'How long infrequently changing catalog responses are cached.'],
+        'api__response_cache__ttl__suggestions' => ['label' => 'Search suggestion TTL (seconds)', 'description' => 'How long search suggestion responses are cached.'],
+        'api__response_cache__ttl__status' => ['label' => 'Status TTL (seconds)', 'description' => 'How long the system status summary is cached.'],
+        'api__response_cache__ttl__movie_detail' => ['label' => 'Movie detail TTL (seconds)', 'description' => 'How long movie detail responses are cached.'],
         'search__budget_ms' => [
             'label' => 'Search budget (milliseconds)',
             'description' => 'Total time for optional HTTP calls in one hybrid search. When it runs out, keyword results are returned; database queries are not limited.',
@@ -399,6 +410,38 @@ return [
         'crawl__source_gap_overrides' => [
             'label' => 'Per-source request gap overrides (JSON)',
             'description' => 'Maps a configured or stored source code to min, default and max from 0.25 to 600 seconds; leave empty to keep the default pacing. The 14 CrawlerX 1.5.0 sources start at 8 seconds (min 4, max 60); adjust pacing through this map.',
+        ],
+        'crawl__latency_gap__enabled' => [
+            'label' => 'Enable latency-based source gap adaptation',
+            'description' => 'Off by default. When enabled, slow fetches increase source pacing gaps, and healthy responses gradually recover them.',
+        ],
+        'crawl__latency_gap__sample_window_size' => [
+            'label' => 'Latency sample window size',
+            'description' => 'Number of recent fetch samples retained to evaluate source latency.',
+        ],
+        'crawl__latency_gap__sustained_samples' => [
+            'label' => 'Qualifying sample count in the window',
+            'description' => 'Number of samples anywhere in the window (not necessarily consecutive) that must meet the slow or healthy condition before the gap changes.',
+        ],
+        'crawl__latency_gap__slow_threshold_ms' => [
+            'label' => 'Slow fetch threshold (milliseconds)',
+            'description' => 'A sample at or above this threshold counts as slow.',
+        ],
+        'crawl__latency_gap__healthy_threshold_ms' => [
+            'label' => 'Healthy fetch threshold (milliseconds)',
+            'description' => 'A sample at or below this threshold counts as healthy; the effective threshold is always lower than the slow threshold.',
+        ],
+        'crawl__latency_gap__increase_percent' => [
+            'label' => 'Gap increase percentage',
+            'description' => 'Percentage increase applied after the window records enough slow samples.',
+        ],
+        'crawl__latency_gap__recovery_percent' => [
+            'label' => 'Gap recovery percentage',
+            'description' => 'Percentage of the remaining distance to the source minimum recovered after enough healthy samples.',
+        ],
+        'crawl__latency_gap__window_ttl_seconds' => [
+            'label' => 'Latency sample lifetime (seconds)',
+            'description' => 'How long latency samples are retained in the shared cache.',
         ],
         'queue__browser_inflight' => [
             'label' => 'Concurrent browser jobs (total)',

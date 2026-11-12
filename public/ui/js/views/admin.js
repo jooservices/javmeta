@@ -6,13 +6,15 @@ import { t, html as tHtml } from '../i18n.js';
 
 const SCOPES = [['movies', 'admin.scope.movies'], ['bulk', 'admin.scope.bulk'], ['performers', 'admin.scope.performers'], ['catalog', 'admin.scope.catalog'], ['status', 'admin.scope.status'], ['config', 'admin.scope.config'], ['mcp', 'admin.scope.mcp'], ['media', 'admin.scope.media']];
 const FIELD_NAMES = ['code', 'title_jp', 'title_en', 'actresses', 'cover_url', 'release_date', 'runtime', 'maker', 'label', 'series', 'genres'];
+const KEY_PAGE_SIZE = 25;
 
 /* owner administration: data quality report and API keys */
 export default {
   async render() {
     let keys, quality;
-    try { [keys, quality] = await Promise.all([admin('keys'), admin('report/quality')]); } catch (e) { return { html: `<div class="wrap">${head(t('admin.title'), '')}${errorBox(e)}</div>` }; }
+    try { [keys, quality] = await Promise.all([admin(`keys?page=1&per_page=${KEY_PAGE_SIZE}`), admin('report/quality')]); } catch (e) { return { html: `<div class="wrap">${head(t('admin.title'), '')}${errorBox(e)}</div>` }; }
     const q = quality.data;
+    const keyPagination = keys.meta?.pagination || { per_page: KEY_PAGE_SIZE, has_more: false, next_cursor: null };
     const bar = p => `<div class="bar barfield"><i style="width:${Math.max(1, p)}%"></i></div>`;
     const fields = Object.entries(q.core_fields).map(([k, v]) => `<div class="row-i"><div class="grow ell" style="min-width:72px">${esc(FIELD_NAMES.includes(k) ? t('admin.field.' + k) : k)}</div>${bar(v.percent)}<span class="mono" style="width:60px;text-align:right">${esc(v.percent)}%</span><span class="mono muted" style="width:80px;text-align:right">${fmt(v.filled)}</span></div>`).join('');
     const sources = Object.entries(q.movies_by_source || {}).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="row-i"><div class="grow">${esc(k)}</div><span class="mono">${fmt(v)}</span></div>`).join('');
@@ -23,15 +25,25 @@ export default {
           <div class="bd"><div class="chips" style="margin-bottom:8px"><span class="chip ok mono">${t('admin.fields_8_of_11', { percent: q.movies_with_8_of_11.percent })}</span><span class="chip ${q.needs_review ? 'warn' : ''} mono">${t('admin.needs_review', { n: fmt(q.needs_review) })}</span>${tiers}</div></div>${fields}</div>
         <div class="panel"><div class="hd"><h2>${t('admin.by_source')}</h2></div>${sources || `<div class="row-i muted">${t('common.none_yet_cap')}</div>`}</div>
       </div>
-      <div class="panel"><div class="hd"><h2>${t('admin.keys')}</h2><span class="chip mono">${fmt(keys.data.length)}</span></div>
+      <div class="panel"><div class="hd"><h2>${t('admin.keys')}</h2><span id="keyTotal" class="chip mono">${fmt(keys.data.length)}${keyPagination.has_more ? '+' : ''}</span></div>
         <div class="bd"><form id="kf" class="brbar" style="flex-wrap:wrap;gap:8px"><input type="text" name="label" placeholder="${t('admin.key_name')}" required maxlength="100" style="max-width:200px"><input type="number" name="abuse_rpm" value="60" min="1" max="10000" style="width:90px" title="${t('admin.rpm_title')}"><span class="muted">${t('admin.per_minute')}</span>
           ${SCOPES.map(s => `<label class="muted"><input type="checkbox" name="scopes" value="${s[0]}" ${s[0] === 'catalog' ? 'checked' : ''}> ${t(s[1])}</label>`).join(' ')}<button class="btn pri" type="submit">${t('admin.create_key')}</button></form>
           <div id="newkey" class="muted" style="margin-top:6px">${t('admin.scopes_hint')}</div></div>
-        <div class="tbl-wrap"><table><thead><tr><th>${t('admin.head.name')}</th><th>${t('admin.head.prefix')}</th><th>${t('admin.head.scopes')}</th><th>${t('admin.per_minute')}</th><th>${t('admin.head.status')}</th><th>${t('admin.head.created')}</th><th></th></tr></thead><tbody id="keyrows">${keys.data.map(k => row(k)).join('')}</tbody></table></div>
+        <div class="tbl-wrap"><table><thead><tr><th>${t('admin.head.name')}</th><th>${t('admin.head.prefix')}</th><th>${t('admin.head.scopes')}</th><th>${t('admin.per_minute')}</th><th>${t('admin.head.status')}</th><th>${t('admin.head.created')}</th><th></th></tr></thead><tbody id="keyrows">${keyRows(keys.data)}</tbody></table></div>
+        <nav id="keyPagination" class="bd" aria-label="${t('admin.keys')}">${keyPaginationControls(keyPagination, 1)}</nav><div id="keyListError" class="bd err" role="alert"></div>
         <div id="usage" class="bd"></div></div></div>`;
-    return { html, mount };
+    return { html, mount: root => mount(root, keyPagination) };
   },
 };
+
+function keyRows(keys) {
+  return keys.length ? keys.map(row).join('') : `<tr><td colspan="7" class="muted">${t('common.none_yet_cap')}</td></tr>`;
+}
+
+function keyPaginationControls(pagination, page) {
+  const more = Boolean(pagination.has_more);
+  return `<button class="btn sm" type="button" data-key-direction="previous" ${page <= 1 ? 'disabled' : ''}>${t('common.previous')}</button> <span class="muted mono">${page}${more ? '+' : ''}</span> <button class="btn sm" type="button" data-key-direction="next" ${more ? '' : 'disabled'}>${t('common.next')}</button>`;
+}
 
 function row(k) {
   const scopes = k.scopes ? k.scopes.map(s => `<span class="chip">${esc(s)}</span>`).join(' ') : `<span class="chip ok">${t('admin.scope_all')}</span>`;
@@ -39,9 +51,52 @@ function row(k) {
   return `<tr><td>${esc(k.label)}</td><td class="mono">${esc(k.prefix)}</td><td>${scopes}</td><td class="mono">${esc(k.abuse_rpm)}</td><td>${active ? `<span class="chip ok">${t('admin.status.active')}</span>` : `<span class="chip bad">${t('admin.status.revoked')}</span>`}</td><td class="mono">${esc((k.created_at || '').slice(0, 16).replace('T', ' '))}</td><td><button class="btn sm" data-usage="${k.id}">${t('admin.usage')}</button> ${active ? `<button class="btn sm" data-revoke="${k.id}">${t('admin.revoke')}</button>` : ''}</td></tr>`;
 }
 
-function mount(root) {
+function mount(root, initialPagination) {
   const form = root.querySelector('#kf'), out = root.querySelector('#newkey'), rows = root.querySelector('#keyrows'), usage = root.querySelector('#usage');
-  const reload = async () => { rows.innerHTML = (await admin('keys')).data.map(row).join(''); };
+  const total = root.querySelector('#keyTotal'), pager = root.querySelector('#keyPagination'), pageError = root.querySelector('#keyListError');
+  pager.dataset.nextCursor = initialPagination.next_cursor || '';
+  let page = 1;
+  let cursor = null;
+  const previousCursors = [null];
+  const reload = async (requestedCursor = cursor, requestedPage = page, clampEmpty = false) => {
+    try {
+      const query = new URLSearchParams({ per_page: String(KEY_PAGE_SIZE) });
+      if (requestedCursor !== null) query.set('cursor', String(requestedCursor));
+      const result = await admin(`keys?${query}`);
+      const pagination = result.meta?.pagination || { has_more: false, next_cursor: null };
+      if (result.data.length === 0 && clampEmpty && requestedPage > 1) {
+        previousCursors.pop();
+        page--;
+        cursor = previousCursors.at(-1) ?? null;
+        return reload(cursor, page, true);
+      }
+      page = requestedPage;
+      cursor = requestedCursor;
+      rows.innerHTML = keyRows(result.data);
+      total.textContent = `${fmt(result.data.length)}${pagination.has_more ? '+' : ''}`;
+      pager.innerHTML = keyPaginationControls(pagination, page);
+      pager.dataset.nextCursor = pagination.next_cursor || '';
+      pageError.textContent = '';
+      return true;
+    } catch (error) {
+      pageError.textContent = error.message;
+      return false;
+    }
+  };
+  pager.addEventListener('click', async event => {
+    const button = event.target.closest('[data-key-direction]');
+    if (!button || button.disabled) return;
+    if (button.dataset.keyDirection === 'next') {
+      const nextCursor = pager.dataset.nextCursor;
+      if (nextCursor) {
+        const nextPage = page + 1;
+        if (await reload(nextCursor, nextPage) && page === nextPage) previousCursors.push(nextCursor);
+      }
+    } else if (button.dataset.keyDirection === 'previous' && page > 1) {
+      const previousCursor = previousCursors.at(-2) ?? null;
+      if (await reload(previousCursor, page - 1)) previousCursors.pop();
+    }
+  });
   form.addEventListener('submit', async e => {
     e.preventDefault();
     const f = new FormData(form), scopes = f.getAll('scopes');
@@ -53,12 +108,13 @@ function mount(root) {
       form.reset();
       const catalog = form.querySelector('input[name=scopes][value=catalog]');
       if (catalog) catalog.checked = true;
-      await reload();
+      previousCursors.splice(0, previousCursors.length, null);
+      await reload(null, 1);
     } catch (err) { out.innerHTML = `<span class="err" role="alert">${esc(err.message)}</span>`; }
   });
   root.addEventListener('click', async e => {
     const r = e.target.closest('[data-revoke]'), u = e.target.closest('[data-usage]');
-    if (r && confirm(t('admin.revoke_confirm'))) { await send('DELETE', 'keys/' + r.dataset.revoke); await reload(); }
+      if (r && confirm(t('admin.revoke_confirm'))) { await send('DELETE', 'keys/' + r.dataset.revoke); await reload(cursor, page, true); }
     if (u) {
       try {
         const d = (await admin('keys/' + u.dataset.usage + '/usage')).data;

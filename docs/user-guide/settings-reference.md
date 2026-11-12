@@ -470,6 +470,54 @@ Số nguyên; từ 1 đến 1000. Mã mục: `crawl.fetch_method_probe_interval`
 
 Đối tượng JSON; cấu trúc do ứng dụng quy định. Mã mục: `crawl.source_gap_overrides`.
 
+### Bật điều chỉnh nhịp theo độ trễ
+
+Mặc định tắt. Khi bật, độ trễ fetch kéo dài sẽ giãn nhịp nguồn và phản hồi khỏe sẽ phục hồi dần.
+
+Bật/tắt. Mã mục: `crawl.latency_gap.enabled`.
+
+### Số mẫu độ trễ trong cửa sổ
+
+Số mẫu fetch gần nhất được giữ để đánh giá độ trễ của nguồn.
+
+Số nguyên; từ 3 đến 32. Mã mục: `crawl.latency_gap.sample_window_size`.
+
+### Số mẫu đạt ngưỡng trong cửa sổ
+
+Số mẫu đạt ngưỡng chậm hoặc khỏe ở bất kỳ vị trí nào trong cửa sổ để thay đổi nhịp (không cần liên tiếp nhau).
+
+Số nguyên; từ 2 đến 32. Mã mục: `crawl.latency_gap.sustained_samples`.
+
+### Ngưỡng fetch chậm (mili giây)
+
+Mẫu bằng hoặc cao hơn ngưỡng này được tính là chậm.
+
+Số nguyên; từ 100 đến 60000. Mã mục: `crawl.latency_gap.slow_threshold_ms`.
+
+### Ngưỡng fetch khỏe (mili giây)
+
+Mẫu bằng hoặc thấp hơn ngưỡng này được tính là khỏe; ngưỡng hiệu lực luôn thấp hơn ngưỡng chậm.
+
+Số nguyên; từ 0 đến 60000. Mã mục: `crawl.latency_gap.healthy_threshold_ms`.
+
+### Tỷ lệ tăng nhịp (%)
+
+Phần trăm tăng khoảng nghỉ sau khi cửa sổ ghi nhận đủ mẫu chậm.
+
+Số nguyên; từ 1 đến 50. Mã mục: `crawl.latency_gap.increase_percent`.
+
+### Tỷ lệ phục hồi (%)
+
+Phần trăm khoảng cách tới mức tối thiểu được phục hồi sau khi có đủ mẫu khỏe.
+
+Số nguyên; từ 1 đến 50. Mã mục: `crawl.latency_gap.recovery_percent`.
+
+### Thời hạn mẫu độ trễ (giây)
+
+Thời gian giữ mẫu độ trễ trong cache dùng chung.
+
+Số nguyên; từ 60 đến 86400. Mã mục: `crawl.latency_gap.window_ttl_seconds`.
+
 ### Thời gian chờ khi bị chặn (giây, cách nhau bằng dấu phẩy)
 
 Các lần chặn/challenge trong luồng thường dùng thời gian chờ theo danh sách này trước khi chuyển sang làn retry.
@@ -907,6 +955,50 @@ Văn bản. Mã mục: `search.movies_index`.
 Tên chỉ mục lưu vector và dữ liệu diễn viên.
 
 Văn bản. Mã mục: `search.performers_index`.
+
+## Bộ nhớ đệm API
+
+### Bật bộ nhớ đệm response API
+
+Tắt để bỏ qua bộ nhớ đệm response; khi Redis lỗi API vẫn trả dữ liệu trực tiếp.
+
+Bật/tắt. Mã mục: `api.response_cache.enabled`.
+
+### TTL danh sách (giây)
+
+Thời gian lưu danh sách phim và performer.
+
+Số nguyên; từ 1 đến 60. Mã mục: `api.response_cache.ttl.lists`.
+
+### TTL bộ lọc (giây)
+
+Thời gian lưu facets phim và performer.
+
+Số nguyên; từ 1 đến 300. Mã mục: `api.response_cache.ttl.facets`.
+
+### TTL danh mục (giây)
+
+Thời gian lưu các mục catalog ít thay đổi.
+
+Số nguyên; từ 60 đến 3600. Mã mục: `api.response_cache.ttl.catalog`.
+
+### TTL gợi ý tìm kiếm (giây)
+
+Thời gian lưu response gợi ý tìm kiếm.
+
+Số nguyên; từ 1 đến 60. Mã mục: `api.response_cache.ttl.suggestions`.
+
+### TTL trạng thái (giây)
+
+Thời gian lưu tóm tắt trạng thái hệ thống.
+
+Số nguyên; từ 1 đến 15. Mã mục: `api.response_cache.ttl.status`.
+
+### TTL chi tiết phim (giây)
+
+Thời gian lưu chi tiết phim.
+
+Số nguyên; từ 1 đến 300. Mã mục: `api.response_cache.ttl.movie_detail`.
 
 ## Giám sát
 

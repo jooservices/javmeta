@@ -7,6 +7,7 @@ namespace Tests\Feature\Api;
 use App\Models\Performer;
 use App\Services\Auth\ApiKeyService;
 use App\Services\Dataset\SampleDataset;
+use App\Services\Api\ResponseCacheEpoch;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -58,21 +59,15 @@ final class PerformerFiltersTest extends TestCase
         $this->getJson('/api/v1/performers?status=maybe', $this->headers)->assertStatus(400);
     }
 
-    public function test_performer_facets_key_is_deterministic_and_differs_for_different_filters(): void
+    public function test_performer_facet_responses_preserve_filter_parameters(): void
     {
         \Illuminate\Support\Facades\Cache::flush();
         $a = $this->getJson('/api/v1/performers/facets', $this->headers)->assertOk()->json('data');
-        $filtersA = ['include_unknown' => false];
-        $keyA = 'javmeta:pfacets:' . hash('sha256', json_encode($filtersA, JSON_THROW_ON_ERROR));
-        $this->assertSame($a, \Illuminate\Support\Facades\Cache::get($keyA));
         $this->assertSame($a, $this->getJson('/api/v1/performers/facets', $this->headers)->assertOk()->json('data'));
 
         $b = $this->getJson('/api/v1/performers/facets?cup=D', $this->headers)->assertOk()->json('data');
-        $filtersB = ['cup' => 'D', 'include_unknown' => false];
-        $keyB = 'javmeta:pfacets:' . hash('sha256', json_encode($filtersB, JSON_THROW_ON_ERROR));
-        $this->assertNotSame($keyA, $keyB);
-        $this->assertSame($b, \Illuminate\Support\Facades\Cache::get($keyB));
-        $this->assertSame($a, \Illuminate\Support\Facades\Cache::get($keyA));
+        $this->assertNotSame($a['cups'], $b['cups']);
+        $this->assertSame(['D'], array_column($b['cups'], 'name'));
     }
 
     public function test_performer_facets_count_inside_the_current_result(): void
@@ -127,6 +122,7 @@ final class PerformerFiltersTest extends TestCase
 
         $tokyoBefore = $this->total('location=' . urlencode('東京都'));
         Performer::factory()->create(['source_slug' => 'facet-test', 'location' => 'Tokyo']);
+        app(ResponseCacheEpoch::class)->bump();
         $this->assertSame($tokyoBefore + 1, $this->total('location=' . urlencode('東京都')));
     }
 }
