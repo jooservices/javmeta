@@ -12,7 +12,10 @@ final class UiLibraryController
 {
     public function summary(UiLibraryService $library): JsonResponse
     {
-        return response()->json(['data' => $library->summary()->toArray()]);
+        return response()->json(['data' => [
+            ...$library->summary()->toArray(),
+            'enabled' => (bool) config('javmeta_library.feature_enabled', true),
+        ]]);
     }
 
     public function codes(UiLibraryService $library): JsonResponse

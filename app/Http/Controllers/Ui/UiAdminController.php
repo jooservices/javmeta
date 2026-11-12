@@ -51,6 +51,11 @@ final class UiAdminController extends BaseApiController
 
     public function report(string $type): JsonResponse
     {
-        return app()->call([app(ReportController::class), 'show'], ['type' => $type]);
+        $response = app()->call([app(ReportController::class), 'show'], ['type' => $type]);
+        if ($response->getStatusCode() !== 404) {
+            return $response;
+        }
+
+        return response()->json(['message' => 'Không tìm thấy báo cáo yêu cầu.'], $response->getStatusCode());
     }
 }

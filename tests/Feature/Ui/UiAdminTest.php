@@ -130,4 +130,33 @@ final class UiAdminTest extends TestCase
         $created = $this->postJson('/ui-admin/keys', ['label' => 'browser-config', 'scopes' => ['config']])->assertCreated();
         $this->assertSame(['config'], ApiKey::query()->find($created->json('data.id'))->scopes);
     }
+
+    public function test_unknown_report_type_returns_a_safe_not_found_message(): void
+    {
+        $owner = User::factory()->create(['role' => 'super_administrator']);
+        $this->actingAs($owner);
+
+        $this->getJson('/ui-admin/report/legacy')
+            ->assertNotFound()
+            ->assertExactJson(['message' => 'Không tìm thấy báo cáo yêu cầu.']);
+    }
+
+    public function test_library_availability_is_independent_of_automatic_scanning(): void
+    {
+        $owner = User::factory()->create(['role' => 'super_administrator']);
+        $this->actingAs($owner);
+
+        foreach ([false, true] as $automaticScanning) {
+            foreach ([false, true] as $featureEnabled) {
+                config([
+                    'javmeta_library.enabled' => $automaticScanning,
+                    'javmeta_library.feature_enabled' => $featureEnabled,
+                ]);
+
+                $this->getJson('/ui-me/library')
+                    ->assertOk()
+                    ->assertJsonPath('data.enabled', $featureEnabled);
+            }
+        }
+    }
 }

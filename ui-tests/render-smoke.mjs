@@ -96,6 +96,7 @@ const settingsSample = {
       notifications: 'Chính sách thông báo',
     },
     settings: [
+      { key: 'library.enabled', value: true },
       { key: 'queue.feed_pool_limit', group: 'queue', label: 'Việc nạp mỗi phút', description: 'd', type: 'int', min: 1, max: 5000, restart: null, apply_after_seconds: 30, source: 'database', value: 300, is_set: null },
       { key: 'queue.feed_interval_seconds', group: 'queue', label: 'Chu kỳ nạp hàng đợi (giây)', description: 'Chọn 5, 10, 15, 30 hoặc 60 giây.', type: 'int', min: 5, max: 60, options: [5, 10, 15, 30, 60], apply_after_seconds: 5, source: 'database', value: 10 },
       { key: 'crawl.source_gap_overrides', group: 'crawl', label: 'Khoảng request ghi đè theo nguồn (JSON)', description: 'Khoảng gap theo từng nguồn.', type: 'json', shape: 'source_gap_override_map', max_length: 10000, apply_after_seconds: 30, source: 'default', value: {} },
@@ -145,8 +146,9 @@ const adminSample = u => {
   }
   return { data: [] };
 };
-const libSample = u => u.endsWith('/library') ? { data: { files: 3, matched: 2, unmatched: 1, missing: 0, bytes: 5012, by_folder: [{ folder: '/media/<b>a</b>', files: 3, bytes: 5012 }], last_scan_at: '2026-10-24 03:00:00', configured: true } } : u.includes('/codes') ? { data: ['AAA-001'] } : u.includes('/on-disk') ? { data: [{ code: 'AAA-001', files: 1, bytes: 5000 }] } : { data: [{ path: '/media/a/x.mp4', size: 7, folder: '/media/a' }], meta: { total: 1, page: 1, per_page: 100 } };
-const dlSample = u => u.endsWith('/status') ? { data: { enabled: true, files_enabled: true } } : { data: { items: [{ hash: 'aa', name: 'Video <b>x</b>', movie_code: 'AAA-001', state: 'downloading', progress: 42.5, size: 1e9, speed: 2e6, eta: 600, completed: false }, { hash: 'bb', name: 'Done', movie_code: null, state: 'completed', progress: 100, size: 2e9, speed: 0, eta: null, completed: true }] } };
+const libSample = u => u.endsWith('/library') ? { data: { enabled: true, files: 3, matched: 2, unmatched: 1, missing: 0, bytes: 5012, by_folder: [{ folder: '/media/<b>a</b>', files: 3, bytes: 5012 }], last_scan_at: '2026-10-24 03:00:00', configured: true } } : u.includes('/codes') ? { data: ['AAA-001'] } : u.includes('/on-disk') ? { data: [{ code: 'AAA-001', files: 1, bytes: 5000 }] } : { data: [{ path: '/media/a/x.mp4', size: 7, folder: '/media/a' }], meta: { total: 1, page: 1, per_page: 100 } };
+let downloadsEnabled = true;
+const dlSample = u => u.endsWith('/status') ? { data: { enabled: downloadsEnabled, files_enabled: true } } : { data: { items: [{ hash: 'aa', name: 'Video <b>x</b>', movie_code: 'AAA-001', state: 'downloading', progress: 42.5, size: 1e9, speed: 2e6, eta: 600, completed: false }, { hash: 'bb', name: 'Done', movie_code: null, state: 'completed', progress: 100, size: 2e9, speed: 0, eta: null, completed: true }] } };
 const mockJsonResponse = (body, status = 200) => ({
   ok: status >= 200 && status < 300,
   status,
@@ -359,6 +361,14 @@ assert.match(interactiveEmptyAdmin.html, /Chưa có\./, 'an empty active-key pag
 assert.match(interactiveEmptyAdmin.html, /<span id="keyTotal" class="chip mono">0<\/span>/, 'an empty active-key page shows no rows');
 interactiveAdminKeys = null;
 interactiveAdminPageRequests = [];
+const adminFetch = globalThis.fetch;
+globalThis.fetch = async url => url === '/ui-admin/report/quality'
+  ? { ok: false, status: 404, redirected: false, headers: { get: () => 'application/json' }, json: async () => ({ message: 'Không tìm thấy báo cáo yêu cầu.' }) }
+  : adminFetch(url);
+const unknownAdminReport = await run('admin-unknown-report', await load('views/admin.js'), { params: {}, query: {} });
+globalThis.fetch = adminFetch;
+assert.match(unknownAdminReport, /Không tìm thấy báo cáo yêu cầu\./, 'unknown reports render a clear user-facing message');
+assert.doesNotMatch(unknownAdminReport, /quality, cost or sources|php artisan|JOOXCR-\d+/, 'unknown reports do not expose implementation details');
 const lib = await run('library', await load('views/library.js'), { params: { kind: 'favourite' }, query: {} });
 assert.match(lib, /Yêu thích/); assert.match(lib, /AAA-001/);
 const previousLibraryFetch = globalThis.fetch;
@@ -381,8 +391,55 @@ assert.match(statsHtml, /Thống kê/); assert.match(statsHtml, /Phim theo năm/
 const libHtml = await run('library-page', await load('views/libraryPage.js'), { params: {}, query: {} });
 assert.match(libHtml, /Thư viện/); assert.match(libHtml, /AAA-001/); assert.ok(!libHtml.includes('<b>a</b>'), 'folders are escaped');
 assert.doesNotMatch(libHtml, /php artisan|JOOXCR-223/, 'U-09: library copy has no artisan or ticket jargon');
+const libraryRequests = [];
+const libraryFetch = globalThis.fetch;
+globalThis.fetch = async url => { libraryRequests.push(url); return url === '/ui-me/library' ? mockJsonResponse({ data: { enabled: false } }) : libraryFetch(url); };
+const disabledLibrary = await run('library-disabled', await load('views/libraryPage.js'), { params: {}, query: {} });
+globalThis.fetch = libraryFetch;
+assert.match(disabledLibrary, /Thư viện đang tắt/, 'disabled Library shows a plain Vietnamese message');
+assert.match(disabledLibrary, /href="#\/settings"/, 'disabled Library links to Settings');
+assert.doesNotMatch(disabledLibrary, /php artisan|JOOXCR-\d+|LibraryScanCommand/, 'disabled Library hides implementation details');
+assert.deepEqual(libraryRequests, ['/ui-me/library'], 'disabled Library does not request library or media data');
+const disabledPageNavSource = uiSources.app;
+for (const navItem of [
+  "['library', 'nav.library', 'layers', '#/library']",
+  "['downloads', 'nav.downloads', 'disk', '#/downloads']",
+  "['media', 'nav.media', 'film', '#/media']",
+]) assert.ok(disabledPageNavSource.includes(navItem), `${navItem} remains in the owner navigation`);
+assert.match(disabledPageNavSource, /const groups = guestMode[\s\S]*?: NAV;/, 'the owner keeps the full navigation regardless of feature state');
+
+const previousFetch = globalThis.fetch;
+const librarySetting = settingsSample.data.settings.find(setting => setting.key === 'library.enabled');
+const pausedScanLibraryRequests = [];
+globalThis.fetch = async url => { pausedScanLibraryRequests.push(url); return previousFetch(url); };
+librarySetting.value = false;
+const libraryWithPausedScan = await run('library-scan-paused', await load('views/libraryPage.js'), { params: {}, query: {} });
+librarySetting.value = true;
+globalThis.fetch = previousFetch;
+assert.match(libraryWithPausedScan, /AAA-001/, 'existing library data stays available when automatic scanning is paused');
+assert.match(libraryWithPausedScan, /Thư viện/, 'the library page remains available when automatic scanning is paused');
+assert.doesNotMatch(libraryWithPausedScan, /Thư viện đang tắt/, 'the scan switch does not disable the library feature');
+assert.deepEqual(pausedScanLibraryRequests, ['/ui-me/library', '/ui-me/library/on-disk', '/ui-me/library/unmatched', '/ui-me/media/files?page=1'], 'the library loads existing data when automatic scanning is paused');
+
+const settingsFailureLibraryRequests = [];
+globalThis.fetch = async url => {
+  settingsFailureLibraryRequests.push(url);
+  if (url === '/ui-admin/settings') throw new Error('internal settings failure');
+  return previousFetch(url);
+};
+const libraryWithUnavailableSettings = await (await load('views/libraryPage.js')).render({ params: {}, query: {} });
+globalThis.fetch = previousFetch;
+assert.match(libraryWithUnavailableSettings.html, /AAA-001/, 'the library remains available when Settings cannot load');
+assert.ok(!settingsFailureLibraryRequests.includes('/ui-admin/settings'), 'the library does not depend on Settings to choose its feature state');
+
 const dlHtml = await run('downloads', await load('views/downloads.js'), { params: {}, query: {} });
 assert.match(dlHtml, /Tải về/); assert.match(dlHtml, /42\.5%/); assert.match(dlHtml, /data-links/); assert.ok(!dlHtml.includes('<b>x</b>'), 'names are escaped');
+downloadsEnabled = false;
+const downloadsDisabled = await run('downloads-disabled', await load('views/downloads.js'), { params: {}, query: {} });
+downloadsEnabled = true;
+assert.match(downloadsDisabled, /Tải về đang tắt/, 'disabled downloads show a plain Vietnamese message');
+assert.match(downloadsDisabled, /href="#\/settings"/, 'disabled downloads link to Settings');
+assert.doesNotMatch(downloadsDisabled, /qBittorrent|php artisan|JOOXCR-\d+/, 'disabled downloads hide implementation details');
 const st = await run('settings', await load('views/settings.js'), { params: {}, query: {} });
 assert.doesNotMatch(st, /<kbd>g [hmpsc]<\/kbd>/, 'U-13: Settings lists only shortcuts that exist');
 assert.match(st, /Ctrl\+K hoặc \//, 'U-13: the search chord is labelled Ctrl+K on this platform');
