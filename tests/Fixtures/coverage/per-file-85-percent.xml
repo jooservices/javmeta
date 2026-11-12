@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="1"><project><package><file name="/app/app/Example.php">
+<line num="1" type="stmt" count="1"/><line num="2" type="stmt" count="1"/><line num="3" type="stmt" count="1"/><line num="4" type="stmt" count="1"/><line num="5" type="stmt" count="1"/>
+<line num="6" type="stmt" count="1"/><line num="7" type="stmt" count="1"/><line num="8" type="stmt" count="1"/><line num="9" type="stmt" count="1"/><line num="10" type="stmt" count="1"/>
+<line num="11" type="stmt" count="1"/><line num="12" type="stmt" count="1"/><line num="13" type="stmt" count="1"/><line num="14" type="stmt" count="1"/><line num="15" type="stmt" count="1"/>
+<line num="16" type="stmt" count="1"/><line num="17" type="stmt" count="1"/><line num="18" type="stmt" count="0"/><line num="19" type="stmt" count="0"/><line num="20" type="stmt" count="0"/>
+</file></package></project></coverage>
