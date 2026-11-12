@@ -77,6 +77,14 @@ final class SourceRepository extends EloquentRepository implements RepositoryInt
         return $source;
     }
 
+    public function findSourceForUpdate(string $slug): ?Source
+    {
+        /** @var Source|null $source */
+        $source = $this->newQuery()->whereKey($slug)->lockForUpdate()->first();
+
+        return $source;
+    }
+
     public function isEnabled(string $slug): bool
     {
         return (bool) $this->newQuery()->whereKey($slug)->value('enabled');

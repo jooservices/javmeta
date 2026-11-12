@@ -16,19 +16,22 @@ final class FetchAttemptRecorder
 {
     public function __construct(private readonly ?CrawlFetchAttemptServiceRepository $attempts = null) {}
 
-    public function record(CrawlQueue $queue, CrawlerxFetchResult $result): void
+    public function record(CrawlQueue $queue, CrawlerxFetchResult $result): ?string
     {
         try {
-            $this->persist($queue, $result);
+            return $this->persist($queue, $result);
         } catch (Throwable $exception) {
             // Diagnostics must not prevent the crawl row from reaching its normal outcome.
             Log::warning('Failed to record fetch attempts.', ['exception' => $exception::class, 'queue_id' => $queue->id]);
+
+            return null;
         }
     }
 
-    private function persist(CrawlQueue $queue, CrawlerxFetchResult $result): void
+    private function persist(CrawlQueue $queue, CrawlerxFetchResult $result): ?string
     {
         $rows = [];
+        $latencySamples = [];
         $lane = $queue->getAttribute('claimed_lane') === 'browser' ? 'browser' : 'direct';
         foreach ($result->attempts as $attempt) {
             // Field presence is the compatibility gate for pre-diagnostics CrawlerX releases.
@@ -38,6 +41,12 @@ final class FetchAttemptRecorder
             if (! is_string($attempt['method']) || ! is_string($attempt['started_at'])
                 || ! is_int($attempt['duration_ms']) || ! in_array($attempt['outcome'], ['ok', 'error', 'skipped'], true)) {
                 continue;
+            }
+            if (in_array($attempt['outcome'], ['ok', 'error'], true)) {
+                $latencySamples[] = $attempt['duration_ms'];
+                if (count($latencySamples) > 32) {
+                    array_shift($latencySamples);
+                }
             }
             $egress = app(NodeEgressProbe::class)->contextForLane($lane, $attempt['method']);
             $status = $attempt['http_status'] ?? null;
@@ -61,7 +70,14 @@ final class FetchAttemptRecorder
                 'egress_kind' => $egress['egress_kind'],
             ];
         }
+
         ($this->attempts ?? app(CrawlFetchAttemptServiceRepository::class))->insertAttempts($rows);
+
+        if ($latencySamples === [] || $queue->source_slug === '') {
+            return null;
+        }
+
+        return app(SourceThrottle::class)->recordLatencySamples($queue->source_slug, $latencySamples);
     }
 
     private function sanitize(?string $error): ?string
