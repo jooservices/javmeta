@@ -17,6 +17,7 @@ return [
         'report' => 'Báo cáo',
         'readiness' => 'Kiểm tra sẵn sàng',
         'search' => 'Tìm kiếm',
+        'api_cache' => 'Bộ nhớ đệm API',
         'observability' => 'Giám sát',
         'stats' => 'Thống kê crawl',
         'backup' => 'Sao lưu',
@@ -124,6 +125,16 @@ return [
             'label' => 'Làm ấm bộ nhớ đệm',
             'description' => 'Tự làm mới trạng thái và bộ lọc toàn bộ danh mục theo lịch, giảm thời gian chờ khi bộ nhớ đệm hết hạn.',
         ],
+        'api__response_cache__enabled' => [
+            'label' => 'Bật bộ nhớ đệm response API',
+            'description' => 'Tắt để bỏ qua bộ nhớ đệm response; API vẫn trả dữ liệu trực tiếp khi Redis không sẵn sàng.',
+        ],
+        'api__response_cache__ttl__lists' => ['label' => 'TTL danh sách (giây)', 'description' => 'Thời gian lưu danh sách phim và performer.'],
+        'api__response_cache__ttl__facets' => ['label' => 'TTL bộ lọc (giây)', 'description' => 'Thời gian lưu facets phim và performer.'],
+        'api__response_cache__ttl__catalog' => ['label' => 'TTL danh mục (giây)', 'description' => 'Thời gian lưu các mục catalog ít thay đổi.'],
+        'api__response_cache__ttl__suggestions' => ['label' => 'TTL gợi ý tìm kiếm (giây)', 'description' => 'Thời gian lưu response gợi ý tìm kiếm.'],
+        'api__response_cache__ttl__status' => ['label' => 'TTL trạng thái (giây)', 'description' => 'Thời gian lưu tóm tắt trạng thái hệ thống.'],
+        'api__response_cache__ttl__movie_detail' => ['label' => 'TTL chi tiết phim (giây)', 'description' => 'Thời gian lưu chi tiết phim.'],
         'search__budget_ms' => [
             'label' => 'Ngân sách tìm kiếm (mili giây)',
             'description' => 'Tổng thời gian dành cho HTTP tùy chọn trong một lượt tìm kiếm kết hợp. Hết thời gian thì trả kết quả từ khóa; không giới hạn truy vấn cơ sở dữ liệu.',
@@ -399,6 +410,38 @@ return [
         'crawl__source_gap_overrides' => [
             'label' => 'Khoảng request ghi đè theo nguồn (JSON)',
             'description' => 'Ánh xạ mã nguồn đã cấu hình hoặc đã lưu sang min, default và max từ 0,25 đến 600 giây; để trống thì giữ nhịp mặc định. 14 nguồn CrawlerX 1.5.0 bắt đầu ở 8 giây (min 4, max 60); chỉnh nhịp qua ánh xạ này.',
+        ],
+        'crawl__latency_gap__enabled' => [
+            'label' => 'Bật điều chỉnh nhịp theo độ trễ',
+            'description' => 'Mặc định tắt. Khi bật, độ trễ fetch kéo dài sẽ giãn nhịp nguồn và phản hồi khỏe sẽ phục hồi dần.',
+        ],
+        'crawl__latency_gap__sample_window_size' => [
+            'label' => 'Số mẫu độ trễ trong cửa sổ',
+            'description' => 'Số mẫu fetch gần nhất được giữ để đánh giá độ trễ của nguồn.',
+        ],
+        'crawl__latency_gap__sustained_samples' => [
+            'label' => 'Số mẫu đạt ngưỡng trong cửa sổ',
+            'description' => 'Số mẫu đạt ngưỡng chậm hoặc khỏe ở bất kỳ vị trí nào trong cửa sổ để thay đổi nhịp (không cần liên tiếp nhau).',
+        ],
+        'crawl__latency_gap__slow_threshold_ms' => [
+            'label' => 'Ngưỡng fetch chậm (mili giây)',
+            'description' => 'Mẫu bằng hoặc cao hơn ngưỡng này được tính là chậm.',
+        ],
+        'crawl__latency_gap__healthy_threshold_ms' => [
+            'label' => 'Ngưỡng fetch khỏe (mili giây)',
+            'description' => 'Mẫu bằng hoặc thấp hơn ngưỡng này được tính là khỏe; ngưỡng hiệu lực luôn thấp hơn ngưỡng chậm.',
+        ],
+        'crawl__latency_gap__increase_percent' => [
+            'label' => 'Tỷ lệ tăng nhịp (%)',
+            'description' => 'Phần trăm tăng khoảng nghỉ sau khi cửa sổ ghi nhận đủ mẫu chậm.',
+        ],
+        'crawl__latency_gap__recovery_percent' => [
+            'label' => 'Tỷ lệ phục hồi (%)',
+            'description' => 'Phần trăm khoảng cách tới mức tối thiểu được phục hồi sau khi có đủ mẫu khỏe.',
+        ],
+        'crawl__latency_gap__window_ttl_seconds' => [
+            'label' => 'Thời hạn mẫu độ trễ (giây)',
+            'description' => 'Thời gian giữ mẫu độ trễ trong cache dùng chung.',
         ],
         'queue__browser_inflight' => [
             'label' => 'Việc dùng trình duyệt cùng lúc (tổng)',

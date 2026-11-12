@@ -141,6 +141,7 @@ trait HandlesCrawlQueueRow
         CrawlerxFetchResult $result,
         SourceActivityRecorder $activity,
         SourceThrottle $throttle,
+        ?string $latencySampleId = null,
     ): void {
         $errorCode = $result->errorCode ?? CrawlerxClient::ERROR_PARSE_FAILED;
         $message = CrawlQueueService::sanitizeErrorMessage($result->errorMessage ?? 'Crawl failed.');
@@ -156,7 +157,7 @@ trait HandlesCrawlQueueRow
         $this->markFailed($row, CrawlErrorCode::fromCrawlerx($errorCode), $message, $result->retryable, $result->retryAfterSeconds);
 
         $activity->recordFailure($source, $message, CrawlErrorCode::fromCrawlerx($errorCode));
-        $throttle->onFailure($source, $errorCode);
+        $throttle->onFailure($source, $errorCode, $latencySampleId);
 
         if (in_array($row->kind, [CrawlQueue::KIND_DETAIL, CrawlQueue::KIND_PERFORMER_DETAIL], true)) {
             app(TitleFailureTracker::class)->recordFailure(
