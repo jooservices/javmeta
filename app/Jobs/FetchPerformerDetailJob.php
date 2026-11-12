@@ -68,9 +68,9 @@ final class FetchPerformerDetailJob implements ShouldQueue
         }
 
         $result = $client->fetchQueueRow($row);
-        app(FetchAttemptRecorder::class)->record($row, $result);
+        $latencySampleId = app(FetchAttemptRecorder::class)->record($row, $result);
         if (! $result->ok || $result->performer === null) {
-            $this->onCrawlFailure($row, $source, $result, $activity, $throttle);
+            $this->onCrawlFailure($row, $source, $result, $activity, $throttle, $latencySampleId);
 
             return;
         }
@@ -80,7 +80,7 @@ final class FetchPerformerDetailJob implements ShouldQueue
             $this->recordEvent($row->source_slug, CrawlEvent::KIND_PARSE_DRIFT, $row->url, ['reason' => 'performer_normalize_failed']);
             $this->markFailed($row, CrawlErrorCode::NormalizationFailed, 'Performer normalization failed.');
             $activity->recordFailure($source, 'Performer normalization failed.');
-            $throttle->onFailure($source);
+            $throttle->onFailure($source, null, $latencySampleId);
 
             return;
         }
@@ -91,7 +91,7 @@ final class FetchPerformerDetailJob implements ShouldQueue
         }
 
         $activity->recordSuccess($source);
-        $throttle->onSuccess($source);
+        $throttle->onSuccess($source, $latencySampleId);
         $this->markDone($row);
     }
 }

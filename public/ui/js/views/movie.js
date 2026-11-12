@@ -64,12 +64,13 @@ export default {
         <div class="ibtns">${disk.codes.has(m.code) ? `<a class="btn pri" href="#/player/${encodeURIComponent(m.code)}">${t('movie.play')}</a>` : ''}<button class="btn" data-act="copy" data-v="${esc(m.code)}">${ic('copy')} ${t(isDerivedCode(m.code) ? 'movie.copy_internal_code' : 'movie.copy_code')}</button>${markBtn(marks, 'favourite', 'movie', m.code, t('movie.mark.favourite_on'), t('movie.mark.favourite_off'))}${markBtn(marks, 'watch_later', 'movie', m.code, t('movie.mark.watch_later_on'), t('movie.mark.watch_later_off'))}${markBtn(marks, 'seen', 'movie', m.code, t('movie.mark.seen_on'), t('movie.mark.seen_off'))}${!guestMode && dl.enabled && (m.magnets || []).length ? `<button class="btn sm" data-dl="${esc(m.code)}" aria-label="${esc(t('movie.downloads.send_qb'))}">${t('movie.download')}</button>` : ''}</div>
         ${downloadsPanel}
         <div class="panel">${tabsHtml}<div class="bd">${content}</div></div></div></div>
-      <div class="panel" id="related"><div class="hd"><h2>${t('movie.related')}</h2><span class="dim">${t('movie.related_sub')}</span></div><div class="bd"><div class="strip" id="relstrip"><span class="loader"><i></i><i></i><i></i></span></div></div></div></div>`;
+      <div class="panel" id="related"><div class="hd"><h2>${t('movie.related')}</h2><span class="dim">${t('movie.related_sub')}</span></div><div class="bd"><div class="strip" id="relstrip" data-related-state="loading" role="status" aria-busy="true" aria-label="${esc(t('movie.related_loading'))}">${relatedLoadingHtml()}</div></div></div></div>`;
     return {
       html,
       mount: root => {
-        loadRelated(m, root);
+        const disposeRelated = loadRelated(m, root.querySelector('#relstrip'));
         wireDownloadsPanel(root, m);
+        return disposeRelated;
       },
     };
   },
@@ -159,12 +160,133 @@ function wireDownloadsPanel(root, movie) {
   });
 }
 
-async function loadRelated(m, root) {
-  const strip = root.querySelector('#relstrip');
-  try {
-    const r = await api('movies/' + encodeURIComponent(m.code) + '/related');
-    strip.innerHTML = (r.data || []).map((x, i) => movieCard(x, i)).join('') || `<span class="muted">${t('movie.no_related')}</span>`;
-  } catch (e) {
-    strip.innerHTML = `<span class="err">${esc(e.message)}</span>`;
-  }
+const RELATED_TIMEOUT_MS = 5000;
+const RELATED_MOVIES_LIMIT = 12;
+
+function relatedLoadingHtml() {
+  return Array.from({ length: 3 }, () => `<div class="related-skeleton" aria-hidden="true"><span class="skel related-skeleton-cover"></span><span class="skel related-skeleton-line"></span><span class="skel related-skeleton-line short"></span></div>`).join('');
+}
+
+function showRelatedLoading(strip) {
+  strip.dataset.relatedState = 'loading';
+  strip.classList.remove('related-state-message');
+  strip.setAttribute('role', 'status');
+  strip.setAttribute('aria-busy', 'true');
+  strip.setAttribute('aria-label', t('movie.related_loading'));
+  strip.innerHTML = relatedLoadingHtml();
+}
+
+function clearRelatedStatus(strip) {
+  strip.classList.remove('related-state-message');
+  strip.removeAttribute('role');
+  strip.removeAttribute('aria-busy');
+  strip.removeAttribute('aria-label');
+}
+
+function showRelatedError(strip, key, retry) {
+  strip.dataset.relatedState = 'error';
+  strip.classList.add('related-state-message');
+  strip.removeAttribute('aria-busy');
+  strip.setAttribute('role', 'status');
+  strip.setAttribute('aria-label', t(key));
+
+  const message = document.createElement('span');
+  message.className = 'err';
+  message.dataset.relatedMessage = '';
+  message.textContent = t(key);
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn sm';
+  button.dataset.relatedRetry = '';
+  button.textContent = t('movie.related_retry');
+  button.addEventListener('click', () => {
+    button.disabled = true;
+    void retry();
+  });
+
+  const error = document.createElement('div');
+  error.className = 'related-error';
+  error.append(message, button);
+  strip.replaceChildren(error);
+}
+
+function showRelatedEmpty(strip) {
+  clearRelatedStatus(strip);
+  strip.dataset.relatedState = 'empty';
+  strip.classList.add('related-state-message');
+  const empty = document.createElement('span');
+  empty.className = 'muted';
+  empty.textContent = t('movie.no_related');
+  strip.replaceChildren(empty);
+}
+
+function logRelatedFailure(error, timedOut) {
+  const status = Number(error?.status);
+  const safeStatus = Number.isInteger(status) && status >= 0 && status <= 599 ? status : 0;
+  console.warn('[related-movies] load failed', {
+    reason: timedOut ? 'timeout' : 'request',
+    status: safeStatus,
+  });
+}
+
+function loadRelated(m, strip) {
+  if (!strip) return () => {};
+
+  let disposed = false;
+  let activeController = null;
+  let activeTimeout = null;
+
+  const load = async () => {
+    if (disposed || !strip.isConnected) return;
+    if (activeTimeout) clearTimeout(activeTimeout);
+    activeController?.abort();
+
+    showRelatedLoading(strip);
+    const controller = new AbortController();
+    activeController = controller;
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, RELATED_TIMEOUT_MS);
+    activeTimeout = timeout;
+
+    try {
+      const r = await api('movies/' + encodeURIComponent(m.code) + '/related', {}, { signal: controller.signal });
+      if (disposed || !strip.isConnected || (controller.signal.aborted && !timedOut)) return;
+      if (timedOut) {
+        logRelatedFailure(null, true);
+        showRelatedError(strip, 'movie.related_timeout', load);
+        return;
+      }
+
+      const related = Array.isArray(r?.data) ? r.data.filter(movie => movie && typeof movie === 'object').slice(0, RELATED_MOVIES_LIMIT) : [];
+      if (related.length === 0) {
+        showRelatedEmpty(strip);
+        return;
+      }
+      clearRelatedStatus(strip);
+      strip.dataset.relatedState = 'success';
+      strip.innerHTML = related.map((movie, i) => movieCard(movie, i)).join('');
+    } catch (error) {
+      if (disposed || !strip.isConnected || (controller.signal.aborted && !timedOut)) return;
+      logRelatedFailure(error, timedOut);
+      showRelatedError(strip, timedOut ? 'movie.related_timeout' : 'movie.related_failed', load);
+    } finally {
+      clearTimeout(timeout);
+      if (activeTimeout === timeout) activeTimeout = null;
+      if (activeController === controller) activeController = null;
+    }
+  };
+
+  void load();
+
+  return () => {
+    disposed = true;
+    if (activeTimeout) clearTimeout(activeTimeout);
+    activeTimeout = null;
+    activeController?.abort();
+    activeController = null;
+  };
 }

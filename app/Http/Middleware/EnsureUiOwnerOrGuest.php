@@ -81,7 +81,8 @@ final readonly class EnsureUiOwnerOrGuest
     private function guestResponse(Response $response): Response
     {
         $response->headers->set('X-Robots-Tag', 'noindex, nofollow');
-        $response->headers->set('Cache-Control', 'no-store');
+        $response->headers->remove('Cache-Control');
+        $response->headers->set('Cache-Control', 'private, no-store');
         $response->headers->remove('Set-Cookie');
 
         return $response;
