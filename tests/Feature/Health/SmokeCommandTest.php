@@ -455,6 +455,19 @@ final class SmokeCommandTest extends TestCase
         }
     }
 
+    public function test_smoke_key_lookup_ignores_stale_active_cache_after_scope_cleanup(): void
+    {
+        $createdKey = app(ApiKeyService::class)->createSmokeCheckKey();
+        ApiKey::query()->whereKey($createdKey->model->getKey())->update(['scopes' => json_encode([])]);
+        Cache::put(
+            'javmeta:api-key:active:' . hash('sha256', hash('sha256', $createdKey->plaintext)),
+            $createdKey->model,
+        );
+
+        self::assertNull((new ApiKeyService())->findActiveByPlaintext($createdKey->plaintext));
+        $this->getJson('/api/v1/auth/verify', ['X-API-Key' => $createdKey->plaintext])->assertUnauthorized();
+    }
+
     public function test_sentry_delivery_is_checked_when_enabled(): void
     {
         config()->set('sentry.dsn', 'https://public@example.test/1');

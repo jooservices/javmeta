@@ -140,6 +140,7 @@ final class ApiKeyService
 
         $keyHash = $this->hashPlaintext($plain);
         if (str_starts_with($plain, 'jvm_smoke_')) {
+            // A smoke key may stay active when cleanup can only remove its scopes; never trust a cached row here.
             return $this->findActiveSmokeKey($keyHash);
         }
 
