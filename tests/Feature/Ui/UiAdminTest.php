@@ -145,15 +145,18 @@ final class UiAdminTest extends TestCase
     {
         $owner = User::factory()->create(['role' => 'super_administrator']);
         $this->actingAs($owner);
-        config(['javmeta_library.enabled' => false, 'javmeta_library.feature_enabled' => false]);
 
-        $this->getJson('/ui-me/library')
-            ->assertOk()
-            ->assertJsonPath('data.enabled', false);
+        foreach ([false, true] as $automaticScanning) {
+            foreach ([false, true] as $featureEnabled) {
+                config([
+                    'javmeta_library.enabled' => $automaticScanning,
+                    'javmeta_library.feature_enabled' => $featureEnabled,
+                ]);
 
-        config(['javmeta_library.feature_enabled' => true]);
-        $this->getJson('/ui-me/library')
-            ->assertOk()
-            ->assertJsonPath('data.enabled', true);
+                $this->getJson('/ui-me/library')
+                    ->assertOk()
+                    ->assertJsonPath('data.enabled', $featureEnabled);
+            }
+        }
     }
 }
