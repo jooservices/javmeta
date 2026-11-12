@@ -156,7 +156,7 @@ The "Lint and test" job runs the full suite three times and compares each run wi
 a run above the maximum fails the job, a run above the warning value only warns). The gate exists to catch a 2x slowdown, not to
 chase runner noise.
 
-Current calibration (2026-11-02): baseline 150 s, warning 195 s, maximum 300 s. The previous baseline (95 s, maximum 190 s)
+Current calibration (2026-11-12): baseline 420 s, warning 546 s, maximum 840 s (2x baseline). A clean run measured 480 to 606 s after the bounded-memory identity tests (about 60 s together) were added, and a run at 480.84 s failed the old 480 s limit. Earlier calibration (2026-11-02): baseline 150 s, warning 195 s, maximum 300 s. The previous baseline (95 s, maximum 190 s)
 dated from a much smaller suite. With 1,265 to 1,357 tests every run on GitHub-hosted runners took 190 to 235 s (PRs 181 to 185 and develop,
 2026-11-01 and 2026-11-02; no individual test was slow), so correct pull requests failed at random and needed several reruns.
 
