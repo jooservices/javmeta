@@ -181,9 +181,44 @@ current dependency rules.
    integration. For a package-based implementation, do not disable a module
    that owns routes, queued jobs, or persisted model types.
 
-Rollback is a revert of the isolated pilot or domain change, with the prior
-release restored if already deployed. This proposal includes no schema or data
-migration, so it requires no database rollback. Keep model namespaces and
-migration locations stable until their compatibility is explicitly verified.
-The decision remains **proposed**, not approved, until an authorized owner
-records a decision.
+#### Persistent-reference compatibility and rollback
+
+Class names can outlive a deployment in more than one place: Laravel queue
+payloads (including delayed, reserved, retried, and failed jobs), polymorphic
+type columns and other database values, and any other durable serialized class
+identifier found by the inventory. Compatibility applies in both directions:
+workers must read references written before a move, and a rollback release must
+read every reference written while the pilot was active.
+
+The default pilot rule is to keep each existing persistent identifier stable
+through the rollback window. In particular, retain the original fully
+qualified job class as the queue serialization boundary and delegate its work
+to the moved implementation; do not enqueue a replacement job class name.
+Preserve existing morph-map aliases. If a model has no stable alias and its
+fully qualified class name is persisted, keep that model name in place. Move
+implementation behind the stable class or alias, rather than changing the
+identifier. A code revert can then restore the prior implementation while
+queued payloads and stored type values still resolve to the old release.
+
+If an identifier must change, treat compatibility support as a separate
+baseline release before the pilot. The baseline must ship readers or aliases
+that resolve both old and new identifiers and remain safe when its code is
+restored; only then may the pilot write the new identifier. Before rollout,
+prove old-to-new and new-to-old processing with representative pending and
+failed queue payloads and persisted type values, including worker restart and
+retry paths. The rollback target must include that forward-compatible
+baseline. Do not roll back past it while new identifiers remain in durable
+storage. Before rollback, stop new writes and either drain affected queues and
+retry/dead-letter stores and convert persisted values safely, or retain a
+reader for both forms in the rollback target. Verify no affected references
+remain before removing compatibility code. If these conditions cannot be
+proved, do not move or rename the class; defer that slice. This applies to job
+classes, model types, and every other persistent class identifier, not only the
+first pilot example.
+
+Rollback is therefore a tested compatibility procedure, not merely a revert
+of the isolated pilot. This proposal includes no schema or data migration, so
+it requires no database rollback; any future persisted-value conversion needs
+its own reviewed forward and rollback plan. Keep migration locations stable
+until their compatibility is explicitly verified. The decision remains
+**proposed**, not approved, until an authorized owner records a decision.
