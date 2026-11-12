@@ -204,7 +204,8 @@ final class SourceThrottleIntegrationTest extends IntegrationTestCase
         $this->configureMetrics();
         $telemetryAttempts = 0;
         Http::fake(static function (\Illuminate\Http\Client\Request $request) use (&$telemetryAttempts) {
-            if (! str_starts_with($request->url(), 'https://openobserve.test')) {
+            if (! str_starts_with($request->url(), 'https://openobserve.test')
+                || data_get($request->data(), 'resourceMetrics.0.scopeMetrics.0.metrics.0.name') !== 'javmeta_source_gap_changes_total') {
                 return Http::response([], 200);
             }
             $telemetryAttempts++;
