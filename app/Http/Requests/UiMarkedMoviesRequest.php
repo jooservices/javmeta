@@ -18,7 +18,11 @@ final class UiMarkedMoviesRequest extends FormRequest
     /** @return array<string, array<int, mixed>> */
     public function rules(): array
     {
-        return ['kind' => [Rule::in(['favourite', 'watch_later', 'seen'])]];
+        return [
+            'kind' => [Rule::in(['favourite', 'watch_later', 'seen'])],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:200'],
+            'page' => ['sometimes', 'integer', 'min:1'],
+        ];
     }
 
     protected function prepareForValidation(): void
@@ -28,6 +32,10 @@ final class UiMarkedMoviesRequest extends FormRequest
 
     protected function failedValidation(Validator $validator): void
     {
+        if ($validator->errors()->has('per_page') || $validator->errors()->has('page')) {
+            parent::failedValidation($validator);
+        }
+
         abort(404);
     }
 }

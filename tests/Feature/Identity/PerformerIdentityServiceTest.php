@@ -500,7 +500,7 @@ final class PerformerIdentityServiceTest extends TestCase
         self::assertTrue($identity->markSourceRemoved('source-b', 'person-b'));
         self::assertSame(1, Performer::query()->whereNull('canonical_performer_id')->count());
 
-        $apiKey = app(ApiKeyService::class)->create('performer-identity')->plaintext;
+        $apiKey = app(ApiKeyService::class)->create('performer-identity', 60, ['performers'])->plaintext;
         $rest = $this->getJson('/api/v1/performers/' . $first->id, ['X-API-Key' => $apiKey])
             ->assertOk()->json('data');
         $mcp = app(McpToolService::class)->call('get_performer', ['id' => (string) $second->id]);

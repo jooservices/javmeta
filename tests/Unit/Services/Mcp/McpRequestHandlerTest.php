@@ -87,7 +87,7 @@ final class McpRequestHandlerTest extends TestCase
         self::assertSame('{"error":"unauthorized"}', $response['result']['content'][0]['text']);
     }
 
-    public function test_stdio_accepts_mcp_scoped_and_unrestricted_keys(): void
+    public function test_stdio_accepts_mcp_scoped_and_explicitly_all_scoped_keys(): void
     {
         $service = app(ApiKeyService::class);
         $mcpKey = $service->create('stdio-mcp-only', 60, ['mcp']);
@@ -95,8 +95,8 @@ final class McpRequestHandlerTest extends TestCase
 
         self::assertTrue(app(McpRequestHandler::class)->isAuthorized());
 
-        $unrestrictedKey = $service->create('stdio-unrestricted');
-        config()->set('javmeta_auth.mcp_api_key', $unrestrictedKey->plaintext);
+        $allScopedKey = $service->create('stdio-all-scopes', 60, \App\Models\ApiKey::SCOPES);
+        config()->set('javmeta_auth.mcp_api_key', $allScopedKey->plaintext);
 
         self::assertTrue(app(McpRequestHandler::class)->isAuthorized());
     }

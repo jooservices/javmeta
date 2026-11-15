@@ -168,7 +168,7 @@ final class LibraryTest extends TestCase
         $unmatched->assertJsonPath('meta', ['total' => 1, 'page' => 1, 'per_page' => 100]);
         $this->getJson('/ui-me/library/unmatched?page=0')->assertOk()->assertJsonPath('meta.page', 1);
 
-        $headers = ['X-API-Key' => app(ApiKeyService::class)->create('lib')->plaintext];
+        $headers = ['X-API-Key' => app(ApiKeyService::class)->create('lib', 60, ['movies'])->plaintext];
         $this->movie('NOT-001');
         $on = array_column($this->getJson('/api/v1/movies?on_disk=1&per_page=50', $headers)->assertOk()->json('data'), 'code');
         $off = array_column($this->getJson('/api/v1/movies?on_disk=0&per_page=50', $headers)->assertOk()->json('data'), 'code');

@@ -6,10 +6,34 @@ const store = {};
 globalThis.localStorage = { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); } };
 globalThis.location = { hash: '#/', href: '', reload() {} };
 globalThis.innerWidth = 1280;
-globalThis.document = { querySelector: () => null, getElementById: () => null, body: { contains: () => true, dataset: { guestMode: 'false' } }, documentElement: { dataset: {} }, addEventListener() {}, createElement: () => ({ append() {}, remove() {} }) };
 globalThis.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+const fakeEl = () => {
+  const attrs = {};
+  const kids = [];
+  const el = {
+    className: '', hidden: false, style: {}, dataset: {}, innerHTML: '', textContent: '',
+    append() {}, remove() {}, focus() {}, blur() {},
+    setAttribute(k, v) { attrs[k] = String(v); }, getAttribute(k) { return attrs[k] ?? null; },
+    addEventListener() {}, querySelector() { return fakeEl(); }, querySelectorAll() { return []; },
+    closest() { return null; }, contains() { return false; },
+  };
+  kids.push(el);
+  return el;
+};
+globalThis.document = {
+  querySelector: () => null,
+  getElementById: () => null,
+  body:{ contains: () => true, dataset: { guestMode: 'false' }, appendChild() {}, style: {} },
+  documentElement: { dataset: {}, lang: 'vi', dir: 'ltr' },
+  addEventListener() {},
+  createElement: () => fakeEl(),
+  activeElement: null,
+};
 globalThis.requestAnimationFrame = () => 0;
 globalThis.IntersectionObserver = class { observe() {} disconnect() {} };
+
+// The shell loads the catalog before its first render; the smoke test does the same.
+await (await import('../public/ui/js/i18n.js')).initI18n('vi');
 
 const movie = (code, extra = {}) => ({
   uuid: 'u-' + code, code, title_jp: null, title_en: 'Title of ' + code, cover_url: 'https://img.test/' + code + '.jpg', release_date: '2026-10-01', runtime_minutes: 120,
@@ -26,16 +50,27 @@ const sources = [
   { slug: 'avfan', name: 'Avfan', enabled: false, gap_seconds_current: 5, gap_seconds_min: 2, gap_seconds_max: 30, last_success_at: null, last_error_at: null, last_error: null, queue: { pending: 0, claimed: 0, done: 0, failed: 0 } },
 ];
 
+const facetRows = {
+  genres: [{ name: 'Drama', count: 12 }, { name: '<b>School</b>', count: 3 }, { name: 'Rare', count: 1 }], makers: [{ name: 'Maker One', count: 10 }], series: [{ name: 'Series One', count: 9 }], labels: [{ name: 'Label One', count: 8 }],
+  years: [{ name: '2025', count: 7 }], sources: [{ name: 'javdb', count: 6 }, { name: 'javbus', count: 4 }], performers: [{ id: 92, name: 'Eimi <b>x</b>', count: 5 }],
+  cups: [{ name: 'D', count: 5 }], blood_types: [{ name: 'O', count: 4 }], locations: [{ name: 'Tokyo', count: 3 }], status: [{ name: 'active', count: 7 }, { name: 'retired', count: 3 }],
+};
 const route = url => {
   const u = new URL(url, 'https://x.test');
   const p = u.pathname.replace('/ui-api/', '');
+  if (p.endsWith('/facets/values')) {
+    const group = u.searchParams.get('facet'), needle = (u.searchParams.get('q') || '').toLowerCase(), min = Number(u.searchParams.get('min_count') || 0);
+    const per = Number(u.searchParams.get('per_page') || 20), page = Number(u.searchParams.get('page') || 1);
+    const all = (facetRows[group] || []).filter(r => r.name.toLowerCase().includes(needle)), items = all.filter(r => r.count >= min);
+    return { data: { items: items.slice((page - 1) * per, page * per), total: items.length, hidden_below_min: all.length - items.length, facet: group }, meta: { pagination: { total: items.length, per_page: per, page, last_page: Math.max(1, Math.ceil(items.length / per)), min_count: min } } };
+  }
   if (p === 'movies/facets') return { data: { total: u.searchParams.get('q') === 'empty' ? 0 : 12, genres: [{ name: 'Drama', count: 12 }, { name: '<b>School</b>', count: 3 }], makers: [{ name: 'Maker One', count: 10 }], series: [{ name: 'Series One', count: 9 }], labels: [{ name: 'Label One', count: 8 }], years: [{ name: '2025', count: 7 }], sources: [{ name: 'javdb', count: 6 }], performers: [{ id: 92, name: 'Eimi <b>x</b>', count: 5 }] } };
   if (p === 'performers/facets') return { data: { total: 7, cups: [{ name: 'D', count: 5 }], blood_types: [{ name: 'O', count: 4 }], locations: [{ name: 'Tokyo', count: 3 }], sources: [{ name: 'javdb', count: 2 }], status: [{ name: 'active', count: 7 }], with_image: 6, with_bio: 4 } };
   if (p === 'scenes/search') return { data: [{ movie_code: 'AAA-001', library_file_id: 1, start_sec: 12, description: '<b>red room</b>', thumb_url: null }] };
   if (p === 'status/summary') return { data: summary };
   if (p === 'status/sources') return { data: sources };
   if (p === 'movies') return { data: [movie('AAA-001'), movie('BBB-002', { title_en: '<script>alert(1)</script>' })], ...pg(2) };
-  if (p.startsWith('movies/') && !p.endsWith('/related') && p !== 'movies/calendar') return { data: { ...movie(decodeURIComponent(p.slice(7))), codes: [{ code: 'AAA-001', kind: 'display' }], directors: [], description: 'A story', attrs: { k: 'v' }, magnets: [{ url: 'magnet:?xt=1' }], hls_stream_urls: [], gallery: [], photos: {}, crawled_at: '2026-10-24T00:00:00Z', delisted_at: null } };
+  if (p.startsWith('movies/') && !p.endsWith('/related') && p !== 'movies/calendar') return { data: { ...movie(decodeURIComponent(p.slice(7))), codes: [{ code: 'AAA-001', kind: 'display' }], directors: [], description: 'A story', attrs: { k: 'v' }, magnets: [{ url: 'magnet:?xt=1' }], downloads: { available: true, count: 1, last_checked_at: null, state: 'found', search_enabled: true }, hls_stream_urls: [], gallery: [], photos: {}, crawled_at: '2026-10-24T00:00:00Z', delisted_at: null } };
   if (['cups', 'blood_types', 'locations'].includes(p.replace('meta/catalog/', ''))) return { data: [{ name: 'D', performer_count: 30 }, { name: 'E', performer_count: 9 }], meta: { pagination: { total: 2, per_page: 24, page: 1, last_page: 1 } } };
   if (p.startsWith('meta/catalog/')) return { data: [{ name: '2025', movie_count: 40 }, { name: 'School', movie_count: 12 }], meta: { pagination: { total: 2, per_page: 60, page: 1, last_page: 1, sort: 'movie_count' } } };
   if (p === 'search') return { data: { movies: [movie('AAA-001'), movie('BBB-002')], performers: [performer(1)], interpretation: { keywords: 'night', filters: { maker: 'Mankitsu', released_from: '2024-01-01' }, by: 'rules', used_vectors: false }, totals: { movies: 480, performers: 12 } } };
@@ -47,6 +82,8 @@ const route = url => {
   }
   if (p.endsWith('/related')) return { data: [movie('REL-001')] };
   if (p === 'performers') return { data: [performer(1), performer(2)], ...pg(2) };
+  if (p === 'performers/9') return { data: { ...performer(9), name_kanji: null, aliases: [], birth_date: null, height_cm: 158, bust: 84, waist: null, hip: null, cup: null, blood_type: null, location: null, debut_date: null, retired_date: null, bio_text: null, attrs: { weird_key: 1 } } };
+  if (p === 'performers/10') return { data: { ...performer(10), name_romaji: 'Nobody Known', name_kanji: null, aliases: [], birth_date: null, height_cm: null, bust: null, waist: null, hip: null, cup: null, blood_type: null, location: null, debut_date: null, retired_date: null, bio_text: null, attrs: {}, linked_title_count: 0 } };
   if (p.startsWith('performers/')) return { data: performer(1) };
   throw new Error('no sample for ' + p);
 };
@@ -59,6 +96,7 @@ const settingsSample = {
       notifications: 'Chính sách thông báo',
     },
     settings: [
+      { key: 'library.enabled', value: true },
       { key: 'queue.feed_pool_limit', group: 'queue', label: 'Việc nạp mỗi phút', description: 'd', type: 'int', min: 1, max: 5000, restart: null, apply_after_seconds: 30, source: 'database', value: 300, is_set: null },
       { key: 'queue.feed_interval_seconds', group: 'queue', label: 'Chu kỳ nạp hàng đợi (giây)', description: 'Chọn 5, 10, 15, 30 hoặc 60 giây.', type: 'int', min: 5, max: 60, options: [5, 10, 15, 30, 60], apply_after_seconds: 5, source: 'database', value: 10 },
       { key: 'crawl.source_gap_overrides', group: 'crawl', label: 'Khoảng request ghi đè theo nguồn (JSON)', description: 'Khoảng gap theo từng nguồn.', type: 'json', shape: 'source_gap_override_map', max_length: 10000, apply_after_seconds: 30, source: 'default', value: {} },
@@ -83,17 +121,67 @@ const reportSample = {
     history: [],
   },
 };
+let emptyAdminKeys = false;
+let interactiveAdminKeys = null;
+let failedAdminCursor = null;
+let interactiveAdminPageRequests = [];
 const adminSample = u => {
   if (u.includes('/ui-admin/settings')) return settingsSample;
   if (u === '/ui-admin/notifications') return { data: [{ key: 'crawl.success_rate_low', name: 'Tỷ lệ crawl thành công thấp', usage: 'Gửi khi tỷ lệ thành công xuống dưới ngưỡng.', channel: 'telegram', enabled: true, tier: 'warning', cooldown_minutes: 120, escalation_minutes: 60, include_in_periodic_report: true, include_in_daily_report: true, send_resolved: false, last_sent_at: '2026-11-02 17:40:00', updated_at: '2026-11-02 17:00:00' }] };
   if (u === '/ui-admin/report/daily') return { ...reportSample, data: { ...reportSample.data, text: 'Daily report preview · last 24 h' } };
   if (u === '/ui-admin/report/periodic') return reportSample;
   if (u.includes('report/quality')) return { data: { movies: 100, performers: 50, movies_by_source: { javdb: 60 }, core_fields: { code: { filled: 100, percent: 100 }, maker: { filled: 80, percent: 80 } }, movies_with_8_of_11: { count: 70, percent: 70 }, completeness_tiers: { 1: 20, 2: 80 }, needs_review: 3 } };
-  return { data: [{ id: 1, prefix: 'jvm_abc', label: 'Key <b>one</b>', status: 'active', abuse_rpm: 60, scopes: ['catalog'], created_at: '2026-10-24T00:00:00Z' }] };
+  if (u.startsWith('/ui-admin/keys')) {
+    const url = new URL(u, 'https://x.test'), cursor = Number(url.searchParams.get('cursor') || Number.MAX_SAFE_INTEGER);
+    const perPage = Math.max(1, Number(url.searchParams.get('per_page') || 25));
+    const all = emptyAdminKeys ? [] : Array.from({ length: 26 }, (_, index) => ({
+      id: index + 1, prefix: index === 25 ? 'jvm_abc' : `jvm_${String(index).padStart(8, '0')}`,
+      label: index === 25 ? 'Key <b>one</b>' : `Key ${index + 1}`, status: 'active', abuse_rpm: 60,
+      scopes: ['catalog'], created_at: '2026-10-24T00:00:00Z',
+    }));
+    const rows = [...(interactiveAdminKeys ?? all)].filter(key => key.id < cursor).sort((a, b) => b.id - a.id);
+    const selected = rows.slice(0, perPage + 1), hasMore = selected.length > perPage;
+    if (hasMore) selected.pop();
+    return { data: selected, meta: { pagination: { per_page: perPage, has_more: hasMore, next_cursor: hasMore ? String(selected.at(-1).id) : null } } };
+  }
+  return { data: [] };
 };
-const libSample = u => u.endsWith('/library') ? { data: { files: 3, matched: 2, unmatched: 1, missing: 0, bytes: 5012, by_folder: [{ folder: '/media/<b>a</b>', files: 3, bytes: 5012 }], last_scan_at: '2026-10-24 03:00:00', configured: true } } : u.includes('/codes') ? { data: ['AAA-001'] } : u.includes('/on-disk') ? { data: [{ code: 'AAA-001', files: 1, bytes: 5000 }] } : { data: [{ path: '/media/a/x.mp4', size: 7, folder: '/media/a' }], meta: { total: 1, page: 1, per_page: 100 } };
-const dlSample = u => u.endsWith('/status') ? { data: { enabled: true, files_enabled: true } } : { data: { items: [{ hash: 'aa', name: 'Video <b>x</b>', movie_code: 'AAA-001', state: 'downloading', progress: 42.5, size: 1e9, speed: 2e6, eta: 600, completed: false }, { hash: 'bb', name: 'Done', movie_code: null, state: 'completed', progress: 100, size: 2e9, speed: 0, eta: null, completed: true }] } };
-globalThis.fetch = async url => url.startsWith('/ui-me/media/files') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => ({ data: { data: [{ id: 1, code: 'AAA-001', path: '/generated/video.mp4' }] } }) } : url.startsWith('/ui-me/downloads') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => dlSample(url) } : url.startsWith('/ui-me/library') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => libSample(url) } : url.startsWith('/ui-me/') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => (url.includes('/marks') ? { data: [{ kind: 'favourite', subject: 'movie', key: 'AAA-001' }] } : { data: [movie('AAA-001')], meta: { follows: 2, new_since_last_visit: 1, total: 1 } }) } : url.startsWith('/ui-admin/') ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => adminSample(url) } : ({ ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => route(url) });
+const libSample = u => u.endsWith('/library') ? { data: { enabled: true, files: 3, matched: 2, unmatched: 1, missing: 0, bytes: 5012, by_folder: [{ folder: '/media/<b>a</b>', files: 3, bytes: 5012 }], last_scan_at: '2026-10-24 03:00:00', configured: true } } : u.includes('/codes') ? { data: ['AAA-001'] } : u.includes('/on-disk') ? { data: [{ code: 'AAA-001', files: 1, bytes: 5000 }] } : { data: [{ path: '/media/a/x.mp4', size: 7, folder: '/media/a' }], meta: { total: 1, page: 1, per_page: 100 } };
+let downloadsEnabled = true;
+const dlSample = u => u.endsWith('/status') ? { data: { enabled: downloadsEnabled, files_enabled: true } } : { data: { items: [{ hash: 'aa', name: 'Video <b>x</b>', movie_code: 'AAA-001', state: 'downloading', progress: 42.5, size: 1e9, speed: 2e6, eta: 600, completed: false }, { hash: 'bb', name: 'Done', movie_code: null, state: 'completed', progress: 100, size: 2e9, speed: 0, eta: null, completed: true }] } };
+const mockJsonResponse = (body, status = 200) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  redirected: false,
+  headers: { get: () => 'application/json' },
+  json: async () => body,
+});
+globalThis.fetch = async (url, options = {}) => {
+  if (url.startsWith('/ui-admin/')) {
+    const revokedKey = url.match(/^\/ui-admin\/keys\/(\d+)$/);
+    if (options.method === 'DELETE' && revokedKey && interactiveAdminKeys !== null) {
+      interactiveAdminKeys = interactiveAdminKeys.filter(key => key.id !== Number(revokedKey[1]));
+      return mockJsonResponse(null, 204);
+    }
+
+    const requestUrl = new URL(url, 'https://x.test');
+    const cursor = requestUrl.searchParams.get('cursor');
+    if (requestUrl.pathname === '/ui-admin/keys' && interactiveAdminKeys !== null) interactiveAdminPageRequests.push(cursor);
+    if (requestUrl.pathname === '/ui-admin/keys' && failedAdminCursor !== null && failedAdminCursor === cursor) {
+      failedAdminCursor = null;
+      return mockJsonResponse({ message: 'API key page unavailable' }, 503);
+    }
+
+    return mockJsonResponse(adminSample(url));
+  }
+
+  if (url.startsWith('/ui-me/media/files')) return mockJsonResponse({ data: { data: [{ id: 1, code: 'AAA-001', path: '/generated/video.mp4' }] } });
+  if (url.startsWith('/ui-me/downloads')) return mockJsonResponse(dlSample(url));
+  if (url.startsWith('/ui-me/library')) return mockJsonResponse(libSample(url));
+  if (url.startsWith('/ui-me/')) return mockJsonResponse(url.includes('/marks') ? { data: [{ kind: 'favourite', subject: 'movie', key: 'AAA-001' }] } : { data: [movie('AAA-001')], meta: { follows: 2, new_since_last_visit: 1, total: 1 } });
+
+  return mockJsonResponse(route(url));
+};
 
 const load = async f => (await import('../public/ui/js/' + f)).default;
 const out = {};
@@ -111,12 +199,27 @@ assert.match(home, /Gợi ý[\s\S]*School/, 'U-03: Discover chips use a genre th
 assert.match(home, /<h1>Khám phá<\/h1>/, 'U-17: Discover has an h1');
 assert.match(home, /id="hsq"[^>]*aria-label="/, 'U-17: the Discover search box has an accessible name');
 assert.doesNotMatch(home, /class="cu" data-to="4469">0</, 'U-21: counters start at the real total');
+assert.match(home, /href="#\/catalog\/genres" class="chip more">Mọi thể loại/, 'JOOXCR-407: Discover suggestions link to the genre catalog');
 await run('movies', await load('views/movies.js'), { params: {}, query: { genre: 'Drama' } });
 assert.match(out.movies, /Bộ lọc/); assert.match(out.movies, /data-drop="genre" data-value="Drama"/); assert.match(out.movies, /Thể loại: Drama/);
+// JOOXCR-407: every facet is one FacetList; filters refresh only the results region without a route render
+for (const group of ['genres', 'makers', 'series', 'labels', 'years', 'sources']) assert.match(out.movies, new RegExp(`<fieldset[^>]*data-facet-list="${group}"`), group + ' is a FacetList fieldset');
+assert.match(out.movies, /data-fl-all/); assert.doesNotMatch(out.movies, /data-top=|name="maker"|data-choices=/, 'no tag rows or typed facet fields');
+assert.match(out.movies, /data-results[^>]*aria-busy="false"/); assert.match(out.movies, /data-results-error[^>]*hidden/); assert.match(out.movies, /Đang lọc/);
+const uiSources = { search: await readFile(new URL('../public/ui/js/searchBrowser.js', import.meta.url), 'utf8'), app: await readFile(new URL('../public/ui/js/app.js', import.meta.url), 'utf8') };
+assert.match(uiSources.search, /softNavigate\(path, q/); assert.doesNotMatch(uiSources.search, /location\.hash = /, 'a filter change never remounts the view through the hash');
+assert.match(uiSources.app, /trySoftUpdate/); assert.match(uiSources.app, /addEventListener\('popstate', navigate\)/); assert.match(uiSources.app, /addEventListener\('hashchange', navigate\)/);
+const resultsRefresh = await import('../public/ui/js/resultsRefresh.js');
+for (const name of ['softNavigate', 'bindQuerySoftUpdate', 'refreshResultsRegion', 'trySoftUpdate', 'markRendered']) assert.equal(typeof resultsRefresh[name], 'function', name);
+const facetListModule = await import('../public/ui/js/facetList.js');
+assert.equal(facetListModule.PER_PAGE, 20, 'the product page size is 20'); assert.equal(typeof facetListModule.mountFacetList, 'function');
 const detail = await run('movie', await load('views/movie.js'), { params: { code: 'AAA-001' }, query: {} });
 assert.match(detail, /Title of AAA-001/); assert.match(detail, /class="cols detail"/, 'detail uses the fluid cover column'); assert.match(detail, /data-zoom="https:\/\/img\.test\/AAA-001\.jpg"/, 'cover opens the zoom viewer'); assert.match(detail, /role="button"[^>]*aria-label="Phóng to ảnh bìa AAA-001"/); assert.match(detail, /Eimi Fukada/); assert.match(detail, /#\/facet\/genre\/Drama/);
 assert.doesNotMatch(detail, /chờ crawl/, 'U-20: missing fields do not promise a crawl');
 assert.match(detail, />Thông tin</, 'U-15: movie tabs are Vietnamese');
+assert.match(detail, /id="movie-downloads"/, 'movie detail exposes the downloads panel');
+assert.match(detail, /magnet:\?xt=1/, 'downloads panel lists magnets');
+assert.match(detail, /data-download-search|data-act="copy"/, 'downloads panel exposes magnet actions or search');
 globalThis.innerWidth = 375;
 for (const code of ['JAVBTC-DERIVED-' + 'A'.repeat(64), 'TOKYOHOT-SLUG-JAPANESE_INVASION_2_AMERICA_SC4']) {
   const longDetail = await (await load('views/movie.js')).render({ params: { code }, query: {} });
@@ -134,6 +237,15 @@ globalThis.innerWidth = 1280;
 await run('performers', await load('views/performers.js'), { params: {}, query: { blood_type: 'O' } });
 const pd = await run('performer', await load('views/performer.js'), { params: { id: '1' }, query: {} });
 assert.match(pd, /Aaliyah Love/); assert.match(pd, /Tokyo/);
+assert.doesNotMatch(pd, /Độ đầy đủ hồ sơ|Profile completeness|performer\.completeness|performer\.awaiting_crawl|\bheight_cm\b|\bbio_text\b|\bimage_url\b/, 'JOOXCR-339: no completeness bar, crawl status or raw field key on a profile');
+const partial = await run('performer-partial', await load('views/performer.js'), { params: { id: '9' }, query: {} });
+assert.match(partial, /158 cm/); assert.match(partial, /B84/, 'a partial measurement shows only the known part');
+assert.doesNotMatch(partial, /none yet|chưa có|null|undefined|NaN|weird_key|birth_date|height_cm|image_url|Độ đầy đủ hồ sơ/i, 'JOOXCR-339: unknown values are omitted, never shown as a placeholder or a raw key');
+const emptyProfile = await run('performer-empty', await load('views/performer.js'), { params: { id: '10' }, query: {} });
+assert.equal((emptyProfile.match(/Chưa có thông tin hồ sơ\./g) || []).length, 1, 'JOOXCR-339: an empty profile shows one neutral message');
+assert.doesNotMatch(emptyProfile, /chưa có tín hiệu|null|undefined|NaN|birth_date|height_cm|image_url|Độ đầy đủ hồ sơ/i);
+const emptyBio = await run('performer-empty-bio', await load('views/performer.js'), { params: { id: '10' }, query: { tab: 'bio' } });
+assert.doesNotMatch(emptyBio, /Extra attributes|Thuộc tính|attrs|\{\}|null|undefined|NaN/, 'JOOXCR-339: the bio tab does not dump raw attributes');
 const crawl = await run('crawl', await load('views/crawl.js'), { params: {}, query: {} });
 assert.match(crawl, /JavBus/); assert.match(crawl, /600s/); assert.match(crawl, /Trình duyệt/); assert.match(crawl, /Trực tiếp/);
 assert.match(crawl, /Avfan[\s\S]*?<td>—<\/td>/);
@@ -172,11 +284,101 @@ assert.match(calEmpty, /Tháng này chưa có phim/, 'U-11: an empty month is na
 assert.match(calEmpty, /Tới tháng có phim/, 'U-11: an empty month offers a jump to a month with releases');
 const adm = await run('admin', await load('views/admin.js'), { params: {}, query: {} });
 assert.match(adm, /Chất lượng dữ liệu/); assert.match(adm, /Cấu hình dịch vụ/); assert.match(adm, /jvm_abc/); assert.ok(!adm.includes('<b>one</b>'), 'key labels are escaped');
+assert.match(adm, /data-key-direction="next"/, 'the admin key list exposes more results');
+assert.match(adm, /data-key-direction="previous" disabled/, 'the first key page cannot navigate backward');
 assert.match(adm, /Chọn ít nhất một quyền/, 'U-07: the API key form requires a scope');
 assert.doesNotMatch(adm, /khoá dùng được mọi thứ/, 'U-07: empty scopes are not advertised as full access');
 assert.match(adm, /value="catalog" checked/, 'U-07: catalog is the default explicit scope');
+emptyAdminKeys = true;
+const admEmpty = await run('admin-empty-keys', await load('views/admin.js'), { params: {}, query: {} });
+assert.match(admEmpty, /Chưa có\./, 'an empty active-key page shows the empty state');
+emptyAdminKeys = false;
+interactiveAdminKeys = Array.from({ length: 26 }, (_, index) => ({
+  id: index + 1, prefix: `fixture-${index + 1}`, label: `Fixture key ${index + 1}`, status: 'active', abuse_rpm: 60,
+  scopes: ['catalog'], created_at: '2026-10-24T00:00:00Z',
+})).reverse();
+interactiveAdminPageRequests = [];
+const adminView = await load('views/admin.js');
+const interactiveAdmin = await adminView.render({ params: {}, query: {} });
+const interactiveNode = () => {
+  const listeners = new Map();
+
+  return {
+    innerHTML: '', textContent: '', dataset: {}, disabled: false, listeners,
+    addEventListener: (name, listener) => listeners.set(name, listener),
+    querySelector: () => null,
+  };
+};
+const adminNodes = new Map(['#kf', '#newkey', '#keyrows', '#usage', '#keyTotal', '#keyPagination', '#keyListError'].map(selector => [selector, interactiveNode()]));
+const adminRootListeners = new Map();
+const adminRoot = {
+  querySelector: selector => adminNodes.get(selector) ?? null,
+  addEventListener: (name, listener) => adminRootListeners.set(name, listener),
+};
+adminNodes.get('#keyrows').innerHTML = interactiveAdmin.html.match(/<tbody id="keyrows">([\s\S]*?)<\/tbody>/)?.[1] ?? '';
+adminNodes.get('#keyTotal').textContent = interactiveAdmin.html.match(/<span id="keyTotal"[^>]*>([\s\S]*?)<\/span>/)?.[1] ?? '';
+adminNodes.get('#keyPagination').innerHTML = interactiveAdmin.html.match(/<nav id="keyPagination"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? '';
+interactiveAdmin.mount(adminRoot);
+const clickAdminPage = async (direction, disabled = false) => {
+  const button = { dataset: { keyDirection: direction }, disabled };
+  await adminNodes.get('#keyPagination').listeners.get('click')({
+    target: { closest: selector => selector === '[data-key-direction]' ? button : null },
+  });
+};
+const keyRows = adminNodes.get('#keyrows');
+const keyTotal = adminNodes.get('#keyTotal');
+const keyPagination = adminNodes.get('#keyPagination');
+const keyListError = adminNodes.get('#keyListError');
+assert.match(keyRows.innerHTML, /Fixture key 26/);
+assert.match(keyPagination.innerHTML, /1\+/);
+assert.match(keyPagination.innerHTML, /data-key-direction="previous" disabled/, 'the first page disables Previous');
+failedAdminCursor = '2';
+await clickAdminPage('next');
+assert.deepEqual(interactiveAdminPageRequests.slice(-1), ['2'], 'Next sends the next keyset cursor');
+assert.equal(keyListError.textContent, 'API key page unavailable', 'a failed page request is announced');
+assert.match(keyRows.innerHTML, /Fixture key 26/, 'a failed request leaves the current rows visible');
+assert.match(keyPagination.innerHTML, /1\+/, 'a failed request leaves the current page visible');
+await clickAdminPage('next');
+assert.match(keyRows.innerHTML, /Fixture key 1/, 'Next loads the second page');
+assert.equal(keyListError.textContent, '', 'a successful retry clears the page error');
+assert.match(keyPagination.innerHTML, /mono">2<\/span>/, 'the second page is marked as the last page');
+assert.match(keyPagination.innerHTML, /data-key-direction="next" disabled/, 'the last page disables Next');
+const requestsBeforeDisabledNext = interactiveAdminPageRequests.length;
+await clickAdminPage('next', true);
+assert.equal(interactiveAdminPageRequests.length, requestsBeforeDisabledNext, 'a disabled Next control does not request another page');
+await clickAdminPage('previous');
+assert.match(keyRows.innerHTML, /Fixture key 26/, 'Previous returns to the first page');
+await clickAdminPage('next');
+globalThis.confirm = () => true;
+await adminRootListeners.get('click')({ target: { closest: selector => selector === '[data-revoke]' ? { dataset: { revoke: '1' } } : null } });
+assert.doesNotMatch(keyRows.innerHTML, /data-revoke="1"/, 'revoking the last row refreshes the visible list');
+assert.match(keyRows.innerHTML, /Fixture key 26/, 'revocation clamps the now-invalid last page to the first page');
+assert.equal(keyTotal.textContent, '25', 'the list shows the bounded visible row count');
+assert.match(keyPagination.innerHTML, /mono">1<\/span>/, 'revocation refreshes and clamps the current page');
+interactiveAdminKeys = [];
+const interactiveEmptyAdmin = await adminView.render({ params: {}, query: {} });
+assert.match(interactiveEmptyAdmin.html, /Chưa có\./, 'an empty active-key page renders its empty state');
+assert.match(interactiveEmptyAdmin.html, /<span id="keyTotal" class="chip mono">0<\/span>/, 'an empty active-key page shows no rows');
+interactiveAdminKeys = null;
+interactiveAdminPageRequests = [];
+const adminFetch = globalThis.fetch;
+globalThis.fetch = async url => url === '/ui-admin/report/quality'
+  ? { ok: false, status: 404, redirected: false, headers: { get: () => 'application/json' }, json: async () => ({ message: 'Không tìm thấy báo cáo yêu cầu.' }) }
+  : adminFetch(url);
+const unknownAdminReport = await run('admin-unknown-report', await load('views/admin.js'), { params: {}, query: {} });
+globalThis.fetch = adminFetch;
+assert.match(unknownAdminReport, /Không tìm thấy báo cáo yêu cầu\./, 'unknown reports render a clear user-facing message');
+assert.doesNotMatch(unknownAdminReport, /quality, cost or sources|php artisan|JOOXCR-\d+/, 'unknown reports do not expose implementation details');
 const lib = await run('library', await load('views/library.js'), { params: { kind: 'favourite' }, query: {} });
 assert.match(lib, /Yêu thích/); assert.match(lib, /AAA-001/);
+const previousLibraryFetch = globalThis.fetch;
+globalThis.fetch = async url => url.startsWith('/ui-me/movies/favourite')
+  ? { ok: true, status: 200, redirected: false, headers: { get: () => 'application/json' }, json: async () => ({ data: [], meta: { total: 51, pagination: { current_page: 1, per_page: 50, last_page: 2, has_more: true } } }) }
+  : previousLibraryFetch(url);
+const emptyMarkedPage = await (await load('views/library.js')).render({ params: { kind: 'favourite' }, query: {} });
+assert.match(emptyMarkedPage.html, /page=2/, 'an empty page with later marked movies keeps its next-page navigation');
+assert.match(emptyMarkedPage.html, /Trang này chưa có phim/, 'an empty page is distinct from a library with no marks');
+globalThis.fetch = previousLibraryFetch;
 const feedHtml = await run('feed', await load('views/feed.js'), { params: {}, query: {} });
 assert.match(feedHtml, /Theo dõi/);
 assert.match(feedHtml, /data-feed-seen/, 'U-14: feed marks seen from an explicit control');
@@ -189,8 +391,55 @@ assert.match(statsHtml, /Thống kê/); assert.match(statsHtml, /Phim theo năm/
 const libHtml = await run('library-page', await load('views/libraryPage.js'), { params: {}, query: {} });
 assert.match(libHtml, /Thư viện/); assert.match(libHtml, /AAA-001/); assert.ok(!libHtml.includes('<b>a</b>'), 'folders are escaped');
 assert.doesNotMatch(libHtml, /php artisan|JOOXCR-223/, 'U-09: library copy has no artisan or ticket jargon');
+const libraryRequests = [];
+const libraryFetch = globalThis.fetch;
+globalThis.fetch = async url => { libraryRequests.push(url); return url === '/ui-me/library' ? mockJsonResponse({ data: { enabled: false } }) : libraryFetch(url); };
+const disabledLibrary = await run('library-disabled', await load('views/libraryPage.js'), { params: {}, query: {} });
+globalThis.fetch = libraryFetch;
+assert.match(disabledLibrary, /Thư viện đang tắt/, 'disabled Library shows a plain Vietnamese message');
+assert.match(disabledLibrary, /href="#\/settings"/, 'disabled Library links to Settings');
+assert.doesNotMatch(disabledLibrary, /php artisan|JOOXCR-\d+|LibraryScanCommand/, 'disabled Library hides implementation details');
+assert.deepEqual(libraryRequests, ['/ui-me/library'], 'disabled Library does not request library or media data');
+const disabledPageNavSource = uiSources.app;
+for (const navItem of [
+  "['library', 'nav.library', 'layers', '#/library']",
+  "['downloads', 'nav.downloads', 'disk', '#/downloads']",
+  "['media', 'nav.media', 'film', '#/media']",
+]) assert.ok(disabledPageNavSource.includes(navItem), `${navItem} remains in the owner navigation`);
+assert.match(disabledPageNavSource, /const groups = guestMode[\s\S]*?: NAV;/, 'the owner keeps the full navigation regardless of feature state');
+
+const previousFetch = globalThis.fetch;
+const librarySetting = settingsSample.data.settings.find(setting => setting.key === 'library.enabled');
+const pausedScanLibraryRequests = [];
+globalThis.fetch = async url => { pausedScanLibraryRequests.push(url); return previousFetch(url); };
+librarySetting.value = false;
+const libraryWithPausedScan = await run('library-scan-paused', await load('views/libraryPage.js'), { params: {}, query: {} });
+librarySetting.value = true;
+globalThis.fetch = previousFetch;
+assert.match(libraryWithPausedScan, /AAA-001/, 'existing library data stays available when automatic scanning is paused');
+assert.match(libraryWithPausedScan, /Thư viện/, 'the library page remains available when automatic scanning is paused');
+assert.doesNotMatch(libraryWithPausedScan, /Thư viện đang tắt/, 'the scan switch does not disable the library feature');
+assert.deepEqual(pausedScanLibraryRequests, ['/ui-me/library', '/ui-me/library/on-disk', '/ui-me/library/unmatched', '/ui-me/media/files?page=1'], 'the library loads existing data when automatic scanning is paused');
+
+const settingsFailureLibraryRequests = [];
+globalThis.fetch = async url => {
+  settingsFailureLibraryRequests.push(url);
+  if (url === '/ui-admin/settings') throw new Error('internal settings failure');
+  return previousFetch(url);
+};
+const libraryWithUnavailableSettings = await (await load('views/libraryPage.js')).render({ params: {}, query: {} });
+globalThis.fetch = previousFetch;
+assert.match(libraryWithUnavailableSettings.html, /AAA-001/, 'the library remains available when Settings cannot load');
+assert.ok(!settingsFailureLibraryRequests.includes('/ui-admin/settings'), 'the library does not depend on Settings to choose its feature state');
+
 const dlHtml = await run('downloads', await load('views/downloads.js'), { params: {}, query: {} });
 assert.match(dlHtml, /Tải về/); assert.match(dlHtml, /42\.5%/); assert.match(dlHtml, /data-links/); assert.ok(!dlHtml.includes('<b>x</b>'), 'names are escaped');
+downloadsEnabled = false;
+const downloadsDisabled = await run('downloads-disabled', await load('views/downloads.js'), { params: {}, query: {} });
+downloadsEnabled = true;
+assert.match(downloadsDisabled, /Tải về đang tắt/, 'disabled downloads show a plain Vietnamese message');
+assert.match(downloadsDisabled, /href="#\/settings"/, 'disabled downloads link to Settings');
+assert.doesNotMatch(downloadsDisabled, /qBittorrent|php artisan|JOOXCR-\d+/, 'disabled downloads hide implementation details');
 const st = await run('settings', await load('views/settings.js'), { params: {}, query: {} });
 assert.doesNotMatch(st, /<kbd>g [hmpsc]<\/kbd>/, 'U-13: Settings lists only shortcuts that exist');
 assert.match(st, /Ctrl\+K hoặc \//, 'U-13: the search chord is labelled Ctrl+K on this platform');
@@ -303,14 +552,18 @@ assert.equal(components.notKnown(), '<span class="dim">chưa có</span>', 'U-20:
 assert.doesNotMatch(components.notKnown(), /chờ crawl/);
 await import('./search-filters.mjs');
 
-// Keep user instructions tied to the current menus and filter labels.
+// Keep user instructions tied to the current menus and filter labels (resolved via i18n catalogs).
 const docsRoot = new URL('../docs/', import.meta.url);
 const guideIndex = await readFile(new URL('user-guide/README.md', docsRoot), 'utf8');
 const shellSource = await readFile(new URL('../public/ui/js/app.js', import.meta.url), 'utf8');
 const navSource = shellSource.split('const NAV = [')[1].split('let cleanup')[0];
-const menuLabels = [...navSource.matchAll(/\['[^']+', '([^']+)', '[^']+',/g)].map(m => m[1]);
-assert.ok(menuLabels.length >= 20, 'read the full current NAV');
-for (const label of menuLabels) assert.ok(guideIndex.includes(label), 'user index covers menu: ' + label);
+const menuKeys = [...navSource.matchAll(/\['[^']+', '([^']+)', '[^']+',/g)].map(m => m[1]);
+assert.ok(menuKeys.length >= 20, 'read the full current NAV');
+const { initI18n, setLocale, t } = await import('../public/ui/js/i18n.js');
+await initI18n('vi');
+await setLocale('vi'); // earlier suites may have left another locale active
+const menuLabels = menuKeys.map(key => t(key));
+for (const text of menuLabels) assert.ok(guideIndex.includes(text), 'user index covers menu: ' + text);
 const { movieKeys, performerKeys, labels } = await import('../public/ui/js/filterState.js');
 for (const [file, keys] of [['movies.md', movieKeys], ['performers.md', performerKeys]]) {
   const guide = await readFile(new URL('user-guide/' + file, docsRoot), 'utf8');
@@ -438,7 +691,8 @@ globalThis.fetch = normalFetch;
     calls.push(url);
     if (url.startsWith('/ui-api/search')) return jsonResponse({ data: { movies: [movie('AAA-001')], performers: [], interpretation: { filters: {}, keywords: 'public', by: 'none' } } });
     if (url.startsWith('/ui-api/suggest')) return jsonResponse({ data: { genres: [], makers: [], series: [] } });
-    if (url.startsWith('/ui-api/movies/')) return jsonResponse({ data: { ...movie('AAA-001'), magnets: [{ url: 'magnet:?private' }], hls_stream_urls: ['https://cdn.example.com/video?signature=private'], gallery: ['https://cdn.example.com/image?signature=private'] } });
+    if (String(url).includes('/downloads/search')) return { ok: true, status: 202, redirected: false, headers: { get: () => 'application/json' }, json: async () => ({ message: 'ok', data: { queued: true, downloads: { state: 'searching', available: false, count: 0 } } }) };
+    if (url.startsWith('/ui-api/movies/')) return jsonResponse({ data: { ...movie('AAA-001'), magnets: [{ url: 'magnet:?xt=urn:btih:publicguestmagnet' }], downloads: { available: true, count: 1, state: 'found', search_enabled: true }, hls_stream_urls: ['https://cdn.example.com/video?signature=private'], gallery: ['https://cdn.example.com/image?signature=private'] } });
     throw new Error('unexpected guest request: ' + url);
   };
 
@@ -450,13 +704,19 @@ globalThis.fetch = normalFetch;
   const callCount = calls.length;
   await assert.rejects(guestApi.admin('/ui-me/marks'), /Đăng nhập để dùng tính năng này/);
   await assert.rejects(guestApi.send('POST', '/ui-me/marks'), /Đăng nhập để dùng tính năng này/);
-  assert.equal(calls.length, callCount, 'guest requests do not call personal reads or write endpoints');
+  await guestApi.send('POST', '/ui-api/movies/AAA-001/downloads/search', {});
+  assert.ok(calls.some(url => String(url).includes('/downloads/search')), 'guests may start on-demand download search');
+  assert.equal(calls.length, callCount + 1, 'guest personal writes stay blocked while download search is allowed');
 
   globalThis.location.hash = '#/movie/AAA-001?tab=media';
   const mediaHtml = (await guestMovie.render({ params: { code: 'AAA-001' }, query: { tab: 'media' } })).html;
   assert.match(mediaHtml, /Đăng nhập để dùng liên kết và nội dung media/);
-  assert.ok(!mediaHtml.includes('magnet:?private'));
   assert.ok(!mediaHtml.includes('signature=private'));
+  globalThis.location.hash = '#/movie/AAA-001';
+  const guestDetail = (await guestMovie.render({ params: { code: 'AAA-001' }, query: {} })).html;
+  assert.match(guestDetail, /magnet:\?xt=urn:btih:publicguestmagnet/, 'guests see magnet links on the downloads panel');
+  assert.match(guestDetail, /id="movie-downloads"/);
+  assert.doesNotMatch(guestDetail, /data-magnet=|Gửi tới qBittorrent|Send to qBittorrent/, 'guest downloads panel has no send-to-client control');
   document.body.dataset.guestMode = 'false';
   globalThis.location.hash = '#/';
   globalThis.innerWidth = 1280;
@@ -473,7 +733,7 @@ assert.match(guestStyles, /body\[data-guest-mode="true"\].*\[data-mark\]/);
   const mk = () => {
     const nodes = {};
     const el = {
-      hidden: false, className: '', style: {}, attrs: {}, children: {}, focused: false, innerHTML: '', textContent: '', href: '', alt: '', src: 'x',
+      hidden: false, className: '', style: {}, dataset: {}, attrs: {}, children: {}, focused: false, innerHTML: '', textContent: '', href: '', alt: '', src: 'x',
       setAttribute(k, v) { this.attrs[k] = v; }, addEventListener() {}, focus() { this.focused = true; },
       removeAttribute(k) { if (k === 'src') this.src = ''; },
       querySelector(sel) { return nodes[sel] ??= { ...mk.leaf(), src: 'x' }; },
@@ -533,12 +793,19 @@ assert.match(notifySource, /askConfirm/, 'U-06: notification test/reset ask for 
 const appSource = await readFile(new URL('../public/ui/js/app.js', import.meta.url), 'utf8');
 assert.match(appSource, /data-dlg-close/, 'U-13: the help dialog has a close button');
 assert.match(appSource, /me-favourite/, 'U-10: Yêu thích is on the phone bar');
-assert.match(appSource, /\['home', 'Khám phá'/, 'U-15: Discover is labelled Khám phá');
-assert.match(appSource, /\['catalog-makers', 'Hãng'/, 'U-15: Maker is labelled Hãng');
-assert.match(appSource, /\['catalog-series', 'Loạt phim'/, 'U-15: Series is labelled Loạt phim');
-assert.match(appSource, /\['catalog-labels', 'Nhãn'/, 'U-15: Label is labelled Nhãn');
-assert.match(appSource, /\['crawl', 'Thu thập & nguồn'/, 'U-15: crawl nav is Vietnamese');
-assert.match(appSource, /\['ops', 'Vận hành'/, 'U-15: operations nav drops Command Center jargon');
+const viCatalog = JSON.parse(await readFile(new URL('../public/ui/i18n/vi.json', import.meta.url), 'utf8'));
+assert.equal(viCatalog['nav.discover'], 'Khám phá', 'U-15: Discover is labelled Khám phá');
+assert.match(appSource, /\['home', 'nav.discover'/, 'U-15: Discover is labelled Khám phá'.replace(/:.*/, ': the menu uses its translated label'));
+assert.equal(viCatalog['nav.makers'], 'Hãng', 'U-15: Maker is labelled Hãng');
+assert.match(appSource, /\['catalog-makers', 'nav.makers'/, 'U-15: Maker is labelled Hãng'.replace(/:.*/, ': the menu uses its translated label'));
+assert.equal(viCatalog['nav.series'], 'Loạt phim', 'U-15: Series is labelled Loạt phim');
+assert.match(appSource, /\['catalog-series', 'nav.series'/, 'U-15: Series is labelled Loạt phim'.replace(/:.*/, ': the menu uses its translated label'));
+assert.equal(viCatalog['nav.labels'], 'Nhãn', 'U-15: Label is labelled Nhãn');
+assert.match(appSource, /\['catalog-labels', 'nav.labels'/, 'U-15: Label is labelled Nhãn'.replace(/:.*/, ': the menu uses its translated label'));
+assert.equal(viCatalog['nav.crawl'], 'Thu thập & nguồn', 'U-15: crawl nav is Vietnamese');
+assert.match(appSource, /\['crawl', 'nav.crawl'/, 'U-15: crawl nav is Vietnamese'.replace(/:.*/, ': the menu uses its translated label'));
+assert.equal(viCatalog['nav.ops'], 'Vận hành', 'U-15: operations nav drops Command Center jargon');
+assert.match(appSource, /\['ops', 'nav.ops'/, 'U-15: operations nav drops Command Center jargon'.replace(/:.*/, ': the menu uses its translated label'));
 const marksSource = await readFile(new URL('../public/ui/js/marks.js', import.meta.url), 'utf8');
 assert.match(marksSource, /toast\(/, 'U-14: toggleMark toasts the result');
 const savedSource = await readFile(new URL('../public/ui/js/savedSearches.js', import.meta.url), 'utf8');
@@ -560,10 +827,29 @@ assert.doesNotMatch(loginController, /soulevilx@gmail\.com/, 'U-01: the sign-in 
 assert.doesNotMatch(loginController, /->with\('email'/, 'U-01: the sign-in view is not given a default email');
 assert.doesNotMatch(loginBlade, /old\('email',\s*\$email\)/, 'U-01: the email field is not prefilled from a controller default');
 assert.match(loginBlade, /value="\{\{\s*old\('email'\)\s*\}\}"/, 'U-01: the email field uses only flashed old input');
-assert.match(loginBlade, /lang="vi"/, 'U-02: the sign-in page is Vietnamese');
-assert.match(loginBlade, /<title>Đăng nhập · XCrawler<\/title>/, 'U-02: the sign-in tab names XCrawler');
-assert.match(loginBlade, /<h1>Đăng nhập<\/h1>/, 'U-02: the sign-in heading is Vietnamese');
+assert.match(loginBlade, /lang="\{\{\s*str_replace\('_', '-', app\(\)->getLocale\(\)\)\s*\}\}"/, 'U-02: the sign-in page follows the active locale');
+assert.match(loginBlade, /__\('auth\.title'\)/, 'U-02: the sign-in tab title is translated');
+assert.match(loginBlade, /__\('auth\.heading'\)/, 'U-02: the sign-in heading is translated');
 assert.doesNotMatch(loginBlade, /Operations sign in|JavMeta Operations|Command Center/, 'U-02: operations jargon stays off the front door');
-assert.match(loginBlade, /riêng tư/, 'U-02: the front door explains that the catalog is private');
+assert.match(loginBlade, /__\('auth\.intro'\)/, 'U-02: the front door explains that the catalog is private');
 assert.match(loginBlade, /id="pw-toggle"/, 'U-02: the password can be revealed');
-assert.match(loginController, /Email hoặc mật khẩu không đúng/, 'U-02: a wrong password is explained in Vietnamese');
+assert.match(loginController, /__\('auth\.failed'\)/, 'U-02: a wrong password uses a translated message');
+const authVi = await readFile(new URL('../lang/vi/auth.php', import.meta.url), 'utf8');
+assert.match(authVi, /riêng tư/, 'U-02: Vietnamese auth copy still explains privacy');
+assert.match(authVi, /Đăng nhập · XCrawler/, 'U-02: Vietnamese auth title names XCrawler');
+
+// Bilingual render smoke (JOOXCR-410)
+{
+  const { initI18n, setLocale, t, currentLocale } = await import('../public/ui/js/i18n.js');
+  await initI18n('vi');
+  assert.equal(currentLocale(), 'vi');
+  assert.match(t('nav.settings'), /Cài đặt/);
+  const homeVi = await (await load('views/home.js')).render({ params: {}, query: {} });
+  assert.match(homeVi.html, /phim trong kho/);
+  await setLocale('en');
+  assert.equal(document.documentElement.lang, 'en');
+  assert.match(t('nav.settings'), /Settings/);
+  const homeEn = await (await load('views/home.js')).render({ params: {}, query: {} });
+  assert.match(homeEn.html, /movies in the collection/);
+  console.log('Bilingual render smoke: vi and en home views OK');
+}

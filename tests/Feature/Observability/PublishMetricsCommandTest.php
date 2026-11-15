@@ -204,7 +204,10 @@ final class PublishMetricsCommandTest extends TestCase
         $minute = CarbonImmutable::now()->startOfMinute()->subMinute();
         $key = 'javmeta:feed-pool:diagnostics:' . $minute->timestamp;
         $redis = Mockery::mock();
-        $redis->shouldReceive('smembers')->once()->with(HorizonLayoutSnapshot::NODE_REGISTRY_KEY)->andReturn([]);
+        $redis->shouldReceive('zrangebyscore')->once()->withArgs(
+            static fn(string $key, mixed $minimum, string $maximum): bool
+            => $key === HorizonLayoutSnapshot::NODE_REGISTRY_KEY && is_int($minimum) && $maximum === '+inf',
+        )->andReturn([]);
         $redis->shouldReceive('hgetall')->once()->with($key)->andReturn([
             's|ffjav|budget' => 60,
             's|ffjav|started' => 33,
@@ -401,7 +404,10 @@ final class PublishMetricsCommandTest extends TestCase
             ],
         ];
         $redis = Mockery::mock();
-        $redis->shouldReceive('smembers')->once()->with(HorizonLayoutSnapshot::NODE_REGISTRY_KEY)->andReturn(['unavailable-node', 'worker-node-one']);
+        $redis->shouldReceive('zrangebyscore')->once()->withArgs(
+            static fn(string $key, mixed $minimum, string $maximum): bool
+            => $key === HorizonLayoutSnapshot::NODE_REGISTRY_KEY && is_int($minimum) && $maximum === '+inf',
+        )->andReturn(['unavailable-node', 'worker-node-one']);
         $redis->shouldReceive('hgetall')->once()->andReturn([]);
         $redis->shouldReceive('get')->once()->with(HorizonLayoutSnapshot::key('unavailable-node'))->andThrow(new \RuntimeException('Node snapshot unavailable.'));
         $redis->shouldReceive('get')->once()->with(HorizonLayoutSnapshot::key('worker-node-one'))->andReturn(json_encode(['snapshot' => $snapshot], JSON_THROW_ON_ERROR));
@@ -657,6 +663,50 @@ final class PublishMetricsCommandTest extends TestCase
             }
 
             return ($states['eporner'] ?? null) === 0.0 && ($states['warashi'] ?? null) === 1.0;
+        });
+    }
+
+    public function test_source_circuit_metrics_report_open_state_and_consecutive_blocks(): void
+    {
+        Source::factory()->create([
+            'slug' => 'javbus',
+            'circuit_state' => 'open',
+            'consecutive_failures' => 4,
+            'circuit_opened_at' => now(),
+            'circuit_open_count' => 2,
+            'circuit_cooldown_seconds' => 600,
+        ]);
+        config()->set([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.org' => 'default',
+            'openobserve.email' => 'root@javmeta.local',
+            'openobserve.password' => 'secret',
+            'openobserve.timeout' => 1,
+        ]);
+        Http::fake(['openobserve.test/*' => Http::response(['code' => 200], 200)]);
+
+        $this->artisan('obs:publish-metrics')->assertSuccessful();
+
+        Http::assertSent(static function ($request): bool {
+            $values = [];
+            foreach ($request->data()['resourceMetrics'][0]['scopeMetrics'][0]['metrics'] ?? [] as $metric) {
+                if (! in_array($metric['name'] ?? null, ['javmeta_source_circuit_open', 'javmeta_source_consecutive_blocks'], true)) {
+                    continue;
+                }
+                foreach ($metric['gauge']['dataPoints'] ?? [] as $point) {
+                    $attributes = [];
+                    foreach ($point['attributes'] ?? [] as $attribute) {
+                        $attributes[$attribute['key']] = $attribute['value']['stringValue'] ?? null;
+                    }
+                    if (($attributes['source_slug'] ?? null) === 'javbus') {
+                        $values[$metric['name']] = (float) ($point['asDouble'] ?? -1);
+                    }
+                }
+            }
+
+            return ($values['javmeta_source_circuit_open'] ?? null) === 1.0
+                && ($values['javmeta_source_consecutive_blocks'] ?? null) === 4.0;
         });
     }
 

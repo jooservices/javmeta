@@ -20,7 +20,7 @@ final class ApiCookbookTest extends TestCase
     {
         DependencyMonitorTestHelper::bind();
         config(['elasticsearch.enabled' => false, 'javmeta_ai.nl_enabled' => false, 'javmeta_auth.owner_admin_token' => 'cookbook-owner-fixture']);
-        $key = app(ApiKeyService::class)->create('cookbook-fixture', 100)->plaintext;
+        $key = app(ApiKeyService::class)->create('cookbook-fixture', 100, \App\Models\ApiKey::SCOPES)->plaintext;
         $movie = Movie::factory()->create(['display_code' => 'SSIS-001', 'code_normalized' => 'SSIS001']);
         MovieCode::factory()->create(['movie_id' => $movie->id, 'code' => 'SSIS-001', 'code_normalized' => 'SSIS001']);
         Performer::factory()->create(['id' => 1]);

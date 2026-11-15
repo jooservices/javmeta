@@ -12,6 +12,7 @@ use App\Http\Controllers\Nodes\NodeEnrollmentController;
 use App\Http\Controllers\Observability\PostgresConnectionMetricsController;
 use App\Http\Controllers\Operations\NodeController;
 use App\Http\Controllers\Ui\UiDownloadsController;
+use App\Http\Controllers\Ui\UiMovieDownloadSearchController;
 use App\Http\Controllers\Ui\UiLibraryController;
 use App\Http\Controllers\Ui\UiNotificationTemplateController;
 use App\Http\Controllers\Ui\UiMarksController;
@@ -49,6 +50,13 @@ Route::get('/ui-api/{path}', UiApiController::class)
     ->middleware([EnsureUiOwnerOrGuest::class, ThrottleGuestUiApi::class])
     ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class])
     ->name('ui.api');
+
+// On-demand magnet search is public (guest + owner); qBittorrent actions stay under /ui-me/downloads.
+Route::post('/ui-api/movies/{code}/downloads/search', [UiMovieDownloadSearchController::class, 'store'])
+    ->where('code', '[A-Za-z0-9._-]+')
+    ->middleware([EnsureUiOwnerOrGuest::class, ThrottleGuestUiApi::class])
+    ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class])
+    ->name('ui.movies.downloads.search');
 
 Route::match(['POST', 'PUT', 'PATCH', 'DELETE'], '/ui-api/{path}', UiApiController::class)
     ->where('path', '.*')

@@ -1,5 +1,6 @@
 import { esc, toast } from './util.js';
 import { admin, send } from './api.js';
+import { t } from './i18n.js';
 
 /* the owner's favourites, watch-later, seen and follows, kept on the server */
 let cache = null;
@@ -41,12 +42,7 @@ export const markBtn = (set, kind, subject, key, on, off, extra = '') => {
   return `<button class="btn sm ${is ? 'pri' : ''} ${extra}" data-mark data-kind="${esc(kind)}" data-subject="${esc(subject)}" data-key="${esc(key)}" data-on-label="${esc(on)}" data-off-label="${esc(off)}" aria-pressed="${is}">${esc(is ? on : off)}</button>`;
 };
 
-const MARK_TOAST = {
-  favourite: ['Đã thêm vào yêu thích', 'Đã bỏ yêu thích'],
-  watch_later: ['Đã thêm vào xem sau', 'Đã bỏ khỏi xem sau'],
-  seen: ['Đã đánh dấu đã xem', 'Đã bỏ đánh dấu đã xem'],
-  follow: ['Đã theo dõi', 'Đã bỏ theo dõi'],
-};
+const MARK_TOAST_KINDS = new Set(['favourite', 'watch_later', 'seen', 'follow']);
 
 export async function toggleMark(btn) {
   const was = btn.getAttribute('aria-pressed') === 'true';
@@ -58,7 +54,7 @@ export async function toggleMark(btn) {
     btn.classList.toggle('pri', now);
     btn.textContent = now ? btn.dataset.onLabel : btn.dataset.offLabel;
     await myMarks(true);
-    const pair = MARK_TOAST[btn.dataset.kind] || [btn.dataset.onLabel, 'Đã cập nhật'];
-    toast(now ? pair[0] : pair[1]);
+    const known = MARK_TOAST_KINDS.has(btn.dataset.kind);
+    toast(known ? t(`mark.toast.${btn.dataset.kind}_${now ? 'on' : 'off'}`) : (now ? btn.dataset.onLabel : t('mark.toast.updated')));
   } catch (e) { btn.title = e.message; toast(e.message); } finally { btn.disabled = false; }
 }

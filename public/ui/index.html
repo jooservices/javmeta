@@ -15,17 +15,18 @@
   <aside class="side" id="side"></aside>
   <div class="main">
     <header class="top">
-      <button class="ibtn menu" data-act="menu" aria-label="Mở menu"></button>
+      <button class="ibtn menu" data-act="menu" aria-label="Mở menu" data-i18n-aria-label="topbar.menu"></button>
       <div class="omni" id="omni">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input type="text" id="omq" placeholder="Tìm phim, diễn viên, mã phim, thể loại…" autocomplete="off" aria-label="Tìm kiếm">
+        <input type="text" id="omq" placeholder="Tìm phim, diễn viên, mã phim, thể loại…" data-i18n-placeholder="search.placeholder" autocomplete="off" aria-label="Tìm kiếm" data-i18n-aria-label="omni.aria">
         <kbd>Ctrl+K</kbd>
         <div class="odrop" id="odrop" hidden></div>
       </div>
       <span class="pill-live"><span class="dot pulse"></span><span id="livetxt"></span></span>
       <span class="sp"></span>
-      <button class="ibtn" data-act="theme" aria-label="Đổi giao diện sáng/tối" id="themebtn"></button>
-      <button class="ibtn" data-act="help" aria-label="Phím tắt"><b style="font:500 13px var(--mono)">?</b></button>
+      <div class="seg lang-switch" id="langsw" role="group" aria-label="Ngôn ngữ" data-i18n-aria-label="topbar.language"></div>
+      <button class="ibtn" data-act="theme" aria-label="Đổi giao diện sáng/tối" data-i18n-aria-label="topbar.theme" id="themebtn"></button>
+      <button class="ibtn" data-act="help" aria-label="Phím tắt" data-i18n-aria-label="topbar.shortcuts"><b style="font:500 13px var(--mono)">?</b></button>
     </header>
     <main class="view" id="view"></main>
   </div>

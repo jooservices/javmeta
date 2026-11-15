@@ -10,6 +10,7 @@ use App\Models\MovieCode;
 use App\Models\MovieObservation;
 use App\Models\Performer;
 use App\Models\Source;
+use App\Services\Reports\ReportService;
 use App\Support\Code\NormalizedCode;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -38,6 +39,7 @@ final class ReportsTest extends TestCase
         $empty = $this->movie('BBB-0002', ['title_jp' => null, 'title_en' => null, 'cover_url' => null, 'release_date' => null, 'runtime_minutes' => null, 'maker' => null, 'label' => null, 'series' => null, 'completeness_tier' => 1]);
         $this->observe($empty, 'title_jp', 'a', 'demo');
 
+        app(ReportService::class)->refreshFieldConflicts();
         Artisan::call('javmeta:report', ['type' => 'quality']);
         $report = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
 

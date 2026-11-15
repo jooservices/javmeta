@@ -92,4 +92,6 @@ output="$(JAVMETA_HOOKS_ON_HOST=1 "${WORKTREE}/tools/run-captainhook" hook:pre-c
 [[ "${output}" == "host-captainhook hook:pre-commit" ]] || fail "host opt-in output: ${output}"
 [[ ! -s "${DOCKER_LOG}" ]] || fail "docker must not run with JAVMETA_HOOKS_ON_HOST=1"
 
+bash "${REPO_ROOT}/tests/Shell/git-conventions.test.sh"
+
 echo "run-captainhook tests passed"

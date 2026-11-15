@@ -40,7 +40,12 @@ final class UiMarksController
 
     public function movies(UiMarkedMoviesRequest $request, UiMarksService $marks, string $kind): JsonResponse
     {
-        return response()->json($marks->movies((int) $request->user()->id, $kind)->toArray());
+        return response()->json($marks->movies(
+            (int) $request->user()->id,
+            $kind,
+            (int) $request->validated('per_page', 50),
+            (int) $request->validated('page', 1),
+        )->toArray());
     }
 
     public function feed(Request $request, UiMarksService $marks): JsonResponse

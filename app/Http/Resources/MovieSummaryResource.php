@@ -80,10 +80,13 @@ final class MovieSummaryResource extends JsonResource
             return $movie->cover_url;
         }
 
+        if ($movie->relationLoaded('coverMedia')) {
+            return is_string($movie->coverMedia?->url) ? $movie->coverMedia->url : null;
+        }
+
         if (! $movie->relationLoaded('media')) {
             return null;
         }
-
         $media = $movie->media->firstWhere('kind', MovieMedia::KIND_SAMPLE);
 
         return is_string($media?->url) ? $media->url : null;

@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="vi">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
-  <title>Đăng nhập · XCrawler</title>
+  <title>{{ __('auth.title') }}</title>
   <style>
     :root { color-scheme: dark; font-family: system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK JP', 'Noto Sans CJK', Meiryo, 'Yu Gothic', sans-serif; background: #0d141b; color: #eef4f3; }
     * { box-sizing: border-box; }
@@ -27,21 +27,22 @@
 <body>
 <main>
   <div class="eyebrow">XCrawler</div>
-  <h1>Đăng nhập</h1>
-  <p>Kho phim này là riêng tư. Đăng nhập bằng tài khoản chủ sở hữu để mở catalogue XCrawler.</p>
+  <h1>{{ __('auth.heading') }}</h1>
+  <p>{{ __('auth.intro') }}</p>
   @if ($errors->any())
     <div class="error" role="alert">{{ $errors->first() }}</div>
   @endif
-  <form method="post" action="{{ route('login') }}">
+  <form method="post" action="{{ route('login', array_filter(['lang' => request()->query('lang')])) }}">
     @csrf
-    <label for="email">Email</label>
+    <label for="email">{{ __('auth.email') }}</label>
     <input id="email" name="email" type="email" value="{{ old('email') }}" autocomplete="username" required autofocus>
-    <label for="password">Mật khẩu</label>
+    <label for="password">{{ __('auth.password') }}</label>
     <div class="pw">
       <input id="password" name="password" type="password" autocomplete="current-password" required>
-      <button type="button" id="pw-toggle" aria-pressed="false" aria-controls="password">Hiện</button>
+      <button type="button" id="pw-toggle" aria-pressed="false" aria-controls="password"
+        data-show="{{ __('auth.show') }}" data-hide="{{ __('auth.hide') }}">{{ __('auth.show') }}</button>
     </div>
-    <button type="submit">Đăng nhập</button>
+    <button type="submit">{{ __('auth.submit') }}</button>
   </form>
 </main>
 <script>
@@ -50,7 +51,7 @@
     const show = input.type === 'password';
     input.type = show ? 'text' : 'password';
     this.setAttribute('aria-pressed', show ? 'true' : 'false');
-    this.textContent = show ? 'Ẩn' : 'Hiện';
+    this.textContent = show ? this.dataset.hide : this.dataset.show;
   });
 </script>
 </body>

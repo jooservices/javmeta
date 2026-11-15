@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 // Defaults only: the values are settings in the database (docs/03-operations/settings.md) and are edited in the UI.
 return [
+    // Controls whether the Library UI is available; `enabled` below controls only scheduled scanning.
+    'feature_enabled' => true,
     'enabled' => false,
     'folders' => [],
     'extensions' => ['mp4', 'mkv', 'avi', 'wmv', 'mov', 'ts', 'm2ts', 'flv', 'mpg', 'mpeg', 'webm'],

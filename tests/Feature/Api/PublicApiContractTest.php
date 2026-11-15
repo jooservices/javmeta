@@ -29,7 +29,7 @@ final class PublicApiContractTest extends BaseTestCase
         config()->set('cache.default', 'array');
         config()->set('queue.default', 'sync');
         DependencyMonitorTestHelper::bind();
-        $this->apiKey = app(ApiKeyService::class)->create('public-api-contract', 120)->plaintext;
+        $this->apiKey = app(ApiKeyService::class)->create('public-api-contract', 120, \App\Models\ApiKey::SCOPES)->plaintext;
     }
 
     public function test_documented_data_routes_reject_missing_and_revoked_api_keys(): void

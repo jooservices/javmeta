@@ -19,6 +19,7 @@ final class GuestModeRoutePolicy
         'GET|HEAD metrics',
         'GET|HEAD node/join.sh',
         'GET|HEAD ui-api/{path}',
+        'POST ui-api/movies/{code}/downloads/search',
         'GET|HEAD up',
     ];
 }

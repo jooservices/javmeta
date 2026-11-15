@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace App\Repositories;
 
+use App\Data\Facets\FacetListQuery;
 use App\Models\Performer;
+use App\Models\PerformerMedia;
+use App\Data\Api\PerformerPhotoPageItemDto;
 use App\Services\Normalize\PerformerAttributeNormalizer;
 use DateTimeInterface;
+use InvalidArgumentException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
@@ -319,6 +323,103 @@ final class PerformerRepository extends BusinessQueryRepository
         ];
     }
 
+    /**
+     * One paginated facet value list scoped to the current performer filters.
+     *
+     * @return array{items: list<array<string, mixed>>, total: int, hidden_below_min: int, facet: string}
+     */
+    public function facetValues(FacetListQuery $query): array
+    {
+        $filters = $query->filters;
+        $builder = $this->newQuery()->whereNull('canonical_performer_id');
+        $this->applyFilters($builder, $filters);
+        $ids = $builder->toBase()->select('performers.id');
+        $includeUnknown = filter_var($filters['include_unknown'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        $rows = match ($query->facet) {
+            'cups' => $this->allCanonicalFacetCounts($ids, 'cup', 'cup', false),
+            'blood_types' => $this->allCanonicalFacetCounts($ids, 'blood_type', 'blood_type', $includeUnknown),
+            'locations' => $this->allCanonicalFacetCounts($ids, 'location', 'location', false),
+            'sources' => DB::table('performer_sources')->whereIn('performer_id', clone $ids)
+                ->selectRaw('site_slug AS name, COUNT(DISTINCT performer_id) AS c')->groupBy('site_slug')->get()
+                ->map(static fn($r): array => ['name' => (string) $r->name, 'count' => (int) $r->c])->all(),
+            'status' => [
+                ['name' => 'active', 'count' => (int) DB::table('performers')->whereIn('id', clone $ids)->whereNull('retired_date')->count()],
+                ['name' => 'retired', 'count' => (int) DB::table('performers')->whereIn('id', clone $ids)->whereNotNull('retired_date')->count()],
+            ],
+            default => throw new InvalidArgumentException('Unknown performer facet: ' . $query->facet),
+        };
+
+        $needle = mb_strtolower($query->query);
+        $matched = [];
+        $hidden = 0;
+        foreach ($rows as $row) {
+            $name = (string) $row['name'];
+            $count = (int) $row['count'];
+            if ($needle !== '' && ! str_contains(mb_strtolower($name), $needle)) {
+                continue;
+            }
+            if ($count < $query->minCount) {
+                $hidden++;
+                continue;
+            }
+            $matched[] = $row;
+        }
+
+        usort($matched, static function (array $left, array $right) use ($query): int {
+            if ($query->sort === 'name') {
+                return strcmp((string) $left['name'], (string) $right['name'])
+                    ?: ((int) $right['count'] <=> (int) $left['count']);
+            }
+
+            return ((int) $right['count'] <=> (int) $left['count'])
+                ?: strcmp((string) $left['name'], (string) $right['name']);
+        });
+
+        $total = count($matched);
+        $items = array_slice($matched, (max(1, $query->page) - 1) * $query->perPage, $query->perPage);
+
+        return [
+            'items' => $items,
+            'total' => $total,
+            'hidden_below_min' => $hidden,
+            'facet' => $query->facet,
+        ];
+    }
+
+    /**
+     * @param  \Illuminate\Database\Query\Builder  $ids
+     * @return list<array{name: string, count: int}>
+     */
+    private function allCanonicalFacetCounts(\Illuminate\Database\Query\Builder $ids, string $column, string $field, bool $includeUnknown): array
+    {
+        $normalizedColumn = 'LOWER(' . $column . ')';
+        $groups = DB::table('performers')->whereIn('id', clone $ids)->whereNotNull($column)->where($column, '<>', '')
+            ->selectRaw($normalizedColumn . ' AS raw_name, COUNT(*) AS c')->groupByRaw($normalizedColumn)->get();
+        $counts = [];
+        $unknownCount = $field === 'blood_type' && $includeUnknown
+            ? (int) DB::table('performers')->whereIn('id', clone $ids)->where(static function ($query): void {
+                $query->whereNull('blood_type')->orWhere('blood_type', '=', '');
+            })->count()
+            : 0;
+        foreach ($groups as $group) {
+            $name = $this->attributeNormalizer->facetValue($field, $group->raw_name);
+            if ($name !== null) {
+                $counts[$name] = ($counts[$name] ?? 0) + (int) $group->c;
+            } elseif ($field === 'blood_type') {
+                $unknownCount += (int) $group->c;
+            }
+        }
+        if ($field === 'blood_type' && $includeUnknown) {
+            $counts['Unknown'] = $unknownCount;
+        }
+
+        return array_map(
+            static fn(string $name): array => ['name' => $name, 'count' => $counts[$name]],
+            array_keys($counts),
+        );
+    }
+
     /** @param \Illuminate\Database\Query\Builder $ids
      *  @return list<array{name: string, count: int}>
      */
@@ -439,7 +540,7 @@ final class PerformerRepository extends BusinessQueryRepository
     public function findForDisplay(string|int $id): ?Performer
     {
         $query = $this->newQuery()->whereNull('canonical_performer_id')
-            ->with(['aliases', 'media', 'sources'])->withCount('movies');
+            ->with(['aliases', 'sources'])->withCount('movies');
         $performer = ctype_digit((string) $id)
             ? $query->find((int) $id)
             : $query->where('uuid', (string) $id)->first();
@@ -450,11 +551,116 @@ final class PerformerRepository extends BusinessQueryRepository
                 : Performer::query()->where('uuid', (string) $id)->value('canonical_performer_id');
             if (is_numeric($canonicalId)) {
                 $performer = $this->newQuery()->whereNull('canonical_performer_id')
-                    ->with(['aliases', 'media', 'sources'])->withCount('movies')->find((int) $canonicalId);
+                    ->with(['aliases', 'sources'])->withCount('movies')->find((int) $canonicalId);
             }
         }
 
-        return $performer instanceof Performer ? $performer : null;
+        if (! $performer instanceof Performer) {
+            return null;
+        }
+
+        return $performer;
+    }
+
+    public function withPhotoPreview(Performer $performer): Performer
+    {
+        $galleryCount = $this->galleryCount((int) $performer->id);
+        $imageCount = $this->imageCount((int) $performer->id);
+        $preview = $this->imagePreview((int) $performer->id)
+            ->concat($this->galleryPreview((int) $performer->id));
+        $performer->setRelation('mediaPreview', $preview);
+        $performer->setAttribute('photos_total', $galleryCount + $imageCount);
+        $performer->setAttribute('gallery_photos_total', $galleryCount);
+        $performer->setAttribute('profile_photos_total', $imageCount);
+        $performer->setAttribute('photos_truncated', $galleryCount > 24 || $imageCount > 24);
+
+        return $performer;
+    }
+
+    /** @return Collection<int, PerformerMedia> */
+    public function galleryPreview(int $performerId, int $limit = 24): Collection
+    {
+        return PerformerMedia::query()->where('performer_id', $performerId)
+            ->where('kind', PerformerMedia::KIND_GALLERY)
+            ->orderBy('id')
+            ->limit(max(1, min(24, $limit)))
+            ->get();
+    }
+
+    /** @return Collection<int, PerformerMedia> */
+    public function imagePreview(int $performerId, int $limit = 24): Collection
+    {
+        return PerformerMedia::query()->where('performer_id', $performerId)
+            ->where('kind', PerformerMedia::KIND_IMAGE)
+            ->orderBy('id')
+            ->limit(max(1, min(24, $limit)))
+            ->get();
+    }
+
+    public function galleryCount(int $performerId): int
+    {
+        return PerformerMedia::query()->where('performer_id', $performerId)
+            ->where('kind', PerformerMedia::KIND_GALLERY)
+            ->count();
+    }
+
+    public function imageCount(int $performerId): int
+    {
+        return PerformerMedia::query()->where('performer_id', $performerId)
+            ->where('kind', PerformerMedia::KIND_IMAGE)
+            ->count();
+    }
+
+    /** @return array{items: list<PerformerPhotoPageItemDto>, total: int, page: int, per_page: int, last_page: int, has_more: bool} */
+    public function photosPage(int $performerId, string $kind, int $perPage, int $page): array
+    {
+        $query = PerformerMedia::query()->where('performer_id', $performerId)->where('kind', $kind);
+        if ($kind === PerformerMedia::KIND_GALLERY) {
+            $query->orderBy('source_slug')
+                ->orderBy('meta->gallery_id')
+                ->orderBy('meta->gallery_url')
+                ->orderByRaw($this->galleryPositionOrderExpression())
+                ->orderBy('id');
+        } else {
+            $query->orderBy('id');
+        }
+        $total = (clone $query)->count();
+        $items = $query->forPage($page, $perPage)->get()
+            ->map(static function (PerformerMedia $media): PerformerPhotoPageItemDto {
+                $meta = $media->getAttribute('meta');
+                $crawledAt = $media->getAttribute('crawled_at');
+
+                return new PerformerPhotoPageItemDto(
+                    kind: (string) $media->getAttribute('kind'),
+                    url: (string) $media->getAttribute('url'),
+                    thumbnailUrl: is_array($meta) && is_string($meta['thumbnail_url'] ?? null) ? $meta['thumbnail_url'] : null,
+                    crawledAt: $crawledAt instanceof DateTimeInterface ? $crawledAt->format(DATE_ATOM) : (is_string($crawledAt) ? $crawledAt : null),
+                    source: (string) ($media->source_slug ?: 'unknown'),
+                    galleryId: is_array($meta) && is_string($meta['gallery_id'] ?? null) ? $meta['gallery_id'] : null,
+                    galleryTitle: is_array($meta) && is_string($meta['gallery_title'] ?? null) ? $meta['gallery_title'] : null,
+                    galleryUrl: is_array($meta) && is_string($meta['gallery_url'] ?? null) ? $meta['gallery_url'] : null,
+                    position: is_array($meta) && is_numeric($meta['position'] ?? null) ? (int) $meta['position'] : null,
+                );
+            })->all();
+        $lastPage = max(1, (int) ceil($total / $perPage));
+
+        return [
+            'items' => $items,
+            'total' => $total,
+            'page' => $page,
+            'per_page' => $perPage,
+            'last_page' => $lastPage,
+            'has_more' => $page < $lastPage,
+        ];
+    }
+
+    private function galleryPositionOrderExpression(): string
+    {
+        return match (DB::getDriverName()) {
+            'pgsql' => "CASE WHEN meta->>'position' ~ '^[0-9]+$' THEN (meta->>'position')::integer ELSE 2147483647 END",
+            'mysql' => "CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(meta, '$.position')) REGEXP '^[0-9]+$' THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.position')) AS UNSIGNED) ELSE 2147483647 END",
+            default => "CASE WHEN json_type(meta, '$.position') IN ('integer', 'real') THEN CAST(json_extract(meta, '$.position') AS INTEGER) ELSE 2147483647 END",
+        };
     }
 
     /**

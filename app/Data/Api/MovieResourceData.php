@@ -13,6 +13,7 @@ final readonly class MovieResourceData
      * @param  list<string>  $directors
      * @param  array<string, mixed>  $attrs
      * @param  list<array{url: string, crawled_at: string|null}>  $magnets
+     * @param  array{available: bool, count: int, last_checked_at: string|null, state: string, cooldown_until?: string|null, search_enabled?: bool}|null  $downloads
      * @param  list<array{url: string, crawled_at: string|null}>  $hls_stream_urls
      * @param  list<array{url: string, crawled_at: string|null}>  $gallery
      */
@@ -38,6 +39,7 @@ final readonly class MovieResourceData
         public int $completeness_tier = 0,
         public array $attrs = [],
         public array $magnets = [],
+        public ?array $downloads = null,
         public array $hls_stream_urls = [],
         public array $gallery = [],
         public PhotosDto $photos = new PhotosDto(),
@@ -71,6 +73,7 @@ final readonly class MovieResourceData
             'completeness_tier' => $this->completeness_tier,
             'attrs' => $this->attrs,
             'magnets' => $this->magnets,
+            'downloads' => $this->downloads,
             'hls_stream_urls' => $this->hls_stream_urls,
             'gallery' => $this->gallery,
             'photos' => $this->photos->toArray(),

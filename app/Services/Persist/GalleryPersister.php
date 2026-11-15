@@ -65,6 +65,10 @@ final class GalleryPersister
 
                 $this->persistPerformer($sourceSlug, $url, $gallery, $trimmed, $movie, $crawledAt);
             }
+
+            if ($gallery->photos !== [] || $gallery->performers !== []) {
+                app(\App\Services\Api\ResponseCacheEpoch::class)->bump();
+            }
         });
     }
 

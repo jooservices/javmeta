@@ -11,11 +11,9 @@ final class SourceRequestPacerRedisTest extends IntegrationTestCase
 {
     public function test_reservation_uses_real_redis_and_preserves_the_per_source_lock(): void
     {
-        config([
-            'database.redis.default.host' => 'redis',
-            'database.redis.default.port' => 6379,
-            'horizon.use' => 'default',
-        ]);
+        self::assertSame('redis', config('database.redis.default.host'));
+        self::assertSame(6379, (int) config('database.redis.default.port'));
+        self::assertStringStartsWith('javmeta_it:', (string) config('database.redis.options.prefix'));
         Redis::purge('default');
         $pacer = new SourceRequestPacer();
         $source = 'integration-' . bin2hex(random_bytes(6));

@@ -31,7 +31,7 @@ final class BrowserServicesConfigTest extends TestCase
 
     public function test_browser_services_config_requires_the_config_scope_and_supports_etags(): void
     {
-        $all = ['X-API-Key' => app(ApiKeyService::class)->create('all')->plaintext];
+        $all = ['X-API-Key' => app(ApiKeyService::class)->create('all', 60, \App\Models\ApiKey::SCOPES)->plaintext];
         $config = ['X-API-Key' => app(ApiKeyService::class)->create('config', 60, ['config'])->plaintext];
         $wrongScope = ['X-API-Key' => app(ApiKeyService::class)->create('status', 60, ['status'])->plaintext];
 

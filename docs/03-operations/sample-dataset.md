@@ -4,7 +4,7 @@ A repeatable fake collection for tests and UAT, made without crawling anything: 
 
 | Command | What it does |
 |---|---|
-| `php artisan dataset:load sample --force` | Loads 520 movies (`SMP-0001` to `SMP-0520`), 210 performers (source `sample`), 30 genres (`sample-01`...), 20 makers, 10 series, and the links between them. Safe to run twice: the second run changes nothing. |
+| `php artisan dataset:load sample --force` | Loads 520 movies (`SMP-0001` to `SMP-0520`), 210 performers (source `sample`), 120 genres (`sample-001`...), 20 makers, 10 series, and the links between them. Safe to run twice: the second run changes nothing. |
 | `php artisan dataset:load sample --index --force` | Same, and indexes the rows in Elasticsearch. |
 | `php artisan dataset:wipe sample --force` | Removes exactly the rows the load created and nothing else. |
 

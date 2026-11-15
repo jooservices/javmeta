@@ -46,6 +46,10 @@ final class PerformerResource extends JsonResource
                     'attrs' => [],
                     'linked_title_count' => null,
                     'photos' => (new PhotosDto())->toArray(),
+                    'photos_total' => 0,
+                    'gallery_photos_total' => 0,
+                    'profile_photos_total' => 0,
+                    'truncated' => false,
                 ],
             );
         }
@@ -80,10 +84,16 @@ final class PerformerResource extends JsonResource
                 'profile_url' => $resource->profile_url,
                 'image_url' => $resource->image_url,
                 'photos' => $this->photos(
-                    $resource->relationLoaded('media') ? $resource->media : new Collection(),
+                    $resource->relationLoaded('mediaPreview')
+                        ? $resource->getRelation('mediaPreview')
+                        : ($resource->relationLoaded('media') ? $resource->media : new Collection()),
                     [PerformerMedia::KIND_IMAGE],
                     PerformerMedia::KIND_GALLERY,
                 )->toArray(),
+                'photos_total' => (int) ($resource->getAttribute('photos_total') ?? 0),
+                'gallery_photos_total' => (int) ($resource->getAttribute('gallery_photos_total') ?? 0),
+                'profile_photos_total' => (int) ($resource->getAttribute('profile_photos_total') ?? 0),
+                'truncated' => (bool) ($resource->getAttribute('photos_truncated') ?? false),
             ];
         }
 

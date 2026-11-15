@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Movie extends Model
@@ -67,6 +68,42 @@ class Movie extends Model
     public function media(): HasMany
     {
         return $this->hasMany(MovieMedia::class);
+    }
+
+    /** @return HasMany<MovieMedia, $this> */
+    public function mediaNonGallery(): HasMany
+    {
+        return $this->media()->where('kind', '!=', MovieMedia::KIND_GALLERY);
+    }
+
+    /** @return HasMany<MovieMedia, $this> */
+    public function magnetMedia(): HasMany
+    {
+        return $this->media()->where('kind', MovieMedia::KIND_MAGNET);
+    }
+
+    /** @return HasMany<MovieMedia, $this> */
+    public function hlsMedia(): HasMany
+    {
+        return $this->media()->where('kind', MovieMedia::KIND_HLS);
+    }
+
+    /** @return HasMany<MovieMedia, $this> */
+    public function sampleMedia(): HasMany
+    {
+        return $this->media()->where('kind', MovieMedia::KIND_SAMPLE);
+    }
+
+    /** @return HasMany<MovieMedia, $this> */
+    public function galleryPreview(): HasMany
+    {
+        return $this->media()->where('kind', MovieMedia::KIND_GALLERY);
+    }
+
+    /** @return HasOne<MovieMedia, $this> */
+    public function coverMedia(): HasOne
+    {
+        return $this->hasOne(MovieMedia::class)->where('kind', MovieMedia::KIND_SAMPLE)->ofMany('id', 'min');
     }
 
     /** @return BelongsToMany<Performer, $this> */

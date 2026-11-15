@@ -16,4 +16,13 @@ return [
     'root_folders' => [],
     'link_ttl_minutes' => 60,
     'allowed_networks' => ['127.0.0.1', '::1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
+
+    // On-demand magnet/torrent search from the movie page (JOOXCR-408 / JOOXCR-445).
+    'link_search_enabled' => true,
+    'link_search_cooldown_hours' => 6,
+    'link_search_global_budget_per_hour' => 30,
+    'link_search_per_source_budget_per_hour' => 10,
+    'link_search_client_budget_per_hour' => 10,
+    'link_search_timeout_seconds' => 45,
+    'link_search_max_sources_per_run' => 3,
 ];

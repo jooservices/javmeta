@@ -1,3 +1,5 @@
+import { t, html, currentLocale } from './i18n.js';
+
 /* Zoom viewer for covers: opens on click or Enter/Space on [data-zoom], closes on Esc, backdrop click or the close button. */
 let box = null;
 let lastFocus = null;
@@ -6,10 +8,11 @@ function build() {
   const el = document.createElement('div');
   el.className = 'lb';
   el.hidden = true;
+  el.dataset.locale = currentLocale();
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-modal', 'true');
-  el.setAttribute('aria-label', 'Ảnh bìa');
-  el.innerHTML = '<button class="btn lbx" type="button" data-lb-close aria-label="Đóng">✕ Đóng</button><figure><img alt=""><figcaption><span data-lb-cap></span><a target="_blank" rel="noopener noreferrer" data-lb-open>Mở ảnh gốc</a></figcaption></figure>';
+  el.setAttribute('aria-label', t('lightbox.title'));
+  el.innerHTML = `<button class="btn lbx" type="button" data-lb-close aria-label="${t('common.close')}">✕ ${t('common.close')}</button><figure><img alt=""><figcaption><span data-lb-cap></span><a target="_blank" rel="noopener noreferrer" data-lb-open>${t('lightbox.open_original')}</a></figcaption></figure>`;
   el.addEventListener('click', e => { if (e.target === el || e.target.closest('[data-lb-close]')) closeLightbox(); });
   document.body.appendChild(el);
   return el;
@@ -17,10 +20,11 @@ function build() {
 
 export function openLightbox(src, label = '') {
   if (!/^https?:\/\//i.test(src)) return;
+  if (box && box.dataset.locale !== currentLocale()) { box.remove(); box = null; }
   box = box || build();
   lastFocus = document.activeElement;
   const img = box.querySelector('img');
-  img.alt = label ? 'Ảnh bìa ' + label : 'Ảnh bìa';
+  img.alt = label ? html('lightbox.alt_labelled', { label }) : t('lightbox.title');
   img.src = src;
   box.querySelector('[data-lb-cap]').textContent = label;
   box.querySelector('[data-lb-open]').href = src;

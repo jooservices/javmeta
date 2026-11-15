@@ -42,11 +42,22 @@ final class UiMarksService
         return new UiMarksResult(['data' => [...$row, 'on' => $on]]);
     }
 
-    public function movies(int $userId, string $kind): UiMarksResult
+    public function movies(int $userId, string $kind, int $perPage = 50, int $page = 1): UiMarksResult
     {
-        $codes = $this->marks->movieCodes($userId, $kind);
+        $result = $this->marks->movieCodesPage($userId, $kind, $perPage, $page);
 
-        return new UiMarksResult(['data' => $this->movies->summaries($codes), 'meta' => ['total' => count($codes)]]);
+        return new UiMarksResult([
+            'data' => $this->movies->summaries($result['codes']),
+            'meta' => [
+                'total' => $result['total'],
+                'pagination' => [
+                    'current_page' => $result['page'],
+                    'per_page' => $result['per_page'],
+                    'last_page' => max(1, (int) ceil($result['total'] / $result['per_page'])),
+                    'has_more' => $result['has_more'],
+                ],
+            ],
+        ]);
     }
 
     public function feed(int $userId): UiMarksResult

@@ -1,7 +1,8 @@
 import { esc } from './util.js';
+import { t } from './i18n.js';
 
 /** In-page confirm using the shared overlay. Resolves true/false; Escape and overlay click cancel. */
-export function askConfirm({ title, body, confirmLabel = 'Xác nhận', cancelLabel = 'Huỷ', danger = false } = {}) {
+export function askConfirm({ title, body, confirmLabel = t('common.confirm'), cancelLabel = t('common.cancel'), danger = false } = {}) {
   return new Promise(resolve => {
     const ov = document.getElementById?.('ov');
     const dlg = document.getElementById?.('dlg');

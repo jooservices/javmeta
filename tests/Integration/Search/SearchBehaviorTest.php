@@ -25,7 +25,7 @@ final class SearchBehaviorTest extends IntegrationTestCase
 
         // Search services deliberately use the database only in the unit and feature test environment.
         $this->app->instance('env', 'local');
-        $this->apiKey = app(ApiKeyService::class)->create('search-integration')->plaintext;
+        $this->apiKey = app(ApiKeyService::class)->create('search-integration', 60, ['movies'])->plaintext;
     }
 
     protected function tearDown(): void

@@ -569,4 +569,47 @@ final class CrawlQueueRepository extends BusinessQueryRepository
 
         return $timestamp->greaterThanOrEqualTo($since) ? $timestamp : null;
     }
+
+    /**
+     * @return array{eligible: int, requeued: int}
+     */
+    public function requeueSsrfBlockedFailures(bool $apply, ?string $source, int $batchSize, DateTimeInterface $nextAttemptAt): array
+    {
+        $eligible = $this->newQuery()
+            ->where('status', CrawlQueue::STATUS_FAILED)
+            ->where('error_code', CrawlErrorCode::SsrfBlocked->value);
+        if ($source !== null) {
+            $eligible->where('source_slug', $source);
+        }
+
+        $eligibleCount = (clone $eligible)->count();
+        if (! $apply) {
+            return ['eligible' => $eligibleCount, 'requeued' => 0];
+        }
+
+        $ids = (clone $eligible)->orderBy('id')->limit($batchSize)->pluck('id')->all();
+        if ($ids === []) {
+            return ['eligible' => $eligibleCount, 'requeued' => 0];
+        }
+
+        $stillEligible = $this->newQuery()
+            ->whereIn('id', $ids)
+            ->where('status', CrawlQueue::STATUS_FAILED)
+            ->where('error_code', CrawlErrorCode::SsrfBlocked->value);
+        if ($source !== null) {
+            $stillEligible->where('source_slug', $source);
+        }
+
+        $requeued = $stillEligible->update([
+            'status' => CrawlQueue::STATUS_RETRY_PENDING,
+            'attempts' => 0,
+            'retry_round' => 1,
+            'next_attempt_at' => $nextAttemptAt,
+            'claimed_at' => null,
+            'started_at' => null,
+            'locked_by' => null,
+        ]);
+
+        return ['eligible' => $eligibleCount, 'requeued' => $requeued];
+    }
 }

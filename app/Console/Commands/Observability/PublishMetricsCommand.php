@@ -17,6 +17,7 @@ use App\Observability\OpenObserveClient;
 use App\Observability\MetricStreams;
 use App\Observability\NotificationMetrics;
 use App\Observability\NormalizationRejectionMetrics;
+use App\Observability\ResponseCacheMetrics;
 use App\Services\Alerts\AlertMetrics;
 use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Crawl\CrawlerxFetchMethodPlan;
@@ -24,6 +25,7 @@ use App\Services\Crawl\CrawlStatsOperationalSampler;
 use App\Services\Crawl\FeedPoolDiagnostics;
 use App\Services\Crawl\SourceGapPolicy;
 use App\Services\Crawl\SourceThrottle;
+use App\Services\Crawl\SourceCircuitBreaker;
 use App\Services\Health\CrawlDispatchHeartbeat;
 use App\Services\Search\ElasticsearchHttpClient;
 use App\Services\Search\ElasticsearchRequestHealth;
@@ -76,6 +78,7 @@ final class PublishMetricsCommand extends Command
         NormalizationRejectionMetrics $normalizationMetrics,
         HorizonWorkerLayout $workerLayout,
         PostgresConnectionBudget $connectionBudget,
+        ResponseCacheMetrics $responseCacheMetrics,
     ): int {
         try {
             $statsSampler->sample();
@@ -117,6 +120,7 @@ final class PublishMetricsCommand extends Command
             $this->dependencyProbeMetrics($elasticsearch),
             $notificationMetrics->points(),
             $normalizationMetrics->points(),
+            $responseCacheMetrics->points(),
             [[
                 'name' => MetricStreams::NAMES['elasticsearch_request_failures'],
                 'value' => $elasticsearchHealth->failureCount(),
@@ -147,6 +151,7 @@ final class PublishMetricsCommand extends Command
      */
     private function sourceMetrics(SourceScheduleFreshness $sourceFreshness, SourceGapPolicy $gapPolicy, SourceThrottle $throttle): array
     {
+        app(SourceCircuitBreaker::class)->pausedSourceSlugs();
         $points = [];
         $defaultStaleSeconds = (int) config('javmeta_alerts.watchdog.source_stale_seconds', 86400);
 
@@ -179,6 +184,16 @@ final class PublishMetricsCommand extends Command
                 'value' => $source->enabled && $sourceFreshness->isPastDue($source->last_success_at, (string) $source->slug, $defaultStaleSeconds) ? 1 : 0,
                 'labels' => $labels,
             ];
+            $points[] = [
+                'name' => MetricStreams::NAMES['source_circuit_open'],
+                'value' => $source->circuit_state === 'open' ? 1 : 0,
+                'labels' => $labels,
+            ];
+            $points[] = [
+                'name' => MetricStreams::NAMES['source_consecutive_blocks'],
+                'value' => (int) $source->consecutive_failures,
+                'labels' => $labels,
+            ];
         }
 
         return $points;
@@ -190,7 +205,7 @@ final class PublishMetricsCommand extends Command
         try {
             $redis = Redis::connection(config('horizon.use', 'default'));
             $snapshots = [];
-            foreach ((array) $redis->smembers(HorizonLayoutSnapshot::NODE_REGISTRY_KEY) as $node) {
+            foreach ((array) $redis->zrangebyscore(HorizonLayoutSnapshot::NODE_REGISTRY_KEY, CarbonImmutable::now()->subSeconds(180)->timestamp, '+inf') as $node) {
                 if (! is_string($node) || $node === '') {
                     continue;
                 }

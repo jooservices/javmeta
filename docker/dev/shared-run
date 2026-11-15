@@ -3,16 +3,18 @@
 
     docker/dev/shared-run --mode test|wt:<id> [--e2e] -- <command> [args...]
 
-Databases come from `scripts/docker/shared env-project javmeta` (which runs check-project); no
-credential is written to a tracked file, printed, or left on disk. The command runs as a
-`docker exec` in the long-lived workspaces-cli-php-8.5 container (no per-job container or image).
-Elasticsearch indexes and OpenObserve streams use the same `javmeta_test` / `javmeta_wt<id>` prefix.
+Databases come from `scripts/docker/shared env-project javmeta` (which runs check-project).
+Integration mode uses the dedicated least-privilege JAVMETA_IT_* identity and never forwards
+shared service root credentials to PHPUnit. Commands run via docker exec in the long-lived
+workspaces-cli-php-8.5 container (no per-job container or image).
 """
 import argparse
 import base64
+import fcntl
 import json
 import os
 import secrets
+import stat
 import subprocess
 import sys
 import tempfile
@@ -22,6 +24,28 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+IT_IDENTITY_KEYS: set[str] = {
+    "JAVMETA_IT_POSTGRES_USER",
+    "JAVMETA_IT_POSTGRES_DATABASE",
+    "JAVMETA_IT_POSTGRES_PASSWORD",
+    "JAVMETA_IT_MONGODB_USER",
+    "JAVMETA_IT_MONGODB_DATABASE",
+    "JAVMETA_IT_MONGODB_AUTH_DATABASE",
+    "JAVMETA_IT_MONGODB_PASSWORD",
+    "JAVMETA_IT_ELASTIC_USER",
+    "JAVMETA_IT_ELASTIC_INDEX_PATTERN",
+    "JAVMETA_IT_ELASTIC_PASSWORD",
+    "JAVMETA_IT_OPENOBSERVE_ORG",
+    "JAVMETA_IT_OPENOBSERVE_STREAM",
+    "JAVMETA_IT_OPENOBSERVE_EMAIL",
+    "JAVMETA_IT_OPENOBSERVE_PASSWORD",
+    "JAVMETA_IT_RESOURCE_MARKER",
+    "JAVMETA_IT_REDIS_USER",
+    "JAVMETA_IT_REDIS_PASSWORD",
+    "JAVMETA_IT_REDIS_HOST",
+    "JAVMETA_IT_REDIS_PORT",
+    "JAVMETA_IT_REDIS_PREFIX",
+}
 
 
 def find_workspaces() -> Path:
@@ -33,17 +57,43 @@ def find_workspaces() -> Path:
     sys.exit("Workspaces root (scripts/docker/runtime and .env) was not found above this checkout.")
 
 
-def parse_env(text: str) -> dict:
-    values = {}
+def acquire_integration_lock(workspaces: Path):
+    """Serialize all callers that share the fixed integration database identity."""
+    temporary_directory = workspaces / ".tmp"
+    if temporary_directory.is_symlink() or not temporary_directory.is_dir() or temporary_directory.stat().st_mode & 0o077:
+        sys.exit("Workspaces .tmp must be a private directory before integration tests; nothing was run.")
+    lock_path = temporary_directory / "javmeta-integration.lock"
+    try:
+        if lock_path.is_symlink():
+            sys.exit("Refusing a symlinked shared integration lock; nothing was run.")
+        descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        lock_stat = os.fstat(descriptor)
+        if not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_nlink != 1:
+            os.close(descriptor)
+            sys.exit("Refusing an unsafe shared integration lock; nothing was run.")
+        os.fchmod(descriptor, 0o600)
+        lock = os.fdopen(descriptor, "r+b")
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+    except OSError:
+        sys.exit("Could not acquire the shared integration namespace lock; nothing was run.")
+    return lock
+
+
+def parse_env(text: str) -> tuple[dict[str, str], set[str]]:
+    values: dict[str, str] = {}
+    duplicates: set[str] = set()
     for line in text.splitlines():
         row = line.strip()
         if row and not row.startswith("#") and "=" in row:
             key, value = row.split("=", 1)
-            values[key.removeprefix("export ").strip()] = value.strip().strip('"').strip("'")
-    return values
+            key = key.removeprefix("export ").strip()
+            if key in values:
+                duplicates.add(key)
+            values[key] = value.strip().strip('"').strip("'")
+    return values, duplicates
 
 
-def project_env(workspaces: Path, mode: str) -> dict:
+def project_env(workspaces: Path, mode: str) -> dict[str, str]:
     root_env = workspaces / ".env"
     if root_env.is_symlink() or (root_env.stat().st_mode & 0o077):
         sys.exit("Workspaces root .env must be a regular file with mode 0600.")
@@ -56,15 +106,141 @@ def project_env(workspaces: Path, mode: str) -> dict:
         if result.returncode != 0:
             sys.stderr.write(result.stderr or result.stdout)
             sys.exit("env-project/check-project failed; nothing was run.")
-        return {**parse_env(target.read_text(encoding="utf-8")), **{k: v for k, v in parse_env(root_env.read_text(encoding="utf-8")).items() if k.startswith(("WORKSPACES_", "JAVMETA_IT_TELEGRAM"))}}
+        project_values, _ = parse_env(target.read_text(encoding="utf-8"))
+        root_values, duplicates = parse_env(root_env.read_text(encoding="utf-8"))
+        if duplicates & IT_IDENTITY_KEYS:
+            sys.exit("Duplicate least-privilege JavMeta integration settings; no test command was run.")
+        shared_values = {
+            key: value
+            for key, value in root_values.items()
+            if key.startswith(("WORKSPACES_", "JAVMETA_IT_"))
+        }
+        return {**project_values, **shared_values}
 
 
-def build_env(values: dict, mode: str, e2e: bool) -> tuple[dict, str]:
+def integration_env(values: dict[str, str], mode: str, e2e: bool, require_redis: bool) -> tuple[dict[str, str], str]:
+    """Build a test environment from the isolated JAVMETA_IT_* identities."""
+    if not (
+        mode.startswith("wt:") and mode[3:].isascii() and mode[3:].isalnum()
+        and mode[3:] == mode[3:].lower() and len(mode[3:]) <= 12
+    ):
+        sys.exit("Integration mode requires JAVMETA_MODE=wt:<id>; nothing was run.")
+
+    expected = {
+        "JAVMETA_IT_POSTGRES_USER": "jvmeta_it",
+        "JAVMETA_IT_POSTGRES_DATABASE": "jvmeta_it",
+        "JAVMETA_IT_MONGODB_USER": "jvmeta_it",
+        "JAVMETA_IT_MONGODB_DATABASE": "javmeta_it_archive",
+        "JAVMETA_IT_MONGODB_AUTH_DATABASE": "javmeta_it_archive",
+        "JAVMETA_IT_ELASTIC_USER": "jvmeta_it",
+        "JAVMETA_IT_ELASTIC_INDEX_PATTERN": "javmeta_it_*",
+        "JAVMETA_IT_OPENOBSERVE_ORG": "javmeta_it",
+    }
+    if any(values.get(key) != expected_value for key, expected_value in expected.items()):
+        sys.exit("The provisioned JAVMETA_IT_* namespace is missing or unexpected; no test command was run.")
+    required_secrets = (
+        "JAVMETA_IT_POSTGRES_PASSWORD",
+        "JAVMETA_IT_MONGODB_PASSWORD",
+        "JAVMETA_IT_ELASTIC_PASSWORD",
+        "JAVMETA_IT_OPENOBSERVE_EMAIL",
+        "JAVMETA_IT_OPENOBSERVE_PASSWORD",
+        "JAVMETA_IT_RESOURCE_MARKER",
+    )
+    if any(not values.get(key) for key in required_secrets):
+        sys.exit("The provisioned JAVMETA_IT_* credentials are incomplete; no test command was run.")
+
+    mongo_endpoint = urllib.parse.urlsplit(values["MONGODB_URI"])
+    if not mongo_endpoint.hostname:
+        sys.exit("The shared MongoDB endpoint is invalid; no test command was run.")
+    try:
+        mongo_port = mongo_endpoint.port or 27017
+    except ValueError:
+        sys.exit("The shared MongoDB endpoint is invalid; no test command was run.")
+    mongo_host = mongo_endpoint.hostname
+    if ":" in mongo_host and not mongo_host.startswith("["):
+        mongo_host = f"[{mongo_host}]"
+    mongo_credentials = ":".join(
+        urllib.parse.quote(values[key], safe="")
+        for key in ("JAVMETA_IT_MONGODB_USER", "JAVMETA_IT_MONGODB_PASSWORD")
+    )
+    mongo_database = values["JAVMETA_IT_MONGODB_DATABASE"]
+    mongo_auth_database = urllib.parse.quote(values["JAVMETA_IT_MONGODB_AUTH_DATABASE"], safe="")
+    mongo_uri = f"mongodb://{mongo_credentials}@{mongo_host}:{mongo_port}/{mongo_database}?authSource={mongo_auth_database}"
+
+    redis_keys = (
+        "JAVMETA_IT_REDIS_USER", "JAVMETA_IT_REDIS_PASSWORD", "JAVMETA_IT_REDIS_HOST",
+        "JAVMETA_IT_REDIS_PORT", "JAVMETA_IT_REDIS_PREFIX",
+    )
+    redis_configured = any(values.get(key) for key in redis_keys)
+    if redis_configured and any(not values.get(key) for key in redis_keys):
+        sys.exit("The JAVMETA_IT Redis identity is incomplete; no test command was run.")
+    if redis_configured and (
+        values["JAVMETA_IT_REDIS_USER"] != "jvmeta_it"
+        or values["JAVMETA_IT_REDIS_HOST"] != "127.0.0.1"
+        or values["JAVMETA_IT_REDIS_PORT"] != "16382"
+        or values["JAVMETA_IT_REDIS_PREFIX"] != "javmeta_it:"
+    ):
+        sys.exit("The JAVMETA_IT Redis namespace is unexpected; no test command was run.")
+    if not redis_configured and require_redis:
+        sys.exit("The JAVMETA_IT Redis identity is not provisioned; no test command was run.")
+
+    worktree_suffix = "_wt" + mode[3:]
+    prefix = "javmeta_it" + worktree_suffix
+    tag = ("_e2e_" + secrets.token_hex(5)) if e2e else ""
+    stream = values["JAVMETA_IT_OPENOBSERVE_STREAM"] + worktree_suffix + tag
+    redis_prefix = values.get("JAVMETA_IT_REDIS_PREFIX", prefix + ":")
+    if redis_configured:
+        redis_prefix += "wt_" + mode[3:] + ":"
+    if tag:
+        redis_prefix += tag.lstrip("_") + ":"
+    env = {
+        "APP_ENV": "testing", "APP_NAME": "javmeta", "APP_KEY": "base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "DB_CONNECTION": "pgsql", "DB_HOST": values["DB_HOST"], "DB_PORT": values["DB_PORT"],
+        "DB_DATABASE": values["JAVMETA_IT_POSTGRES_DATABASE"],
+        "DB_USERNAME": values["JAVMETA_IT_POSTGRES_USER"], "DB_PASSWORD": values["JAVMETA_IT_POSTGRES_PASSWORD"], "DB_URL": "",
+        "MONGO_URI": mongo_uri, "MONGO_DATABASE": mongo_database,
+        "ELASTICSEARCH_HOST": "http://elasticsearch:9200",
+        "ELASTICSEARCH_USERNAME": values["JAVMETA_IT_ELASTIC_USER"],
+        "ELASTICSEARCH_PASSWORD": values["JAVMETA_IT_ELASTIC_PASSWORD"],
+        "ELASTICSEARCH_MOVIES_INDEX": prefix + "_movies" + tag,
+        "ELASTICSEARCH_PERFORMERS_INDEX": prefix + "_performers" + tag,
+        "ELASTICSEARCH_VERIFY_SSL": "false",
+        "REDIS_HOST": "redis" if redis_configured else "127.0.0.1", "REDIS_PORT": "6379" if redis_configured else "1",
+        "REDIS_USERNAME": values.get("JAVMETA_IT_REDIS_USER", ""),
+        "REDIS_PASSWORD": values.get("JAVMETA_IT_REDIS_PASSWORD", ""),
+        "REDIS_DB": "0", "REDIS_CACHE_DB": "0", "REDIS_PREFIX": redis_prefix,
+        "HORIZON_PREFIX": redis_prefix + "horizon:",
+        "OPENOBSERVE_URL": "http://openobserve:5080",
+        "OPENOBSERVE_ORG": values["JAVMETA_IT_OPENOBSERVE_ORG"],
+        "OPENOBSERVE_EMAIL": values["JAVMETA_IT_OPENOBSERVE_EMAIL"],
+        "OPENOBSERVE_PASSWORD": values["JAVMETA_IT_OPENOBSERVE_PASSWORD"],
+        "OPENOBSERVE_ENABLED": "true", "OPENOBSERVE_STREAM_LOGS": stream,
+        "OPENOBSERVE_STREAM_METRICS": "javmeta_it_metrics" + worktree_suffix + tag, "LOG_STACK": "single",
+    }
+    if e2e:
+        env.update({
+            "JAVMETA_E2E_SHARED": "1", "JAVMETA_E2E_POSTGRES_DATABASE": values["JAVMETA_IT_POSTGRES_DATABASE"],
+            "EMBEDDER_URL": "http://127.0.0.1:1", "CACHE_STORE": "array", "QUEUE_CONNECTION": "sync",
+        })
+    return env, stream
+
+
+def build_env(values: dict[str, str], mode: str, e2e: bool) -> tuple[dict[str, str], str]:
     database = values["DB_DATABASE"]
     prefix = database  # javmeta_test or javmeta_wt<id>
     tag = ("_e2e_" + secrets.token_hex(5)) if e2e else ""
     redis_prefix = values["REDIS_PREFIX"] + (tag.lstrip("_") + ":" if e2e else "")
-    mongo_uri = values["MONGODB_URI"].replace("/?", "/" + database + "?", 1)
+    mongo_endpoint = urllib.parse.urlsplit(values["MONGODB_URI"])
+    if not mongo_endpoint.hostname:
+        sys.exit("The shared MongoDB endpoint is invalid; no test command was run.")
+    mongo_host = mongo_endpoint.hostname
+    if ":" in mongo_host and not mongo_host.startswith("["):
+        mongo_host = f"[{mongo_host}]"
+    try:
+        mongo_port = mongo_endpoint.port or 27017
+    except ValueError:
+        sys.exit("The shared MongoDB endpoint is invalid; no test command was run.")
+    mongo_uri = f"{mongo_endpoint.scheme}://{mongo_endpoint.netloc}/{database}?authSource=admin"
     stream = prefix + "_logs" + tag
     env = {
         "APP_ENV": "testing", "APP_NAME": "javmeta", "APP_KEY": "base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
@@ -93,7 +269,8 @@ def build_env(values: dict, mode: str, e2e: bool) -> tuple[dict, str]:
 
 def delete_stream(env: dict, stream: str) -> bool:
     credentials = base64.b64encode((env["OPENOBSERVE_EMAIL"] + ":" + env["OPENOBSERVE_PASSWORD"]).encode()).decode()
-    url = "http://127.0.0.1:15080/api/default/streams/" + urllib.parse.quote(stream, safe="") + "?type=logs"
+    organization = urllib.parse.quote(env["OPENOBSERVE_ORG"], safe="")
+    url = f"http://127.0.0.1:15080/api/{organization}/streams/" + urllib.parse.quote(stream, safe="") + "?type=logs"
     request = urllib.request.Request(url, method="DELETE", headers={"Authorization": "Basic " + credentials})
     try:
         urllib.request.urlopen(request, timeout=20).close()
@@ -108,14 +285,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--mode", required=True, help="test or wt:<id>")
     parser.add_argument("--e2e", action="store_true", help="per-run tagged indexes/streams/prefix; stream is deleted afterwards")
+    parser.add_argument("--integration", action="store_true", help="use the isolated JAVMETA_IT_* integration identity")
+    parser.add_argument("--require-redis", action="store_true", help="require the provisioned JAVMETA_IT Redis identity")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command or args.mode == "live":
         parser.error("a command and --mode test|wt:<id> are required (live is never allowed here)")
     workspaces = find_workspaces()
+    integration_lock = acquire_integration_lock(workspaces) if args.integration else None
     values = project_env(workspaces, args.mode)
-    env, stream = build_env(values, args.mode, args.e2e)
+    if args.integration:
+        env, stream = integration_env(values, args.mode, args.e2e, args.require_redis)
+    else:
+        env, stream = build_env(values, args.mode, args.e2e)
     for key in ("JAVMETA_E2E_COVERAGE_FILE", "JAVMETA_SEED_STREAMS"):
         if os.environ.get(key):
             env[key] = os.environ[key]
@@ -123,7 +306,11 @@ def main() -> int:
         if values.get(key):
             env[key.replace("JAVMETA_IT_", "NOTIFICATION_")] = values[key]
     run_env = {**os.environ, **env, "RUNTIME_PASS_ENV": " ".join(env)}
-    status = subprocess.run([str(workspaces / "scripts/docker/runtime"), "php", *command], cwd=ROOT, env=run_env).returncode
+    try:
+        status = subprocess.run([str(workspaces / "scripts/docker/runtime"), "php", *command], cwd=ROOT, env=run_env).returncode
+    finally:
+        if integration_lock is not None:
+            integration_lock.close()
     if args.e2e and not delete_stream(env, stream):
         sys.stderr.write("Could not clean the OpenObserve stream created by this run.\n")
         status = status or 1

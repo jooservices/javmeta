@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Redis;
 use Illuminate\Redis\Connections\PhpRedisConnection;
 use RuntimeException;
 
-final class SourceRequestPacer
+class SourceRequestPacer
 {
     private const RESERVE_START = <<<'LUA'
 local time = redis.call('TIME')

@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Ui;
 
 use App\Observability\ObservabilityEmitter;
 use App\Services\Settings\SettingsService;
+use App\Services\Settings\SettingsTranslator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -13,9 +14,22 @@ use InvalidArgumentException;
 /** The system settings page: read every setting, save one or several. Secrets are write-only. */
 final class UiSettingsController
 {
-    public function index(SettingsService $settings): JsonResponse
+    public function index(SettingsService $settings, SettingsTranslator $translator): JsonResponse
     {
-        return response()->json(['data' => ['groups' => $settings->groups(), 'settings' => $settings->all()]]);
+        $rows = [];
+        foreach ($settings->all() as $row) {
+            $key = (string) $row['key'];
+            $row['label'] = $translator->label($key, (string) $row['label']);
+            $row['description'] = $translator->description($key, (string) $row['description']);
+            $rows[] = $row;
+        }
+
+        return response()->json([
+            'data' => [
+                'groups' => $translator->groups($settings->groups()),
+                'settings' => $rows,
+            ],
+        ]);
     }
 
     public function update(Request $request, SettingsService $settings, ObservabilityEmitter $observability): JsonResponse

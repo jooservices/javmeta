@@ -1,5 +1,6 @@
 import { defineScenario } from '../lib/step.mjs';
-import { login, loginWith, expectOnLoginPage, expectSignInEmailEmpty, expectFrontDoorIsXCrawlerInVietnamese } from '../steps/auth.mjs';
+import { openSignInForm, typeSyntheticPassword, activatePasswordToggle, expectPasswordMasked, expectPasswordVisible, expectSignInNotSubmitted } from '../steps/auth.mjs';
+import { login, loginWith, expectOnLoginPage, expectSignInEmailEmpty, expectFrontDoorIsXCrawlerInVietnamese, switchUiLanguage, expectUiLanguage, expectLanguagePersistsAfterReload } from '../steps/auth.mjs';
 import { openView, openPath, expectViewHealthy, resizeTo, expectNoConsoleErrors } from '../steps/navigation.mjs';
 import { openTab, expectTabShowsControls, tabNames, toggleFirstSwitch, saveSwitchGroup, expectSwitchPersisted, restoreSwitch } from '../steps/settings.mjs';
 import { filterMoviesByKeyword, expectMovieResults, openMovie, expectMovieDetail, toggleFavourite, expectInFavourites, expectCalendarOpensWithReleases } from '../steps/movies.mjs';
@@ -8,15 +9,27 @@ import { openNotificationEditor, typeInTitle, expectLivePreviewShows, insertVari
 import { createApiKey, expectApiKeyStatus, revokeApiKey, expectApiKeyRequiresAScope } from '../steps/admin.mjs';
 import { expectDiscoverForBrowsers, searchFromDiscover, expectSearchFound, expectDiscoverChipsAreRealGenres, expectSearchIsHonest, expectSearchTooShortMessage } from '../steps/discover.mjs';
 import { fillNodeName, submitNodeForm, expectBrowserRejectsNodeName, expectJoinCommand, copyJoinCommand, expectNodeListed } from '../steps/nodes.mjs';
+import {
+  switchOperationsLanguage,
+  expectOperationsDashboardLanguage,
+  setBrowserAcceptLanguage,
+  mockNodeValidationError,
+  submitNodeNameWithRegexError,
+  mockOperationsDashboardData,
+  expectLocalizedOperationsKindsAndPreciseTimes,
+} from '../steps/operations.mjs';
 import { expectHoverChanges, goBack } from '../steps/interact.mjs';
 import { toggleFilterDrawer, closeFilterDrawer, expectFilterField, clearFilters, expectResultCount, expectResultCountBetween, expectHashIncludes } from '../steps/browser.mjs';
-import { filterPerformersByName, choosePerformerOption, filterPerformersByLocation, chooseLocationFacet, filterPerformersByAge, expectPerformerNamed, expectPerformerAbsent, openPerformer, openFirstPerformer, expectPerformerField, openPerformerTab, openPerformerTabWithKeyboard, expectPerformerTab, setFollow, expectFeedState, expectFeedMovies, expectPerformerMissing } from '../steps/performers.mjs';
-import { filterCatalog, sortCatalogWithKeyboard, expectFirstCatalogEntry, expectCatalogRow, openCatalogEntry, expectFacetCountMatchesCatalog, openFirstMovie, expectDetailContains, expectCatalogEmpty, expectUnknownCatalog, shiftCalendar, shiftCalendarWithKeyboard, expectCalendarHeading, expectCalendarUsesLatestReleaseMonth, expectCalendarMonthShifted, expectCalendarIsCurrentMonth, openCalendarDay, expectDayRequestKeptTheDate, openCalendarMovie, expectCalendarIgnoresBadMonth } from '../steps/catalog.mjs';
+import { filterPerformersByName, choosePerformerOption, filterPerformersByAge, expectPerformerNamed, expectPerformerAbsent, openPerformer, openFirstPerformer, expectPerformerField, openPerformerTab, openPerformerTabWithKeyboard, expectPerformerTab, setFollow, expectFeedState, expectFeedMovies, expectPerformerMissing } from '../steps/performers.mjs';
+import { chooseCatalogScript, toggleCatalogMinCount, filterCatalog, sortCatalogWithKeyboard, expectFirstCatalogEntry, expectCatalogRow, openCatalogEntry, expectFacetCountMatchesCatalog, openFirstMovie, expectDetailContains, expectCatalogEmpty, expectUnknownCatalog, shiftCalendar, shiftCalendarWithKeyboard, expectCalendarHeading, expectCalendarUsesLatestReleaseMonth, expectCalendarMonthShifted, expectCalendarIsCurrentMonth, openCalendarDay, expectDayRequestKeptTheDate, openCalendarMovie, expectCalendarIgnoresBadMonth } from '../steps/catalog.mjs';
+import { MOVIE_FACETS, PERFORMER_FACETS, openFacet, searchFacet, clearFacetSearch, expectFacetPager, pageThroughFacet, sortFacet, toggleFacetMinCount, selectFacetOption, expectFacetSelected, unselectFacetOption, expectFacetRuleNote, toggleGenreAllOf } from '../steps/facets.mjs';
+import { markBrowserNodes, expectBrowserNodesSurvived, expectHistoryGrewBy, goBackWithoutRemount, expectResultsDimWhileLoading, expectFailedRefreshKeepsResults, expectTypingIsDebounced } from '../steps/resultsRefresh.mjs';
 import { armSavedSearchCleanup, searchFor, expectSearchPrompt, expectSearchEmpty, openMeaningSearch, expectMeaningMode, submitSearchWithKeyboard, expectKeywordMode, rememberResultCount, expectRememberedCount, chooseMovieChoice, filterMovieField, expectMovieListEmpty, saveCurrentSearch, cancelSaveSearch, applySavedSearch, deleteSavedSearch } from '../steps/searchpage.mjs';
 import { expectFeedHasNoActions, expectLibraryUnconfigured, expectDownloadsOff, openSettingsFromEmptyState, openSettingsWithKeyboard, expectMediaCaptureOff, refreshMedia, submitDisabledCapture, openMediaLibrary, expectCrawlReadOnly } from '../steps/ownerpages.mjs';
 import { expectReportPreview, refreshReportPreview, expectReportSwitchInView, expectReportStartsEnabled, toggleReportEnabled, toggleReportEnabledWithKeyboard, expectReportSwitchLabel, saveReportSettings, expectReportEnabledSaved, expectNotificationList, rememberNotificationForm, toggleNotificationEnabled, expectNotificationSwitchLabel, saveNotificationEdits, expectFirstNotificationEnabled, markNotificationRestored, toggleQuietMode } from '../steps/reports.mjs';
-import { enableGuestMode, browseAsGuest, expectGuestShell, expectGuestBannerSentence, openGuestLoginWithKeyboard, expectGuestPrompt, openGuestLogin, expectPathRequiresLogin, togglePhoneMenu, choosePhoneNav, expectPhoneMenuDismisses, openBottomNav, openFirstGuestMovie, expectGuestMovie, openGuestMovieCodes, expectGuestMediaBlocked, expectGuestHasNoFollow, expectGuestSavedSearchHidden, restoreLoginRequired } from '../steps/guest.mjs';
+import { enableGuestMode, browseAsGuest, expectGuestShell, expectGuestBannerSentence, openGuestLoginWithKeyboard, expectGuestPrompt, openGuestLogin, expectPathRequiresLogin, togglePhoneMenu, choosePhoneNav, expectPhoneMenuDismisses, openBottomNav, openFirstGuestMovie, expectGuestMovie, openGuestMovieCodes, expectGuestMediaBlocked, expectGuestDownloadsPanel, expectGuestHasNoFollow, expectGuestSavedSearchHidden, restoreLoginRequired } from '../steps/guest.mjs';
 import { expectToast, expectDiscoverHeading, expectVietnameseNav, expectOneMovieLinkPerCard, expectNoChoCrawl, expectPlayerEmptyState, filterSettings, expectSettingsFilterHidesRows, expectCrawlSubtabs, confirmLogout, cancelLogout, expectReducedMotionCounters, keyboardWalkDiscoverToMovie, openMovieTab, expectMovieTab, copyMovieCode, toggleWatchLater, openBioValue, openStatsLink } from '../steps/ux.mjs';
+import { enableQbForOwner, restoreQbForOwner, expectOwnerCanSendToQbittorrent, openMovieWithDownloads, openMovieWithoutDownloads, expectDownloadsPanelWithLinks, expectDownloadsPanelEmptyWithSearch } from '../steps/downloads.mjs';
 
 export const VIEWS = [
   '#/', '#/search', '#/stats', '#/movies', '#/performers', '#/bio', '#/movies?sort=update_date',
@@ -27,12 +40,27 @@ export const SETTINGS_TABS = ['personal', 'crawl', 'notify', 'health', 'search',
 
 export const loginRejectsAWrongPassword = defineScenario('login rejects a wrong password', [loginWith('definitely-wrong'), expectOnLoginPage()]);
 
+export const signInPasswordVisibilityControl = defineScenario('the sign-in password visibility control shows and hides the password', [
+  openSignInForm(), expectPasswordMasked(), typeSyntheticPassword(), expectPasswordMasked(),
+  activatePasswordToggle('pointer'), expectPasswordVisible(),
+  activatePasswordToggle('pointer'), expectPasswordMasked(),
+  activatePasswordToggle('enter'), expectPasswordVisible(),
+  activatePasswordToggle('space'), expectPasswordMasked(),
+  expectSignInNotSubmitted(),
+]);
+
 export const signInFormHasNoPrefilledEmail = defineScenario('the sign-in form has no prefilled email', [
   openPath('/login'), expectSignInEmailEmpty(),
 ]);
 
 export const frontDoorIsVietnameseXCrawler = defineScenario('the front door is Vietnamese XCrawler', [
-  openPath('/login'), expectFrontDoorIsXCrawlerInVietnamese(),
+  openPath('/login?lang=vi'), expectFrontDoorIsXCrawlerInVietnamese(),
+]);
+
+export const languageSwitcherChangesUiAndPersists = defineScenario('switching to English changes visible texts and persists after reload', [
+  login(), openView('#/'), expectUiLanguage('vi'),
+  switchUiLanguage('en'), expectUiLanguage('en'), expectLanguagePersistsAfterReload('en'),
+  switchUiLanguage('vi'), expectUiLanguage('vi'),
 ]);
 
 export const everyViewRendersOnDesktop = defineScenario('every view renders on desktop', [login(), ...VIEWS.flatMap(v => [openView(v), expectViewHealthy()])]);
@@ -52,9 +80,36 @@ export const settingsSwitchPersists = defineScenario('a settings switch saves an
 ]);
 
 export const addNodeFromTheCommandCenter = defineScenario('the owner adds a node from the Command Center', [
-  login(), openPath('/ops'), fillNodeName('Bad Name'), submitNodeForm(), expectBrowserRejectsNodeName(),
-  fillNodeName('worker-e2e-' + Date.now().toString(36)), submitNodeForm(), expectJoinCommand('worker-e2e-[a-z0-9]+'), copyJoinCommand(),
+  login(), openPath('/ops?lang=vi'), fillNodeName('Bad Name'), submitNodeForm(), expectBrowserRejectsNodeName(),
+  fillNodeName('worker-e2e-' + Date.now().toString(36)), submitNodeForm(), expectJoinCommand('worker-e2e-[a-z0-9]+'),
+  switchOperationsLanguage('en'), expectJoinCommand('worker-e2e-[a-z0-9]+'), copyJoinCommand(),
   expectNodeListed('worker-e2e-', 'pending'), expectNoConsoleErrors(),
+]);
+
+export const commandCenterSupportsEnglishAndVietnamese = defineScenario('the Command Center supports English and Vietnamese', [
+  login(), openPath('/ops?lang=vi'),
+  expectOperationsDashboardLanguage('vi', {title: 'JavMeta · Vận hành', heading: 'Vận hành thu thập dữ liệu', source: 'Nguồn', aria: 'Tổng số phim và hàng đợi'}),
+  switchOperationsLanguage('en'),
+  expectOperationsDashboardLanguage('en', {title: 'JavMeta · Operations', heading: 'Crawl operations', source: 'Sources', aria: 'Catalogue and queue totals'}),
+]);
+
+export const commandCenterValidationFollowsSelectedLanguage = defineScenario('node validation follows the selected language over the browser language', [
+  login(), setBrowserAcceptLanguage('vi'), openPath('/ops?lang=en'), mockNodeValidationError(),
+  submitNodeNameWithRegexError('en', 'The node name may only use lowercase letters, digits and hyphens, and must start with a letter.'),
+  switchOperationsLanguage('vi'),
+  setBrowserAcceptLanguage('en'),
+  submitNodeNameWithRegexError('vi', 'Tên nút chỉ được dùng chữ thường, chữ số và dấu gạch nối, đồng thời phải bắt đầu bằng một chữ cái.'),
+]);
+
+export const commandCenterTranslatesActivityAndKeepsTimestampSeconds = defineScenario('the Command Center translates activity and preserves timestamp seconds', [
+  login(), mockOperationsDashboardData(), openPath('/ops?lang=vi'),
+  expectLocalizedOperationsKindsAndPreciseTimes('vi', {
+    issueKind: 'Chi tiết diễn viên', blocked: 'Bị chặn', reclaimed: 'Hàng đợi được thu hồi khi chưa bắt đầu',
+  }),
+  switchOperationsLanguage('en'),
+  expectLocalizedOperationsKindsAndPreciseTimes('en', {
+    issueKind: 'Performer detail', blocked: 'Blocked', reclaimed: 'Queue reclaimed before start',
+  }),
 ]);
 
 export const discoverIsForBrowsingAndSearchWorks = defineScenario('Discover is for browsing and its search finds a movie', [
@@ -94,8 +149,8 @@ export const performersCanBeFilteredOpenedAndFollowed = defineScenario('performe
   resizeTo(1440), toggleFilterDrawer(), expectFilterField('q', true),
   choosePerformerOption('cup', 'C'), expectResultCount(30), openFirstPerformer(), expectPerformerField('Cup', 'C'), goBack(), clearFilters(), expectResultCount(210),
   choosePerformerOption('blood_type', 'B'), expectResultCount(45), openFirstPerformer(), expectPerformerField('Nhóm máu', 'B'), goBack(), clearFilters(), expectResultCount(210),
-  filterPerformersByLocation('Osaka'), expectResultCount(30), openFirstPerformer(), expectPerformerField('Nơi sống', 'Osaka'), goBack(), clearFilters(), expectResultCount(210),
-  chooseLocationFacet('大阪府'), expectHashIncludes('location=大阪府'), expectResultCount(30), openFirstPerformer(), expectPerformerField('Nơi sống', 'Osaka'), goBack(), clearFilters(), expectResultCount(210),
+  choosePerformerOption('location', '大阪府'), expectResultCount(30), openFirstPerformer(), expectPerformerField('Nơi sống', 'Osaka'), goBack(), expectHashIncludes('location=大阪府'), clearFilters(), expectResultCount(210),
+  searchFacet('performers', 'locations', '大阪'), clearFacetSearch('performers', 'locations'),
   filterPerformersByAge(40, 40), expectResultCountBetween(1, 209), openFirstPerformer(), expectPerformerField('Tuổi', '40'), goBack(),
   filterPerformersByName('Aiko Ito 120'), expectResultCount(0), expectPerformerAbsent('Aiko Ito 120'), clearFilters(), expectResultCount(210),
   filterPerformersByName('Mio Sato 1'), openPerformer('Mio Sato 1'),
@@ -118,8 +173,8 @@ export const catalogEntriesOpenMatchingMovies = defineScenario('catalog entries 
   login(), openView('#/catalog/genres'), expectViewHealthy(),
   expectHoverChanges('#view .row-i a.lnk', 'color'),
   resizeTo(390), expectViewHealthy(), resizeTo(1440),
-  sortCatalogWithKeyboard('name'), expectFirstCatalogEntry('Sample Genre 01'),
-  ...catalogList('#/catalog/genres', 'Sample Genre 01'), openFirstMovie(), expectDetailContains('Sample Genre 01'),
+  sortCatalogWithKeyboard('name'), expectFirstCatalogEntry('Sample Genre 001'),
+  ...catalogList('#/catalog/genres', 'Sample Genre 001'), openFirstMovie(), expectDetailContains('Sample Genre 001'),
   ...catalogList('#/catalog/makers', 'Sample Maker 01'),
   expectHoverChanges('#view [data-mark][data-kind=follow]', 'borderColor'),
   setFollow(true), setFollow(false),
@@ -171,9 +226,9 @@ export const movieFiltersAndSavedSearches = defineScenario('movie filters, an em
   login(), armSavedSearchCleanup(), openView('#/movies'), rememberResultCount(), expectViewHealthy(),
   expectHoverChanges('#view .mc', 'backgroundColor'),
   resizeTo(390), expectViewHealthy(), closeFilterDrawer(), resizeTo(1440), toggleFilterDrawer(), expectFilterField('q', true),
-  chooseMovieChoice('genre', 'Sample Genre 01'), openFirstMovie(), expectDetailContains('Sample Genre 01'),
+  chooseMovieChoice('genre', 'Sample Genre 001'), openFirstMovie(), expectDetailContains('Sample Genre 001'),
   goBack(), clearFilters(), expectRememberedCount(),
-  filterMovieField('maker', 'Sample Maker 01'), openFirstMovie(), expectDetailContains('Sample Maker 01'),
+  chooseMovieChoice('maker', 'Sample Maker 01'), openFirstMovie(), expectDetailContains('Sample Maker 01'),
   goBack(), clearFilters(), expectRememberedCount(),
   filterMovieField('q', 'zzzz-no-such-movie-xyz'), expectMovieListEmpty(), clearFilters(), expectRememberedCount(),
   filterMovieField('q', 'SMP-0520'), expectMovieResults({ contains: 'SMP-0520', atMost: 3 }),
@@ -184,6 +239,11 @@ export const movieFiltersAndSavedSearches = defineScenario('movie filters, an em
 
 export const calendarDayHoverChangesTheCell = defineScenario('hovering a calendar day highlights the cell', [
   login(), openView('#/calendar'), expectHoverChanges('#view .calcell:not(.off):not(.has)', 'backgroundColor'),
+]);
+
+export const movieDownloadsPanelShowsLinksAndSearch = defineScenario('the movie downloads panel shows links and on-demand search', [
+  login(), openMovieWithDownloads(), expectDownloadsPanelWithLinks(),
+  openMovieWithoutDownloads(), expectDownloadsPanelEmptyWithSearch(),
 ]);
 
 export const featurePagesShowTheirRealState = defineScenario('feed, library, downloads, media and crawl show their real state', [
@@ -241,9 +301,9 @@ export const guestCanBrowsePublicPages = defineScenario('a guest can browse publ
   openGuestLoginWithKeyboard(), expectOnLoginPage(),
   openView('#/search'), expectGuestShell(), expectSearchPrompt(), searchFor('SMP-0520'), expectSearchFound('SMP-0520'),
   searchFor('zzzz-no-such-movie-xyz'), expectSearchEmpty(),
-  openView('#/movies'), expectViewHealthy(), expectGuestSavedSearchHidden(), openFirstGuestMovie(), expectGuestMovie(), openGuestMovieCodes(), expectGuestMediaBlocked(),
+  openView('#/movies'), expectViewHealthy(), expectGuestSavedSearchHidden(), openFirstGuestMovie(), expectGuestMovie(), expectGuestDownloadsPanel(), openGuestMovieCodes(), expectGuestMediaBlocked(),
   openView('#/performers'), expectViewHealthy(), openFirstPerformer(), expectGuestHasNoFollow(), openPerformerTab('Hồ sơ chi tiết'),
-  openView('#/catalog/genres'), expectCatalogRow('Sample Genre 01'), openCatalogEntry('Sample Genre 01'), expectFacetCountMatchesCatalog(),
+  openView('#/catalog/genres'), expectCatalogRow('Sample Genre 001'), openCatalogEntry('Sample Genre 001'), expectFacetCountMatchesCatalog(),
   openView('#/calendar'), expectCalendarUsesLatestReleaseMonth(),
   openView('#/crawl'), expectCrawlReadOnly(), expectViewHealthy(),
   openView('#/catalog/nope'), expectUnknownCatalog(),
@@ -297,6 +357,17 @@ export const bioAndStatsLinksOpenLists = defineScenario('bio and stats links ope
   openView('#/stats'), expectViewHealthy(), openStatsLink(), expectViewHealthy(),
 ]);
 
+export const guestSeesMovieDownloadsWithoutQbittorrent = defineScenario('a guest sees movie download links without qBittorrent', [
+  login(), enableGuestMode(), browseAsGuest(),
+  openMovieWithDownloads(), expectDownloadsPanelWithLinks(), expectGuestDownloadsPanel(),
+  restoreLoginRequired(),
+]);
+
+export const ownerSeesQbittorrentDownloadAction = defineScenario('the owner can send a movie download to qBittorrent', [
+  login(), enableQbForOwner(), openMovieWithDownloads(), expectDownloadsPanelWithLinks(),
+  expectOwnerCanSendToQbittorrent(), restoreQbForOwner(),
+]);
+
 export const ownerEditsAndResetsANotificationTemplate = defineScenario('the owner edits, saves and resets a notification template', [
   login(), openView('#/settings/notifications'), openNotificationEditor(0),
   typeInTitle('E2E title {success_rate} ' + Date.now().toString(36)), expectLivePreviewShows('E2E title'), insertVariable(),
@@ -312,4 +383,42 @@ export const emptyStatesCalendarAndReportConfirm = defineScenario('empty states,
   openView('#/calendar'), expectCalendarOpensWithReleases(),
   openView('#/settings/report'), expectReportSendAsksToConfirm(), expectViewHealthy(),
   openView('#/player/SMP-0520'), expectPlayerEmptyState(), expectViewHealthy(),
+]);
+
+/** One FacetList serves every facet, so one list of steps is applied to each of them. */
+const SEARCH_TERMS = { genres: 'Genre 05', makers: 'Maker 0', series: 'Series', labels: 'Label', years: '20', sources: 'sam', cups: 'C', blood_types: 'A', locations: 'Osa', status: 'a' };
+const facetSteps = (kind, [group, key]) => [
+  openFacet(kind, group), expectFacetPager(kind, group), pageThroughFacet(kind, group),
+  sortFacet(kind, group, 'name'), sortFacet(kind, group, 'count'), toggleFacetMinCount(kind, group),
+  searchFacet(kind, group, SEARCH_TERMS[group]), clearFacetSearch(kind, group),
+  selectFacetOption(kind, group, key), expectFacetSelected(kind, group), unselectFacetOption(kind, group, key),
+];
+
+export const everyMovieFacetListBehavesTheSame = defineScenario('every movie facet list searches, sorts, pages, selects and pins the same way', [
+  login(), openView('#/movies'), expectFilterField('q', true), expectFacetRuleNote(),
+  ...MOVIE_FACETS.flatMap(facet => facetSteps('movies', facet)),
+  toggleGenreAllOf(true), toggleGenreAllOf(false),
+  resizeTo(390), expectViewHealthy(), resizeTo(1440),
+]);
+
+export const everyPerformerFacetListBehavesTheSame = defineScenario('every performer facet list searches, sorts, pages, selects and pins the same way', [
+  login(), openView('#/performers'), expectFilterField('q', true),
+  ...PERFORMER_FACETS.flatMap(facet => facetSteps('performers', facet)),
+]);
+
+export const filterChangesRefreshOnlyTheResults = defineScenario('a filter change refreshes only the results and keeps the panel, address history and last good list', [
+  login(), openView('#/movies'), expectFilterField('q', true), markBrowserNodes(),
+  selectFacetOption('movies', 'genres', 'genre'), expectBrowserNodesSurvived(), expectHistoryGrewBy(1),
+  goBackWithoutRemount(), expectBrowserNodesSurvived(),
+  expectTypingIsDebounced('q', 'SMP-0520'), expectBrowserNodesSurvived(), clearFilters(),
+  expectResultsDimWhileLoading('genres'), clearFilters(),
+  expectFailedRefreshKeepsResults('genres'), clearFilters(), expectBrowserNodesSurvived(),
+]);
+
+export const genresBrowseFiltersByScriptAndMinCount = defineScenario('the genre catalog filters by writing system and by minimum movie count', [
+  login(), openView('#/catalog/genres'), expectViewHealthy(),
+  toggleCatalogMinCount(), toggleCatalogMinCount(),
+  chooseCatalogScript('latin'), expectCatalogRow('Sample Genre 001'),
+  chooseCatalogScript('ja'), expectCatalogEmpty(), chooseCatalogScript('all'),
+  filterCatalog('Genre 05'), expectCatalogRow('Sample Genre 050'), filterCatalog(''),
 ]);

@@ -13,17 +13,17 @@ use Illuminate\Database\Query\Builder;
 use RuntimeException;
 
 /**
- * A repeatable fake collection for tests and UAT: 520 movies, 210 performers, 30 genres, 20 makers, 10 series, with the
+ * A repeatable fake collection for tests and UAT: 520 movies, 210 performers, 120 genres, 20 makers, 10 series, with the
  * links between them and the awkward cases the screens must survive. Everything is generated (no scraped text, no
  * images, no real people). Explicit ownership in sample_dataset_rows makes loading repeatable and limits wipe to
- * owned parents and their dependent rows.
+ * owned parents and their dependent rows. Genre count is >100 so browse/facet paging is exercised.
  */
 final class SampleDataset
 {
     public const SOURCE = 'sample';
     public const MOVIES = 520;
     public const PERFORMERS = 210;
-    public const GENRES = 30;
+    public const GENRES = 120;
     public const MAKERS = 20;
     public const SERIES = 10;
 
@@ -44,6 +44,7 @@ final class SampleDataset
             $this->loadGenres();
             $this->loadPerformers($now);
             $this->loadMovies($now);
+            app(\App\Services\Api\ResponseCacheEpoch::class)->bump();
         });
 
         $indexed = $index ? $this->index() : 0;
@@ -76,6 +77,8 @@ final class SampleDataset
                 app(MovieRepository::class)->tableQuery('movie_performers')->whereIn('movie_id', $chunk)->delete();
                 app(MovieRepository::class)->tableQuery('movie_observations')->whereIn('movie_id', $chunk)->delete();
                 app(MovieRepository::class)->tableQuery('movie_codes')->whereIn('movie_id', $chunk)->delete();
+                app(MovieRepository::class)->tableQuery('movie_media')->whereIn('movie_id', $chunk)->where('kind', 'magnet')->delete();
+                app(MovieRepository::class)->tableQuery('movie_download_searches')->whereIn('movie_id', $chunk)->delete();
                 app(MovieRepository::class)->tableQuery('movies')->whereIn('id', $chunk)->delete();
             }
             foreach (array_chunk($performerIds, 500) as $chunk) {
@@ -86,6 +89,7 @@ final class SampleDataset
             }
             app(MovieRepository::class)->tableQuery('movie_genres')->whereIn('genre_id', $genreIds)->delete();
             app(MovieRepository::class)->tableQuery('genres')->whereIn('id', $genreIds)->delete();
+            app(\App\Services\Api\ResponseCacheEpoch::class)->bump();
         });
     }
 
@@ -93,9 +97,31 @@ final class SampleDataset
     {
         $rows = [];
         for ($i = 1; $i <= self::GENRES; $i++) {
-            $rows[] = ['label_normalized' => sprintf('sample-%02d', $i), 'label_raw' => sprintf('Sample Genre %02d', $i)];
+            $rows[] = ['label_normalized' => sprintf('sample-%03d', $i), 'label_raw' => sprintf('Sample Genre %03d', $i)];
         }
         $this->saveOwned('genres', 'genre_id', $rows, ['label_normalized']);
+        $this->dropStaleOwnedGenres(array_column($rows, 'label_normalized'));
+    }
+
+    /**
+     * A reload without a wipe must end like a fresh load: genres this dataset created in an older release (a smaller
+     * catalog) and their movie links are removed; genres it does not own are never touched.
+     *
+     * @param list<string> $currentKeys
+     */
+    private function dropStaleOwnedGenres(array $currentKeys): void
+    {
+        $repository = app(MovieRepository::class);
+        $keep = $repository->tableQuery('genres')->whereIn('label_normalized', $currentKeys)->pluck('id')->all();
+        $stale = $repository->tableQuery('sample_dataset_rows')->whereNotNull('genre_id')->whereNotIn('genre_id', $keep)->pluck('genre_id')->all();
+        foreach (array_chunk($stale, 500) as $chunk) {
+            // Only the links this dataset made are removed; a genre that a real crawl linked meanwhile is kept and simply
+            // stops being owned by the dataset.
+            $repository->tableQuery('movie_genres')->whereIn('genre_id', $chunk)->where('source_slug', self::SOURCE)->delete();
+            $stillLinked = $repository->tableQuery('movie_genres')->whereIn('genre_id', $chunk)->distinct()->pluck('genre_id')->all();
+            $repository->tableQuery('genres')->whereIn('id', array_values(array_diff($chunk, $stillLinked)))->delete();
+            $repository->tableQuery('sample_dataset_rows')->whereIn('genre_id', $chunk)->delete();
+        }
     }
 
     private function loadPerformers(\DateTimeInterface $now): void
@@ -210,7 +236,7 @@ final class SampleDataset
                 $links[$id . '-' . ($n + 1)] = ['movie_id' => $id, 'performer_id' => $performers[sprintf('p%04d', $n + 1)], 'source_slug' => self::SOURCE, 'crawled_at' => $now];
             }
             foreach ([1 + $i % self::GENRES, 1 + ($i * 3) % self::GENRES] as $g) {
-                $movieGenres[$id . '-' . $g] = ['movie_id' => $id, 'genre_id' => $genres[sprintf('sample-%02d', $g)], 'source_slug' => self::SOURCE, 'crawled_at' => $now];
+                $movieGenres[$id . '-' . $g] = ['movie_id' => $id, 'genre_id' => $genres[sprintf('sample-%03d', $g)], 'source_slug' => self::SOURCE, 'crawled_at' => $now];
             }
         }
         foreach (array_chunk($codes, 200) as $chunk) {
@@ -227,6 +253,31 @@ final class SampleDataset
         $fresh = array_values(array_filter($observations, static fn(array $o): bool => ! isset($have[$o['movie_id']])));
         foreach (array_chunk($fresh, 200) as $chunk) {
             app(MovieRepository::class)->tableQuery('movie_observations')->insert($chunk);
+        }
+
+        // Every 10th sample movie ships with a deterministic magnet for downloads QA (SMP-0010, …).
+        $magnets = [];
+        for ($i = 10; $i <= self::MOVIES; $i += 10) {
+            $code = sprintf('SMP-%04d', $i);
+            $id = $movies[$code] ?? null;
+            if ($id === null) {
+                continue;
+            }
+            $magnets[] = [
+                'movie_id' => $id,
+                'kind' => 'magnet',
+                'url' => 'magnet:?xt=urn:btih:' . str_repeat(sprintf('%02x', $i % 256), 20),
+                'meta' => null,
+                'source_slug' => self::SOURCE,
+                'crawled_at' => $now,
+            ];
+        }
+        foreach (array_chunk($magnets, 100) as $chunk) {
+            app(MovieRepository::class)->tableQuery('movie_media')->upsert(
+                $chunk,
+                ['movie_id', 'kind', 'url'],
+                ['source_slug', 'crawled_at'],
+            );
         }
     }
 

@@ -28,7 +28,7 @@ final class MovieSearchControllerTest extends TestCase
     {
         parent::setUp();
 
-        $this->apiKey = app(ApiKeyService::class)->create(fake()->words(2, true))->plaintext;
+        $this->apiKey = app(ApiKeyService::class)->create(fake()->words(2, true), 60, ['movies'])->plaintext;
         DependencyMonitorTestHelper::bind();
     }
 
