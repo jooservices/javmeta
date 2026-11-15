@@ -34,6 +34,8 @@ final class SmokeCommandTest extends TestCase
 
     private bool $failApiRequests = false;
 
+    private bool $throwApiRequests = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -52,8 +54,15 @@ final class SmokeCommandTest extends TestCase
         $this->fakeApiRequests();
     }
 
-    public function test_smoke_command_reports_named_checks_and_revokes_its_temporary_key(): void
+    public function test_smoke_command_reports_named_checks_and_removes_its_temporary_key(): void
     {
+        $activeKey = ApiKey::factory()->create(['label' => 'Existing active key']);
+        $historicalKey = ApiKey::factory()->create([
+            'label' => 'Historical smoke key',
+            'status' => ApiKey::STATUS_REVOKED,
+            'revoked_at' => now()->subDay(),
+        ]);
+
         $exitCode = Artisan::call('javmeta:smoke');
         $output = Artisan::output();
 
@@ -69,16 +78,61 @@ final class SmokeCommandTest extends TestCase
         self::assertStringContainsString('[PASS] queue_depth:', $output);
         self::assertStringContainsString('[PASS] api_lookup:', $output);
         self::assertStringContainsString('[PASS] mcp_initialize:', $output);
+        self::assertStringContainsString('[PASS] temporary_api_key: The temporary API key was removed.', $output);
         self::assertStringContainsString('[SKIPPED] sentry:', $output);
         self::assertStringContainsString('[SKIPPED] openobserve:', $output);
 
-        $storedKey = ApiKey::query()->sole();
-        self::assertSame(ApiKey::STATUS_REVOKED, $storedKey->status);
+        self::assertSame(
+            [$activeKey->getKey(), $historicalKey->getKey()],
+            ApiKey::query()->orderBy('id')->pluck('id')->all(),
+        );
+        self::assertSame(ApiKey::STATUS_ACTIVE, $activeKey->fresh()->status);
+        self::assertSame(ApiKey::STATUS_REVOKED, $historicalKey->fresh()->status);
         self::assertCount(2, $this->apiKeys);
         self::assertNotSame('', $this->apiKeys[0]);
         self::assertSame($this->apiKeys[0], $this->apiKeys[1]);
         self::assertSame([], array_filter($this->apiKeys, static fn(string $key): bool => str_contains($output, $key)));
         self::assertNull(app(ApiKeyService::class)->findActiveByPlaintext($this->apiKeys[0]));
+    }
+
+    public function test_smoke_creation_failure_does_not_delete_existing_keys(): void
+    {
+        $existingKey = ApiKey::factory()->create(['label' => 'Existing active key']);
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER fail_smoke_api_key_creation
+            BEFORE INSERT ON api_keys
+            WHEN NEW.label = 'JavMeta deployment smoke check'
+            BEGIN
+                SELECT RAISE(ABORT, 'simulated key creation failure');
+            END
+            SQL);
+
+        try {
+            self::assertSame(1, Artisan::call('javmeta:smoke'));
+            $output = Artisan::output();
+
+            self::assertStringContainsString('[FAIL] api_lookup:', $output);
+            self::assertStringContainsString('[FAIL] mcp_initialize:', $output);
+            self::assertCount(0, $this->apiKeys);
+            self::assertSame([$existingKey->getKey()], ApiKey::query()->pluck('id')->all());
+            self::assertSame(ApiKey::STATUS_ACTIVE, $existingKey->fresh()->status);
+            self::assertStringNotContainsString('simulated key creation failure', $output);
+        } finally {
+            DB::unprepared('DROP TRIGGER IF EXISTS fail_smoke_api_key_creation');
+        }
+    }
+
+    public function test_deleting_an_already_absent_api_key_is_safe(): void
+    {
+        $existingKey = ApiKey::factory()->create(['label' => 'Existing active key']);
+        $service = app(ApiKeyService::class);
+        $createdKey = $service->create('Temporary cleanup test key');
+
+        $service->deleteCreated($createdKey);
+        $service->deleteCreated($createdKey);
+
+        self::assertSame([$existingKey->getKey()], ApiKey::query()->pluck('id')->all());
+        self::assertSame(ApiKey::STATUS_ACTIVE, $existingKey->fresh()->status);
     }
 
     public function test_smoke_warns_when_ui_login_is_disabled(): void
@@ -227,7 +281,7 @@ final class SmokeCommandTest extends TestCase
         self::assertStringContainsString('[WARN] queue_depth: Queue depth reached its configured limit for: browser_detail.', Artisan::output());
     }
 
-    public function test_api_and_mcp_failures_still_revoke_the_temporary_key(): void
+    public function test_api_and_mcp_failures_still_remove_the_temporary_key(): void
     {
         $this->failApiRequests = true;
 
@@ -236,8 +290,182 @@ final class SmokeCommandTest extends TestCase
 
         self::assertStringContainsString('[FAIL] api_lookup:', $output);
         self::assertStringContainsString('[FAIL] mcp_initialize:', $output);
-        self::assertStringContainsString('[PASS] temporary_api_key:', $output);
-        self::assertSame(ApiKey::STATUS_REVOKED, ApiKey::query()->sole()->status);
+        self::assertStringContainsString('[PASS] temporary_api_key: The temporary API key was removed.', $output);
+        self::assertDatabaseCount('api_keys', 0);
+        self::assertSame([], array_filter($this->apiKeys, static fn(string $key): bool => str_contains($output, $key)));
+    }
+
+    public function test_cleanup_failure_revokes_the_temporary_key_without_masking_probe_failures_or_leaking_it(): void
+    {
+        $activeKey = ApiKey::factory()->create(['label' => 'Existing active key']);
+        $historicalKey = ApiKey::factory()->create([
+            'label' => 'Historical smoke key',
+            'status' => ApiKey::STATUS_REVOKED,
+            'revoked_at' => now()->subDay(),
+        ]);
+        $this->throwApiRequests = true;
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER fail_smoke_api_key_cleanup
+            BEFORE DELETE ON api_keys
+            WHEN OLD.label = 'JavMeta deployment smoke check'
+            BEGIN
+                SELECT RAISE(ABORT, 'simulated key cleanup failure');
+            END
+            SQL);
+
+        try {
+            self::assertSame(1, Artisan::call('javmeta:smoke'));
+            $output = Artisan::output();
+
+            self::assertStringContainsString('[FAIL] api_lookup:', $output);
+            self::assertStringContainsString('[FAIL] mcp_initialize:', $output);
+            self::assertStringContainsString('[FAIL] temporary_api_key: The temporary API key could not be removed.', $output);
+            self::assertCount(2, $this->apiKeys);
+            self::assertSame($this->apiKeys[0], $this->apiKeys[1]);
+            self::assertSame([], array_filter($this->apiKeys, static fn(string $key): bool => str_contains($output, $key)));
+            self::assertSame(
+                ApiKey::STATUS_REVOKED,
+                ApiKey::query()->where('label', 'JavMeta deployment smoke check')->sole()->status,
+            );
+            self::assertSame(ApiKey::STATUS_ACTIVE, $activeKey->fresh()->status);
+            self::assertSame(ApiKey::STATUS_REVOKED, $historicalKey->fresh()->status);
+            $this->getJson('/api/v1/auth/verify', ['X-API-Key' => $this->apiKeys[0]])->assertUnauthorized();
+            self::assertStringNotContainsString('simulated key cleanup failure', $output);
+        } finally {
+            DB::unprepared('DROP TRIGGER IF EXISTS fail_smoke_api_key_cleanup');
+        }
+    }
+
+    public function test_silent_delete_failure_revokes_only_the_remaining_temporary_key(): void
+    {
+        $existingKey = ApiKey::factory()->create(['label' => 'Existing active key']);
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER skip_smoke_api_key_cleanup
+            BEFORE DELETE ON api_keys
+            WHEN OLD.label = 'JavMeta deployment smoke check'
+            BEGIN
+                SELECT RAISE(IGNORE);
+            END
+            SQL);
+
+        try {
+            self::assertSame(1, Artisan::call('javmeta:smoke'));
+            $output = Artisan::output();
+
+            self::assertStringContainsString('[PASS] api_lookup:', $output);
+            self::assertStringContainsString('[PASS] mcp_initialize:', $output);
+            self::assertStringContainsString('[FAIL] temporary_api_key: The temporary API key could not be removed.', $output);
+            self::assertSame(ApiKey::STATUS_ACTIVE, $existingKey->fresh()->status);
+            self::assertSame(
+                ApiKey::STATUS_REVOKED,
+                ApiKey::query()->where('label', 'JavMeta deployment smoke check')->sole()->status,
+            );
+            self::assertSame([], array_filter($this->apiKeys, static fn(string $key): bool => str_contains($output, $key)));
+            $this->getJson('/api/v1/auth/verify', ['X-API-Key' => $this->apiKeys[0]])->assertUnauthorized();
+        } finally {
+            DB::unprepared('DROP TRIGGER IF EXISTS skip_smoke_api_key_cleanup');
+        }
+    }
+
+    public function test_fallback_revoke_failure_is_reported_without_masking_probe_failures_or_leaking_the_key(): void
+    {
+        $this->throwApiRequests = true;
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER fail_smoke_api_key_cleanup
+            BEFORE DELETE ON api_keys
+            WHEN OLD.label = 'JavMeta deployment smoke check'
+            BEGIN
+                SELECT RAISE(ABORT, 'simulated key cleanup failure');
+            END
+            SQL);
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER fail_smoke_api_key_revoke
+            BEFORE UPDATE OF status ON api_keys
+            WHEN OLD.label = 'JavMeta deployment smoke check' AND NEW.status = 'revoked'
+            BEGIN
+                SELECT RAISE(ABORT, 'simulated key revoke failure');
+            END
+            SQL);
+
+        try {
+            self::assertSame(1, Artisan::call('javmeta:smoke'));
+            $output = Artisan::output();
+
+            self::assertStringContainsString('[FAIL] api_lookup:', $output);
+            self::assertStringContainsString('[FAIL] mcp_initialize:', $output);
+            self::assertStringContainsString('[FAIL] temporary_api_key: The temporary API key could not be removed.', $output);
+            self::assertCount(2, $this->apiKeys);
+            self::assertSame([], array_filter($this->apiKeys, static fn(string $key): bool => str_contains($output, $key)));
+            self::assertSame(
+                ApiKey::STATUS_ACTIVE,
+                ApiKey::query()->where('label', 'JavMeta deployment smoke check')->sole()->status,
+            );
+            self::assertSame([], ApiKey::query()->where('label', 'JavMeta deployment smoke check')->sole()->scopes);
+            Cache::flush();
+            self::assertNull(app(ApiKeyService::class)->findActiveByPlaintext($this->apiKeys[0]));
+            $this->getJson('/api/v1/auth/verify', ['X-API-Key' => $this->apiKeys[0]])->assertUnauthorized();
+            self::assertStringNotContainsString('simulated key cleanup failure', $output);
+            self::assertStringNotContainsString('simulated key revoke failure', $output);
+        } finally {
+            DB::unprepared('DROP TRIGGER IF EXISTS fail_smoke_api_key_revoke');
+            DB::unprepared('DROP TRIGGER IF EXISTS fail_smoke_api_key_cleanup');
+        }
+    }
+
+    public function test_silent_fallback_revoke_failure_is_reported_without_leaking_the_key(): void
+    {
+        $this->throwApiRequests = true;
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER fail_smoke_api_key_cleanup
+            BEFORE DELETE ON api_keys
+            WHEN OLD.label = 'JavMeta deployment smoke check'
+            BEGIN
+                SELECT RAISE(ABORT, 'simulated key cleanup failure');
+            END
+            SQL);
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER skip_smoke_api_key_revoke
+            BEFORE UPDATE OF status ON api_keys
+            WHEN OLD.label = 'JavMeta deployment smoke check' AND NEW.status = 'revoked'
+            BEGIN
+                SELECT RAISE(IGNORE);
+            END
+            SQL);
+
+        try {
+            self::assertSame(1, Artisan::call('javmeta:smoke'));
+            $output = Artisan::output();
+
+            self::assertStringContainsString('[FAIL] api_lookup:', $output);
+            self::assertStringContainsString('[FAIL] mcp_initialize:', $output);
+            self::assertStringContainsString('[FAIL] temporary_api_key: The temporary API key could not be removed.', $output);
+            self::assertCount(2, $this->apiKeys);
+            self::assertSame([], array_filter($this->apiKeys, static fn(string $key): bool => str_contains($output, $key)));
+            self::assertSame(
+                ApiKey::STATUS_ACTIVE,
+                ApiKey::query()->where('label', 'JavMeta deployment smoke check')->sole()->status,
+            );
+            self::assertSame([], ApiKey::query()->where('label', 'JavMeta deployment smoke check')->sole()->scopes);
+            Cache::flush();
+            self::assertNull(app(ApiKeyService::class)->findActiveByPlaintext($this->apiKeys[0]));
+            $this->getJson('/api/v1/auth/verify', ['X-API-Key' => $this->apiKeys[0]])->assertUnauthorized();
+        } finally {
+            DB::unprepared('DROP TRIGGER IF EXISTS skip_smoke_api_key_revoke');
+            DB::unprepared('DROP TRIGGER IF EXISTS fail_smoke_api_key_cleanup');
+        }
+    }
+
+    public function test_smoke_key_lookup_ignores_stale_active_cache_after_scope_cleanup(): void
+    {
+        $createdKey = app(ApiKeyService::class)->createSmokeCheckKey();
+        ApiKey::query()->whereKey($createdKey->model->getKey())->update(['scopes' => json_encode([])]);
+        Cache::put(
+            'javmeta:api-key:active:' . hash('sha256', hash('sha256', $createdKey->plaintext)),
+            $createdKey->model,
+        );
+
+        self::assertNull((new ApiKeyService())->findActiveByPlaintext($createdKey->plaintext));
+        $this->getJson('/api/v1/auth/verify', ['X-API-Key' => $createdKey->plaintext])->assertUnauthorized();
     }
 
     public function test_sentry_delivery_is_checked_when_enabled(): void
@@ -338,14 +566,19 @@ final class SmokeCommandTest extends TestCase
     {
         $apiKeys = &$this->apiKeys;
         $failApiRequests = &$this->failApiRequests;
-        Http::fake(function (Request $request) use (&$apiKeys, &$failApiRequests): \GuzzleHttp\Promise\PromiseInterface {
-            $apiKeys[] = (string) ($request->header('X-API-Key')[0] ?? '');
+        $throwApiRequests = &$this->throwApiRequests;
+        Http::fake(function (Request $request) use (&$apiKeys, &$failApiRequests, &$throwApiRequests): \GuzzleHttp\Promise\PromiseInterface {
+            $plaintext = (string) ($request->header('X-API-Key')[0] ?? '');
+            $apiKeys[] = $plaintext;
+            if ($throwApiRequests) {
+                app(ApiKeyService::class)->findActiveByPlaintext($plaintext);
+                throw new \RuntimeException('simulated transport failure');
+            }
             if ($failApiRequests) {
                 return Http::response(['message' => 'unavailable'], 503);
             }
 
-            $plaintext = (string) ($request->header('X-API-Key')[0] ?? '');
-            $key = \App\Models\ApiKey::query()->where('key_hash', hash('sha256', $plaintext))->first();
+            $key = app(ApiKeyService::class)->findActiveByPlaintext($plaintext);
             $scope = str_ends_with($request->url(), '/api/v1/mcp') ? 'mcp' : 'performers';
             if (! $key instanceof \App\Models\ApiKey || ! $key->allows($scope)) {
                 return Http::response(['message' => 'The key does not allow this scope.'], 403);

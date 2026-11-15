@@ -21,7 +21,7 @@ export default {
   async render() {
     let st;
     try { st = (await admin('/ui-me/downloads/status')).data; } catch (e) { return { html: `<div class="wrap">${head(t('downloads.title'), '')}${errorBox(e)}</div>` }; }
-    if (!st.enabled) return { html: `<div class="wrap">${head(t('downloads.title'), 'qBittorrent')}${emptyBox(t('downloads.disabled'), t('downloads.disabled_hint'), a('#/settings', t('common.open_settings'), 'btn'))}</div>` };
+    if (!st.enabled) return { html: `<div class="wrap">${head(t('downloads.title'), '')}${emptyBox(t('downloads.disabled'), t('downloads.disabled_hint'), a('#/settings', t('common.open_settings'), 'btn'))}</div>` };
     let items;
     try { items = (await admin('/ui-me/downloads')).data.items; } catch (e) { return { html: `<div class="wrap">${head(t('downloads.title'), 'qBittorrent')}${errorBox(e)}</div>` }; }
     const html = `<div class="wrap">${head(t('downloads.title'), t('downloads.count', { count: items.length, n: fmt(items.length) }))}<div class="panel" id="dlist">${items.map(row).join('') || `<div class="row-i muted">${t('downloads.empty_hint')}</div>`}</div></div>`;
