@@ -29,7 +29,7 @@ final class MovieLookupControllerTest extends TestCase
     {
         parent::setUp();
 
-        $this->apiKey = app(ApiKeyService::class)->create(fake()->words(2, true))->plaintext;
+        $this->apiKey = app(ApiKeyService::class)->create(fake()->words(2, true), 60, ['movies'])->plaintext;
     }
 
     public function test_lookup_requires_api_key_ac34(): void
@@ -52,7 +52,7 @@ final class MovieLookupControllerTest extends TestCase
     public function test_lookup_with_revoked_key_returns_unauthorized_ac34(): void
     {
         $service = app(ApiKeyService::class);
-        $created = $service->create(fake()->words(2, true));
+        $created = $service->create(fake()->words(2, true), 60, ['movies']);
         $service->revoke((int) $created->model->getKey());
 
         $this->getJson('/api/v1/movies/SSIS-001', [

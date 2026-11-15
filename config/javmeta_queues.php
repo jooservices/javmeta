@@ -14,6 +14,7 @@ $crawlQueueNames = [
 $browserQueueNames = array_map(static fn(string $name): string => 'browser_' . $name, $crawlQueueNames);
 $retryQueueNames = array_map(static fn(string $name): string => 'retry_' . $name, $crawlQueueNames);
 $searchQueueName = 'search';
+$downloadSearchQueueName = 'download_search';
 $workerQueueNames = [...array_values($crawlQueueNames), $searchQueueName];
 $observabilityQueueName = 'observability';
 
@@ -52,11 +53,22 @@ return [
         'primary_nodes' => (int) env('JAVMETA_POSTGRES_PRIMARY_NODE_COUNT', 1),
     ],
     'source_gap_overrides' => [],
+    'latency_gap' => [
+        'enabled' => false,
+        'sample_window_size' => 10,
+        'sustained_samples' => 8,
+        'slow_threshold_ms' => 2000,
+        'healthy_threshold_ms' => 1000,
+        'increase_percent' => 15,
+        'recovery_percent' => 5,
+        'window_ttl_seconds' => 3600,
+    ],
 
     /** Queue names included in the feed-pool queue set; only crawl kinds map to crawl_queue rows. */
     'feed_pool_names' => [...$workerQueueNames, ...array_values($browserQueueNames), ...array_values($retryQueueNames)],
 
     'search_queue' => $searchQueueName,
+    'download_search_queue' => $downloadSearchQueueName,
     'observability_queue' => $observabilityQueueName,
     /** Percentage of API spans queued for OpenObserve; deterministic sampling uses the trace ID. */
     'observability_sample_percent' => 10,
@@ -65,7 +77,7 @@ return [
     'observability_depth_limit' => 1000,
 
     /** Queues supervised by Horizon; search and observability are not crawl_queue kinds. */
-    'horizon_names' => [...$workerQueueNames, ...array_values($browserQueueNames), ...array_values($retryQueueNames), $observabilityQueueName],
+    'horizon_names' => [...$workerQueueNames, ...array_values($browserQueueNames), ...array_values($retryQueueNames), $downloadSearchQueueName, $observabilityQueueName],
 
     /** Workers per queue name on each instance (POC: 1). */
     'workers_per_queue' => 1,

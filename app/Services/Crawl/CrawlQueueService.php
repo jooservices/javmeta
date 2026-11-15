@@ -42,13 +42,18 @@ final class CrawlQueueService
      */
     public function claimNext(string $workerId, ?string $kind = null, array $excludeSources = [], ?string $lane = null, ?array &$diagnostics = null): ?CrawlQueue
     {
+        $disabledSources = array_values(array_unique([
+            ...$this->sourceRepository()->disabledSlugs(),
+            ...app(SourceCircuitBreaker::class)->pausedSourceSlugs(),
+        ]));
+
         return $this->queueRepository()->claimNext(
             $workerId,
             $kind,
             $excludeSources,
             $lane,
             $diagnostics,
-            $this->sourceRepository()->disabledSlugs(),
+            $disabledSources,
             app(CrawlLaneService::class),
         );
     }
@@ -216,6 +221,9 @@ final class CrawlQueueService
     {
         return $this->queueRepository()->startClaimedRow($id, $expectedKind, $claimToken, function (CrawlQueue $row): ?array {
             $sourceSlug = (string) $row->source_slug;
+            if (app(SourceCircuitBreaker::class)->isPaused($sourceSlug)) {
+                return null;
+            }
             if ($this->sourceGapPolicy->isOverridden($sourceSlug)) {
                 $source = $this->sourceRepository()->findSource($sourceSlug);
                 if ($source instanceof Source) {
@@ -232,6 +240,9 @@ final class CrawlQueueService
                         return null;
                     }
                     $this->sourceRequestPacer->wait($wait);
+                    if (app(SourceCircuitBreaker::class)->isPaused($sourceSlug)) {
+                        return null;
+                    }
                 }
             }
 
@@ -437,5 +448,22 @@ final class CrawlQueueService
     private function eventRepository(): CrawlEventRepository
     {
         return $this->eventRepository ?? app(CrawlEventRepository::class);
+    }
+
+    public const MAX_SSRF_REQUEUE_BATCH_SIZE = 500;
+
+    /** @return array{eligible: int, requeued: int} */
+    public function requeueSsrfBlockedFailures(bool $apply, ?string $source, int $batchSize): array
+    {
+        if ($batchSize < 1 || $batchSize > self::MAX_SSRF_REQUEUE_BATCH_SIZE) {
+            throw new RuntimeException('The SSRF requeue batch size is outside the supported range.');
+        }
+
+        return $this->queueRepository()->requeueSsrfBlockedFailures(
+            $apply,
+            $source,
+            $batchSize,
+            now()->addSeconds($this->retryRoundDelay(1)),
+        );
     }
 }

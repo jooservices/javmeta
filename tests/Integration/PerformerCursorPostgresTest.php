@@ -30,7 +30,7 @@ final class PerformerCursorPostgresTest extends TestCase
     {
         self::assertSame('pgsql', DB::getDriverName());
         Queue::fake([IndexMovieJob::class, IndexPerformerJob::class]);
-        $key = app(ApiKeyService::class)->create('performer cursor regression')->plaintext;
+        $key = app(ApiKeyService::class)->create('performer cursor regression', 60, ['performers'])->plaintext;
         foreach ([2, 0, 2, 1, 0] as $count) {
             $performer = Performer::factory()->create(['canonical_performer_id' => null]);
             foreach (Movie::factory()->count($count)->create() as $movie) {

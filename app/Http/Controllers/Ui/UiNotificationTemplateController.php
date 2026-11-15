@@ -23,7 +23,7 @@ final class UiNotificationTemplateController
     {
         $template = $templates->get($key);
         if ($template === null) {
-            return response()->json(['message' => 'Không tìm thấy loại thông báo.'], 404);
+            return response()->json(['message' => __('notifications.not_found')], 404);
         }
 
         return response()->json(['data' => $template]);
@@ -74,7 +74,7 @@ final class UiNotificationTemplateController
     {
         $current = $templates->get($key);
         if ($current === null) {
-            return response()->json(['message' => 'Không tìm thấy loại thông báo.'], 404);
+            return response()->json(['message' => __('notifications.not_found')], 404);
         }
         $data = $request->validate([
             'title_template' => ['sometimes', 'string', 'max:10000'],
@@ -100,7 +100,7 @@ final class UiNotificationTemplateController
     {
         $current = $templates->get($key);
         if ($current === null) {
-            return response()->json(['message' => 'Không tìm thấy loại thông báo.'], 404);
+            return response()->json(['message' => __('notifications.not_found')], 404);
         }
         $data = $request->validate([
             'title_template' => ['sometimes', 'string', 'max:10000'],
@@ -146,7 +146,7 @@ final class UiNotificationTemplateController
     public function revisions(string $key, NotificationTemplateService $templates): JsonResponse
     {
         if ($templates->get($key) === null) {
-            return response()->json(['message' => 'Không tìm thấy loại thông báo.'], 404);
+            return response()->json(['message' => __('notifications.not_found')], 404);
         }
 
         return response()->json(['data' => $templates->revisions($key)]);

@@ -80,4 +80,25 @@ final class SourceParityCheckerTest extends TestCase
         $stale = $this->checker->problems($capabilities, ['m' => ['movie_listing_urls' => ['x'], 'performer_listing_urls' => ['y']]], $gap);
         self::assertSame(['m: known gap for movie_listing_urls is stale (POC seeds performers only); remove it'], $stale);
     }
+
+    public function test_a_documented_not_enabled_adapter_is_tolerated_but_a_stale_entry_is_reported(): void
+    {
+        $capabilities = ['pending' => ['listing', 'detail'], 'live' => ['listing', 'detail']];
+        $sources = ['live' => ['movie_listing_urls' => ['x']]];
+
+        self::assertSame([], $this->checker->problems($capabilities, $sources, [], ['pending' => 'staged']));
+
+        $stale = $this->checker->problems($capabilities, $sources, [], ['pending' => 'staged', 'live' => 'staged', 'gone' => 'staged']);
+        self::assertSame([
+            'gone: not-enabled entry is stale, crawlerx has no such adapter (staged); remove it',
+            'live: not-enabled entry is stale, javmeta already configures this source (staged); remove it',
+        ], $stale);
+    }
+
+    public function test_an_adapter_missing_from_both_config_and_the_not_enabled_list_is_still_reported(): void
+    {
+        $problems = $this->checker->problems(['new_site' => ['listing', 'detail']], [], [], ['other' => 'staged']);
+
+        self::assertContains('new_site: crawlerx adapter has no javmeta source in config/javmeta_sources.php', $problems);
+    }
 }

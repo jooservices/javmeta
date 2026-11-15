@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Notifications;
 
+use App\Observability\NotificationPolicyMetrics;
 use App\Services\Notifications\NotificationPolicyDispatcher;
 use App\Services\Notifications\NotificationPolicyService;
 use App\Services\Settings\SettingsService;
@@ -127,21 +128,45 @@ final class NotificationPolicyDispatcherTest extends TestCase
         }
     }
 
-    public function test_quiet_mode_allows_digest_events(): void
+    public function test_quiet_mode_suppresses_warning_and_info_digests_with_observable_reason(): void
     {
         app(SettingsService::class)->set('notifications.quiet_mode', true);
-        $service = app(NotificationPolicyService::class);
-        $policy = $service->get('report.daily');
-        self::assertNotNull($policy);
-        $service->save('report.daily', [...$policy, 'enabled' => true, 'tier' => 'warning'], null);
+        $policies = app(NotificationPolicyService::class);
+        $dispatcher = app(NotificationPolicyDispatcher::class);
+        foreach (['report.daily' => 'warning', 'report.periodic' => 'info'] as $key => $tier) {
+            $policy = $policies->get($key);
+            self::assertNotNull($policy);
+            $policies->save($key, [...$policy, 'enabled' => true, 'tier' => $tier], null);
 
-        $decision = app(NotificationPolicyDispatcher::class)->prepare('report.daily', [
-            'notification_cause' => 'daily_report',
+            foreach ([false, true] as $scheduled) {
+                $decision = $dispatcher->prepare($key, [
+                    'notification_cause' => $key === 'report.daily' ? 'daily_report' : 'periodic_report',
+                    'notification_digest' => true,
+                    'notification_scheduled' => $scheduled,
+                ]);
+
+                self::assertFalse($decision['allowed']);
+                self::assertSame('quiet_mode', $decision['reason']);
+            }
+        }
+
+        $warning = $dispatcher->prepare('crawl.success_rate_low', [
+            'rule' => 'success_rate',
+            'value' => 82,
+            'threshold' => 85,
             'notification_digest' => true,
         ]);
+        self::assertFalse($warning['allowed']);
+        self::assertSame('quiet_mode', $warning['reason']);
+        self::assertContains(
+            'crawl.success_rate_low',
+            array_column($policies->openWarnings(), 'key'),
+        );
 
-        self::assertTrue($decision['allowed']);
-        app(NotificationPolicyDispatcher::class)->release($decision);
+        $metric = collect(app(NotificationPolicyMetrics::class)->points())
+            ->first(static fn(array $point): bool => ($point['labels']['reason'] ?? null) === 'quiet_mode');
+        self::assertNotNull($metric);
+        self::assertSame(5, $metric['value']);
     }
 
     public function test_critical_fallback_does_not_send_a_policy_known_to_be_disabled(): void
@@ -169,7 +194,7 @@ final class NotificationPolicyDispatcherTest extends TestCase
         self::assertSame('critical', $decision['tier']);
     }
 
-    public function test_quiet_mode_allows_only_critical_and_security_events(): void
+    public function test_quiet_mode_allows_only_critical_and_security_events_including_digests(): void
     {
         app(SettingsService::class)->set('notifications.quiet_mode', true);
         $service = app(NotificationPolicyService::class);
@@ -182,9 +207,15 @@ final class NotificationPolicyDispatcherTest extends TestCase
 
         $dispatcher = app(NotificationPolicyDispatcher::class);
         self::assertSame('quiet_mode', $dispatcher->prepare('node.joined', ['notification_cause' => 'node:worker-1'])['reason']);
-        $critical = $dispatcher->prepare('crawl.stalled', ['rule' => 'crawl_stalled']);
+        $critical = $dispatcher->prepare('crawl.stalled', [
+            'rule' => 'crawl_stalled',
+            'notification_digest' => true,
+        ]);
         self::assertTrue($critical['allowed']);
-        $securityEvent = $dispatcher->prepare('security.guest_mode_toggled', ['notification_cause' => 'guest-mode']);
+        $securityEvent = $dispatcher->prepare('security.guest_mode_toggled', [
+            'notification_cause' => 'guest-mode',
+            'notification_digest' => true,
+        ]);
         self::assertTrue($securityEvent['allowed']);
 
         $warning = $dispatcher->prepare('crawl.success_rate_low', [

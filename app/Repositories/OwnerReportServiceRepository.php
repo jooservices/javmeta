@@ -132,11 +132,26 @@ final class OwnerReportServiceRepository extends EloquentRepository implements R
             ])->all();
     }
 
-    /** @return list<array{movie_id: int, field: string}> */
-    public function movieFieldConflicts(): array
+    /** @return array{movies_with_a_conflict: int, by_field: array<string, int>} */
+    public function fieldConflictSummary(): array
     {
-        return DB::table('movie_observations')->select('movie_id', 'field')->groupBy('movie_id', 'field')
-            ->havingRaw('COUNT(DISTINCT value_hash) > 1')->get()
-            ->map(static fn(object $row): array => ['movie_id' => (int) $row->movie_id, 'field' => (string) $row->field])->all();
+        $conflicts = static fn() => DB::table('movie_observations')->select('movie_id', 'field')
+            ->groupBy('movie_id', 'field')
+            ->havingRaw('COUNT(DISTINCT value_hash) > 1');
+
+        $byField = DB::query()->fromSub($conflicts(), 'conflicts')
+            ->select('field')
+            ->selectRaw('COUNT(*) AS conflicts')
+            ->groupBy('field')
+            ->orderBy('field')
+            ->get()
+            ->mapWithKeys(static fn(object $row): array => [(string) $row->field => (int) $row->conflicts])
+            ->all();
+
+        $moviesWithConflict = (int) DB::query()->fromSub($conflicts(), 'conflicts')
+            ->distinct()
+            ->count('movie_id');
+
+        return ['movies_with_a_conflict' => $moviesWithConflict, 'by_field' => $byField];
     }
 }

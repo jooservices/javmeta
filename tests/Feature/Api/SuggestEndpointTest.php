@@ -17,7 +17,7 @@ final class SuggestEndpointTest extends TestCase
     /** @return array<string, string> */
     private function headers(): array
     {
-        return ['X-API-Key' => app(ApiKeyService::class)->create('suggest-test')->plaintext];
+        return ['X-API-Key' => app(ApiKeyService::class)->create('suggest-test', 60, ['catalog'])->plaintext];
     }
 
     public function test_it_needs_a_key_and_a_valid_text(): void

@@ -26,6 +26,6 @@ final class CreateNodeEnrollmentRequest extends FormRequest
     /** @return array<string, string> */
     public function messages(): array
     {
-        return ['node_name.regex' => 'The node name may only use lowercase letters, digits and hyphens, and must start with a letter.'];
+        return ['node_name.regex' => __('operations.validation.node_name_regex')];
     }
 }

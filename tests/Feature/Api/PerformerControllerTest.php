@@ -23,7 +23,7 @@ final class PerformerControllerTest extends TestCase
     {
         parent::setUp();
 
-        $this->apiKey = app(ApiKeyService::class)->create(fake()->words(2, true))->plaintext;
+        $this->apiKey = app(ApiKeyService::class)->create(fake()->words(2, true), 60, ['performers'])->plaintext;
     }
 
     public function test_performers_require_api_key(): void

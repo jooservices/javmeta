@@ -6,6 +6,7 @@ namespace App\Services\Crawl;
 
 use App\Events\CrawlSourceUnhealthy;
 use App\Repositories\CrawlTitleFailureServiceRepository;
+use App\Repositories\MovieRepository;
 use Illuminate\Support\Facades\Event;
 
 /**
@@ -24,7 +25,10 @@ final class TitleFailureTracker
 
         if ($isSoft404 && $movie !== null) {
             if ($movie['delisted_at'] === null) {
-                $this->repository()->markDelisted($movie['id'], now());
+                app(MovieRepository::class)->transaction(function () use ($movie): void {
+                    $this->repository()->markDelisted($movie['id'], now());
+                    app(\App\Services\Api\ResponseCacheEpoch::class)->bump();
+                });
             }
 
             Event::dispatch(new CrawlSourceUnhealthy($sourceSlug, 'soft404', [
@@ -58,7 +62,10 @@ final class TitleFailureTracker
         }
 
         if ($failures >= $threshold && $movie !== null) {
-            $this->repository()->markNeedsReview($movie['id'], now());
+            app(MovieRepository::class)->transaction(function () use ($movie): void {
+                $this->repository()->markNeedsReview($movie['id'], now());
+                app(\App\Services\Api\ResponseCacheEpoch::class)->bump();
+            });
             Event::dispatch(new CrawlSourceUnhealthy($sourceSlug, 'title_needs_review', [
                 'url' => $url,
                 'movie_id' => $movie['id'],

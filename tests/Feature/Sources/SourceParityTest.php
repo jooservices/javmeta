@@ -31,6 +31,57 @@ final class SourceParityTest extends TestCase
         'minnanoav' => [SourceParityChecker::MOVIE => 'Movie capability exists in crawlerx; javmeta seeds the performer index only (README site matrix).'],
     ];
 
+    /**
+     * CrawlerX adapters that exist but are deliberately not enabled in JavMeta yet (staged source enablement:
+     * each source is verified and registered on its own). A new CrawlerX adapter that is in neither config nor
+     * this list fails the build; an entry that is enabled later or disappears from CrawlerX fails it too.
+     */
+    private const NOT_ENABLED_REASON = 'Available in CrawlerX; JavMeta enables sources one at a time after live verification.';
+
+    /** @var list<string> */
+    private const NOT_ENABLED = [
+        'asagei',
+        'avactress',
+        'befreebe',
+        'bi',
+        'bibian',
+        'bomb',
+        'commons',
+        'dahlia',
+        'dandy',
+        'deeps',
+        'ebody',
+        'falenogroup',
+        'gravurech',
+        'hajimekikaku',
+        'hhh',
+        'honnaka',
+        'indies',
+        'jav321',
+        'javmenu',
+        'kirakira',
+        'materiall',
+        'mgstage',
+        'miman',
+        'mko',
+        'muku',
+        'mvg',
+        'nanpajapan',
+        'next11',
+        'opera',
+        'oppai',
+        'plum',
+        'rocket',
+        'rookie',
+        'smartflash',
+        'tameikegoro',
+        'tosatsu',
+        'vav',
+        'wanz',
+        'wikidata',
+        'wpb',
+    ];
+
     public function test_every_crawlerx_adapter_has_a_matching_javmeta_source_and_capabilities(): void
     {
         $registry = new FileAdapterManifestRegistry();
@@ -43,6 +94,7 @@ final class SourceParityTest extends TestCase
             $capabilities,
             (array) config('javmeta_sources.sources'),
             self::KNOWN_GAPS,
+            array_fill_keys(self::NOT_ENABLED, self::NOT_ENABLED_REASON),
         );
 
         self::assertSame([], $problems, "Source parity problems:\n" . implode("\n", $problems));

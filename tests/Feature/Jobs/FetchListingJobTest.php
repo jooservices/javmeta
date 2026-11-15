@@ -222,6 +222,7 @@ final class FetchListingJobTest extends TestCase
             'error_code' => CrawlErrorCode::Blocked->value,
         ]);
         $this->assertDatabaseHas('sources', ['slug' => 'onejav', 'last_error' => 'Blocked by site.']);
+        self::assertSame(1, $source->refresh()->consecutive_failures);
         self::assertSame(4.0, (float) $source->refresh()->gap_seconds_current);
     }
 

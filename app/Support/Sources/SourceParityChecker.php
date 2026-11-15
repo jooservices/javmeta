@@ -25,14 +25,25 @@ final class SourceParityChecker
      * @param  array<string, list<string>>  $capabilitiesBySlug  crawlerx manifest capabilities per slug
      * @param  array<string, array<string, mixed>>  $sources  config('javmeta_sources.sources')
      * @param  array<string, array<string, string>>  $knownGaps  slug => [requirement constant => reason]
+     * @param  array<string, string>  $notEnabled  slug => reason: crawlerx adapters that exist but javmeta has deliberately not enabled yet
      * @return list<string> human readable problems; empty when everything matches
      */
-    public function problems(array $capabilitiesBySlug, array $sources, array $knownGaps = []): array
+    public function problems(array $capabilitiesBySlug, array $sources, array $knownGaps = [], array $notEnabled = []): array
     {
         $problems = [];
 
         foreach (array_diff(array_keys($capabilitiesBySlug), array_keys($sources)) as $slug) {
+            if (isset($notEnabled[$slug])) {
+                continue;
+            }
             $problems[] = "{$slug}: crawlerx adapter has no javmeta source in config/javmeta_sources.php";
+        }
+        foreach ($notEnabled as $slug => $reason) {
+            if (! isset($capabilitiesBySlug[$slug])) {
+                $problems[] = "{$slug}: not-enabled entry is stale, crawlerx has no such adapter ({$reason}); remove it";
+            } elseif (isset($sources[$slug])) {
+                $problems[] = "{$slug}: not-enabled entry is stale, javmeta already configures this source ({$reason}); remove it";
+            }
         }
         foreach (array_diff(array_keys($sources), array_keys($capabilitiesBySlug)) as $slug) {
             $problems[] = "{$slug}: javmeta source has no crawlerx adapter";

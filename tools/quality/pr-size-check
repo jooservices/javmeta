@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# PR size policy check. Counts the files changed between the merge base of the
+# base ref and HEAD, warns at --warn (30), fails at --fail (100) unless an
+# explicit, documented mass-rename or generated-file exception is supplied.
+# Bash 3.2 compatible. Never prints secrets.
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage: tools/quality/pr-size-check [options]
+
+Counts the files changed between the merge base of the base ref and HEAD.
+Warns at or above --warn (default 30) changed files and fails at or above
+--fail (default 100), unless an explicit documented exception is supplied
+with --reason. An exception may only be a mass-rename or generated-file
+change; without one the check refuses to pass above the fail threshold.
+
+Options:
+  --base <ref>    Base ref to compare against (default: origin/develop,
+                  falling back to origin/master).
+  --warn <n>      Warn at or above this many changed files (default 30).
+  --fail <n>      Fail at or above this many changed files (default 100).
+  --reason <text> Documented exception (mass-rename or generated files).
+  -h, --help      Show this help.
+
+Environment variables PR_SIZE_BASE, PR_SIZE_WARN, PR_SIZE_FAIL and
+PR_SIZE_REASON override the corresponding defaults or flags.
+USAGE
+}
+
+base=""
+warn=""
+fail=""
+reason=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --base|--warn|--fail|--reason)
+      if [[ $# -lt 2 ]]; then
+        printf 'pr-size-check: %s requires a value\n' "$1" >&2
+        usage >&2
+        exit 2
+      fi
+      case "$1" in
+        --base) base="$2" ;;
+        --warn) warn="$2" ;;
+        --fail) fail="$2" ;;
+        --reason) reason="$2" ;;
+      esac
+      shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) printf 'unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+base="${base:-${PR_SIZE_BASE:-}}"
+warn="${warn:-${PR_SIZE_WARN:-30}}"
+fail="${fail:-${PR_SIZE_FAIL:-100}}"
+reason="${reason:-${PR_SIZE_REASON:-}}"
+
+if [[ ! "$warn" =~ ^[0-9]+$ ]] || [[ ! "$fail" =~ ^[0-9]+$ ]]; then
+  printf 'pr-size-check: --warn and --fail must be non-negative integers\n' >&2
+  exit 2
+fi
+# The policy thresholds can be lowered for a stricter local check but never raised.
+if (( warn > 30 || fail > 100 )); then
+  printf 'pr-size-check: --warn may not exceed 30 and --fail may not exceed 100 (the policy limits)\n' >&2
+  exit 2
+fi
+if (( warn > fail )); then
+  printf 'pr-size-check: --warn (%s) must not exceed --fail (%s)\n' "$warn" "$fail" >&2
+  exit 2
+fi
+
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  printf 'pr-size-check: not inside a git repository\n' >&2
+  exit 2
+fi
+
+if [[ -z "$base" ]]; then
+  if git rev-parse --verify --quiet origin/develop >/dev/null 2>&1; then
+    base="origin/develop"
+  elif git rev-parse --verify --quiet origin/master >/dev/null 2>&1; then
+    base="origin/master"
+  else
+    printf 'pr-size-check: no --base given and no origin/develop or origin/master found\n' >&2
+    exit 2
+  fi
+fi
+
+if ! merge_base="$(git merge-base "$base" HEAD 2>/dev/null)"; then
+  printf "pr-size-check: cannot resolve merge base between '%s' and HEAD\n" "$base" >&2
+  exit 2
+fi
+
+count="$(git diff --name-only "$merge_base" HEAD | wc -l | tr -d '[:space:]')"
+count="${count:-0}"
+
+printf 'PR size: %s changed file(s) (warn at %s, fail at %s)\n' "$count" "$warn" "$fail"
+
+if (( count >= fail )); then
+  if [[ -z "$reason" ]]; then
+    printf 'PR size check FAILED: %s changed file(s) reaches the %s-file limit.\n' "$count" "$fail" >&2
+    printf 'Split this change by behaviour, or document a mass-rename or generated-file\n' >&2
+    printf "exception with --reason '<mass-rename|generated files>: ...'.\n" >&2
+    exit 1
+  fi
+  case "$reason" in
+    mass-rename:*|'generated files:'*) ;;
+    *)
+      printf "PR size check FAILED: the exception reason must start with 'mass-rename:' or 'generated files:' (ordinary feature work is not an exception).\n" >&2
+      exit 1 ;;
+  esac
+  printf 'PR size exception accepted: %s\n' "$reason"
+  exit 0
+fi
+
+if (( count >= warn )); then
+  printf 'PR size WARNING: %s changed file(s) is at or above the %s-file review threshold.\n' "$count" "$warn" >&2
+  printf 'Question whether this pull request should be split by behaviour.\n' >&2
+fi
+
+exit 0

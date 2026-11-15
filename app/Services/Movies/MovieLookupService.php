@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Services\Movies;
 
+use App\Data\Api\MovieMediaDto;
 use App\Repositories\MovieRepository;
 use App\Models\Movie;
 use App\Models\MovieCode;
+use App\Models\MovieMedia;
 use App\Support\Code\NormalizedCode;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use InvalidArgumentException;
 
 /**
@@ -19,11 +22,13 @@ use InvalidArgumentException;
  *   all resolve to the same movie (AC-3.2) while prefix collisions stay
  *   distinct (FC2PPV1234567 != FC21234567).
  * - Bulk lookup issues one batch query (WHERE code_normalized IN (...)) and
- *   eager-loads every display relation, so the response is built without N+1.
+ *   loads only summary relations, keeping large media collections out of memory.
  * - Source provenance stays in observations (ops); end-user API does not expose it.
  */
 final class MovieLookupService
 {
+    public function __construct(private readonly MovieRepository $movies) {}
+
     public function normalize(string $rawCode): ?NormalizedCode
     {
         try {
@@ -41,7 +46,7 @@ final class MovieLookupService
             return null;
         }
 
-        $movieId = app(MovieRepository::class)->modelQuery(MovieCode::class)
+        $movieId = $this->movies->modelQuery(MovieCode::class)
             ->where('code_normalized', $normalized->value())
             ->value('movie_id');
 
@@ -74,7 +79,7 @@ final class MovieLookupService
             return [];
         }
 
-        $movieIds = app(MovieRepository::class)->modelQuery(MovieCode::class)
+        $movieIds = $this->movies->modelQuery(MovieCode::class)
             ->whereIn('code_normalized', array_values($normalized))
             ->pluck('movie_id')
             ->unique()
@@ -85,7 +90,7 @@ final class MovieLookupService
             return [];
         }
 
-        $movies = $this->queryWithDisplayRelations()
+        $movies = $this->queryWithSummaryRelations()
             ->whereKey($movieIds)
             ->get()
             ->keyBy(static fn(Movie $movie): int => (int) $movie->id);
@@ -100,9 +105,50 @@ final class MovieLookupService
         return $byCode;
     }
 
+    /** @return array{items: list<MovieMediaDto>, total: int, page: int, per_page: int, last_page: int, has_more: bool}|null */
+    public function mediaPageByCode(string $rawCode, string $kind, int $perPage, int $page): ?array
+    {
+        $normalized = $this->normalize($rawCode);
+        if ($normalized === null) {
+            return null;
+        }
+
+        $movieId = $this->movies->movieIdByNormalizedCode($normalized->value());
+        if ($movieId === null) {
+            return null;
+        }
+
+        return $this->movies->mediaPage($movieId, $kind, $perPage, $page);
+    }
+
     /** @return Builder<Movie> */
     private function queryWithDisplayRelations(): Builder
     {
-        return app(MovieRepository::class)->modelQuery(Movie::class)->with(['codes', 'performers.aliases', 'performers.sources', 'genres', 'media', 'credits']);
+        return $this->movies->modelQuery(Movie::class)
+            ->with([
+                'codes',
+                'performers.aliases',
+                'performers.sources',
+                'genres',
+                'magnetMedia' => static fn(HasMany $query) => $query->orderBy('id')->limit(100),
+                'hlsMedia' => static fn(HasMany $query) => $query->orderBy('id')->limit(100),
+                'sampleMedia' => static fn(HasMany $query) => $query->orderBy('id')->limit(100),
+                'galleryPreview' => static fn(HasMany $query) => $query->orderBy('id')->limit(100),
+                'coverMedia',
+                'credits',
+            ])
+            ->withCount([
+                'media as gallery_total' => static fn(Builder $query) => $query->where('kind', MovieMedia::KIND_GALLERY),
+                'media as magnet_total' => static fn(Builder $query) => $query->where('kind', MovieMedia::KIND_MAGNET),
+                'media as hls_total' => static fn(Builder $query) => $query->where('kind', MovieMedia::KIND_HLS),
+                'media as sample_total' => static fn(Builder $query) => $query->where('kind', MovieMedia::KIND_SAMPLE),
+            ]);
+    }
+
+    /** @return Builder<Movie> */
+    private function queryWithSummaryRelations(): Builder
+    {
+        return $this->movies->modelQuery(Movie::class)
+            ->with(['codes', 'performers.aliases', 'performers.sources', 'genres', 'coverMedia']);
     }
 }

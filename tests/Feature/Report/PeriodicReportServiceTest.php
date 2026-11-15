@@ -6,15 +6,19 @@ namespace Tests\Feature\Report;
 
 use App\Contracts\ReportChannel;
 use App\Models\ReportSnapshot;
+use App\Services\Notifications\NotificationPolicyService;
+use App\Services\Notifications\NotificationTemplateService;
 use App\Services\Report\PeriodicReportService;
 use App\Services\Report\ReportDataBuilder;
 use App\Services\Report\ReportMetrics;
 use App\Services\Report\ReportRenderer;
-use App\Services\Notifications\NotificationTemplateService;
+use App\Services\Settings\SettingsService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use JOOservices\LaravelConfig\Contracts\ConfigStore;
+use JOOservices\LaravelConfig\Testing\FakeConfigStore;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -25,6 +29,8 @@ final class PeriodicReportServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->app->instance(ConfigStore::class, new FakeConfigStore());
+        $this->app->forgetInstance(SettingsService::class);
         config([
             'cache.default' => 'array',
             'javmeta_report.channels' => ['telegram'],
@@ -136,6 +142,47 @@ final class PeriodicReportServiceTest extends TestCase
         );
         self::assertTrue($service->sendDailyScheduled($slot)['sent']);
         self::assertCount(1, $channel->deliveries);
+    }
+
+    public function test_quiet_mode_suppresses_report_sends_without_breaking_previews_or_delivery_afterward(): void
+    {
+        $policies = app(NotificationPolicyService::class);
+        foreach (['report.periodic', 'report.daily'] as $key) {
+            $policy = $policies->get($key);
+            self::assertNotNull($policy);
+            $policies->save($key, [...$policy, 'enabled' => true, 'tier' => 'warning'], null);
+        }
+
+        $channel = $this->recordingChannel();
+        $service = $this->service($channel);
+        $slot = CarbonImmutable::parse('2026-11-03 08:00:00 UTC');
+        CarbonImmutable::setTestNow($slot);
+        app(SettingsService::class)->set('notifications.quiet_mode', true);
+
+        self::assertArrayHasKey('text', $service->preview());
+        self::assertArrayHasKey('text', $service->previewDaily());
+        self::assertSame('suppressed', $service->sendScheduled($slot)['result']);
+        self::assertSame('suppressed', $service->sendNow()['result']);
+        self::assertSame('suppressed', $service->sendDailyScheduled($slot)['result']);
+        self::assertSame('suppressed', $service->sendDailyNow()['result']);
+        self::assertCount(0, $channel->deliveries);
+        self::assertSame(0, ReportSnapshot::query()->count());
+        self::assertFalse(Cache::has('javmeta:report:reserved-slot:periodic:' . $slot->utc()->format('Y-m-d-H-i')));
+        self::assertFalse(Cache::has('javmeta:report:reserved-slot:daily:' . $slot->utc()->format('Y-m-d-H-i')));
+
+        app(SettingsService::class)->set('notifications.quiet_mode', false);
+        CarbonImmutable::setTestNow($slot->addMinute());
+
+        self::assertTrue($service->sendNow()['sent']);
+        self::assertSame('suppressed', $service->sendNow()['result']);
+        self::assertTrue($service->sendScheduled($slot->addMinute())['sent']);
+        self::assertTrue($service->sendDailyNow()['sent']);
+        self::assertSame('suppressed', $service->sendDailyNow()['result']);
+        self::assertTrue($service->sendDailyScheduled($slot->addMinute())['sent']);
+
+        self::assertCount(4, $channel->deliveries);
+        self::assertSame(2, ReportSnapshot::query()->where('report_type', 'periodic')->count());
+        self::assertSame(2, ReportSnapshot::query()->where('report_type', 'daily')->count());
     }
 
     private function service(ReportChannel $channel): PeriodicReportService

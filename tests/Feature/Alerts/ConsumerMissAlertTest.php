@@ -34,7 +34,7 @@ final class ConsumerMissAlertTest extends TestCase
     public function test_movie_lookup_404_dispatches_miss_and_writes_crawl_event(): void
     {
         Event::fake([ConsumerMissedLookup::class]);
-        $key = app(ApiKeyService::class)->create(fake()->words(2, true))->plaintext;
+        $key = app(ApiKeyService::class)->create(fake()->words(2, true), 60, ['movies'])->plaintext;
 
         $this->getJson('/api/v1/movies/XYZ-999', [
             'X-API-Key' => $key,
@@ -80,7 +80,7 @@ final class ConsumerMissAlertTest extends TestCase
             new TelegramAlertNotifier($client),
         ]));
 
-        $key = app(ApiKeyService::class)->create(fake()->words(2, true))->plaintext;
+        $key = app(ApiKeyService::class)->create(fake()->words(2, true), 60, ['movies'])->plaintext;
 
         $this->getJson('/api/v1/movies/MISS-001', [
             'X-API-Key' => $key,

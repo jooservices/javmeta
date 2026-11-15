@@ -40,12 +40,16 @@ session or API credential.
 | `GET, HEAD` | `api/v1/movies` | Login required | Requires a scoped API key. |
 | `GET, HEAD` | `api/v1/movies/calendar` | Login required | Requires a scoped API key. |
 | `GET, HEAD` | `api/v1/movies/facets` | Login required | Requires a scoped API key. |
+| `GET, HEAD` | `api/v1/movies/facets/values` | Login required | Requires a scoped API key; guests reach the same list through the UI bridge. |
 | `GET, HEAD` | `api/v1/movies/{code}` | Login required | Requires a scoped API key. |
+| `GET, HEAD` | `api/v1/movies/{code}/media` | Login required | Requires a scoped API key. |
 | `GET, HEAD` | `api/v1/movies/{code}/related` | Login required | Requires a scoped API key. |
 | `POST` | `api/v1/movies:bulk` | Login required | Requires a scoped API key and writes catalog records. |
 | `GET, HEAD` | `api/v1/performers` | Login required | Requires a scoped API key. |
 | `GET, HEAD` | `api/v1/performers/facets` | Login required | Requires a scoped API key. |
+| `GET, HEAD` | `api/v1/performers/facets/values` | Login required | Requires a scoped API key; guests reach the same list through the UI bridge. |
 | `GET, HEAD` | `api/v1/performers/{id}` | Login required | Requires a scoped API key. |
+| `GET, HEAD` | `api/v1/performers/{id}/photos` | Login required | Requires a scoped API key. |
 | `GET, HEAD` | `api/v1/scenes/search` | Login required | Requires a scoped API key; may return local scene and file references. |
 | `GET, HEAD` | `api/v1/search` | Login required | Requires a scoped API key. |
 | `POST` | `api/v1/search/parse` | Login required | Requires a scoped API key. |
@@ -108,6 +112,7 @@ session or API credential.
 | `GET, HEAD` | `ui-admin/settings` | Login required | Requires an authenticated super-administrator; may return settings values. |
 | `PUT` | `ui-admin/settings` | Login required | Requires an authenticated super-administrator and changes settings. |
 | `GET, HEAD` | `ui-api/{path}` | Guest allowed | Read-only bridge with a strict public catalog allow-list, field redaction (guest status summaries omit worker data), per-IP rate limiting, and `noindex` headers. |
+| `POST` | `ui-api/movies/{code}/downloads/search` | Guest allowed | Public on-demand magnet/torrent search; rate-limited per IP/session and by global/source budgets; does not expose qBittorrent. |
 | `DELETE, PATCH, POST, PUT` | `ui-api/{path}` | Login required | Guest mode rejects writes; signed-in owners may use only authorized operations. |
 | `GET, HEAD` | `ui-me/downloads` | Login required | Requires an authenticated super-administrator; returns owner download state. |
 | `POST` | `ui-me/downloads` | Login required | Requires an authenticated super-administrator and starts a download. |
@@ -135,17 +140,18 @@ session or API credential.
 
 ## Audit results
 
-- Only the read-only UI shell, public catalog bridge, basic liveness pages, API
-  schema, package liveness endpoint, root redirect, and login form are guest
-  allowed. Guest catalog routes expose public catalog data only; owner marks,
-  watch state, library, downloads, settings, API keys, jobs, and media remain
-  unavailable.
+ - Only the read-only UI shell, public catalog bridge, on-demand download-link
+   search, basic liveness pages, API schema, package liveness endpoint, root
+   redirect, and login form are guest allowed. Guest catalog routes expose public
+   catalog data and magnet/torrent links; owner marks, watch state, library,
+   qBittorrent downloads, settings, API keys, jobs, and signed media remain unavailable.
 - Guest health responses omit dependency endpoints, source details, worker
   names, queue details, and environment values. Guest bridge responses remove
-  credentials, signed/download URLs, paths, internal URLs/IPs, and stack trace
-  fields. Guests never receive worker data: the bridge's status summary drops
-  the `workers` list entirely. The package liveness route also removes environment/version details.
-  Server errors on the guest bridge return a generic response.
+   credentials, signed media/download URLs, paths, internal URLs/IPs, and stack
+   trace fields, while keeping public magnet/torrent links. Guests never receive
+   worker data: the bridge's status summary drops the `workers` list entirely.
+   The package liveness route also removes environment/version details. Server
+   errors on the guest bridge return a generic response.
 - The shell and every guest bridge response, including denials and rate limits,
   carries `X-Robots-Tag: noindex, nofollow` and `Cache-Control: no-store`.
   The bridge uses `ui_guest.rate_limit_per_minute` per client IP.

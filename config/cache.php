@@ -19,6 +19,9 @@ return [
 
     'default' => env('CACHE_STORE', 'database'),
 
+    // Keep request abuse limits on a shared durable store when Redis is down.
+    'limiter' => 'database',
+
     'serializable_classes' => false,
 
     /*
@@ -49,6 +52,14 @@ return [
             'table' => env('DB_CACHE_TABLE', 'cache'),
             'lock_connection' => env('DB_CACHE_LOCK_CONNECTION'),
             'lock_table' => env('DB_CACHE_LOCK_TABLE'),
+        ],
+
+        'api-response-epoch' => [
+            'driver' => 'database',
+            'connection' => null,
+            'table' => env('DB_CACHE_TABLE', 'cache'),
+            'lock_connection' => null,
+            'lock_table' => null,
         ],
 
         'file' => [

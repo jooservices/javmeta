@@ -71,7 +71,7 @@ final class NotificationPolicyDispatcher
             } elseif ($tier === 'info' && ! $digest) {
                 return $this->suppress($key, $policyKey, $causeKey, $quiet && ! $security ? 'quiet_mode' : 'digest_only', false);
             }
-            if ($quiet && ! $security && ! $digest && $tier !== 'critical') {
+            if ($quiet && ! $security && $tier !== 'critical') {
                 return $this->suppress($key, $policyKey, $causeKey, 'quiet_mode', false);
             }
             if ($digest) {
@@ -266,6 +266,7 @@ final class NotificationPolicyDispatcher
         return match ($key) {
             'crawl.heartbeat_recovered' => 'crawl.heartbeat_stale',
             'crawl.source_recovered' => 'crawl.source_stale',
+            'crawl.source_circuit_recovered' => 'crawl.source_circuit_open',
             'crawl.stalled_recovered' => 'crawl.stalled',
             'crawl.queue_recovered' => 'crawl.queue_stuck',
             'crawl.backlog_recovered' => 'crawl.backlog_high',

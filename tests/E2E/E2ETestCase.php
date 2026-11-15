@@ -109,7 +109,7 @@ abstract class E2ETestCase extends TestCase
         self::resetMongo();
         self::resetElasticsearch();
 
-        $consumer = app(ApiKeyService::class)->create('JAVMETA E2E consumer');
+        $consumer = app(ApiKeyService::class)->create('JAVMETA E2E consumer', 60, ['movies', 'bulk', 'performers', 'catalog', 'status']);
         $mcp = ApiKey::query()->create([
             'prefix' => substr(self::$mcpToken, 0, 12),
             'key_hash' => hash('sha256', self::$mcpToken),
@@ -117,6 +117,7 @@ abstract class E2ETestCase extends TestCase
             'status' => ApiKey::STATUS_ACTIVE,
             'revoked_at' => null,
             'abuse_rpm' => 600,
+            'scopes' => ['mcp'],
             'created_at' => now(),
         ]);
 

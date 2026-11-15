@@ -42,20 +42,26 @@ final class UserMarkRepository extends EloquentRepository implements RepositoryI
         return $query->orderByDesc('created_at')->limit(2000)->get(['kind', 'subject', 'key', 'created_at']);
     }
 
-    /** @return list<string> */
-    public function movieCodes(int $userId, string $kind): array
+    /** @return array{codes: list<string>, total: int, page: int, per_page: int, has_more: bool} */
+    public function movieCodesPage(int $userId, string $kind, int $perPage, int $page): array
     {
-        /** @var list<string> $codes */
-        $codes = $this->newQuery()->toBase()
+        $query = $this->newQuery()->toBase()
             ->where('user_id', $userId)
             ->where('kind', $kind)
-            ->where('subject', 'movie')
+            ->where('subject', 'movie');
+        $total = (clone $query)->count();
+        $paginator = $query
             ->orderByDesc('created_at')
-            ->limit(500)
-            ->pluck('key')
-            ->all();
+            ->orderByDesc('id')
+            ->simplePaginate($perPage, ['key'], 'page', $page);
 
-        return $codes;
+        return [
+            'codes' => array_map(static fn(object $row): string => (string) $row->key, $paginator->items()),
+            'total' => $total,
+            'page' => $paginator->currentPage(),
+            'per_page' => $paginator->perPage(),
+            'has_more' => $paginator->hasMorePages(),
+        ];
     }
 
     /** @return Collection<int, \stdClass> */

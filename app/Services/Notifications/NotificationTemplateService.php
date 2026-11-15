@@ -182,8 +182,8 @@ final class NotificationTemplateService
         return [
             'id' => null,
             'key' => $key,
-            'name' => $definition['name'],
-            'usage' => $definition['usage'],
+            'name' => $this->localizedName($key, $definition['name']),
+            'usage' => $this->localizedUsage($key, $definition['usage']),
             'channel' => $definition['channel'],
             'title_template' => $definition['title_template'],
             'body_template' => $definition['body_template'],
@@ -208,8 +208,8 @@ final class NotificationTemplateService
         return [
             'id' => (int) $row['id'],
             'key' => (string) $row['key'],
-            'name' => $definition['name'],
-            'usage' => $definition['usage'],
+            'name' => $this->localizedName((string) $row['key'], $definition['name']),
+            'usage' => $this->localizedUsage((string) $row['key'], $definition['usage']),
             'channel' => $definition['channel'],
             'title_template' => (string) $row['title_template'],
             'body_template' => (string) $row['body_template'],
@@ -241,5 +241,20 @@ final class NotificationTemplateService
             || ! is_bool($policy['send_resolved'] ?? null)) {
             throw new InvalidArgumentException('The notification policy values are invalid.');
         }
+    }
+
+    /** The editor shows the name in the language of the interface; the message text stays the single editable template. */
+    private function localizedName(string $key, string $fallback): string
+    {
+        $line = __('notifications.registry.' . str_replace('.', '__', $key) . '.name');
+
+        return $line === 'notifications.registry.' . str_replace('.', '__', $key) . '.name' ? $fallback : $line;
+    }
+
+    private function localizedUsage(string $key, string $fallback): string
+    {
+        $line = __('notifications.registry.' . str_replace('.', '__', $key) . '.usage');
+
+        return $line === 'notifications.registry.' . str_replace('.', '__', $key) . '.usage' ? $fallback : $line;
     }
 }

@@ -32,6 +32,26 @@ final class CrawlStatusServiceTest extends TestCase
         $this->assertSame(['direct', 'direct', 'direct'], array_column($status->status()['sources'], 'lane'));
     }
 
+    public function test_source_status_exposes_real_circuit_state_and_resume_time(): void
+    {
+        $this->freezeTime();
+        $source = Source::factory()->create([
+            'slug' => 'javbus',
+            'circuit_state' => 'open',
+            'consecutive_failures' => 3,
+            'circuit_opened_at' => now(),
+            'circuit_open_count' => 1,
+            'circuit_cooldown_seconds' => 300,
+        ]);
+
+        $row = collect(app(CrawlStatusService::class)->status()['sources'])->firstWhere('slug', $source->slug);
+
+        $this->assertSame('open', $row['circuit_state']);
+        $this->assertSame(3, $row['consecutive_failures']);
+        $this->assertSame(300, $row['circuit_cooldown_seconds']);
+        $this->assertSame(now()->addSeconds(300)->toIso8601String(), $row['circuit_resume_at']);
+    }
+
     public function test_runs_aggregate_keeps_zero_totals_and_excludes_old_runs(): void
     {
         $service = app(CrawlStatusService::class);

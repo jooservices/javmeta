@@ -15,6 +15,10 @@ use App\Repositories\ApiUsageRepository;
 /** Owner-facing API key administration use cases. */
 final class ApiKeyAdministrationService
 {
+    public const DEFAULT_PAGE_SIZE = ApiKeyAdministrationRepository::DEFAULT_PAGE_SIZE;
+
+    public const MAX_PAGE_SIZE = ApiKeyAdministrationRepository::MAX_PAGE_SIZE;
+
     public function __construct(
         private readonly ApiKeyAdministrationRepository $keys,
         private readonly ApiUsageRepository $usage,
@@ -27,12 +31,17 @@ final class ApiKeyAdministrationService
         return $this->keys->allForAdministration();
     }
 
+    public function activePage(?int $cursor = null, int $perPage = self::DEFAULT_PAGE_SIZE): ApiKeyList
+    {
+        return $this->keys->activePageForAdministration($cursor, $perPage);
+    }
+
     public function create(ApiKeyCreateData $data): CreatedApiKeySnapshot
     {
         $created = $this->apiKeyService->create(
             $data->label,
             $data->abuseRpm,
-            $data->scopes === null ? null : array_values(array_unique($data->scopes)),
+            array_values(array_unique($data->scopes ?? [])),
         );
         $snapshot = $this->keys->created($created);
         $this->observability->emitOps('admin_api_key', [

@@ -69,6 +69,8 @@ the calculation, reserve, metrics, and alert.
 
 Movie and performer persistence dispatches a unique job to `search` after the database transaction commits. The crawl worker does not call Elasticsearch or the embedder; Horizon handles indexing with the configured database retry count and backoff. A failed job is recorded by Laravel's configured failed-job store and Horizon. `search.enabled` prevents new indexing jobs from being dispatched; queued jobs also exit without indexing while the switch is off.
 
+On-demand movie link lookups use the separate, lower-priority `download_search` queue. It shares the `search` supervisor so it does not add a PostgreSQL worker pool; saved worker queue lists are normalized to include it.
+
 Shared integration tests use the Workspaces Redis account on the project's own database indexes (`provision-project javmeta --redis`: live and test indexes) and the key prefixes `javmeta:`, `javmeta_test:` and `javmeta_wt<id>:`; the shared Redis service has one root account and no per-project Redis users or ACLs. `docker/ci/integration-shared` verifies the target with `check-project` first.
 
 ## Backpressure
@@ -114,6 +116,12 @@ See the [Laravel Horizon documentation](https://laravel.com/docs/13.x/horizon) f
 rows of the same kind, so one source with thousands of older rows cannot fill the worker queue and starve the others.
 Parallelism comes from `queue.workers_per_queue` and its lane, queue and node overrides; each source is still limited by its own
 throttle gap.
+
+After 3 consecutive `blocked`, `rate_limited` or `challenge` responses, the source circuit pauses claims and jobs for
+5 minutes. Repeated opens double the cooldown up to 60 minutes. Successful fetches reset the failure streak and backoff;
+expired pauses close automatically so the next due claim resumes without operator action. `javmeta_source_circuit_open`
+and `javmeta_source_consecutive_blocks` report the current state by source, and an English notification reports each
+transition into the open state.
 
 
 ## Request pacing and adaptive gap
@@ -241,7 +249,7 @@ the row permanently `failed` after `retry.max_rounds` (default 3). The final
 | --- | --- |
 | `blocked`, `challenge` | Retryable; normal backoff first, then retry rounds. |
 | `rate_limited`, `timeout`, `network`, `worker_failed`, `worker_lost` | Retry only when the fetch result is marked retryable. |
-| `soft404`, `not_found`, `gone`, `parse_failed`, `normalization_failed`, `normalizer_missing`, `unsupported_url`, `ambiguous_url`, `adapter_not_found`, `auth_required`, `ssrf_blocked`, `unknown`, `unknown_source`, `legacy_unclassified` | Terminal; do not retry automatically or by requeue command. |
+| `soft404`, `not_found`, `gone`, `parse_failed`, `normalization_failed`, `normalizer_missing`, `unsupported_url`, `ambiguous_url`, `adapter_not_found`, `auth_required`, `ssrf_blocked`, `unknown`, `unknown_source`, `legacy_unclassified` | Terminal; do not retry automatically or by the generic requeue path. `ssrf_blocked` has a separate historical operator path below. |
 
 `retry.feed_pool_limit` (default 5 jobs per minute) and
 `retry.pacing_horizon_seconds` (60 seconds) are independent from direct/browser
@@ -278,6 +286,26 @@ permanent failures by retry round and egress label. `javmeta_retry_pending`,
 `javmeta_retry_success_total` and `javmeta_retry_failed_permanent_total` report
 recovery and egress labels; see [telemetry](telemetry.md#metrics). The regular
 `javmeta_crawl_queue_depth{status=retry_pending}` gauge also includes this work.
+
+### Historical SSRF failures (operator path)
+
+After the CrawlerX SSRF guard fix has been deployed, preview failed SSRF rows with
+`php artisan crawler:retry-requeue --ssrf-blocked [--source=slug] [--batch-size=100]`.
+The command defaults to a dry run. It validates a supplied source against the
+configured sources and reports eligible and requeued counts only; it never prints
+row URLs or failure details. The batch size must be from 1 through 500. Rows are
+selected in ascending ID order, and one invocation processes at most that batch
+size. Apply only after reviewing the preview by adding `--apply`; the update
+rechecks that each selected row is still `failed`, still has `ssrf_blocked`, and
+still matches the source filter. It retains the error code, failure message and
+failure timestamp. Subsequent runs exclude rows already moved to `retry_pending`.
+
+Deploy the CrawlerX guard fix and this operator path as separate reviewed changes,
+with the guard fix deployed first. Running the command against production is a
+separate production change and requires its own approval; development, review and
+deployment of this code do not authorize that execution. Disable the path by
+rolling back the operator-path deployment before use. The automatic SSRF retry
+policy and existing generic requeue command remain unchanged.
 
 ## Learned fetch method order
 

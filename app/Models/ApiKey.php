@@ -31,12 +31,12 @@ class ApiKey extends Model
         return ['revoked_at' => 'datetime', 'abuse_rpm' => 'integer', 'scopes' => 'array', 'created_at' => 'datetime'];
     }
 
-    /** A key without scopes (null) may use everything. */
+    /** A key must name a scope explicitly; null and an empty list grant nothing. */
     public function allows(string $scope): bool
     {
         /** @var list<string>|null $scopes */
         $scopes = $this->scopes;
 
-        return $scopes === null || in_array($scope, $scopes, true);
+        return is_array($scopes) && in_array($scope, $scopes, true);
     }
 }

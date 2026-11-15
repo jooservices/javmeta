@@ -13,6 +13,9 @@ final readonly class CatalogQuery
     /** @var list<string> */
     public const SORTS = ['movie_count', 'name'];
 
+    /** @var list<string> */
+    public const SCRIPTS = ['all', 'latin', 'ja', 'zh', 'other'];
+
     public function __construct(
         public string $kind,
         public string $query,
@@ -20,5 +23,7 @@ final readonly class CatalogQuery
         public int $perPage,
         public int $page,
         public bool $includeUnknown,
+        public int $minCount = 0,
+        public string $script = 'all',
     ) {}
 }

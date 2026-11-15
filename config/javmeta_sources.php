@@ -18,6 +18,7 @@ return [
         'circuit' => [
             'failure_threshold' => 3,
             'cooldown_seconds' => 300,
+            'max_cooldown_seconds' => 3600,
         ],
         'queue' => [
             // Running claims use this timeout; unstarted claims also wait out the maximum configured queue backlog.
@@ -73,6 +74,7 @@ return [
             'gap_seconds_min' => 20,
             'gap_seconds_max' => 60,
             'movie_listing_urls' => ['https://javdb.com/'],
+            'offers_downloads' => true,
         ],
         'javdatabase' => [
             'name' => 'JAV Database',
@@ -103,6 +105,7 @@ return [
             'gap_seconds_max' => 45,
             'movie_listing_urls' => ['https://www.javbus.com/'],
             'performer_listing_urls' => ['https://www.javbus.com/en/actresses'],
+            'offers_downloads' => true,
         ],
         'missav' => [
             'name' => 'MissAV',
@@ -131,6 +134,7 @@ return [
             'gap_seconds_min' => 0.5,
             'gap_seconds_max' => 15,
             'movie_listing_urls' => ['https://onejav.com/new'],
+            'offers_downloads' => true,
         ],
         'javbtc' => [
             'name' => 'JavBTC',
@@ -150,6 +154,7 @@ return [
             'gap_seconds_min' => 0.5,
             'gap_seconds_max' => 15,
             'movie_listing_urls' => ['https://www.141jav.com/new'],
+            'offers_downloads' => true,
         ],
         'ffjav' => [
             'name' => 'FFJav',
@@ -159,6 +164,7 @@ return [
             'gap_seconds_min' => 1,
             'gap_seconds_max' => 20,
             'movie_listing_urls' => ['https://ffjav.com/javtorrent/'],
+            'offers_downloads' => true,
         ],
         'avfan' => [
             'name' => 'Avfan',
@@ -169,6 +175,7 @@ return [
             'gap_seconds_min' => 2,
             'gap_seconds_max' => 30,
             'movie_listing_urls' => ['https://avfan.com/en'],
+            'offers_downloads' => true,
         ],
         'jable' => [
             'name' => 'Jable',

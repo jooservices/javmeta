@@ -470,6 +470,54 @@ Số nguyên; từ 1 đến 1000. Mã mục: `crawl.fetch_method_probe_interval`
 
 Đối tượng JSON; cấu trúc do ứng dụng quy định. Mã mục: `crawl.source_gap_overrides`.
 
+### Bật điều chỉnh nhịp theo độ trễ
+
+Mặc định tắt. Khi bật, độ trễ fetch kéo dài sẽ giãn nhịp nguồn và phản hồi khỏe sẽ phục hồi dần.
+
+Bật/tắt. Mã mục: `crawl.latency_gap.enabled`.
+
+### Số mẫu độ trễ trong cửa sổ
+
+Số mẫu fetch gần nhất được giữ để đánh giá độ trễ của nguồn.
+
+Số nguyên; từ 3 đến 32. Mã mục: `crawl.latency_gap.sample_window_size`.
+
+### Số mẫu đạt ngưỡng trong cửa sổ
+
+Số mẫu đạt ngưỡng chậm hoặc khỏe ở bất kỳ vị trí nào trong cửa sổ để thay đổi nhịp (không cần liên tiếp nhau).
+
+Số nguyên; từ 2 đến 32. Mã mục: `crawl.latency_gap.sustained_samples`.
+
+### Ngưỡng fetch chậm (mili giây)
+
+Mẫu bằng hoặc cao hơn ngưỡng này được tính là chậm.
+
+Số nguyên; từ 100 đến 60000. Mã mục: `crawl.latency_gap.slow_threshold_ms`.
+
+### Ngưỡng fetch khỏe (mili giây)
+
+Mẫu bằng hoặc thấp hơn ngưỡng này được tính là khỏe; ngưỡng hiệu lực luôn thấp hơn ngưỡng chậm.
+
+Số nguyên; từ 0 đến 60000. Mã mục: `crawl.latency_gap.healthy_threshold_ms`.
+
+### Tỷ lệ tăng nhịp (%)
+
+Phần trăm tăng khoảng nghỉ sau khi cửa sổ ghi nhận đủ mẫu chậm.
+
+Số nguyên; từ 1 đến 50. Mã mục: `crawl.latency_gap.increase_percent`.
+
+### Tỷ lệ phục hồi (%)
+
+Phần trăm khoảng cách tới mức tối thiểu được phục hồi sau khi có đủ mẫu khỏe.
+
+Số nguyên; từ 1 đến 50. Mã mục: `crawl.latency_gap.recovery_percent`.
+
+### Thời hạn mẫu độ trễ (giây)
+
+Thời gian giữ mẫu độ trễ trong cache dùng chung.
+
+Số nguyên; từ 60 đến 86400. Mã mục: `crawl.latency_gap.window_ttl_seconds`.
+
 ### Thời gian chờ khi bị chặn (giây, cách nhau bằng dấu phẩy)
 
 Các lần chặn/challenge trong luồng thường dùng thời gian chờ theo danh sách này trước khi chuyển sang làn retry.
@@ -908,6 +956,50 @@ Tên chỉ mục lưu vector và dữ liệu diễn viên.
 
 Văn bản. Mã mục: `search.performers_index`.
 
+## Bộ nhớ đệm API
+
+### Bật bộ nhớ đệm response API
+
+Tắt để bỏ qua bộ nhớ đệm response; khi Redis lỗi API vẫn trả dữ liệu trực tiếp.
+
+Bật/tắt. Mã mục: `api.response_cache.enabled`.
+
+### TTL danh sách (giây)
+
+Thời gian lưu danh sách phim và performer.
+
+Số nguyên; từ 1 đến 60. Mã mục: `api.response_cache.ttl.lists`.
+
+### TTL bộ lọc (giây)
+
+Thời gian lưu facets phim và performer.
+
+Số nguyên; từ 1 đến 300. Mã mục: `api.response_cache.ttl.facets`.
+
+### TTL danh mục (giây)
+
+Thời gian lưu các mục catalog ít thay đổi.
+
+Số nguyên; từ 60 đến 3600. Mã mục: `api.response_cache.ttl.catalog`.
+
+### TTL gợi ý tìm kiếm (giây)
+
+Thời gian lưu response gợi ý tìm kiếm.
+
+Số nguyên; từ 1 đến 60. Mã mục: `api.response_cache.ttl.suggestions`.
+
+### TTL trạng thái (giây)
+
+Thời gian lưu tóm tắt trạng thái hệ thống.
+
+Số nguyên; từ 1 đến 15. Mã mục: `api.response_cache.ttl.status`.
+
+### TTL chi tiết phim (giây)
+
+Thời gian lưu chi tiết phim.
+
+Số nguyên; từ 1 đến 300. Mã mục: `api.response_cache.ttl.movie_detail`.
+
 ## Giám sát
 
 ### Gửi log và metric tới OpenObserve
@@ -1208,6 +1300,48 @@ Giới hạn thời gian mỗi yêu cầu tới qBittorrent.
 
 Số nguyên; từ 1 đến 120. Mã mục: `downloads.timeout`.
 
+### Bật tìm link tải theo yêu cầu
+
+Cho phép mọi người (kể cả khách) bấm Tìm link tải trên trang phim. Tắt khi cần bảo vệ địa chỉ egress.
+
+Bật/tắt. Mã mục: `downloads.link_search_enabled`.
+
+### Nghỉ sau khi không tìm thấy (giờ)
+
+Sau kết quả không có link, cùng một phim không tìm lại cho đến hết khoảng này.
+
+Số nguyên; từ 1 đến 168. Mã mục: `downloads.link_search_cooldown_hours`.
+
+### Ngân sách tìm toàn cục mỗi giờ
+
+Số lần tìm link tải tối đa trên toàn hệ thống mỗi giờ (bảo vệ IP egress chung).
+
+Số nguyên; từ 1 đến 1000. Mã mục: `downloads.link_search_global_budget_per_hour`.
+
+### Ngân sách tìm mỗi nguồn mỗi giờ
+
+Số lần tìm tối đa tới một nguồn tải mỗi giờ.
+
+Số nguyên; từ 1 đến 500. Mã mục: `downloads.link_search_per_source_budget_per_hour`.
+
+### Ngân sách tìm mỗi máy khách mỗi giờ
+
+Số lần tìm tối đa mỗi địa chỉ IP/phiên mỗi giờ.
+
+Số nguyên; từ 1 đến 100. Mã mục: `downloads.link_search_client_budget_per_hour`.
+
+### Thời gian chờ mỗi nguồn (giây)
+
+Giới hạn thời gian ngắn cho mỗi job tìm link trên một nguồn.
+
+Số nguyên; từ 10 đến 180. Mã mục: `downloads.link_search_timeout_seconds`.
+
+### Số nguồn tối đa mỗi lần tìm
+
+Mỗi lần bấm tìm chỉ hỏi tuần tự tối đa số nguồn này (không quạt đồng loạt).
+
+Số nguyên; từ 1 đến 10. Mã mục: `downloads.link_search_max_sources_per_run`.
+
 ## Máy chủ tệp
 
 ### Bật máy chủ tệp
@@ -1401,6 +1535,14 @@ Thông tin bí mật. Mã mục: `ui_security.owner_admin_token`.
 Được mã hóa trong cơ sở dữ liệu và không hiển thị lại; API key mới nên dùng scope MCP.
 
 Thông tin bí mật. Mã mục: `ui_security.mcp_api_key`.
+
+## Giao diện người dùng
+
+### Ngôn ngữ giao diện
+
+Tiếng Việt hoặc English cho giao diện chủ sở hữu; trình duyệt khách vẫn chọn riêng trên máy.
+
+Văn bản; chọn: vi, en. Mã mục: `ui.locale`.
 
 ## Thêm node
 

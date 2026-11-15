@@ -63,9 +63,9 @@ final class FetchListingJob implements ShouldQueue
         }
 
         $result = $client->fetchQueueRow($row);
-        app(FetchAttemptRecorder::class)->record($row, $result);
+        $latencySampleId = app(FetchAttemptRecorder::class)->record($row, $result);
         if (! $result->ok || $result->list === null) {
-            $this->onCrawlFailure($row, $source, $result, $activity, $throttle);
+            $this->onCrawlFailure($row, $source, $result, $activity, $throttle, $latencySampleId);
 
             return;
         }
@@ -95,7 +95,7 @@ final class FetchListingJob implements ShouldQueue
         }
 
         $activity->recordSuccess($source);
-        $throttle->onSuccess($source);
+        $throttle->onSuccess($source, $latencySampleId);
         $this->markDone($row);
     }
 }

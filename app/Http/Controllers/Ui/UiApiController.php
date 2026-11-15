@@ -6,7 +6,9 @@ namespace App\Http\Controllers\Ui;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
+use App\Services\Api\ApiResponseCache;
 
 /**
  * Read-only bridge for the UI: `/ui-api/<path>` runs `/api/v1/<path>` inside the same process for the signed-in owner,
@@ -14,13 +16,15 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class UiApiController
 {
+    public function __construct(private readonly ApiResponseCache $responseCache) {}
+
     /** Paths the UI may read (GET only). */
     private const ALLOWED = '#^(movies|performers|meta|status|suggest|search|scenes)(/|$)#';
 
     /** Guest users receive only public catalogue operations with public-safe status projections. */
     private const GUEST_ALLOWED = '#^(?:'
-        . 'movies(?:/facets|/calendar|/[A-Za-z0-9._-]+(?:/related)?)?|'
-        . 'performers(?:/facets|/(?:[0-9]+|[A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12}))?|'
+        . 'movies(?:/facets(?:/values)?|/calendar|/[A-Za-z0-9._-]+(?:/related)?)?|'
+        . 'performers(?:/facets(?:/values)?|/(?:[0-9]+|[A-Fa-f0-9]{8}-(?:[A-Fa-f0-9]{4}-){3}[A-Fa-f0-9]{12}))?|'
         . 'meta/(?:genres|catalog/(?:genres|makers|series|labels|years|cups|blood_types|locations))|'
         . 'search|suggest|status/(?:summary|sources)'
         . ')$#D';
@@ -47,18 +51,35 @@ final class UiApiController
             $request->query(),
             [],
             [],
-            ['REMOTE_ADDR' => $request->ip() ?? '127.0.0.1', 'HTTP_ACCEPT' => 'application/json'],
+            [
+                'REMOTE_ADDR' => $request->ip() ?? '127.0.0.1',
+                'HTTP_ACCEPT' => 'application/json',
+                'HTTP_ACCEPT_LANGUAGE' => (string) $request->header('Accept-Language', ''),
+            ],
         );
+        $principal = $guest
+            ? 'ui:guest'
+            : 'ui:owner:' . (string) (Auth::id() ?? 'unknown');
         $internal->attributes->set('javmeta.internal_ui', true);
+        $internal->attributes->set('javmeta.guest_mode', $guest);
+        $internal->attributes->set('javmeta.cache_identity', $principal);
 
-        $response = app('router')->dispatch($internal);
-        $response->headers->set('Cache-Control', 'no-store');
+        return $this->responseCache->handleUi(
+            $request,
+            $path,
+            $principal,
+            $guest,
+            function () use ($internal, $guest, $path): Response {
+                $response = app('router')->dispatch($internal);
+                $response->headers->set('Cache-Control', 'no-store');
 
-        if ($guest && $response instanceof JsonResponse) {
-            $this->removePrivateGuestFields($path, $response);
-        }
+                if ($guest && $response instanceof JsonResponse) {
+                    $this->removePrivateGuestFields($path, $response);
+                }
 
-        return $response;
+                return $response;
+            },
+        );
     }
 
     public static function guestPathAllowed(string $path): bool
@@ -103,7 +124,8 @@ final class UiApiController
                 array_filter($payload['data'], 'is_array'),
             );
         } elseif (preg_match('#^movies/[A-Za-z0-9._-]+$#D', $path) === 1 && is_array($payload['data'] ?? null)) {
-            unset($payload['data']['magnets'], $payload['data']['hls_stream_urls'], $payload['data']['gallery'], $payload['data']['photos']);
+            // Magnets/torrents stay public (JOOXCR-445); signed media galleries stay owner-only.
+            unset($payload['data']['hls_stream_urls'], $payload['data']['gallery'], $payload['data']['photos']);
         }
 
         $payload = $this->redactPrivateFields($payload);
@@ -117,7 +139,7 @@ final class UiApiController
     {
         foreach ($value as $key => $item) {
             $normalizedKey = strtolower((string) $key);
-            if (preg_match('/(?:api.?key|(?:private|access|secret|signing|encryption|client).?key|key.?hash|token|password|secret|credential|cookie|authorization|headers|last.?error|internal|base.?url|file.?path|local.?path|storage.?path|library.?file.?id|file.?id|magnet|hls|stream.?url|play.?url|download.?url|gallery|photos|path|marks?|saved.?search|follows?|signature|expires|stack|trace|exception)/', $normalizedKey) === 1) {
+            if (preg_match('/(?:api.?key|(?:private|access|secret|signing|encryption|client).?key|key.?hash|token|password|secret|credential|cookie|authorization|headers|last.?error|internal|base.?url|file.?path|local.?path|storage.?path|library.?file.?id|file.?id|hls|stream.?url|play.?url|download.?url|gallery|photos|path|marks?|saved.?search|follows?|signature|expires|stack|trace|exception)/', $normalizedKey) === 1) {
                 unset($value[$key]);
             } elseif (is_array($item)) {
                 $value[$key] = $this->redactPrivateFields($item);

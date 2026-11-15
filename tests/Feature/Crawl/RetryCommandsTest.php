@@ -10,6 +10,7 @@ use App\Models\Source;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Events\QueryExecuted;
 use Tests\TestCase;
 
 final class RetryCommandsTest extends TestCase
@@ -123,5 +124,175 @@ final class RetryCommandsTest extends TestCase
             ->assertSuccessful();
 
         self::assertSame(CrawlQueue::STATUS_RETRY_PENDING, $retryable->refresh()->status);
+    }
+
+    public function test_ssrf_requeue_dry_run_is_source_filtered_and_does_not_write(): void
+    {
+        $source = Source::factory()->create(['slug' => 'ssrf-preview']);
+        $otherSource = Source::factory()->create(['slug' => 'ssrf-other']);
+        $eligible = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::SsrfBlocked->value,
+        ]);
+        $otherError = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::Timeout->value,
+        ]);
+        $otherSourceFailure = CrawlQueue::factory()->create([
+            'source_slug' => $otherSource->slug,
+            'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::SsrfBlocked->value,
+        ]);
+        $inFlight = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'status' => CrawlQueue::STATUS_CLAIMED,
+            'error_code' => CrawlErrorCode::SsrfBlocked->value,
+        ]);
+
+        $this->artisan('crawler:retry-requeue', [
+            '--ssrf-blocked' => true,
+            '--source' => $source->slug,
+            '--batch-size' => 1,
+        ])
+            ->expectsOutputToContain('Eligible SSRF-blocked failed rows: 1.')
+            ->expectsOutputToContain('Dry run only; no rows changed (batch limit: 1).')
+            ->assertSuccessful();
+
+        self::assertSame(CrawlQueue::STATUS_FAILED, $eligible->refresh()->status);
+        self::assertSame(CrawlQueue::STATUS_FAILED, $otherError->refresh()->status);
+        self::assertSame(CrawlQueue::STATUS_FAILED, $otherSourceFailure->refresh()->status);
+        self::assertSame(CrawlQueue::STATUS_CLAIMED, $inFlight->refresh()->status);
+    }
+
+    public function test_ssrf_requeue_applies_a_deterministic_bounded_batch_and_preserves_diagnostics(): void
+    {
+        $source = Source::factory()->create(['slug' => 'ssrf-batch']);
+        $firstFailureAt = now()->subMinutes(5)->startOfSecond();
+        $first = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::SsrfBlocked->value,
+            'last_error' => 'Fetch blocked by the SSRF guard.',
+            'last_failed_at' => $firstFailureAt,
+            'attempts' => 4,
+            'retry_round' => 3,
+        ]);
+        $second = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::SsrfBlocked->value,
+        ]);
+        $otherFailure = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::Gone->value,
+        ]);
+
+        $this->artisan('crawler:retry-requeue', [
+            '--ssrf-blocked' => true,
+            '--source' => $source->slug,
+            '--batch-size' => 1,
+            '--apply' => true,
+        ])
+            ->expectsOutputToContain('Eligible SSRF-blocked failed rows: 2.')
+            ->expectsOutputToContain('Requeued SSRF-blocked failed rows: 1 (batch limit: 1).')
+            ->assertSuccessful();
+
+        $first->refresh();
+        $second->refresh();
+        $otherFailure->refresh();
+        self::assertSame(CrawlQueue::STATUS_RETRY_PENDING, $first->status);
+        self::assertSame(0, $first->attempts);
+        self::assertSame(1, $first->retry_round);
+        self::assertSame(CrawlErrorCode::SsrfBlocked->value, $first->error_code);
+        self::assertSame('Fetch blocked by the SSRF guard.', $first->last_error);
+        self::assertTrue($first->last_failed_at->equalTo($firstFailureAt));
+        self::assertSame(CrawlQueue::STATUS_FAILED, $second->status);
+        self::assertSame(CrawlQueue::STATUS_FAILED, $otherFailure->status);
+
+        $this->artisan('crawler:retry-requeue', [
+            '--ssrf-blocked' => true,
+            '--source' => $source->slug,
+            '--batch-size' => 1,
+            '--apply' => true,
+        ])
+            ->expectsOutputToContain('Eligible SSRF-blocked failed rows: 1.')
+            ->expectsOutputToContain('Requeued SSRF-blocked failed rows: 1 (batch limit: 1).')
+            ->assertSuccessful();
+
+        $this->artisan('crawler:retry-requeue', [
+            '--ssrf-blocked' => true,
+            '--source' => $source->slug,
+            '--batch-size' => 1,
+            '--apply' => true,
+        ])
+            ->expectsOutputToContain('Eligible SSRF-blocked failed rows: 0.')
+            ->expectsOutputToContain('Requeued SSRF-blocked failed rows: 0 (batch limit: 1).')
+            ->assertSuccessful();
+    }
+
+    public function test_ssrf_requeue_rejects_invalid_batch_size_and_source_before_writes(): void
+    {
+        $source = Source::factory()->create(['slug' => 'ssrf-invalid']);
+        $failure = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::SsrfBlocked->value,
+        ]);
+
+        $this->artisan('crawler:retry-requeue', [
+            '--ssrf-blocked' => true,
+            '--source' => $source->slug,
+            '--batch-size' => 0,
+            '--apply' => true,
+        ])
+            ->expectsOutputToContain('Batch size must be between 1 and 500.')
+            ->assertFailed();
+        self::assertSame(CrawlQueue::STATUS_FAILED, $failure->refresh()->status);
+
+        $this->artisan('crawler:retry-requeue', [
+            '--ssrf-blocked' => true,
+            '--source' => 'missing-source',
+            '--apply' => true,
+        ])
+            ->expectsOutputToContain('The source filter is invalid.')
+            ->assertFailed();
+        self::assertSame(CrawlQueue::STATUS_FAILED, $failure->refresh()->status);
+    }
+
+    public function test_ssrf_requeue_does_not_overwrite_a_row_changed_after_selection(): void
+    {
+        $source = Source::factory()->create(['slug' => 'ssrf-concurrent']);
+        $failure = CrawlQueue::factory()->create([
+            'source_slug' => $source->slug,
+            'status' => CrawlQueue::STATUS_FAILED,
+            'error_code' => CrawlErrorCode::SsrfBlocked->value,
+        ]);
+        $changed = false;
+        DB::listen(static function (QueryExecuted $query) use (&$changed, $failure): void {
+            $sql = strtolower(str_replace(['"', '`'], '', $query->sql));
+            if (! $changed && preg_match('/^select\s+id\s+from\s+crawl_queue\b/', $sql) === 1) {
+                $changed = true;
+                DB::table('crawl_queue')->where('id', $failure->id)->update([
+                    'status' => CrawlQueue::STATUS_CLAIMED,
+                    'locked_by' => 'concurrent-worker',
+                ]);
+            }
+        });
+
+        $this->artisan('crawler:retry-requeue', [
+            '--ssrf-blocked' => true,
+            '--source' => $source->slug,
+            '--apply' => true,
+        ])
+            ->expectsOutputToContain('Eligible SSRF-blocked failed rows: 1.')
+            ->expectsOutputToContain('Requeued SSRF-blocked failed rows: 0 (batch limit: 100).')
+            ->assertSuccessful();
+
+        self::assertTrue($changed);
+        self::assertSame(CrawlQueue::STATUS_CLAIMED, $failure->refresh()->status);
+        self::assertSame('concurrent-worker', $failure->locked_by);
     }
 }
