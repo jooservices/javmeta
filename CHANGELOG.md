@@ -42,8 +42,8 @@ Five migrations run on deploy (`php artisan migrate`). Four are additive; none r
 
 | Migration | Change | Rollback |
 |---|---|---|
-| `2026_11_05_000001_create_node_enrollments` | new table `node_enrollments` | `dropIfExists` (loses only enrollment tokens' hashes) |
+| `2026_11_05_000001_create_node_enrollments` | new table `node_enrollments` | `dropIfExists` (drops the whole table: token hashes and the audit trail of node, role, usage and creator, so export it first if the history matters) |
 | `2026_11_06_000002_add_source_circuit_backoff` | two columns on `sources` | `dropColumn` |
-| `2026_11_07_000001_create_movie_download_searches` | new table, at most one row per movie | `dropIfExists` (loses only search state) |
+| `2026_11_07_000001_create_movie_download_searches` | new table, at most one row per movie | stop the download-search workers first, then `dropIfExists` (loses only search state) |
 | `2026_11_09_000001_backfill_api_key_scopes` | sets the full scope list on keys whose scopes were null (the application now fails closed); `api_keys` has hundreds of rows | nothing to undo: null and the full list behave the same in the previous release |
 | `2026_11_12_000001_add_api_keys_status_id_index` | index `api_keys_status_id_index` | `dropIndex` |
