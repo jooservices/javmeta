@@ -4,9 +4,7 @@ All notable changes to javmeta (XCrawler) are documented in this file. The forma
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 Releases are cut from `master` (see `docs/03-operations/release-process.md`).
 
-## [Unreleased]
-
-The entries below are the content of the first stable release, `1.0.0`. The release pull request renames this heading to `## [1.0.0] - <date>` before the release candidate is tagged (the Release workflow reads the section of the tagged version as the release notes).
+## [1.0.0] - 2026-11-15
 
 ### Fixed
 
@@ -15,6 +13,11 @@ The entries below are the content of the first stable release, `1.0.0`. The rele
 - PostgreSQL connection exhaustion: idle connections are released after jobs, scheduled tasks and in Horizon supervisor/master/`schedule:work` loops; worker scaling is capped by a connection budget with metrics and an alert (JOOXCR-392).
 - SSRF guard classification of DNS answers and a browser DNS health probe (`crawler:dns-ssrf-check`) (JOOXCR-399).
 - Login page, search totals, CJK fonts, API key scope requirement, confirmations, contrast, phone layout and 21 more UX defects found by the end-user audit (JOOXCR-394, JOOXCR-403).
+- The XCrawler home page (`/app`) showed "Server Error" on production because the unbounded worker index exhausted PHP memory in `status/sources` and `status/summary`; fixed by the bounded index above, which this release deploys (JOOXCR-406).
+- The adaptive per-source request gap reacts to timeouts and slow answers (JOOXCR-329); selected SSRF failures are requeued instead of lost (JOOXCR-363); CrawlerX 1.7.1 is adopted (JOOXCR-363).
+- Read-heavy API responses are cached with reviewed invalidation and high-memory collection paths are bounded (JOOXCR-436, JOOXCR-435).
+- Active API keys are listed first with keyset pagination; deployment smoke keys are cleaned up and become unusable when their deletion fails (JOOXCR-365).
+- Library, performer profile and related-movie screens show clear states instead of misleading text (JOOXCR-365, JOOXCR-339, JOOXCR-335).
 
 ### Security
 
@@ -30,3 +33,17 @@ The entries below are the content of the first stable release, `1.0.0`. The rele
 
 - Monitoring: Alertmanager routing to Telegram, exporters and Loki log shipping for every VM (operations only).
 - Documentation: database tuning audit, memory-discipline audit, search investigation and ten bug-hunt reports under `docs/03-operations/`.
+- A Discover page for browsing, the shared UI kit with tabbed Settings, English and Vietnamese interface text, guest browsing scenarios and a faceted search that keeps the typed query (JOOXCR-337, JOOXCR-367, JOOXCR-410, JOOXCR-385, JOOXCR-407).
+- Download links on the movie page for everyone (JOOXCR-408) and node enrollment with an audit trail (JOOXCR-383).
+
+### Database migrations
+
+Five migrations run on deploy (`php artisan migrate`). Four are additive; none removes data. Rolling the code back to the previous tag is safe because the previous release ignores the new tables, columns and index.
+
+| Migration | Change | Rollback |
+|---|---|---|
+| `2026_11_05_000001_create_node_enrollments` | new table `node_enrollments` | `dropIfExists` (loses only enrollment tokens' hashes) |
+| `2026_11_06_000002_add_source_circuit_backoff` | two columns on `sources` | `dropColumn` |
+| `2026_11_07_000001_create_movie_download_searches` | new table, at most one row per movie | `dropIfExists` (loses only search state) |
+| `2026_11_09_000001_backfill_api_key_scopes` | sets the full scope list on keys whose scopes were null (the application now fails closed); `api_keys` has hundreds of rows | nothing to undo: null and the full list behave the same in the previous release |
+| `2026_11_12_000001_add_api_keys_status_id_index` | index `api_keys_status_id_index` | `dropIndex` |
