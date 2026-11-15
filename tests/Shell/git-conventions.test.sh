@@ -179,6 +179,31 @@ PUSH_REVISION_INPUT="HEAD~0 ${GOOD_HEAD} refs/heads/revision ${ZERO_OID}"
     bash "$CHECKER" pre-push origin "refs/heads/own-bad $(git rev-parse HEAD) refs/heads/merged-feature ${MERGED_HEAD}"
 )
 
+# A documented legacy exception skips exactly one full commit ID (history on master cannot be rewritten).
+(
+  cd "$REPO"
+  git checkout -q -b legacy-exception "$BASE"
+  printf 'feat: Old commit with a trailer\n\nCo-Authored-By: Someone <someone@example.invalid>\n' > "$MESSAGE_FILE"
+  git commit --allow-empty -q -F "$MESSAGE_FILE"
+  LEGACY_SHA="$(git rev-parse HEAD)"
+  git commit --allow-empty -q -m 'feat: A clean commit after it'
+  mkdir -p "${TEST_TMP}/exception-bin"
+  cp "$CHECKER" "${TEST_TMP}/exception-bin/check-git-conventions.sh"
+  expect_fail_with "a legacy commit is rejected while it is not listed" 'prohibited AI/coauthor trailer' \
+    bash "${TEST_TMP}/exception-bin/check-git-conventions.sh" commits "${BASE}..HEAD"
+  printf '# reason\n%s legacy commit of the test\n' "$LEGACY_SHA" > "${TEST_TMP}/exception-bin/legacy-commit-exceptions.txt"
+  expect_pass "the exact full commit ID listed is skipped" \
+    bash "${TEST_TMP}/exception-bin/check-git-conventions.sh" commits "${BASE}..HEAD"
+  printf '%s legacy commit of the test\n' "${LEGACY_SHA:0:12}" > "${TEST_TMP}/exception-bin/legacy-commit-exceptions.txt"
+  expect_fail_with "an abbreviated commit ID never matches an exception" 'prohibited AI/coauthor trailer' \
+    bash "${TEST_TMP}/exception-bin/check-git-conventions.sh" commits "${BASE}..HEAD"
+  printf '%s legacy commit of the test\n' "$LEGACY_SHA" > "${TEST_TMP}/exception-bin/legacy-commit-exceptions.txt"
+  printf 'feat: Another bad commit\n\nCo-Authored-By: Someone <someone@example.invalid>\n' > "$MESSAGE_FILE"
+  git commit --allow-empty -q -F "$MESSAGE_FILE"
+  expect_fail_with "another commit with a trailer is still rejected" 'prohibited AI/coauthor trailer' \
+    bash "${TEST_TMP}/exception-bin/check-git-conventions.sh" commits "${BASE}..HEAD"
+)
+
 NEW_BRANCH_INPUT="refs/heads/new-feature ${GOOD_HEAD} refs/heads/new-feature ${ZERO_OID}"
 (
   cd "$REPO"

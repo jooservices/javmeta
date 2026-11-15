@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+readonly SCRIPT_DIR
+# Commits that landed on master before the attribution-trailer rule existed. History is never rewritten, so these
+# exact commits (full 40-character IDs, each with its reason) are skipped; every other commit is still checked.
+readonly LEGACY_EXCEPTIONS_FILE="${SCRIPT_DIR}/legacy-commit-exceptions.txt"
 readonly HEADER_RE='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^()]+\))?!?: [A-Z][^[:cntrl:]]*$'
 
 usage() {
@@ -18,6 +23,14 @@ USAGE
 fail() {
   printf 'ERROR: %s\n' "$1" >&2
   return 1
+}
+
+is_legacy_exception() {
+  local sha="$1"
+
+  [[ "$sha" =~ ^[[:xdigit:]]{40}$ ]] || return 1
+  [[ -f "$LEGACY_EXCEPTIONS_FILE" ]] || return 1
+  grep -Eq "^${sha}([[:space:]]|$)" "$LEGACY_EXCEPTIONS_FILE"
 }
 
 validate_header() {
@@ -279,6 +292,10 @@ check_commit_range() {
 
   while IFS= read -r commit; do
     [[ -z "$commit" ]] && continue
+    if is_legacy_exception "$commit"; then
+      printf 'SKIP: commit %s is a documented legacy exception.\n' "${commit:0:7}"
+      continue
+    fi
     if ! message="$(git show -s --format=%B "$commit" 2>/dev/null)"; then
       fail "could not read local commit ${commit:0:7}."
       failed=1

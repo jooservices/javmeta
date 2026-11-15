@@ -251,3 +251,12 @@ bash tests/Shell/git-conventions.test.sh
 
 These commands use only the supplied title, commit message file or local Git
 objects. They do not call GitHub or fetch a branch.
+
+History on `master` is never rewritten, so a commit that landed before the
+attribution-trailer rule existed can be listed in
+`tools/quality/legacy-commit-exceptions.txt`: one full 40-character commit ID per
+line, followed by the reason. Only that exact commit is skipped (an abbreviated
+ID never matches) and every other commit is still checked. Today the file lists
+the 1.0.0 release preparation commit of 2026-11-09, which the pre-push hook would
+otherwise report when a release tag or the merge of `master` back into `develop`
+is pushed.
