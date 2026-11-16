@@ -2,7 +2,7 @@
 
 FROM node:24.22.1-bookworm-slim AS node-runtime
 
-FROM php:8.5.11-cli-bookworm
+FROM php:8.5.12-cli-bookworm
 
 ARG SENTRY_RELEASE=unknown
 
