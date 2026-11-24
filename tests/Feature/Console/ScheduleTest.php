@@ -225,6 +225,20 @@ final class ScheduleTest extends TestCase
     }
 
     /** @return list<\Illuminate\Console\Scheduling\Event> */
+
+    public function test_ac5_the_hourly_readiness_run_reports_the_verdict_without_failing(): void
+    {
+        $readiness = array_values(array_filter(
+            $this->registeredEvents(),
+            static fn(object $event): bool => str_contains((string) $event->command, 'staging:readiness'),
+        ));
+
+        $this->assertCount(1, $readiness);
+        $this->assertStringContainsString('--report-only', (string) $readiness[0]->command);
+        $this->assertSame('0 * * * *', $readiness[0]->expression);
+        $this->assertTrue($readiness[0]->withoutOverlapping);
+    }
+
     private function registeredEvents(): array
     {
         $previousEnvironment = app('env');

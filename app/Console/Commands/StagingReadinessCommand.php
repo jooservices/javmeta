@@ -9,9 +9,9 @@ use Illuminate\Console\Command;
 
 final class StagingReadinessCommand extends Command
 {
-    protected $signature = 'staging:readiness {--json : Print machine-readable JSON} {--no-record : Do not store the run or alert}';
+    protected $signature = 'staging:readiness {--json : Print machine-readable JSON} {--no-record : Do not store the run or alert} {--report-only : Report the verdict and exit zero whatever it is, for the scheduler}';
 
-    protected $description = 'Is staging ready to run on its own? PASS or FAIL per check; exits non-zero on any FAIL.';
+    protected $description = 'Is staging ready to run on its own? PASS or FAIL per check; exits non-zero on any FAIL unless --report-only is given.';
 
     public function handle(StagingReadiness $readiness): int
     {
@@ -26,6 +26,6 @@ final class StagingReadinessCommand extends Command
             $this->line('Staging is ' . ($report['status'] === 'pass' ? 'READY' : 'NOT READY'));
         }
 
-        return $report['status'] === 'pass' ? self::SUCCESS : self::FAILURE;
+        return ($report['status'] === 'pass' || (bool) $this->option('report-only')) ? self::SUCCESS : self::FAILURE;
     }
 }
