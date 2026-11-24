@@ -48,7 +48,7 @@ and `JAVMETA_SKIP_READINESS` staging overrides do not apply to the wizard.
 
 ## Is it healthy?
 
-- `$A staging:readiness` (also `--json`): one PASS or FAIL per check with the cause and the first thing to do; exits non-zero on any FAIL. It runs every hour, keeps the last 30 runs in `storage/app/private/monitoring/readiness-history.jsonl` and tells Telegram once when it turns bad. Readiness and watchdog thresholds are editable in Cài đặt. Sources with a manifest `cycle_delay_seconds` become past due after that cycle plus one fresh-listing sweep.
+- `$A staging:readiness` (also `--json`): one PASS or FAIL per check with the cause and the first thing to do; exits non-zero on any FAIL, unless `--report-only` is given: then it still prints, records and alerts but exits zero. It runs every hour with `--report-only`, so a verdict is never reported to Sentry as a crashed scheduled command, while a crash of the run itself still fails and is reported. It keeps the last 30 runs in `storage/app/private/monitoring/readiness-history.jsonl` and tells Telegram once when it turns bad. Readiness and watchdog thresholds are editable in Cài đặt. Sources with a manifest `cycle_delay_seconds` become past due after that cycle plus one fresh-listing sweep.
 - `$A crawler:sources`: one row per source with the switch, the current gap and the last success.
 - `$A crawler:failures`: the latest failed jobs with their reason.
 - The Operations, Data quality and Crawl debug dashboards in OpenObserve (stream `javmeta_logs` and the metric streams); alerts go to Telegram.
