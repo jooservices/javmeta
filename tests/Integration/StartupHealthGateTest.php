@@ -6,6 +6,10 @@ namespace Tests\Integration;
 
 use App\Services\Health\StartupCommandGate;
 use App\Services\Health\StartupHealthService;
+use App\Services\Dependencies\Dependency;
+use App\Services\Dependencies\DependencyMonitor;
+use App\Services\Report\NodeSampleStore;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -15,12 +19,7 @@ final class StartupHealthGateTest extends IntegrationTestCase
     {
         $connectionName = (string) config('database.default');
         $original = config("database.connections.{$connectionName}");
-        $listener = stream_socket_server('tcp://127.0.0.1:0', $errorCode, $errorMessage);
-        self::assertIsResource($listener, $errorMessage);
-        $address = stream_socket_get_name($listener, false);
-        fclose($listener);
-        self::assertIsString($address);
-        $port = (int) substr($address, (int) strrpos($address, ':') + 1);
+        $port = $this->closedLoopbackPort();
         config([
             "database.connections.{$connectionName}.host" => '127.0.0.1',
             "database.connections.{$connectionName}.port" => $port,
@@ -44,6 +43,36 @@ final class StartupHealthGateTest extends IntegrationTestCase
         }
     }
 
+    public function test_AC2_node_sample_runs_and_stores_its_sample_when_elasticsearch_is_unreachable(): void
+    {
+        $node = 'startup-gate-' . bin2hex(random_bytes(6));
+        $originalHost = config('elasticsearch.host');
+        $originalNode = config('sentry.node');
+        config([
+            'elasticsearch.host' => 'http://127.0.0.1:' . $this->closedLoopbackPort(),
+            'sentry.node' => $node,
+        ]);
+
+        try {
+            $monitor = app(DependencyMonitor::class);
+            foreach ([Dependency::Postgres, Dependency::Redis, Dependency::Mongo] as $dependency) {
+                self::assertTrue($monitor->probeNow($dependency)->available, $dependency->value);
+            }
+            self::assertFalse($monitor->probeNow(Dependency::Elasticsearch)->available);
+
+            self::assertSame(0, Artisan::call('node:sample'), Artisan::output());
+
+            $samples = app(NodeSampleStore::class)->samples($node);
+            self::assertCount(1, $samples);
+            self::assertSame($node, $samples[0]['node']);
+        } finally {
+            config([
+                'elasticsearch.host' => $originalHost,
+                'sentry.node' => $originalNode,
+            ]);
+        }
+    }
+
     /** @param array<string, mixed> $report */
     private function checkStatus(array $report, string $service): string
     {
@@ -54,5 +83,16 @@ final class StartupHealthGateTest extends IntegrationTestCase
         }
 
         self::fail("Missing {$service} startup check.");
+    }
+
+    private function closedLoopbackPort(): int
+    {
+        $listener = stream_socket_server('tcp://127.0.0.1:0', $errorCode, $errorMessage);
+        self::assertIsResource($listener, $errorMessage);
+        $address = stream_socket_get_name($listener, false);
+        fclose($listener);
+        self::assertIsString($address);
+
+        return (int) substr($address, (int) strrpos($address, ':') + 1);
     }
 }

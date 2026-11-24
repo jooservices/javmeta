@@ -32,8 +32,10 @@ OpenObserve is available; it never blocks startup.
 
 - Long-running and batch Artisan commands are checked at `CommandStarting`.
   Diagnostic commands in `health.startup.command_allowlist` are exempt by
-  default; `command_denylist` overrides the allowlist. A blocked command exits
-  non-zero with the failed primary names and emits `startup_blocked` when
+  default; `command_denylist` overrides the allowlist. Every other command must
+  match an explicit `command_roles` entry in `config/javmeta_health.php`; an
+  unclassified command is refused with a message naming it. A blocked command
+  exits non-zero with the failed primary names and emits `startup_blocked` when
   telemetry is available. Health checks are not run for each queued job.
 - Web requests use a shared APCu/file snapshot before sessions and auth. Its
   TTL is `health.startup.snapshot_ttl_seconds`; a red primary snapshot returns
@@ -65,9 +67,10 @@ not the dependency gate.
 
 All tuning is under the **Sức khỏe khi khởi động** group on Cài đặt. The
 registry in `config/javmeta_settings.php` defines type, limits, Vietnamese
-labels and descriptions. This includes the enable switch, per-probe timeout,
-wait deadline, retry delay, web snapshot TTL, per-role Elasticsearch policy,
-command allow/deny patterns and optional browser gateway URLs. Defaults live in
+labels and descriptions for the saved settings. These settings cover the enable
+switch, per-probe timeout, wait deadline, retry delay, web snapshot TTL,
+per-role Elasticsearch policy, command allow/deny patterns and optional browser
+gateway URLs. Startup defaults and the explicit command-role map live in
 `config/javmeta_health.php` and contain no environment reads. See the generated
 [Settings reference](../user-guide/settings-reference.md) and [Settings
 operations](settings.md).
