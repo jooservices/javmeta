@@ -1,0 +1,10 @@
+{
+  "source_url": "https://www.naturalhigh.co.jp/all/?sf_paged=2",
+  "final_url": "https://www.naturalhigh.co.jp/all/?sf_paged=2",
+  "captured_at": "2026-11-11T17:45:00.459Z",
+  "http_status": 200,
+  "content_hash": "4b1355572ac3e29c796376381ed56afed719119ff4bb3f3cde7b7464fbb0eb22",
+  "target_type": "listing",
+  "fetch_method": "http",
+  "sanitized": true
+}

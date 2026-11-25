@@ -1,0 +1,10 @@
+{
+  "source_url": "https://www.silklabo.com/product_list/page/2/",
+  "final_url": "https://www.silklabo.com/product_list/page/2/",
+  "captured_at": "2026-11-11T07:21:38+00:00",
+  "http_status": 200,
+  "content_hash": "f80abd61b47e1c9b7194714cba8e83a68d0d989ed45bb2b626036434544f0633",
+  "target_type": "listing",
+  "fetch_method": "http",
+  "sanitized": true
+}

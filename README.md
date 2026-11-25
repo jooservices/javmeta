@@ -8,7 +8,7 @@ Status: Beta — v0.1.0-beta
 
 ## Definition of Done
 
-- **Crawl all sites:** `make crawl ACTION=tick` → `make crawl ACTION=dispatch` (worker in compose). 39 sources in `config/javmeta_sources.php` — **movies, performers, and galleries** by capability.
+- **Crawl all sites:** `make crawl ACTION=tick` → `make crawl ACTION=dispatch` (worker in compose). 53 sources in `config/javmeta_sources.php` — **movies, performers, and galleries** by capability.
 - **Query API:** `GET /api/v1/movies/{code}` · `GET /api/v1/movies?q=…` · `GET /api/v1/performers` (aliases `/movies`). API key via admin.
 - **MCP for AI:** stdio and HTTP expose `lookup_movies`, `get_movie`, `search`, `lookup_performers`, `get_counts`, `crawl_status`, `system_status`, `get_performer`, `get_catalog`, `suggest`, `get_related_movies`, and `get_release_calendar`. See the [MCP guide](docs/03-operations/mcp.md) for inputs and examples.
 - **Docker + durable DB:** Postgres / Mongo / ES bind-mounted under `./data/*` (survive container drop; avoid `down -v`).
@@ -21,6 +21,20 @@ Status: Beta — v0.1.0-beta
 | `10musume` | listing+detail | cast from movie | — | movie |
 | `attackers` | listing+detail | cast from movie | — | movie |
 | `avwiki` | listing+detail | cast from movie | — | movie |
+| `comma` | listing+detail | cast from movie | — | movie |
+| `digitalark` | listing+detail | cast from movie | — | movie |
+| `fairway` | listing+detail | cast from movie | — | movie |
+| `gentosha` | listing+detail | cast from movie | — | movie |
+| `gravidia` | listing+detail | cast from movie | — | movie |
+| `hiyoko` | listing+detail | cast from movie | — | movie |
+| `idolgakuen` | listing+detail | cast from movie | — | movie |
+| `muteki` | listing+detail | cast from movie | — | movie |
+| `naturalhigh` | listing+detail | cast from movie | — | movie |
+| `silklabo` | listing+detail | cast from movie | — | movie |
+| `tma` | listing+detail | cast from movie | — | movie |
+| `tokuma` | listing+detail | cast from movie | — | movie |
+| `venus` | listing+detail | cast from movie | — | movie |
+| `yuira` | listing+detail | cast from movie | — | movie |
 | `caribbeancompr` | listing+detail | cast from movie | — | movie |
 | `dasdas` | listing+detail | cast from movie | — | movie |
 | `fitch` | listing+detail | cast from movie | — | movie |
