@@ -25,4 +25,15 @@ final class HealthCommandsTest extends TestCase
         self::assertStringContainsString('Staging is NOT READY', $output);
         self::assertStringNotContainsString('Staging is READY', $output);
     }
+
+    public function test_ac1_report_only_exits_zero_on_a_failing_check_and_still_prints_the_verdict(): void
+    {
+        $this->travelTo('2026-11-02T12:34:00Z');
+
+        self::assertSame(0, Artisan::call('staging:readiness', ['--report-only' => true, '--no-record' => true]));
+
+        $output = Artisan::output();
+        self::assertMatchesRegularExpression('/^\[FAIL\] newest_movie: There are no movies\. -> /m', $output);
+        self::assertStringContainsString('Staging is NOT READY', $output);
+    }
 }

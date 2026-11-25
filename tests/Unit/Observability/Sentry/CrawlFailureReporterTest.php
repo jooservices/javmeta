@@ -6,6 +6,7 @@ namespace Tests\Unit\Observability\Sentry;
 
 use App\Observability\Sentry\CrawlFailureReporter;
 use Mockery;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Sentry\ClientInterface;
 use Sentry\State\HubInterface;
@@ -35,6 +36,32 @@ final class CrawlFailureReporterTest extends TestCase
         $hub->shouldReceive('captureException')->once()->with($exception)->andReturn(null);
 
         (new CrawlFailureReporter($hub))->report($exception, 'sample-source', 'detail', 'worker_failed');
+    }
+
+    /** @return array<string, array{string}> */
+    public static function expectedCrawlOutcomes(): array
+    {
+        return [
+            'page not found' => ['not_found'],
+            'page gone' => ['gone'],
+            'soft 404' => ['soft404'],
+            'login required' => ['auth_required'],
+            'rate limited by the site' => ['rate_limited'],
+        ];
+    }
+
+    #[DataProvider('expectedCrawlOutcomes')]
+    public function test_ac2_an_expected_crawl_outcome_is_not_captured_and_nothing_captures_it_later(string $errorCode): void
+    {
+        $exception = new RuntimeException('Terminal fetch status for URL [https://example.test/x].');
+        $hub = Mockery::mock(HubInterface::class);
+        $hub->shouldReceive('getClient')->once()->andReturn(Mockery::mock(ClientInterface::class));
+        $hub->shouldNotReceive('withScope');
+        $hub->shouldNotReceive('captureException');
+
+        (new CrawlFailureReporter($hub))->report($exception, 'sample-source', 'detail', $errorCode);
+
+        self::assertTrue(CrawlFailureReporter::wasReported($exception));
     }
 
     public function test_report_skips_when_sentry_client_is_not_bound(): void

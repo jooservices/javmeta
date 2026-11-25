@@ -1,0 +1,4 @@
+# Commits that landed on master before the attribution-trailer rule existed.
+# One full 40-character commit ID per line, then the reason. History is never rewritten, so an exact ID is skipped by
+# tools/quality/check-git-conventions.sh; abbreviated IDs never match and every other commit is still checked.
+ceab18bf112414b245eefb5728eaa20f95e54082 chore(release): Prepare 1.0.0 (2026-11-09) carries a Co-Authored-By trailer; it is on master (PR #221, tag v1.0.0-rc.1)

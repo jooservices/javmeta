@@ -4,6 +4,36 @@ All notable changes to javmeta (XCrawler) are documented in this file. The forma
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 Releases are cut from `master` (see `docs/03-operations/release-process.md`).
 
+## [1.1.0] - 2026-11-25
+
+### Added
+
+- 14 CrawlerX 1.9.0 sources (comma, digitalark, fairway, gentosha, gravidia, hiyoko, idolgakuen, muteki, naturalhigh, silklabo, tma, tokuma, venus, yuira) are registered with their listing seed. They are created **switched off** by `crawler:sync-sources` and are switched on one at a time with `php artisan crawler:source-toggle <slug> on` (JOOXCR-720).
+- Product codes for four of them: COMMA VISION numbers lose their edition letter (COMT-070B is COMT-070), Gentosha and Tokuma Shoten books are identified by their ISBN-13 (GENTOSHA-, TOKUMA-) and Gravidia by its product id (GRAVIDIA-), so the catalogue accepts their details (JOOXCR-720).
+
+### Fixed
+
+- Two crawl workers no longer deadlock on the API response cache epoch: it is written after the data transaction commits (JOOXCR-719).
+- A restart of Redis or PostgreSQL (connection refused, `LOADING`, shutting down, terminating connection for an administrator command) is no longer reported to Sentry as an application error; the `RedisDown` and `PostgresqlDown` alerts own it (JOOXCR-524).
+- The hourly `staging:readiness` run reports its verdict without failing the scheduled run (JOOXCR-519).
+- `node:sample` runs as a worker command and every command needs an explicit startup role, so the startup gate no longer refuses it while Elasticsearch is down (JOOXCR-518).
+- Horizon workers and the scheduled maintenance commands (`horizon:work`, `horizon:reconcile-workers`, `node:egress-probe`, `alerts:evaluate`, `report:send`, `report:send-daily`, `javmeta:hourly-report`, `reports:field-conflicts`) start without waiting for Elasticsearch; `search:switch-embeddings` is still refused (JOOXCR-715).
+- Expected client errors (invalid API key, invalid filter, missing scope) and expected crawl outcomes (not found, gone, soft 404, login required, rate limited by the site) are no longer reported to Sentry as errors (JOOXCR-525).
+- The deploy installer keeps the Node 26 apt source instead of resetting it to the Node 24 line (JOOXCR-718).
+
+### Changed
+
+- CrawlerX 1.9.0 (JOOXCR-369).
+- Every dependency, container image and pinned GitHub Action is at its latest release: Laravel 13.44.1, Horizon 5.52.0, Sentry Laravel 4.31.0 and the other Composer packages; Node 26.13.1, PHP 8.5.13, Python 3.15.2 with PyTorch 2.15.0 for the embedder; PostgreSQL 18.7, Redis 8.10.3, Elasticsearch 9.5.7 and Prometheus 3.16.0 (agent mode now uses `--agent`) in CI and the monitoring compose (JOOXCR-716). Existing local development data of the old PostgreSQL 17, MongoDB 7 and Elasticsearch 8 stack must be recreated (README).
+
+### Documentation
+
+- A fix is finished only when its Sentry issue is resolved against the release that carries it (`docs/03-operations/release-process.md`, JOOXCR-714).
+
+### Database migrations
+
+None. Rolling back to v1.0.0 needs no database change. The 14 new source rows created by the deploy stay in `sources` (switched off) after a rollback and are harmless.
+
 ## [1.0.0] - 2026-11-15
 
 ### Fixed
@@ -42,8 +72,8 @@ Five migrations run on deploy (`php artisan migrate`). Four are additive; none r
 
 | Migration | Change | Rollback |
 |---|---|---|
-| `2026_11_05_000001_create_node_enrollments` | new table `node_enrollments` | `dropIfExists` (loses only enrollment tokens' hashes) |
+| `2026_11_05_000001_create_node_enrollments` | new table `node_enrollments` | `dropIfExists` (drops the whole table: token hashes and the audit trail of node, role, usage and creator, so export it first if the history matters) |
 | `2026_11_06_000002_add_source_circuit_backoff` | two columns on `sources` | `dropColumn` |
-| `2026_11_07_000001_create_movie_download_searches` | new table, at most one row per movie | `dropIfExists` (loses only search state) |
+| `2026_11_07_000001_create_movie_download_searches` | new table, at most one row per movie | stop the download-search workers first, then `dropIfExists` (loses only search state) |
 | `2026_11_09_000001_backfill_api_key_scopes` | sets the full scope list on keys whose scopes were null (the application now fails closed); `api_keys` has hundreds of rows | nothing to undo: null and the full list behave the same in the previous release |
 | `2026_11_12_000001_add_api_keys_status_id_index` | index `api_keys_status_id_index` | `dropIndex` |

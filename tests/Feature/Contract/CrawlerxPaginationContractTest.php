@@ -37,6 +37,12 @@ final class CrawlerxPaginationContractTest extends CrawlerxContractTestCase
         'premiumbeauty|list-2026-11-17.html',
         'premiumbeauty|list-genre-218.html',
         's1|list-2026-11-24.html',
+        // JOOXCR-720: captured pages of the staged sources that show no next-page link (a year page, release and
+        // reserve lists with a carousel only, and a one-work page). The hourly page-one reread picks up new titles.
+        'comma|listing-2024.html',
+        'fairway|list-release.html',
+        'fairway|list-reserve.html',
+        'muteki|listing-page1.html',
     ];
 
     /** @return array<string, array{string, string, string, string}> */

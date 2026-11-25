@@ -24,7 +24,7 @@ New features (Telegram follow notifications and bot behavior, the library scanne
 
 ## Performance warming
 
-`perf.warm_enabled` (default `true`, group Tìm kiếm) controls the scheduled `perf:warm` command. It appears automatically on Cài đặt and is applied from the database to `javmeta_perf.warm_enabled`. Turning it off stops proactive refreshes; request-driven caches still work. No environment variable is needed. See [performance](performance.md) for TTLs, subminute scheduling and verification limits.
+`perf.warm_enabled` (default `true`, group Tìm kiếm) controls the `perf:warm` command, which has not been scheduled since JOOXCR-436 (the response cache replaced it) and now only matters when the command is run by hand. It appears automatically on Cài đặt and is applied from the database to `javmeta_perf.warm_enabled`. Turning it off stops proactive refreshes; request-driven caches still work. No environment variable is needed. See [performance](performance.md) for TTLs, subminute scheduling and verification limits.
 
 ## Crawl dispatch alerts
 

@@ -8,7 +8,7 @@ Status: Beta — v0.1.0-beta
 
 ## Definition of Done
 
-- **Crawl all sites:** `make crawl ACTION=tick` → `make crawl ACTION=dispatch` (worker in compose). 39 sources in `config/javmeta_sources.php` — **movies, performers, and galleries** by capability.
+- **Crawl all sites:** `make crawl ACTION=tick` → `make crawl ACTION=dispatch` (worker in compose). 53 sources in `config/javmeta_sources.php` — **movies, performers, and galleries** by capability.
 - **Query API:** `GET /api/v1/movies/{code}` · `GET /api/v1/movies?q=…` · `GET /api/v1/performers` (aliases `/movies`). API key via admin.
 - **MCP for AI:** stdio and HTTP expose `lookup_movies`, `get_movie`, `search`, `lookup_performers`, `get_counts`, `crawl_status`, `system_status`, `get_performer`, `get_catalog`, `suggest`, `get_related_movies`, and `get_release_calendar`. See the [MCP guide](docs/03-operations/mcp.md) for inputs and examples.
 - **Docker + durable DB:** Postgres / Mongo / ES bind-mounted under `./data/*` (survive container drop; avoid `down -v`).
@@ -21,6 +21,20 @@ Status: Beta — v0.1.0-beta
 | `10musume` | listing+detail | cast from movie | — | movie |
 | `attackers` | listing+detail | cast from movie | — | movie |
 | `avwiki` | listing+detail | cast from movie | — | movie |
+| `comma` | listing+detail | cast from movie | — | movie |
+| `digitalark` | listing+detail | cast from movie | — | movie |
+| `fairway` | listing+detail | cast from movie | — | movie |
+| `gentosha` | listing+detail | cast from movie | — | movie |
+| `gravidia` | listing+detail | cast from movie | — | movie |
+| `hiyoko` | listing+detail | cast from movie | — | movie |
+| `idolgakuen` | listing+detail | cast from movie | — | movie |
+| `muteki` | listing+detail | cast from movie | — | movie |
+| `naturalhigh` | listing+detail | cast from movie | — | movie |
+| `silklabo` | listing+detail | cast from movie | — | movie |
+| `tma` | listing+detail | cast from movie | — | movie |
+| `tokuma` | listing+detail | cast from movie | — | movie |
+| `venus` | listing+detail | cast from movie | — | movie |
+| `yuira` | listing+detail | cast from movie | — | movie |
 | `caribbeancompr` | listing+detail | cast from movie | — | movie |
 | `dasdas` | listing+detail | cast from movie | — | movie |
 | `fitch` | listing+detail | cast from movie | — | movie |
@@ -72,6 +86,19 @@ Status: Beta — v0.1.0-beta
 **Search:** `ES → uuid → Postgres → respond`  
 **Lookup by code:** Postgres only  
 **Persistence:** Postgres + Elasticsearch host bind mounts under `./data/*`; MongoDB uses a Docker named volume (`mongo-db-data`) because its WiredTiger engine is incompatible with Docker Desktop macOS bind mounts. `docker compose down` keeps all data (do **not** use `docker compose down -v`).
+
+**Existing local data after the image upgrade (JOOXCR-716).** The local `data` profile now runs PostgreSQL 18.7, MongoDB 9.0.8 and Elasticsearch 9.5.7 (the versions CI and production use). The older local stack ran PostgreSQL 17, MongoDB 7 and Elasticsearch 8.15.3, and none of these data directories can be started by the new images (PostgreSQL 18 keeps its data below `/var/lib/postgresql/<major>`; MongoDB 9.0 upgrades only from 8.0, Elasticsearch 9.5 only from 8.19). The local data is development data and the Elasticsearch index is rebuilt from PostgreSQL, so the supported path is to recreate it:
+
+```bash
+make down
+rm -rf data/postgres data/elasticsearch
+docker volume rm javmeta_mongo-db-data
+make up
+make migrate
+make setup SERVICE=elasticsearch REINDEX=1
+```
+
+Anything worth keeping in the old PostgreSQL 17 database has to be exported with `pg_dump` before `rm -rf`.
 
 ## Where things are
 

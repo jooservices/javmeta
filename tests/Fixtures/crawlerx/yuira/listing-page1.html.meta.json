@@ -1,0 +1,10 @@
+{
+  "source_url": "https://yuira.jp/allproduct/?orderby=date",
+  "final_url": "https://yuira.jp/allproduct/?orderby=date",
+  "captured_at": "2026-11-12T12:48:24.800Z",
+  "http_status": 200,
+  "content_hash": "ce2fbd969467fa631a96823ef33df7a55c923018aa242a96ef1d7b2c31bcc8f4",
+  "target_type": "listing",
+  "fetch_method": "http",
+  "sanitized": true
+}

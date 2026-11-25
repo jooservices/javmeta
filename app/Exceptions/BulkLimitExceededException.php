@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace App\Exceptions;
 
+use Illuminate\Contracts\Debug\ShouldntReport;
 use Symfony\Component\HttpFoundation\Response;
 
-final class BulkLimitExceededException extends ApiProblemException
+final class BulkLimitExceededException extends ApiProblemException implements ShouldntReport
 {
     public function __construct(int $limit = 100)
     {

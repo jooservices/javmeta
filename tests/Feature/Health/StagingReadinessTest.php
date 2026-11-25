@@ -10,6 +10,7 @@ use App\Models\Source;
 use App\Services\Health\StagingReadiness;
 use App\Services\Health\SourceScheduleFreshness;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
@@ -155,6 +156,54 @@ final class StagingReadinessTest extends TestCase
         $this->assertSame('resolved', $sent[0][2]['alert_state']);
         $this->assertSame('info', $sent[0][2]['severity']);
         File::delete($history);
+    }
+
+    public function test_ac2_report_only_still_records_the_run_and_alerts_once(): void
+    {
+        $history = storage_path('app/private/monitoring/readiness-history.jsonl');
+        File::delete($history);
+        $sent = [];
+        $this->app->instance(ReportChannel::class, new class ($sent) implements ReportChannel {
+            /** @param list<array{string, string, array<string, mixed>}> $sent */
+            public function __construct(public array &$sent) {}
+
+            public function deliver(string $subject, string $body, array $context = []): bool
+            {
+                $this->sent[] = [$subject, $body, $context];
+
+                return true;
+            }
+        });
+
+        $this->artisan('staging:readiness', ['--report-only' => true])->assertSuccessful();
+
+        $this->assertCount(1, $sent);
+        $this->assertSame('staging.readiness_blocked', $sent[0][2]['template_key']);
+        $lines = array_values(array_filter(explode("\n", (string) file_get_contents($history))));
+        $this->assertCount(1, $lines);
+        $this->assertContains('newest_movie', json_decode($lines[0], true)['failing']);
+        File::delete($history);
+    }
+
+    public function test_ac4_report_only_does_not_hide_a_crash_of_the_run_itself(): void
+    {
+        $history = storage_path('app/private/monitoring/readiness-history.jsonl');
+        File::delete($history);
+        $this->app->instance(ReportChannel::class, new class implements ReportChannel {
+            public function deliver(string $subject, string $body, array $context = []): bool
+            {
+                throw new \RuntimeException('channel down');
+            }
+        });
+
+        try {
+            Artisan::call('staging:readiness', ['--report-only' => true]);
+            $this->fail('A crash of the readiness run must not become a zero exit code.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('channel down', $exception->getMessage());
+        } finally {
+            File::delete($history);
+        }
     }
 
     public function test_the_command_exits_non_zero_on_a_fail_and_prints_json(): void

@@ -80,7 +80,7 @@ if (! app()->runningUnitTests()) {
     $scheduleCommand('crawler:prune-fetch-attempts')->daily()->withoutOverlapping();
     $scheduleCommand('crawler:stats-rollup')->hourly()->withoutOverlapping();
     $scheduleCommand('crawler:source-health')->dailyAt('04:00')->withoutOverlapping(120)->runInBackground();
-    $scheduleCommand('staging:readiness')->hourly()->withoutOverlapping();
+    $scheduleCommand('staging:readiness --report-only')->hourly()->withoutOverlapping();
     $scheduleCommand('telegram:poll')->everyMinute()->withoutOverlapping();
     $scheduleCommand('library:scan')->hourly()->withoutOverlapping();
     $scheduleCommand('ai:warm')->everyFifteenMinutes()->withoutOverlapping();

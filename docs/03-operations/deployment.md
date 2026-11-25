@@ -482,6 +482,15 @@ recreate services blindly. Record the command and error, then decide whether
 to restore the previous checkout and environment. No automatic rollback or
 external database restore is performed by these scripts.
 
+## Restarting Redis or PostgreSQL (JOOXCR-524)
+
+While Redis or PostgreSQL restarts, every Horizon loop, scheduled command and job that touches it throws once per attempt. Measured on the nodes: the Redis restart of 2026-11-12 23:23 UTC refused connections for about 40 seconds, and the one of 2026-11-20 23:52 UTC (`apt-get install --only-upgrade redis redis-server redis-tools`, 8.10.2 to 8.10.3, recorded in `/var/log/apt/history.log` on 192.168.10.14) gave 574 `Connection refused` and 17 `LOADING` events in two minutes.
+
+- These exceptions are **not reported to Sentry** (`App\Observability\InfrastructureOutage`, registered in `bootstrap/app.php`): a `RedisException` that says connection refused, `LOADING`, read error or went away, and a PDO error that says connection refused, shutting down, starting up, terminating connection for an administrator command or server closed the connection. The monitoring stack owns the outage: the `RedisDown` and `PostgresqlDown` alerts reach Telegram through Alertmanager.
+- Real faults are still reported: a role without free connections (`too many connections`), a deadlock, a failing Redis script and any other exception.
+- Jobs that failed because of the restart follow their normal retry rules once the service is back.
+- After a planned restart check that Redis answers (`redis-cli ping`), that Horizon shows the supervisors running and that the alert resolved. Do not expect Sentry events for the restart itself.
+
 ## Rollback preparation
 
 Keep the recorded previous Git SHA, the `.env` backup, and Docker's local image

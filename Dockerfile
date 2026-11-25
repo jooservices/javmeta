@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24.22.1-bookworm-slim AS node-runtime
+FROM node:26.13.1-bookworm-slim AS node-runtime
 
-FROM php:8.5.11-cli-bookworm
+FROM php:8.5.13-cli-bookworm
 
 ARG SENTRY_RELEASE=unknown
 

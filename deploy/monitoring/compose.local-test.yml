@@ -2,7 +2,7 @@ name: javmeta-monitoring
 
 services:
   node-exporter-local:
-    image: prom/node-exporter:v1.9.1
+    image: prom/node-exporter:v1.13.1
     command:
       - --path.rootfs=/host
       - --collector.pressure
@@ -23,7 +23,7 @@ services:
       - monitoring
 
   openobserve:
-    image: openobserve/openobserve:v0.92.0
+    image: openobserve/openobserve:v1.2.0
     environment:
       ZO_DATA_DIR: /data
       ZO_LOCAL_MODE: "true"

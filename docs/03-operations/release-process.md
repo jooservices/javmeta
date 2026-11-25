@@ -30,9 +30,19 @@ Day to day: branch from `develop`, make the change, pass every gate (below), ope
 7. **Final tag.** If the canary is healthy, tag the SAME commit `v<x.y.z>` and push it (the workflow creates the GitHub Release).
 8. **Roll out** `.21` and `.22` with `deploy/production.sh --ref v<x.y.z>` (worker role, no `--start-scheduler`). Verify all three nodes run the tagged commit: the installer writes the full commit SHA to `SENTRY_RELEASE` in `/var/www/xcrawler/current/.env`; compare it on every node with `git rev-parse v<x.y.z>^{commit}`.
 9. **Merge back.** Open a pull request `master` -> `develop` (merge commit) so `develop` contains the release merge commit; then delete `release/<x.y.z>`.
-10. **Report** to the owner (Telegram at start, after the canary and at the end) and update the Jira tickets.
+10. **Report** to the owner (Telegram at start, after the canary and at the end), update the Jira tickets and resolve the Sentry issues the release fixed (next section).
 
 If the canary fails: roll back `.20` by deploying the previous tag (`deploy/production.sh --ref v<previous> --start-scheduler`), fix on `develop`, then **merge the fix into `master` through a new release pull request with the full green gate**, and only then tag `-rc.2` on the new merge commit. A tag on `develop` is rejected by the workflow. A published tag that turns out to be bad is superseded by a new patch version, never rewritten.
+
+## Sentry issues of a fix (JOOXCR-714)
+
+A fix is finished only when its Sentry issue is resolved against the release that carries it. Fixed faults left unresolved keep counting against the signal and hide the live ones.
+
+- **Where to find the issue.** The Jira ticket of a fault that came from Sentry names its issues (short id such as `XCRAWLER-4D` and the numeric id in `https://sentry.jooservices.com/organizations/jooservices/issues/<id>/`). A fix for a fault without a Sentry reference is checked by searching the project for the exception message before the release is reported.
+- **When.** After the release is rolled out to all three nodes (step 8) and the issue has produced no event from the nodes that run it.
+- **How.** Resolve the issue *in release* with the release name of the tag, which is the full commit SHA written to `SENTRY_RELEASE` (`git rev-parse v<x.y.z>^{commit}`), and add a comment with the Jira key, the commit that fixed it and the file and line of the fix. In the Sentry API this is `PUT /api/0/projects/jooservices/xcrawler/issues/?id=<id>` with `{"status": "resolved", "statusDetails": {"inRelease": "<full sha>"}}`.
+- **A resolved issue is not hidden.** Checked on a Sentry 26.11.0 test project: a new event on the release an issue was resolved in returns the issue to `unresolved`, both for a plain resolve and for a resolve `inRelease`. An issue that returns after being resolved means the fix is not complete; reopen the Jira ticket or open a Bug that links the issue.
+- **Not a code fix.** When the fault was transient and nothing in the code changed (for example a short outage), say so in the comment and resolve only after checking that the affected data is correct now.
 
 ## Versioning (Semantic Versioning)
 

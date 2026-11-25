@@ -1,0 +1,10 @@
+{
+  "source_url": "https://fairway-av.com/works/list/reserve",
+  "final_url": "https://fairway-av.com/works/list/reserve",
+  "captured_at": "2026-11-11T17:47:32Z",
+  "http_status": 200,
+  "content_hash": "db08cd73ae4c50ede833a5086accf08a7e13574ddce934cc73e41a2ec6eb8404",
+  "target_type": "listing",
+  "fetch_method": "http",
+  "sanitized": false
+}

@@ -32,8 +32,10 @@ OpenObserve is available; it never blocks startup.
 
 - Long-running and batch Artisan commands are checked at `CommandStarting`.
   Diagnostic commands in `health.startup.command_allowlist` are exempt by
-  default; `command_denylist` overrides the allowlist. A blocked command exits
-  non-zero with the failed primary names and emits `startup_blocked` when
+  default; `command_denylist` overrides the allowlist. Every other command must
+  match an explicit `command_roles` entry in `config/javmeta_health.php`; an
+  unclassified command is refused with a message naming it. A blocked command
+  exits non-zero with the failed primary names and emits `startup_blocked` when
   telemetry is available. Health checks are not run for each queued job.
 - Web requests use a shared APCu/file snapshot before sessions and auth. Its
   TTL is `health.startup.snapshot_ttl_seconds`; a red primary snapshot returns
@@ -61,13 +63,28 @@ OpenObserve is available; it never blocks startup.
 `staging:readiness` is unchanged. It remains the post-start operational check,
 not the dependency gate.
 
+## Roles of the commands that run unattended
+
+Every command that a systemd unit, a timer or the scheduler starts is classified so that it does not wait for a service it does not use. Elasticsearch serves search only, so a search outage must not stop crawling or the alert evaluator.
+
+| Command | Role | Started by | Services it needs |
+| --- | --- | --- | --- |
+| `horizon` | `worker` | `xcrawler-horizon.service` (`health:startup --role=worker`) | Postgres, Redis, Mongo |
+| `horizon:work` | `worker` | a child process of `horizon` | Postgres, Redis, Mongo. Only `IndexMovieJob` and `IndexPerformerJob` touch Elasticsearch; they retry 3 times (backoff 10 s and 60 s), and the hourly `search:backfill-embeddings` reads every model from the database and indexes the documents that are absent or lack a vector |
+| `horizon:reconcile-workers`, `node:egress-probe`, `node:sample` | `worker` | node timers | Postgres, Redis, Mongo; no reference to Elasticsearch in their code or in the services they call, two levels of imports deep |
+| `alerts:evaluate`, `report:send`, `report:send-daily`, `javmeta:hourly-report`, `reports:field-conflicts` | `worker` | the scheduler (`schedule:work`) | the same as above |
+| `schedule:work` | `scheduler` | `xcrawler-scheduler.service` (`health:startup --role=scheduler`) | Postgres, Redis, Mongo |
+
+A command that really uses Elasticsearch, for example `search:switch-embeddings`, stays `web` and is still refused while Elasticsearch is down. The test `ScheduleTest::test_ac2_no_scheduled_command_is_refused_while_only_elasticsearch_is_down` fails if a scheduled command is classified in a way that needs Elasticsearch.
+
 ## Database settings
 
 All tuning is under the **Sức khỏe khi khởi động** group on Cài đặt. The
 registry in `config/javmeta_settings.php` defines type, limits, Vietnamese
-labels and descriptions. This includes the enable switch, per-probe timeout,
-wait deadline, retry delay, web snapshot TTL, per-role Elasticsearch policy,
-command allow/deny patterns and optional browser gateway URLs. Defaults live in
+labels and descriptions for the saved settings. These settings cover the enable
+switch, per-probe timeout, wait deadline, retry delay, web snapshot TTL,
+per-role Elasticsearch policy, command allow/deny patterns and optional browser
+gateway URLs. Startup defaults and the explicit command-role map live in
 `config/javmeta_health.php` and contain no environment reads. See the generated
 [Settings reference](../user-guide/settings-reference.md) and [Settings
 operations](settings.md).
