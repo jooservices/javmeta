@@ -1,4 +1,4 @@
-FROM python:3.12.15-slim-bookworm
+FROM python:3.15.2-slim-bookworm
 
 WORKDIR /app
 
@@ -10,7 +10,7 @@ RUN python -m pip install \
         --no-cache-dir \
         --disable-pip-version-check \
         --index-url https://download.pytorch.org/whl/cpu \
-        torch==2.14.1+cpu
+        torch==2.15.0+cpu
 
 COPY requirements.production.txt .
 

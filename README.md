@@ -73,6 +73,19 @@ Status: Beta — v0.1.0-beta
 **Lookup by code:** Postgres only  
 **Persistence:** Postgres + Elasticsearch host bind mounts under `./data/*`; MongoDB uses a Docker named volume (`mongo-db-data`) because its WiredTiger engine is incompatible with Docker Desktop macOS bind mounts. `docker compose down` keeps all data (do **not** use `docker compose down -v`).
 
+**Existing local data after the image upgrade (JOOXCR-716).** The local `data` profile now runs PostgreSQL 18.7, MongoDB 9.0.8 and Elasticsearch 9.5.7 (the versions CI and production use). The older local stack ran PostgreSQL 17, MongoDB 7 and Elasticsearch 8.15.3, and none of these data directories can be started by the new images (PostgreSQL 18 keeps its data below `/var/lib/postgresql/<major>`; MongoDB 9.0 upgrades only from 8.0, Elasticsearch 9.5 only from 8.19). The local data is development data and the Elasticsearch index is rebuilt from PostgreSQL, so the supported path is to recreate it:
+
+```bash
+make down
+rm -rf data/postgres data/elasticsearch
+docker volume rm javmeta_mongo-db-data
+make up
+make migrate
+make setup SERVICE=elasticsearch REINDEX=1
+```
+
+Anything worth keeping in the old PostgreSQL 17 database has to be exported with `pg_dump` before `rm -rf`.
+
 ## Where things are
 
 | What | Where |

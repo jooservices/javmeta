@@ -138,7 +138,7 @@ services:
       - mcp
 
   postgres:
-    image: postgres:17
+    image: postgres:18.7-trixie
     environment:
       POSTGRES_DB: ${DB_DATABASE:-jvmeta}
       POSTGRES_USER: ${DB_USERNAME:-jvmeta}
@@ -151,12 +151,12 @@ services:
     ports:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
-      - ./data/postgres/pgdata:/var/lib/postgresql/data
+      - ./data/postgres/pgdata:/var/lib/postgresql
     profiles:
       - data
 
   mongo:
-    image: mongo:7
+    image: mongo:9.0.8
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
@@ -170,7 +170,7 @@ services:
       - data
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.7
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
@@ -190,7 +190,7 @@ services:
       - data
 
   flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:v3.4.1
+    image: ghcr.io/flaresolverr/flaresolverr:v3.5.2
     environment:
       LOG_LEVEL: info
       HEADLESS: "true"
@@ -201,7 +201,7 @@ services:
       - flare
 
   openobserve:
-    image: openobserve/openobserve:v0.92.0
+    image: openobserve/openobserve:v1.2.0
     environment:
       ZO_DATA_DIR: /data
       ZO_LOCAL_MODE: "true"

@@ -2,7 +2,7 @@ name: javmeta-monitoring
 
 services:
   node-exporter:
-    image: prom/node-exporter:v1.9.1
+    image: prom/node-exporter:v1.13.1
     pid: host
     network_mode: host
     command:
@@ -23,7 +23,7 @@ services:
           memory: 128M
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    image: ghcr.io/google/cadvisor:v0.61.1
     privileged: true
     ports:
       - "${CADVISOR_HOST_PORT:-8081}:8080"
@@ -46,10 +46,10 @@ services:
       - monitoring
 
   prometheus:
-    image: prom/prometheus:v2.55.1
+    image: prom/prometheus:v3.16.0
     command:
       - --config.file=/etc/prometheus/prometheus.yml
-      - --enable-feature=agent
+      - --agent
       - --storage.agent.path=/prometheus
     environment:
       OBS_URL: ${OBS_URL:-http://openobserve:5080}
