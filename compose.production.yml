@@ -121,7 +121,7 @@ services:
       - crawler
 
   flaresolverr:
-    image: ${FLARESOLVERR_IMAGE:-ghcr.io/flaresolverr/flaresolverr:v3.4.1}
+    image: ${FLARESOLVERR_IMAGE:-ghcr.io/flaresolverr/flaresolverr:v3.5.2}
     environment:
       LOG_LEVEL: info
       HEADLESS: "true"

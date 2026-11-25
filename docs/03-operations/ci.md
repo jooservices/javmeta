@@ -191,8 +191,8 @@ docker/ci/integration                      # or: make test-integration
 docker/ci/integration --filter Performer   # extra PHPUnit arguments
 ```
 
-The CI services use the same versions as the Workspaces shared Docker (PostgreSQL 18.6,
-MongoDB 9.0.4, Elasticsearch 9.5.5, OpenObserve 1.0.4, Redis 8.2.10).
+The CI services use the same versions as the Workspaces shared Docker (PostgreSQL 18.7,
+MongoDB 9.0.8, Elasticsearch 9.5.7, OpenObserve 1.2.0, Redis 8.10.3).
 
 ## Local development and QA (Workspaces shared services)
 
