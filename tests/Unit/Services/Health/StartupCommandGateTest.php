@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use Mockery;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use RuntimeException;
@@ -69,6 +70,54 @@ final class StartupCommandGateTest extends TestCase
         foreach ((array) config('javmeta_health.startup.command_allowlist') as $pattern) {
             self::assertArrayHasKey($pattern, $roles, $pattern);
         }
+    }
+
+    public function test_AC1_horizon_work_is_a_worker_command_and_is_not_blocked_by_an_elasticsearch_outage(): void
+    {
+        $fixture = StartupHealthTestFixture::bind(['elasticsearch' => false]);
+        $gate = new StartupCommandGate($fixture['health'], app(ObservabilityEmitter::class));
+
+        $gate->handle('horizon:work');
+
+        self::assertSame('worker', config('javmeta_health.startup.command_roles')['horizon:work'] ?? null);
+        self::assertSame(0, $fixture['probes']['elasticsearch']->calls);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function maintenanceCommandsThatDoNotUseSearch(): array
+    {
+        return [
+            'alert evaluation' => ['alerts:evaluate'],
+            'horizon reconcile' => ['horizon:reconcile-workers'],
+            'egress probe' => ['node:egress-probe'],
+            'report send' => ['report:send'],
+            'daily report send' => ['report:send-daily'],
+            'hourly report' => ['javmeta:hourly-report'],
+            'field conflicts' => ['reports:field-conflicts'],
+        ];
+    }
+
+    #[DataProvider('maintenanceCommandsThatDoNotUseSearch')]
+    public function test_AC3_maintenance_commands_that_do_not_use_search_are_not_blocked_by_an_elasticsearch_outage(string $command): void
+    {
+        $fixture = StartupHealthTestFixture::bind(['elasticsearch' => false]);
+        $gate = new StartupCommandGate($fixture['health'], app(ObservabilityEmitter::class));
+
+        $gate->handle($command);
+
+        self::assertSame('worker', config('javmeta_health.startup.command_roles')[$command] ?? null);
+        self::assertSame(0, $fixture['probes']['elasticsearch']->calls);
+    }
+
+    public function test_AC4_a_command_that_uses_search_is_still_refused_while_elasticsearch_is_down(): void
+    {
+        $fixture = StartupHealthTestFixture::bind(['elasticsearch' => false]);
+        $gate = new StartupCommandGate($fixture['health'], app(ObservabilityEmitter::class));
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('elasticsearch');
+
+        $gate->handle('search:switch-embeddings');
     }
 
     public function test_AC3_unclassified_command_is_rejected_with_its_name(): void
