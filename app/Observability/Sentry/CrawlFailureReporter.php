@@ -30,6 +30,16 @@ final class CrawlFailureReporter
             return;
         }
 
+        if (! (CrawlErrorCode::tryFrom($errorCode)?->isExpectedOutcome() ?? false)) {
+            $this->capture($exception, $source, $crawlKind, $errorCode);
+        }
+
+        self::$reportedExceptions ??= new WeakMap();
+        self::$reportedExceptions[$exception] = true;
+    }
+
+    private function capture(Throwable $exception, string $source, string $crawlKind, string $errorCode): void
+    {
         $this->hub->withScope(function (Scope $scope) use ($exception, $source, $crawlKind, $errorCode): void {
             SentryContext::applyToScope($scope);
             $scope->setTag('source', $source);
@@ -51,9 +61,6 @@ final class CrawlFailureReporter
 
             $this->hub->captureException($exception);
         });
-
-        self::$reportedExceptions ??= new WeakMap();
-        self::$reportedExceptions[$exception] = true;
     }
 
     /** @return array{reason?: string, address?: string} */
