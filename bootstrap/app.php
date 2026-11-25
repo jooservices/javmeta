@@ -8,6 +8,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use App\Http\Middleware\RequiresDependency;
 use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\StartupHealthMiddleware;
+use App\Observability\InfrastructureOutage;
 use Sentry\Laravel\Integration;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -35,5 +36,6 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->trustProxies(at: '*', headers: \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->dontReportWhen(InfrastructureOutage::matches(...));
         Integration::handles($exceptions);
     })->create();
