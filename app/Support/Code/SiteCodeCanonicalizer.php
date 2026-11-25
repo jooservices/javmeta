@@ -291,7 +291,8 @@ final class SiteCodeCanonicalizer
     }
 
     /**
-     * Book publishers identify a title by its ISBN-13 (hyphens allowed); the publisher keeps it out of DVD codes.
+     * Book publishers identify a title by a 13-digit code (hyphens allowed): an ISBN (978...) for books and a JAN
+     * code (491...) for magazines and mooks. The publisher keeps it out of DVD codes.
      *
      * @return non-empty-string|null
      */
@@ -299,7 +300,7 @@ final class SiteCodeCanonicalizer
     {
         $digits = str_replace(['-', ' '], '', trim($raw));
 
-        return preg_match('/^97[89]\d{10}$/', $digits) === 1 ? $publisher . '-' . $digits : null;
+        return preg_match('/^\d{13}$/', $digits) === 1 ? $publisher . '-' . $digits : null;
     }
 
     /**
