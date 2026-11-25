@@ -60,6 +60,7 @@ final class StartupHealthGateTest extends IntegrationTestCase
             }
             self::assertFalse($monitor->probeNow(Dependency::Elasticsearch)->available);
 
+            app(StartupCommandGate::class)->handle('node:sample');
             self::assertSame(0, Artisan::call('node:sample'), Artisan::output());
 
             $samples = app(NodeSampleStore::class)->samples($node);
@@ -69,6 +70,32 @@ final class StartupHealthGateTest extends IntegrationTestCase
             config([
                 'elasticsearch.host' => $originalHost,
                 'sentry.node' => $originalNode,
+            ]);
+        }
+    }
+
+    public function test_AC2_the_same_command_is_refused_while_elasticsearch_is_down_when_it_is_classified_as_web(): void
+    {
+        $originalHost = config('elasticsearch.host');
+        $originalRoles = config('javmeta_health.startup.command_roles');
+        config([
+            'elasticsearch.host' => 'http://127.0.0.1:' . $this->closedLoopbackPort(),
+            'javmeta_health.startup.command_roles' => ['node:sample' => 'web'],
+        ]);
+
+        try {
+            self::assertFalse(app(DependencyMonitor::class)->probeNow(Dependency::Elasticsearch)->available);
+
+            try {
+                app(StartupCommandGate::class)->handle('node:sample');
+                self::fail('A command classified as web must be refused while Elasticsearch is down.');
+            } catch (RuntimeException $exception) {
+                self::assertStringContainsString('elasticsearch', $exception->getMessage());
+            }
+        } finally {
+            config([
+                'elasticsearch.host' => $originalHost,
+                'javmeta_health.startup.command_roles' => $originalRoles,
             ]);
         }
     }

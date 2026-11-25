@@ -37,6 +37,40 @@ final class StartupCommandGateTest extends TestCase
         self::assertSame(0, $fixture['probes']['elasticsearch']->calls);
     }
 
+    public function test_AC5_an_exempt_command_forced_through_the_gate_by_the_denylist_runs_when_its_dependencies_are_healthy(): void
+    {
+        config(['javmeta_health.startup.command_denylist' => ['migrate*']]);
+        $fixture = StartupHealthTestFixture::bind();
+        $gate = new StartupCommandGate($fixture['health'], app(ObservabilityEmitter::class));
+
+        $gate->handle('migrate');
+
+        foreach (['postgres', 'redis', 'mongo', 'elasticsearch'] as $dependency) {
+            self::assertGreaterThan(0, $fixture['probes'][$dependency]->calls, $dependency);
+        }
+    }
+
+    public function test_AC5_an_exempt_command_forced_through_the_gate_by_the_denylist_is_refused_when_a_dependency_is_down(): void
+    {
+        config(['javmeta_health.startup.command_denylist' => ['migrate*']]);
+        $fixture = StartupHealthTestFixture::bind(['postgres' => false]);
+        $gate = new StartupCommandGate($fixture['health'], app(ObservabilityEmitter::class));
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('postgres');
+
+        $gate->handle('migrate');
+    }
+
+    public function test_AC5_every_allowlist_pattern_has_a_role_so_that_the_denylist_can_force_it(): void
+    {
+        $roles = (array) config('javmeta_health.startup.command_roles');
+
+        foreach ((array) config('javmeta_health.startup.command_allowlist') as $pattern) {
+            self::assertArrayHasKey($pattern, $roles, $pattern);
+        }
+    }
+
     public function test_AC3_unclassified_command_is_rejected_with_its_name(): void
     {
         $fixture = StartupHealthTestFixture::bind();
