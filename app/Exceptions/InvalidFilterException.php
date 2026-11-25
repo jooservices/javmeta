@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace App\Exceptions;
 
+use Illuminate\Contracts\Debug\ShouldntReport;
 use Symfony\Component\HttpFoundation\Response;
 
-final class InvalidFilterException extends ApiProblemException
+final class InvalidFilterException extends ApiProblemException implements ShouldntReport
 {
     /** @param array<string, list<string>> $errors */
     public function __construct(string $detail, array $errors = [])

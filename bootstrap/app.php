@@ -5,7 +5,6 @@ declare(strict_types=1);
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use App\Exceptions\ApiProblemException;
 use App\Http\Middleware\RequiresDependency;
 use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\StartupHealthMiddleware;
@@ -37,5 +36,4 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         Integration::handles($exceptions);
-        $exceptions->dontReportWhen(static fn(Throwable $exception): bool => $exception instanceof ApiProblemException && $exception->isClientError());
     })->create();

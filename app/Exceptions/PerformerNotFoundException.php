@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace App\Exceptions;
 
+use Illuminate\Contracts\Debug\ShouldntReport;
 use Symfony\Component\HttpFoundation\Response;
 
-final class PerformerNotFoundException extends ApiProblemException
+final class PerformerNotFoundException extends ApiProblemException implements ShouldntReport
 {
     public function __construct(string|int $id)
     {
