@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Console;
 
 use Illuminate\Console\Scheduling\CallbackEvent;
+use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\Kernel;
@@ -32,9 +33,7 @@ final class ScheduleTest extends TestCase
                 continue;
             }
 
-            $matchedCommand = preg_match('/artisan[\'"]?\s+[\'"]?([^\s\'"]+)/', (string) $event->command, $matches);
-            $this->assertSame(1, $matchedCommand);
-            $key = $matches[1] . (str_contains((string) $event->command, '--status-only') ? ' --status-only' : '');
+            $key = $this->commandNameOf($event) . (str_contains((string) $event->command, '--status-only') ? ' --status-only' : '');
             $scheduled[$key] = $event;
         }
 
@@ -239,8 +238,7 @@ final class ScheduleTest extends TestCase
             if ($event instanceof CallbackEvent) {
                 continue;
             }
-            $this->assertSame(1, preg_match('/artisan[\'"]?\s+[\'"]?([^\s\'"]+)/', (string) $event->command, $matches));
-            $commands[] = $matches[1];
+            $commands[] = $this->commandNameOf($event);
         }
 
         $this->assertNotEmpty($commands);
@@ -261,6 +259,14 @@ final class ScheduleTest extends TestCase
         $this->assertStringContainsString('--report-only', (string) $readiness[0]->command);
         $this->assertSame('0 * * * *', $readiness[0]->expression);
         $this->assertTrue($readiness[0]->withoutOverlapping);
+    }
+
+
+    private function commandNameOf(Event $event): string
+    {
+        $this->assertSame(1, preg_match('/artisan[\'"]?\s+[\'"]?([^\s\'"]+)/', (string) $event->command, $matches), (string) $event->command);
+
+        return $matches[1];
     }
 
     private function registeredEvents(): array
