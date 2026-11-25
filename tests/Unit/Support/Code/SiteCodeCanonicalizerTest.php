@@ -49,6 +49,14 @@ final class SiteCodeCanonicalizerTest extends TestCase
             ['onejav', ['dsod114'], 'DSOD-114'],
             ['missav', ['SSIS-001'], 'SSIS-001'],
             ['jable', ['FJIN-091'], 'FJIN-091'],
+            // JOOXCR-720: sources whose product number is not a plain prefix-number code.
+            ['comma', ['COMT-070B'], 'COMT-070'],
+            ['comma', ['GDRD-123'], 'GDRD-123'],
+            ['gentosha', ['9784344046368'], 'GENTOSHA-9784344046368'],
+            ['gentosha', ['978-4-344-04636-8'], 'GENTOSHA-9784344046368'],
+            ['tokuma', ['9784198647292'], 'TOKUMA-9784198647292'],
+            ['tokuma', ['b681270'], 'TOKUMA-681270'],
+            ['gravidia', ['48277'], 'GRAVIDIA-48277'],
         ];
     }
 

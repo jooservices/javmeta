@@ -84,6 +84,10 @@ final class SiteCodeCanonicalizer
             '141jav' => preg_match('/^C(\d+)$/i', $raw, $match) === 1 ? 'C-' . $match[1] : null,
             'fc2' => self::qualifyFc2($raw),
             'xcity' => self::qualifyXcity($raw),
+            'comma' => self::qualifyCommaProductNumber($raw),
+            'gentosha' => self::qualifyIsbn($raw, 'GENTOSHA'),
+            'tokuma' => self::qualifyIsbn($raw, 'TOKUMA') ?? self::qualifyTokumaBookId($raw),
+            'gravidia' => self::qualifyNumericId($raw, 'GRAVIDIA'),
             default => null,
         };
 
@@ -270,6 +274,48 @@ final class SiteCodeCanonicalizer
         }
 
         return null;
+    }
+
+    /**
+     * COMMA VISION product numbers carry a trailing edition letter (COMT-070B); the number is the identity.
+     *
+     * @return non-empty-string|null
+     */
+    private static function qualifyCommaProductNumber(string $raw): ?string
+    {
+        if (preg_match('/^([A-Z]{2,12})[\s_-]?(\d{2,6})[A-Z]?$/u', mb_strtoupper(trim($raw)), $match) !== 1) {
+            return null;
+        }
+
+        return $match[1] . '-' . $match[2];
+    }
+
+    /**
+     * Book publishers identify a title by its ISBN-13 (hyphens allowed); the publisher keeps it out of DVD codes.
+     *
+     * @return non-empty-string|null
+     */
+    private static function qualifyIsbn(string $raw, string $publisher): ?string
+    {
+        $digits = str_replace(['-', ' '], '', trim($raw));
+
+        return preg_match('/^97[89]\d{10}$/', $digits) === 1 ? $publisher . '-' . $digits : null;
+    }
+
+    /**
+     * A Tokuma Shoten book page without an ISBN is known by its book id in the URL (b681270).
+     *
+     * @return non-empty-string|null
+     */
+    private static function qualifyTokumaBookId(string $raw): ?string
+    {
+        return preg_match('/^b(\d{4,})$/i', trim($raw), $match) === 1 ? 'TOKUMA-' . $match[1] : null;
+    }
+
+    /** @return non-empty-string|null */
+    private static function qualifyNumericId(string $raw, string $source): ?string
+    {
+        return preg_match('/^\d{3,}$/', trim($raw)) === 1 ? $source . '-' . trim($raw) : null;
     }
 
     private static function looksLikeOpaqueSlug(string $raw): bool
