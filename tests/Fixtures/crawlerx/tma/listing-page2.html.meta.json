@@ -1,0 +1,10 @@
+{
+  "source_url": "https://www.tma.co.jp/collections/tma?page=2",
+  "final_url": "https://www.tma.co.jp/collections/tma?page=2",
+  "captured_at": "2026-11-12T12:49:23+00:00",
+  "http_status": 200,
+  "content_hash": "01cff557b23378ddb7b6293642addc44dfe7e1cbdb879332ce6bdf3ef39890de",
+  "target_type": "listing",
+  "fetch_method": "http",
+  "sanitized": true
+}

@@ -1,0 +1,10 @@
+{
+  "source_url": "https://idol-gakuen.jp/item-list/page/2/",
+  "final_url": "https://idol-gakuen.jp/item-list/page/2/",
+  "captured_at": "2026-11-11T07:21:47+00:00",
+  "http_status": 200,
+  "content_hash": "132ad3dc32f8250f9ec1db1baf3a218013e5ffaab72d159ed4f396bce31d0296",
+  "target_type": "listing",
+  "fetch_method": "http",
+  "sanitized": true
+}

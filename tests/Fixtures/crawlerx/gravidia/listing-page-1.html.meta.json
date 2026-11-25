@@ -1,0 +1,10 @@
+{
+  "source_url": "https://gravidia.jp/search/?post_type=product&cts=cts&s=",
+  "final_url": "https://gravidia.jp/search/?post_type=product&cts=cts&s=",
+  "captured_at": "2026-11-11T08:00:04.435Z",
+  "http_status": 200,
+  "content_hash": "8060797628afe06023b66ed407da15c16a4f865463d41d680f80dbb9ab037559",
+  "target_type": "listing",
+  "fetch_method": "http",
+  "sanitized": true
+}

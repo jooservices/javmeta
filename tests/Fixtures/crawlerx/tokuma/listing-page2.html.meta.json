@@ -1,0 +1,10 @@
+{
+  "source_url": "https://www.tokuma.jp/search/index.php?page=2&new_status=true&c=1",
+  "final_url": "https://www.tokuma.jp/search/index.php?page=2&new_status=true&c=1",
+  "captured_at": "2026-11-11T07:59:38+00:00",
+  "http_status": 200,
+  "content_hash": "0bee1006a673b2be7e8916d63200ce673471ac9ec69a9c2da2b4d8e930631ce7",
+  "target_type": "listing",
+  "fetch_method": "http",
+  "sanitized": true
+}
