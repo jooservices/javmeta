@@ -33,6 +33,12 @@ abstract class ApiProblemException extends RuntimeException
         return $this->status;
     }
 
+    /** A 4xx answer is the caller's mistake or an expected refusal, not a fault of the application. */
+    public function isClientError(): bool
+    {
+        return $this->status >= 400 && $this->status < 500;
+    }
+
     public function render(Request $request): JsonResponse
     {
         unset($request);

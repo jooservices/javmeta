@@ -28,6 +28,12 @@ enum CrawlErrorCode: string
     case WorkerLost = 'worker_lost';
     case LegacyUnclassified = 'legacy_unclassified';
 
+    /** An answer that a site is expected to give: it is counted as an outcome, not a fault that someone has to fix. */
+    public function isExpectedOutcome(): bool
+    {
+        return in_array($this, [self::NotFound, self::Gone, self::Soft404, self::AuthRequired, self::RateLimited], true);
+    }
+
     public static function fromCrawlerx(?string $code): self
     {
         return self::tryFrom($code ?? '') ?? self::Unknown;
