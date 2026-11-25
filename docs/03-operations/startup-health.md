@@ -63,6 +63,20 @@ OpenObserve is available; it never blocks startup.
 `staging:readiness` is unchanged. It remains the post-start operational check,
 not the dependency gate.
 
+## Roles of the commands that run unattended
+
+Every command that a systemd unit, a timer or the scheduler starts is classified so that it does not wait for a service it does not use. Elasticsearch serves search only, so a search outage must not stop crawling or the alert evaluator.
+
+| Command | Role | Started by | Services it needs |
+| --- | --- | --- | --- |
+| `horizon` | `worker` | `xcrawler-horizon.service` (`health:startup --role=worker`) | Postgres, Redis, Mongo |
+| `horizon:work` | `worker` | a child process of `horizon` | Postgres, Redis, Mongo. Only `IndexMovieJob` and `IndexPerformerJob` touch Elasticsearch; they retry 3 times (backoff 10 s and 60 s), and the hourly `search:backfill-embeddings` reads every model from the database and indexes the documents that are absent or lack a vector |
+| `horizon:reconcile-workers`, `node:egress-probe`, `node:sample` | `worker` | node timers | Postgres, Redis, Mongo; no reference to Elasticsearch in their code or in the services they call, two levels of imports deep |
+| `alerts:evaluate`, `report:send`, `report:send-daily`, `javmeta:hourly-report`, `reports:field-conflicts` | `worker` | the scheduler (`schedule:work`) | the same as above |
+| `schedule:work` | `scheduler` | `xcrawler-scheduler.service` (`health:startup --role=scheduler`) | Postgres, Redis, Mongo |
+
+A command that really uses Elasticsearch, for example `search:switch-embeddings`, stays `web` and is still refused while Elasticsearch is down. The test `ScheduleTest::test_ac2_no_scheduled_command_is_refused_while_only_elasticsearch_is_down` fails if a scheduled command is classified in a way that needs Elasticsearch.
+
 ## Database settings
 
 All tuning is under the **Sức khỏe khi khởi động** group on Cài đặt. The

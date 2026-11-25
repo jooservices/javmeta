@@ -5,15 +5,19 @@ declare(strict_types=1);
 namespace Tests\Feature\Console;
 
 use Illuminate\Console\Scheduling\CallbackEvent;
+use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule as ScheduleFacade;
+use App\Observability\ObservabilityEmitter;
+use App\Services\Health\StartupCommandGate;
 use App\Services\Settings\SettingsService;
 use JOOservices\LaravelConfig\Testing\FakeConfigStore;
 use Symfony\Component\Console\Input\StringInput;
+use Tests\Support\StartupHealthTestFixture;
 use Tests\TestCase;
 
 final class ScheduleTest extends TestCase
@@ -29,9 +33,7 @@ final class ScheduleTest extends TestCase
                 continue;
             }
 
-            $matchedCommand = preg_match('/artisan[\'"]?\s+[\'"]?([^\s\'"]+)/', (string) $event->command, $matches);
-            $this->assertSame(1, $matchedCommand);
-            $key = $matches[1] . (str_contains((string) $event->command, '--status-only') ? ' --status-only' : '');
+            $key = $this->commandNameOf($event) . (str_contains((string) $event->command, '--status-only') ? ' --status-only' : '');
             $scheduled[$key] = $event;
         }
 
@@ -226,6 +228,26 @@ final class ScheduleTest extends TestCase
 
     /** @return list<\Illuminate\Console\Scheduling\Event> */
 
+    public function test_ac2_no_scheduled_command_is_refused_while_only_elasticsearch_is_down(): void
+    {
+        $fixture = StartupHealthTestFixture::bind(['elasticsearch' => false]);
+        $gate = new StartupCommandGate($fixture['health'], app(ObservabilityEmitter::class));
+
+        $commands = [];
+        foreach ($this->registeredEvents() as $event) {
+            if ($event instanceof CallbackEvent) {
+                continue;
+            }
+            $commands[] = $this->commandNameOf($event);
+        }
+
+        $this->assertNotEmpty($commands);
+        foreach (array_unique($commands) as $command) {
+            $gate->handle($command);
+        }
+        $this->assertSame(0, $fixture['probes']['elasticsearch']->calls);
+    }
+
     public function test_ac5_the_hourly_readiness_run_reports_the_verdict_without_failing(): void
     {
         $readiness = array_values(array_filter(
@@ -237,6 +259,14 @@ final class ScheduleTest extends TestCase
         $this->assertStringContainsString('--report-only', (string) $readiness[0]->command);
         $this->assertSame('0 * * * *', $readiness[0]->expression);
         $this->assertTrue($readiness[0]->withoutOverlapping);
+    }
+
+
+    private function commandNameOf(Event $event): string
+    {
+        $this->assertSame(1, preg_match('/artisan[\'"]?\s+[\'"]?([^\s\'"]+)/', (string) $event->command, $matches), (string) $event->command);
+
+        return $matches[1];
     }
 
     private function registeredEvents(): array
