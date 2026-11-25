@@ -9,6 +9,10 @@ use App\Observability\ObservabilityEmitter;
 use App\Services\Health\StartupCommandGate;
 use App\Services\Settings\SettingsService;
 use Illuminate\Console\Events\CommandStarting;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use Mockery;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -19,6 +23,128 @@ use Tests\TestCase;
 
 final class StartupCommandGateTest extends TestCase
 {
+    public function test_AC1_node_sample_is_worker_and_checks_only_worker_primaries(): void
+    {
+        $fixture = StartupHealthTestFixture::bind(['elasticsearch' => false]);
+        $gate = new StartupCommandGate($fixture['health'], app(ObservabilityEmitter::class));
+
+        $gate->handle('node:sample');
+
+        self::assertSame('worker', config('javmeta_health.startup.command_roles')['node:sample'] ?? null);
+        foreach (['postgres', 'redis', 'mongo'] as $dependency) {
+            self::assertGreaterThan(0, $fixture['probes'][$dependency]->calls, $dependency);
+        }
+        self::assertSame(0, $fixture['probes']['elasticsearch']->calls);
+    }
+
+    public function test_AC5_an_exempt_command_forced_through_the_gate_by_the_denylist_runs_when_its_dependencies_are_healthy(): void
+    {
+        config(['javmeta_health.startup.command_denylist' => ['migrate*']]);
+        $fixture = StartupHealthTestFixture::bind();
+        $gate = new StartupCommandGate($fixture['health'], app(ObservabilityEmitter::class));
+
+        $gate->handle('migrate');
+
+        foreach (['postgres', 'redis', 'mongo', 'elasticsearch'] as $dependency) {
+            self::assertGreaterThan(0, $fixture['probes'][$dependency]->calls, $dependency);
+        }
+    }
+
+    public function test_AC5_an_exempt_command_forced_through_the_gate_by_the_denylist_is_refused_when_a_dependency_is_down(): void
+    {
+        config(['javmeta_health.startup.command_denylist' => ['migrate*']]);
+        $fixture = StartupHealthTestFixture::bind(['postgres' => false]);
+        $gate = new StartupCommandGate($fixture['health'], app(ObservabilityEmitter::class));
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('postgres');
+
+        $gate->handle('migrate');
+    }
+
+    public function test_AC5_every_allowlist_pattern_has_a_role_so_that_the_denylist_can_force_it(): void
+    {
+        $roles = (array) config('javmeta_health.startup.command_roles');
+
+        foreach ((array) config('javmeta_health.startup.command_allowlist') as $pattern) {
+            self::assertArrayHasKey($pattern, $roles, $pattern);
+        }
+    }
+
+    public function test_AC3_unclassified_command_is_rejected_with_its_name(): void
+    {
+        $fixture = StartupHealthTestFixture::bind();
+        config(['javmeta_health.startup.command_roles' => []]);
+        $gate = new StartupCommandGate($fixture['health'], app(ObservabilityEmitter::class));
+
+        $gate->handle('');
+        self::assertSame(0, $fixture['probes']['postgres']->calls);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('ops:unclassified must be classified');
+
+        $gate->handle('ops:unclassified');
+    }
+
+    public function test_AC3_every_registered_artisan_command_is_allowlisted_or_classified(): void
+    {
+        $allowlist = (array) config('javmeta_health.startup.command_allowlist', []);
+        $roles = (array) config('javmeta_health.startup.command_roles', []);
+        $unclassified = array_values(array_filter(
+            array_keys(Artisan::all()),
+            static function (string $command) use ($allowlist, $roles): bool {
+                foreach ($allowlist as $pattern) {
+                    if (is_string($pattern) && Str::is(strtolower($pattern), $command)) {
+                        return false;
+                    }
+                }
+
+                foreach ($roles as $pattern => $role) {
+                    if (is_string($pattern) && is_string($role) && Str::is(strtolower($pattern), $command)) {
+                        return false;
+                    }
+                }
+
+                return true;
+            },
+        ));
+
+        self::assertSame([], $unclassified, 'Unclassified Artisan commands: ' . implode(', ', $unclassified));
+        self::assertSame([], array_diff(array_values($roles), ['web', 'worker', 'scheduler']));
+    }
+
+    public function test_AC2_node_sample_is_not_blocked_by_the_gate_during_an_elasticsearch_outage(): void
+    {
+        $fixture = StartupHealthTestFixture::bind(['elasticsearch' => false]);
+        $gate = new StartupCommandGate($fixture['health'], app(ObservabilityEmitter::class));
+
+        $gate->handle('node:sample');
+
+        self::assertSame(0, $fixture['probes']['elasticsearch']->calls);
+    }
+
+    public function test_a_blocked_worker_command_still_stops_when_ops_emission_throws(): void
+    {
+        $fixture = StartupHealthTestFixture::bind(['postgres' => false]);
+        config([
+            'openobserve.enabled' => true,
+            'openobserve.url' => 'http://openobserve.test',
+            'openobserve.stream_logs' => 'xcrawler_logs',
+        ]);
+        Http::fake(['*' => Http::response([], 500)]);
+        Log::shouldReceive('sharedContext')->andReturn(['node' => 'test-node', 'egress_ip' => null]);
+        Log::shouldReceive('channel')->with('single')->andThrow(new RuntimeException('telemetry unavailable'));
+        $gate = new StartupCommandGate($fixture['health'], app(ObservabilityEmitter::class));
+
+        try {
+            $gate->handle('crawler:reclaim');
+            self::fail('A worker command must remain blocked when PostgreSQL is unavailable.');
+        } catch (RuntimeException $exception) {
+            self::assertStringContainsString('Startup health blocked', $exception->getMessage());
+            self::assertStringContainsString('postgres', $exception->getMessage());
+        }
+    }
+
     public function test_diagnostic_commands_are_exempt_from_the_gate(): void
     {
         $fixture = StartupHealthTestFixture::bind(['postgres' => false]);

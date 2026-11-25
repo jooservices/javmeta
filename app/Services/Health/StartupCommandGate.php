@@ -64,15 +64,14 @@ final readonly class StartupCommandGate
 
     private function roleFor(string $command): string
     {
-        return match (true) {
-            str_starts_with($command, 'schedule:') => 'scheduler',
-            in_array($command, ['javmeta:backup-status', 'obs:publish-metrics', 'javmeta:obs-publish-metrics'], true) => 'worker',
-            $command === 'horizon', str_starts_with($command, 'queue:'), str_starts_with($command, 'crawler:'),
-            str_starts_with($command, 'performers:'), str_starts_with($command, 'performer:'),
-            str_starts_with($command, 'media:'), str_starts_with($command, 'search:backfill'),
-            str_starts_with($command, 'library:'), str_starts_with($command, 'ai:warm'),
-            str_starts_with($command, 'telegram:poll'), str_starts_with($command, 'follows:notify') => 'worker',
-            default => 'web',
-        };
+        /** @var array<string, string> $roles */
+        $roles = (array) config('javmeta_health.startup.command_roles', []);
+        foreach ($roles as $pattern => $role) {
+            if (Str::is(strtolower($pattern), $command)) {
+                return $role;
+            }
+        }
+
+        throw new RuntimeException('Startup command ' . $command . ' must be classified in javmeta_health.startup.command_roles.');
     }
 }

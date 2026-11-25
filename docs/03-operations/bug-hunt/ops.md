@@ -55,22 +55,22 @@ Counts (findings): **S1: 1 · S2: 12 · S3: 9** (22 total). Evidence: 12 confirm
 
 ### BH-ops-002 · S2 · Queue workers classified as `web`: `horizon:work` is blocked by Elasticsearch
 
-- **File:** `app/Services/Health/StartupCommandGate.php:70` (only the exact string `horizon` maps to worker), `:75` (`default => 'web'`); `config/javmeta_health.php:13` (`web` primary includes `elasticsearch`).
-- **Summary:** Horizon starts its worker children as `artisan horizon:work`. `horizon:work` does not match `$command === 'horizon'`, so it falls to `default => 'web'`. The web role requires Elasticsearch, so every worker child exits with `RuntimeException` while ES is down. Horizon then restarts the children in a loop.
+- **Files:** `config/javmeta_health.php` (`command_roles` maps `horizon` to `worker` and `horizon:work` to `web`); `config/javmeta_health.php:13` (`web` primary includes `elasticsearch`).
+- **Summary:** In the implementation audited for this historical finding, Horizon starts its worker children as `artisan horizon:work`, which inherited the `web` role and was blocked when Elasticsearch was down. JOOXCR-518 removes that fallback but explicitly keeps `horizon:work` mapped to `web` to preserve its current behavior; Sentry group 130 is shared by every command the gate refused; on 2026-11-25 it holds 6,458 events, 5,925 of them for `horizon:work` and 81 for `node:sample`, so moving `horizon:work` to `worker` is the follow-up JOOXCR-715 and JOOXCR-518 moves only `node:sample`.
 - **Reproduction (scratch):** `tests/Scratch/BugHuntOpsGateTest.php::test_horizon_worker_is_not_blocked_by_elasticsearch` — ES probe fails, `handle('horizon:work')`. **FAILS**: `Startup health blocked \`horizon:work\` for role \`web\`; unavailable primary dependencies: elasticsearch`.
 - **Evidence (Sentry, read-only, project 2 `xcrawler`):** group 130 "Startup health blocked `horizon:work` for role `web`; unavailable primary dependencies: elasticsearch" — `times_seen` 3,160; `first_seen` 2026-11-02 05:20 UTC; `last_seen` 2026-11-06 16:01 UTC; daily counts non-zero from 11-02 to 11-06, zero on 11-07.
-- **Root cause (confirmed):** `roleFor()` has an allowlist of worker commands and defaults to `web`, so any unlisted command inherits the web primary set.
-- **Proposed fix:** map `horizon` and every `horizon:*` command to `worker`; change the default to an explicit role for each command family (or `scheduler` for CLI), and add a test that every command in `routes/console.php` resolves to a role whose primary set matches its node. Do not let a worker crash-loop on Elasticsearch.
+- **Root cause (confirmed at the time):** `roleFor()` had a worker-command list and assigned `web` to unlisted commands. JOOXCR-518 replaces that fallback with declared command-role entries; it does not change `horizon:work`'s role.
+- **Proposed follow-up:** consider mapping Horizon child commands to `worker` in a separate ticket, then cover every scheduled command and its intended primary set. JOOXCR-518 preserves existing behavior for all commands except `node:sample`.
 - **Proposed failing tests:** `StartupCommandGateTest::test_horizon_workers_use_worker_dependencies`; `StartupCommandGateTest::test_every_scheduled_command_has_an_explicit_role`.
 
 ### BH-ops-003 · S2 · Scheduled commands classified as `web` (`perf:warm` etc.) — scheduler node is gated by Elasticsearch
 
-- **Files:** `app/Services/Health/StartupCommandGate.php:75` (default `web`); scheduled set in `routes/console.php:66-85`.
-- **Summary:** The following commands run on the scheduler node (`.20`, `schedule:work`) but resolve to `web` and so require Elasticsearch: `horizon:reconcile-workers`, `node:egress-probe`, `obs:publish-metrics` is worker (ok), `alerts:evaluate`, `node:sample`, `perf:warm` (+ `--status-only`), `report:send`, `report:send-daily`, `javmeta:hourly-report`. With ES down, each scheduled tick fails and writes `Scheduled command failed` to the log.
+- **Files:** `config/javmeta_health.php` (`command_roles`); scheduled set in `routes/console.php:66-85`.
+- **Summary:** At the time of this audit, the scheduler-node commands `horizon:reconcile-workers`, `node:egress-probe`, `alerts:evaluate`, `perf:warm` (+ `--status-only`), `report:send`, `report:send-daily`, and `javmeta:hourly-report` resolved to `web` and required Elasticsearch; `obs:publish-metrics` resolved to `worker`. JOOXCR-518 explicitly preserves those roles and classifies `node:sample` as `worker`, so only the listed remaining web commands in this finding still require Elasticsearch.
 - **Reproduction (scratch):** `tests/Scratch/BugHuntOpsGateTest.php::test_scheduled_perf_warm_is_not_blocked_by_elasticsearch`. **FAILS**: `Startup health blocked \`perf:warm\` for role \`web\`; unavailable primary dependencies: elasticsearch`.
 - **Note on the reported symptom:** the reported Sentry message `Startup health blocked perf:warm for role web; unavailable primary dependencies: postgres, mongo` (~1,400/day) was **not found**: a Sentry search for `perf:warm` and for `postgres, mongo` over projects 1, 2 and 3 returned zero groups. The only startup group is 130 (BH-ops-002). The postgres/mongo symptom is therefore **not reproduced** (see "Could not verify").
-- **Root cause (confirmed):** same as BH-ops-002.
-- **Proposed fix:** explicit role per scheduled command (scheduler set = postgres+redis+mongo, no ES); cover all `routes/console.php` commands in a test.
+- **Root cause (confirmed at the time):** those commands were assigned `web` by the former fallback. JOOXCR-518 declares those current web roles explicitly and changes only `node:sample`.
+- **Proposed follow-up:** decide whether the remaining scheduled commands should use `scheduler` (Postgres, Redis and Mongo) in a separate ticket; changing their roles is outside JOOXCR-518.
 - **Proposed failing tests:** `StartupCommandGateTest::test_scheduler_commands_do_not_require_elasticsearch`.
 
 ### BH-ops-004 · S2 · Elasticsearch is a web primary by default: a search outage returns 503 on every web page
