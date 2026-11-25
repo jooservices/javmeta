@@ -32,6 +32,20 @@ final class InstallManifestTest extends TestCase
         $this->assertSame(['application', 'postgres', 'mongo', 'redis', 'elasticsearch', 'embedder', 'flare', 'playwright', 'openobserve', 'sentry', 'legacy', 'ollama', 'telegram'], array_column($manifest['services'], 'id'));
     }
 
+    public function test_the_installer_node_source_follows_the_node_major_of_the_docker_images(): void
+    {
+        $root = dirname(__DIR__, 3);
+        $manifest = json_decode(file_get_contents($root . '/deploy/manifest.json'), true, flags: JSON_THROW_ON_ERROR);
+        preg_match('#/node_(\d+)\.x$#', $manifest['node']['node_repo'], $source);
+
+        $this->assertNotEmpty($source, 'node_repo must name a NodeSource node_<major>.x line');
+        foreach (['Dockerfile', 'Dockerfile.production'] as $dockerfile) {
+            preg_match('/^FROM node:(\d+)\./m', file_get_contents($root . '/' . $dockerfile), $image);
+            $this->assertNotEmpty($image, $dockerfile . ' must start a stage FROM node:<major>.');
+            $this->assertSame($image[1], $source[1], $dockerfile . ' and deploy/manifest.json must use the same Node major');
+        }
+    }
+
     public function test_telegram_credentials_are_runtime_secrets_not_database_settings(): void
     {
         $root = dirname(__DIR__, 3);
