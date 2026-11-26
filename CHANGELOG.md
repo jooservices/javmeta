@@ -32,7 +32,7 @@ Releases are cut from `master` (see `docs/03-operations/release-process.md`).
 
 ### Database migrations
 
-None. Rolling back to v1.0.0 needs no database change. The 14 new source rows created by the deploy stay in `sources` (switched off) after a rollback and are harmless.
+None. Rolling back to v1.0.0 needs no database change. The 14 new source rows created by the deploy stay in `sources` after a rollback. A row that an operator switched on stays on: run `php artisan crawler:source-toggle SLUG off --by=NAME` for each such source before rolling back if it must not run.
 
 ## [1.0.0] - 2026-11-15
 
