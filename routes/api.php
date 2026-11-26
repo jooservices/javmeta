@@ -26,9 +26,7 @@ use App\Http\Controllers\SearchParseController;
 use App\Http\Controllers\StatusController;
 use App\Http\Controllers\SuggestController;
 use App\Http\Controllers\Api\V2\OpenApiController as OpenApiV2Controller;
-use App\Http\Controllers\Api\V2\MovieController as MovieV2Controller;
 use App\Http\Controllers\Api\V2\PasswordResetController;
-use App\Http\Controllers\Api\V2\PerformerController as PerformerV2Controller;
 use App\Http\Controllers\Api\V2\SessionController;
 use App\Http\Controllers\Api\V2\UserController;
 use App\Http\Middleware\ApiV2\VerifyCsrf;
@@ -116,10 +114,12 @@ Route::prefix('v2')->middleware('api.v2')->group(static function (): void {
     Route::delete('sessions/current', [SessionController::class, 'destroy']);
     Route::post('password-resets', [PasswordResetController::class, 'store'])->middleware('throttle:api-v2-password-reset')->withoutMiddleware(VerifyCsrf::class);
     Route::put('password-resets/{token}', [PasswordResetController::class, 'update'])->withoutMiddleware(VerifyCsrf::class);
-    Route::get('movies', [MovieV2Controller::class, 'index']);
-    Route::get('movies/facets', [MovieV2Controller::class, 'facets']);
-    Route::get('performers', [PerformerV2Controller::class, 'index']);
-    Route::get('performers/facets', [PerformerV2Controller::class, 'facets']);
+
+    // One file per area, so areas can be developed and reviewed apart: routes/api/v2/<area>.php
+    foreach (['catalogue', 'discovery', 'me', 'downloads', 'operations', 'administration'] as $area) {
+        require __DIR__ . '/api/v2/' . $area . '.php';
+    }
+
     Route::middleware('scope:admin')->group(static function (): void {
         Route::get('users', [UserController::class, 'index']);
         Route::post('users', [UserController::class, 'store']);

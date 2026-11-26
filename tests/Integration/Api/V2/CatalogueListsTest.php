@@ -7,20 +7,14 @@ namespace Tests\Integration\Api\V2;
 use App\Models\Movie;
 use App\Models\MoviePerformer;
 use App\Models\Performer;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Foundation\Testing\TestCase;
-use Illuminate\Support\Facades\DB;
 
 /** The v2 movie and performer lists and facets against real PostgreSQL read models. */
-final class CatalogueListsTest extends TestCase
+final class CatalogueListsTest extends PostgresApiTestCase
 {
-    use RefreshDatabase;
-
     protected function setUp(): void
     {
         parent::setUp();
 
-        self::assertSame('pgsql', DB::getDriverName());
         $this->createCatalogue();
     }
 
