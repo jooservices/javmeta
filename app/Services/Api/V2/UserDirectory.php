@@ -5,33 +5,35 @@ declare(strict_types=1);
 namespace App\Services\Api\V2;
 
 use App\Http\Api\V2\ProblemException;
-use App\Models\User;
+use App\Repositories\Api\V2\UserRepository;
 use Illuminate\Support\Facades\Auth;
 
 /** User accounts for the administrator. */
 final class UserDirectory
 {
+    public function __construct(private readonly UserRepository $users) {}
+
     /** @return list<UserView> */
     public function all(): array
     {
-        return User::query()->orderBy('id')->get()->map(UserView::from(...))->all();
+        return array_map(UserView::from(...), $this->users->all());
     }
 
     public function create(string $name, string $email, string $password, string $role): UserView
     {
         $email = mb_strtolower($email);
 
-        if (User::query()->where('email', $email)->exists()) {
+        if ($this->users->emailExists($email)) {
             throw ProblemException::conflict('email_taken', 'A user with this email already exists.');
         }
 
-        return UserView::from(User::query()->create(['name' => $name, 'email' => $email, 'password' => $password, 'role' => $role]));
+        return UserView::from($this->users->create($name, $email, $password, $role));
     }
 
     /** @param array<string, mixed> $changes */
     public function update(int $id, array $changes): UserView
     {
-        $user = User::query()->find($id) ?? throw ProblemException::notFound('user_not_found', 'No such user.');
+        $user = $this->users->find($id) ?? throw ProblemException::notFound('user_not_found', 'No such user.');
 
         if ($changes === []) {
             throw ProblemException::invalid('Nothing to change.');
@@ -52,6 +54,6 @@ final class UserDirectory
             throw ProblemException::conflict('cannot_delete_self', 'You cannot delete your own account.');
         }
 
-        User::query()->whereKey($id)->delete();
+        $this->users->delete($id);
     }
 }

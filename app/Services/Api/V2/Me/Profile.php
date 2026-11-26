@@ -7,6 +7,7 @@ namespace App\Services\Api\V2\Me;
 use App\Http\Api\V2\ProblemException;
 use App\Models\User;
 use App\Repositories\Api\V2\MeSettingsRepository;
+use App\Repositories\Api\V2\UserRepository;
 use App\Services\Api\V2\UserView;
 use Illuminate\Support\Facades\Hash;
 
@@ -18,6 +19,7 @@ final class Profile
         private readonly Follows $follows,
         private readonly SavedSearches $searches,
         private readonly MeSettingsRepository $settings,
+        private readonly UserRepository $users,
     ) {}
 
     /** @return array{user: array<string, mixed>, counters: array<string, int>} */
@@ -59,6 +61,6 @@ final class Profile
 
     private function find(int $userId): User
     {
-        return User::query()->find($userId) ?? throw ProblemException::notFound('user_not_found', 'No such user.');
+        return $this->users->find($userId) ?? throw ProblemException::notFound('user_not_found', 'No such user.');
     }
 }

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Services\ReadModels;
+namespace App\Repositories\ReadModels;
 
 /** The SQL that builds the search tables of the UI API from the normalised catalogue tables. */
 final class ReadModelQueries

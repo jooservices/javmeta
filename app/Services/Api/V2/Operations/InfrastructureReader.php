@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Api\V2\Operations;
 
 use Carbon\CarbonImmutable;
+use stdClass;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -56,7 +57,7 @@ final class InfrastructureReader
     private static function empty(string $reason): array
     {
         return [
-            'data' => ['at' => Iso::stamp(CarbonImmutable::now()), 'vms' => [], 'services' => new \stdClass(), 'series' => [], 'deps' => new \stdClass(), 'probes' => new \stdClass()],
+            'data' => ['at' => Iso::stamp(CarbonImmutable::now()), 'vms' => [], 'services' => new stdClass(), 'series' => [], 'deps' => new stdClass(), 'probes' => new stdClass()],
             'meta' => ['degraded' => true, 'reason' => $reason],
         ];
     }

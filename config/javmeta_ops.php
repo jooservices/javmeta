@@ -7,7 +7,7 @@ declare(strict_types=1);
 | dependencies are probed. With no Prometheus URL the page answers with empty lists and meta.degraded = true.
 */
 return [
-    'prometheus_url' => env('JAVMETA_PROMETHEUS_URL'),
+    'prometheus_url' => null,
     'cache_seconds' => 20,
     'timeout_seconds' => 5,
     // How long one /events/stream connection stays open before the client reconnects.

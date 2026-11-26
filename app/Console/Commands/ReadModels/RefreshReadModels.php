@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\ReadModels;
 
-use App\Services\ReadModels\ReadModelRefresher;
+use App\Repositories\ReadModels\ReadModelRefresher;
 use Illuminate\Console\Command;
 use RuntimeException;
 

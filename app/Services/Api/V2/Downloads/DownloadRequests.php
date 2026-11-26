@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services\Api\V2\Downloads;
 
 use App\Http\Api\V2\ProblemException;
-use App\Models\MovieDownloadSearch;
 use App\Repositories\Api\V2\DownloadRepository;
 use App\Repositories\MovieRepository;
 
@@ -85,7 +84,7 @@ final class DownloadRequests
         }
 
         $movieId = $this->movies->downloadSearchIdByCode((string) $row->movie_code);
-        $search = $movieId === null ? null : MovieDownloadSearch::query()->where('movie_id', $movieId)->first();
+        $search = $movieId === null ? null : $this->repository->linkSearchOfMovie($movieId);
         $state = $search === null ? null : (self::SEARCH_TO_REQUEST[$search->state] ?? null);
 
         if ($search === null || $state === null || ($state === $row->state && (int) $row->found_count === $search->found_count)) {

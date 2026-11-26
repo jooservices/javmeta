@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 return [
     'startup' => [
-        'enabled' => (bool) env('JAVMETA_HEALTH_STARTUP_ENABLED', true),
+        'enabled' => true,
         'timeout_seconds' => 2,
         'wait_seconds' => 60,
         'retry_backoff_seconds' => 1,

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Repositories\Api\V2;
 
+use App\Models\MovieDownloadSearch;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
@@ -11,6 +12,12 @@ use LogicException;
 final class DownloadRepository
 {
     private const OPEN_STATES = ['queued', 'searching'];
+
+    /** The state of the link search of a movie (the existing download-link search), or null when it never ran. */
+    public function linkSearchOfMovie(int $movieId): ?MovieDownloadSearch
+    {
+        return MovieDownloadSearch::query()->where('movie_id', $movieId)->first();
+    }
 
     /** @return list<object> */
     public function requestsOf(string $requester): array
