@@ -318,7 +318,7 @@ final class InterpretationService
 
     private function norm(string $text): string
     {
-        return (string) preg_replace('/[\x{0300}-\x{036F}]/u', '', (string) Normalizer::normalize(mb_strtolower($text), Normalizer::FORM_KD));
+        return (string) preg_replace('/[\x{0300}-\x{036F}]/u', '', (string) Normalizer::normalize(str_replace('đ', 'd', mb_strtolower($text)), Normalizer::FORM_KD));
     }
 
     private function replaceFirst(string $needle, string $with, string $haystack): string
