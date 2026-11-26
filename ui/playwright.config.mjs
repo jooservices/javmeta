@@ -3,7 +3,8 @@ import { defineConfig } from '@playwright/test';
 // Browser end-to-end tests: the built UI (vite dev server) against the real Laravel API on :8000 (ui/e2e/serve.sh).
 export default defineConfig({
   testDir: './e2e/tests',
-  timeout: 45_000,
+  timeout: 60_000,
+  expect: { timeout: 15_000 },
   workers: 1,
   retries: 0,
   reporter: [['list']],

@@ -46,3 +46,17 @@ test('guest is asked to sign in for personal pages and admin pages', async ({ pa
   await page.goto('/favorites');
   await expect(page.getByText('Bạn cần đăng nhập')).toBeVisible();
 });
+
+test('guest switches the language to English and the choice survives a reload', async ({ page }) => {
+  const problems = watch(page);
+  await page.goto('/');
+  await expect(page.getByRole('link', { name: 'Đăng nhập' })).toBeVisible();
+  await page.getByText('EN', { exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Sign in' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('link', { name: 'Sign in' })).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await page.getByText('VI', { exact: true }).click();
+  await expect(page.getByRole('link', { name: 'Đăng nhập' })).toBeVisible();
+  expect(problems).toEqual([]);
+});
