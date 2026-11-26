@@ -3,12 +3,12 @@ import { LazyImg } from './lazyimg.jsx';
 import { useNavigate } from 'react-router-dom'; import { loadMovieExtras } from './shim.js';
 import { Stack, Group, Text, Button, Paper, Title, SegmentedControl, ActionIcon, Tooltip, Alert, Badge, Loader, Table } from '@mantine/core';
 import { useLocalStorage } from '@mantine/hooks';
-import { IconEyeOff, IconEye, IconPlayerPlay, IconExternalLink, IconAlertCircle } from '@tabler/icons-react';
+import { IconEyeOff, IconEye, IconPlayerPlay, IconExternalLink, IconAlertCircle } from '@tabler/icons-react'; import { t, tk } from './i18n/index.js';
 
 // ---- A9: keyboard shortcuts (one list feeds the handler, the help dialog and the help page)
-export const GO = [['h', '/', 'Khám phá'], ['s', '/search', 'Tìm kiếm'], ['m', '/movies', 'Phim'], ['p', '/performers', 'Diễn viên'], ['c', '/calendar', 'Lịch phát hành'], ['t', '/stats', 'Thống kê'], ['f', '/mine/fav', 'Yêu thích'], ['l', '/mine/later', 'Xem sau'], ['o', '/ops', 'Command Center'], ['a', '/activity', 'Hoạt động của tôi']];
-export const SHORTCUTS = [['/ hoặc ⌘K', 'Tìm kiếm nhanh'], ['⌘B', 'Thu gọn / mở rộng thanh bên'], ['?', 'Mở bảng phím tắt'], ['↑ ↓ Enter', 'Chọn gợi ý'], ['Esc', 'Đóng'], ['B', 'Bật / tắt chế độ riêng tư (làm mờ ảnh)'], ['`', 'Ẩn nhanh toàn màn hình'], ...GO.map(([k, , d]) => [`g ${k}`, `Đi tới ${d}`])];
-export const ShortcutTable = () => <Table withRowBorders={false} verticalSpacing={6}><Table.Tbody>{SHORTCUTS.map(([k, d]) => <Table.Tr key={k}><Table.Td w={120}><span className="kbd">{k}</span></Table.Td><Table.Td>{d}</Table.Td></Table.Tr>)}</Table.Tbody></Table>;
+export const GO = [['h', '/', tk('nav.explore')], ['s', '/search', tk('nav.search')], ['m', '/movies', tk('nav.movies')], ['p', '/performers', tk('nav.performers')], ['c', '/calendar', tk('nav.calendar')], ['t', '/stats', tk('nav.stats')], ['f', '/mine/fav', tk('nav.favorites')], ['l', '/mine/later', tk('nav.watchLater')], ['o', '/ops', tk('nav.commandCenter')], ['a', '/activity', tk('nav.myActivity')]];
+export const shortcuts = () => [[t('shortcuts.slashOrK'), t('shortcuts.quickSearch')], ['⌘B', t('shortcuts.toggleSidebar')], ['?', t('shortcuts.openHelp')], ['↑ ↓ Enter', t('shortcuts.pickSuggestion')], ['Esc', t('shortcuts.close')], ['B', t('shortcuts.privacy')], ['`', t('shortcuts.panic')], ...GO.map(([k, , d]) => [`g ${k}`, t('shortcuts.goTo', { name: t(d) })])];
+export const ShortcutTable = () => <Table withRowBorders={false} verticalSpacing={6}><Table.Tbody>{shortcuts().map(([k, d]) => <Table.Tr key={k}><Table.Td w={120}><span className="kbd">{k}</span></Table.Td><Table.Td>{d}</Table.Td></Table.Tr>)}</Table.Tbody></Table>;
 const typing = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)); };
 export function useGoKeys() {
   const nav = useNavigate(); const armed = useRef(0);
@@ -27,16 +27,16 @@ export function usePrivacy() { const [on, setOn] = useLocalStorage({ key: 'xc.pr
 export function PrivacyLayer() {
   const [on, setOn] = usePrivacy(); const [hide, setHide] = useState(false);
   useEffect(() => { const k = e => { if (typing(e) || e.metaKey || e.ctrlKey || e.altKey) return; if (e.key === '`') { e.preventDefault(); setHide(h => !h); } else if (e.key.toLowerCase() === 'b') setOn(v => !v); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, []);
-  useEffect(() => { document.title = hide ? 'Tài liệu' : 'XCrawler'; }, [hide]);
+  useEffect(() => { document.title = hide ? t('privacy.hiddenTitle') : 'XCrawler'; }, [hide]);
   return hide ? <div role="presentation" onClick={() => setHide(false)} style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#0b0d10', cursor: 'default' }} /> : null;
 }
 export function PrivacyToggle() {
   const [on, setOn] = usePrivacy();
-  return <Tooltip label={on ? 'Tắt chế độ riêng tư (B)' : 'Bật chế độ riêng tư: làm mờ ảnh (B)'}><ActionIcon variant={on ? 'filled' : 'default'} color={on ? 'teal' : undefined} onClick={() => setOn(v => !v)} aria-label="Chế độ riêng tư" aria-pressed={on}>{on ? <IconEyeOff size={18} /> : <IconEye size={18} />}</ActionIcon></Tooltip>;
+  return <Tooltip label={on ? t('privacy.turnOff') : t('privacy.turnOn')}><ActionIcon variant={on ? 'filled' : 'default'} color={on ? 'teal' : undefined} onClick={() => setOn(v => !v)} aria-label={t('privacy.mode')} aria-pressed={on}>{on ? <IconEyeOff size={18} /> : <IconEye size={18} />}</ActionIcon></Tooltip>;
 }
 
 // ---- A2: in-page preview player (mp4 direct; HLS natively where the browser can, hls.js elsewhere)
-const label = (s, i) => { const q = s.quality || (s.url.match(/\/(\d{3,4}p)\//) || [])[1]; return `${q || `Nguồn ${i + 1}`} · ${/\.m3u8/i.test(s.url) ? 'HLS' : 'MP4'}`; };
+const label = (s, i) => { const q = s.quality || (s.url.match(/\/(\d{3,4}p)\//) || [])[1]; return `${q || t('player.sourceN', { n: i + 1 })} · ${/\.m3u8/i.test(s.url) ? 'HLS' : 'MP4'}`; };
 const host = u => { try { return new URL(u).host.replace(/^www\./, ''); } catch { return ''; } };
 export function PreviewPlayer({ m, bare }) {
   const [, force] = useState(0); useEffect(() => { if (m.watch == null && m.hls) loadMovieExtras(m.code).then(() => force(x => x + 1)); }, [m.code]); const all = m.watch || []; const good = playableList(m); const list = bare ? good : [...good, ...all.filter(x => !good.includes(x))]; const [i, setI] = useState(0); const [err, setErr] = useState(null); const [busy, setBusy] = useState(true); const ref = useRef(null);
@@ -44,7 +44,7 @@ export function PreviewPlayer({ m, bare }) {
   const s = list[i];
   useEffect(() => {
     const v = ref.current; if (!v || !s) return; setErr(null); setBusy(true); let hls;
-    const fail = () => { setErr('Nguồn này chặn phát trong trình duyệt hoặc đã hỏng.'); setBusy(false); };
+    const fail = () => { setErr(t('player.blocked')); setBusy(false); };
     v.onerror = fail; v.onloadeddata = () => setBusy(false);
     if (/\.m3u8/i.test(s.url)) {
       if (v.canPlayType('application/vnd.apple.mpegurl')) v.src = s.url;
@@ -55,10 +55,10 @@ export function PreviewPlayer({ m, bare }) {
   if (!s) return null;
   const wrap = ch => (bare ? <div>{ch}</div> : <Paper className="tile" id="watch">{ch}</Paper>);
   return wrap(<Stack gap="sm">
-    <Group justify="space-between" wrap="wrap">{bare ? <Text size="sm" c="dimmed">Xem thử trực tiếp</Text> : <Title order={4} fw={600}>Xem thử</Title>}<Group gap="xs"><Badge variant="light" color="gray">{host(s.url)}</Badge></Group></Group>
+    <Group justify="space-between" wrap="wrap">{bare ? <Text size="sm" c="dimmed">{t('player.livePreview')}</Text> : <Title order={4} fw={600}>{t('player.preview')}</Title>}<Group gap="xs"><Badge variant="light" color="gray">{host(s.url)}</Badge></Group></Group>
     {list.length > 1 && <SegmentedControl size="xs" value={String(i)} onChange={v => setI(+v)} data={list.map((x, k) => ({ value: String(k), label: label(x, k) }))} styles={{ root: { maxWidth: '100%', overflowX: 'auto' } }} />}
     <div className={bare ? 'player live' : 'player'}><video ref={ref} controls playsInline preload="metadata" poster={m.cover || undefined} />{busy && !err && <div className="player-busy"><Loader size="sm" /></div>}</div>
-    {err && <Alert color="yellow" variant="light" icon={<IconAlertCircle size={16} />} title={err}><Group gap="sm" wrap="wrap"><Text size="sm" c="dimmed">Thử nguồn khác hoặc mở trực tiếp ở trang gốc.</Text><Button size="compact-sm" variant="light" component="a" href={s.url} target="_blank" rel="noreferrer" leftSection={<IconExternalLink size={14} />}>Mở nguồn</Button></Group></Alert>}
+    {err && <Alert color="yellow" variant="light" icon={<IconAlertCircle size={16} />} title={err}><Group gap="sm" wrap="wrap"><Text size="sm" c="dimmed">{t('player.tryOther')}</Text><Button size="compact-sm" variant="light" component="a" href={s.url} target="_blank" rel="noreferrer" leftSection={<IconExternalLink size={14} />}>{t('player.openSource')}</Button></Group></Alert>}
   </Stack>);
 }
 
@@ -73,7 +73,7 @@ export function PhotoViewer({ items, index, setIndex }) {
   return <div>
     <div className="viewer-wrap">
       <div className="viewer" ref={box} onPointerDown={down} onPointerUp={up} onPointerCancel={() => { x0.current = null; }}><img src={cur.src} alt={cur.label} draggable={false} /></div>
-      {n > 1 && <><ActionIcon variant="filled" color="dark" size="xl" pos="absolute" left={12} top="45%" onClick={() => go(-1)} aria-label="Ảnh trước" visibleFrom="sm"><span aria-hidden>‹</span></ActionIcon><ActionIcon variant="filled" color="dark" size="xl" pos="absolute" right={12} top="45%" onClick={() => go(1)} aria-label="Ảnh sau" visibleFrom="sm"><span aria-hidden>›</span></ActionIcon></>}
+      {n > 1 && <><ActionIcon variant="filled" color="dark" size="xl" pos="absolute" left={12} top="45%" onClick={() => go(-1)} aria-label={t('viewer.prev')} visibleFrom="sm"><span aria-hidden>‹</span></ActionIcon><ActionIcon variant="filled" color="dark" size="xl" pos="absolute" right={12} top="45%" onClick={() => go(1)} aria-label={t('viewer.next')} visibleFrom="sm"><span aria-hidden>›</span></ActionIcon></>}
       <Badge pos="absolute" bottom={10} right={12} variant="filled" color="dark" size="lg">{index + 1} / {n}</Badge></div>
     {n > 1 && <div className="vstrip" ref={strip}>{items.map((it, k) => <div key={k} className={`vt${k === index ? ' on' : ''}`} onClick={() => setIndex(k)}><LazyImg src={it.thumb || it.src} alt={`${k + 1}`}  /></div>)}</div>}
   </div>;
@@ -86,18 +86,18 @@ const top = (arr, n) => { const c = new Map(); arr.filter(Boolean).forEach(k => 
 export function PerformerInsights({ p }) {
   const st = p.stats; if (!st || !st.span?.total) return null;
   const by = Object.fromEntries(st.by_year.map(y => [y.year, y.count])); const years = st.by_year.map(y => y.year); const span = years.length ? Array.from({ length: years.at(-1) - years[0] + 1 }, (_, i) => years[0] + i) : [];
-  const timeline = span.map(y => ({ năm: String(y), phim: by[y] || 0 }));
+  const timeline = span.map(y => ({ year: String(y), movies: by[y] || 0 }));
   return <Paper className="tile"><Stack gap="md">
-    <Group justify="space-between" wrap="wrap"><div><Text fw={600}>Hồ sơ hoạt động</Text><Text size="xs" c="dimmed">Tính từ {st.span.total} phim · {String(st.span.first || '').slice(0, 10)} → {String(st.span.last || '').slice(0, 10)}</Text></div></Group>
-    {timeline.length > 1 && <BarChart h={150} data={timeline} dataKey="năm" series={[{ name: 'phim', color: 'teal.6', label: 'Số phim' }]} gridAxis="y" tickLine="none" withTooltip yAxisProps={{ allowDecimals: false }} barProps={{ maxBarSize: 40 }} />}
+    <Group justify="space-between" wrap="wrap"><div><Text fw={600}>{t('insights.title')}</Text><Text size="xs" c="dimmed">{t('insights.span', { n: st.span.total, first: String(st.span.first || '').slice(0, 10), last: String(st.span.last || '').slice(0, 10) })}</Text></div></Group>
+    {timeline.length > 1 && <BarChart h={150} data={timeline} dataKey="year" series={[{ name: 'movies', color: 'teal.6', label: t('insights.movieCount') }]} gridAxis="y" tickLine="none" withTooltip yAxisProps={{ allowDecimals: false }} barProps={{ maxBarSize: 40 }} />}
     <SimpleGrid cols={{ base: 1, md: 3 }} spacing="lg">
-      <div><Text size="xs" c="dimmed" mb={8}>Hãng hay đóng</Text><Group gap={8}>{st.top_makers.map(({ name, count }) => <Badge key={name} variant="light" component={Link} to={`/movies?maker=${encodeURIComponent(name)}`} style={{ cursor: 'pointer' }}>{name} · {count}</Badge>)}</Group></div>
-      <div><Text size="xs" c="dimmed" mb={8}>Thể loại hay gặp</Text><Group gap={8}>{st.top_genres.map(({ name, count }) => <Badge key={name} variant="outline" color="gray" component={Link} to={`/movies?genre=${encodeURIComponent(name)}`} style={{ cursor: 'pointer' }}>{name} · {count}</Badge>)}</Group></div>
-      <div><Text size="xs" c="dimmed" mb={8}>Hay đóng cùng</Text>{p.co?.length ? <Stack gap={8}>{p.co.slice(0, 8).map(q => <Group key={q.id} gap="sm" wrap="nowrap"><Avatar src={photo(q)} size={32} radius="xl" imageProps={{ referrerPolicy: 'no-referrer' }} /><Anchor component={Link} to={`/performers/${q.slug || q.id}`} size="sm" truncate flex={1}>{q.name}</Anchor><Text size="xs" c="dimmed" className="mono">{q.together} phim</Text></Group>)}</Stack> : <Text size="sm" c="dimmed">Chưa có dữ liệu.</Text>}</div>
+      <div><Text size="xs" c="dimmed" mb={8}>{t('insights.topMakers')}</Text><Group gap={8}>{st.top_makers.map(({ name, count }) => <Badge key={name} variant="light" component={Link} to={`/movies?maker=${encodeURIComponent(name)}`} style={{ cursor: 'pointer' }}>{name} · {count}</Badge>)}</Group></div>
+      <div><Text size="xs" c="dimmed" mb={8}>{t('insights.topGenres')}</Text><Group gap={8}>{st.top_genres.map(({ name, count }) => <Badge key={name} variant="outline" color="gray" component={Link} to={`/movies?genre=${encodeURIComponent(name)}`} style={{ cursor: 'pointer' }}>{name} · {count}</Badge>)}</Group></div>
+      <div><Text size="xs" c="dimmed" mb={8}>{t('insights.coStars')}</Text>{p.co?.length ? <Stack gap={8}>{p.co.slice(0, 8).map(q => <Group key={q.id} gap="sm" wrap="nowrap"><Avatar src={photo(q)} size={32} radius="xl" imageProps={{ referrerPolicy: 'no-referrer' }} /><Anchor component={Link} to={`/performers/${q.slug || q.id}`} size="sm" truncate flex={1}>{q.name}</Anchor><Text size="xs" c="dimmed" className="mono">{t('common.moviesCount', { n: q.together })}</Text></Group>)}</Stack> : <Text size="sm" c="dimmed">{t('common.noData')}</Text>}</div>
     </SimpleGrid></Stack></Paper>;
 }
 
-// ---- A8: "Hôm nay xem gì" - picks from what the user liked, followed and watched; falls back to the best new releases
+// ---- A8: "What to watch today" - picks from what the user liked, followed and watched; falls back to the best new releases
 import { IconX, IconSparkles, IconCheck, IconArrowBackUp } from '@tabler/icons-react'; import { modals } from '@mantine/modals';
 import { getMovie, queryMovies, personal as store } from './shim.js'; import { MovieCard } from './components.jsx';
 const daySeed = () => { const d = new Date(); return d.getFullYear() * 400 + d.getMonth() * 31 + d.getDate(); };
@@ -115,15 +115,15 @@ export function picksFor(st, dismissed, pool, n = 8) {
 export function TodayPicks({ st, onPreview, pool }) {
   const [gone, setGone] = useLocalStorage({ key: 'xc.dismissed', defaultValue: [] }); const { has, items } = picksFor(st, gone, pool || []);
   if (!items.length) return null;
-  return <div><Group justify="space-between" mb="md" wrap="nowrap"><div><Title order={4} fw={600}>Hôm nay xem gì</Title><Text size="xs" c="dimmed">{has ? 'Gợi ý theo phim bạn đã thích, đang theo dõi và đã xem' : 'Gợi ý theo phim mới có nhiều dữ liệu. Thả tim hoặc theo dõi để gợi ý sát hơn'}</Text></div>{gone.length > 0 && <Button size="compact-sm" variant="subtle" color="gray" onClick={() => setGone([])}>Bỏ {gone.length} mục đã ẩn</Button>}</Group>
-    <div className="pgrid home">{items.map(m => <div key={m.id} className="pick"><MovieCard m={m} onPreview={onPreview} /><Tooltip label="Không quan tâm"><ActionIcon className="pick-x" variant="filled" color="dark" size="md" aria-label={`Không quan tâm ${m.code}`} onClick={() => modals.openConfirmModal({ title: 'Không quan tâm phim này?', centered: true, zIndex: 400, children: <Text size="sm">Bạn có muốn ẩn <b>{m.code}</b> khỏi gợi ý “Hôm nay xem gì” không? Bạn có thể hiện lại bằng nút “Bỏ mục đã ẩn”.</Text>, labels: { confirm: 'Có, ẩn phim này', cancel: 'Không, giữ lại' }, confirmProps: { color: 'red', leftSection: <IconCheck size={16} /> }, cancelProps: { variant: 'default', leftSection: <IconArrowBackUp size={16} /> }, onConfirm: () => setGone(g => [...g, m.id]) })}><IconX size={14} /></ActionIcon></Tooltip></div>)}</div></div>;
+  return <div><Group justify="space-between" mb="md" wrap="nowrap"><div><Title order={4} fw={600}>{t('picks.title')}</Title><Text size="xs" c="dimmed">{has ? t('picks.subPersonal') : t('picks.subDefault')}</Text></div>{gone.length > 0 && <Button size="compact-sm" variant="subtle" color="gray" onClick={() => setGone([])}>{t('picks.unhide', { n: gone.length })}</Button>}</Group>
+    <div className="pgrid home">{items.map(m => <div key={m.id} className="pick"><MovieCard m={m} onPreview={onPreview} /><Tooltip label={t('picks.notInterested')}><ActionIcon className="pick-x" variant="filled" color="dark" size="md" aria-label={t('picks.notInterestedCode', { code: m.code })} onClick={() => modals.openConfirmModal({ title: t('picks.confirmTitle'), centered: true, zIndex: 400, children: <Text size="sm">{t('picks.confirmBefore')}<b>{m.code}</b>{t('picks.confirmAfter')}</Text>, labels: { confirm: t('picks.confirmYes'), cancel: t('picks.confirmNo') }, confirmProps: { color: 'red', leftSection: <IconCheck size={16} /> }, cancelProps: { variant: 'default', leftSection: <IconArrowBackUp size={16} /> }, onConfirm: () => setGone(g => [...g, m.id]) })}><IconX size={14} /></ActionIcon></Tooltip></div>)}</div></div>;
 }
 
 // movies that can be previewed in the page: direct video files first (they play everywhere), then HLS
 export function WatchableRow({ onPreview }) {
   const [items, setItems] = useState([]); useEffect(() => { queryMovies({ has_watch: '1', sort: 'update_date', per_page: 8 }).then(r => setItems(r.items)); }, []);
   if (!items.length) return null;
-  return <div><Group justify="space-between" mb="md"><div><Title order={4} fw={600}>Xem thử ngay</Title><Text size="xs" c="dimmed">Phim có video xem thử phát được ngay trong trang</Text></div></Group><div className="pgrid home">{items.map(m => <MovieCard key={m.id} m={m} onPreview={onPreview} />)}</div></div>;
+  return <div><Group justify="space-between" mb="md"><div><Title order={4} fw={600}>{t('watchable.title')}</Title><Text size="xs" c="dimmed">{t('watchable.sub')}</Text></div></Group><div className="pgrid home">{items.map(m => <MovieCard key={m.id} m={m} onPreview={onPreview} />)}</div></div>;
 }
 
 // ---- A2: preview opens in a modal on the current page (any card's play icon fires xc:play)

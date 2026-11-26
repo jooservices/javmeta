@@ -1,14 +1,15 @@
 import { useEffect } from 'react';
 import { Group, Text, ActionIcon, Tooltip } from '@mantine/core';
 import { IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
+import { t } from './i18n/index.js';
 
-// ‹ 3 / 1397 · Kết quả ›  with ← → keys; `blocked()` lets the page say that a window is open and the keys belong to it
+// ‹ 3 / 1397 · Results ›  with ← → keys; `blocked()` lets the page say that a window is open and the keys belong to it
 export function ListNav({ pos, total, label, prev, next, onGo, noun }) {
   if (pos < 0) return null;
-  return <Group gap="xs" wrap="nowrap" aria-label={`${noun} trước và sau`}>
-    <Tooltip label={prev ? `${noun} trước: ${prev} (←)` : 'Đây là mục đầu danh sách'}><ActionIcon variant="default" size="lg" disabled={!prev} onClick={() => onGo(prev)} aria-label={`${noun} trước`}><IconChevronLeft size={18} /></ActionIcon></Tooltip>
+  return <Group gap="xs" wrap="nowrap" aria-label={t('listnav.pair', { noun })}>
+    <Tooltip label={prev ? t('listnav.prevTip', { noun, name: prev }) : t('listnav.first')}><ActionIcon variant="default" size="lg" disabled={!prev} onClick={() => onGo(prev)} aria-label={t('listnav.prev', { noun })}><IconChevronLeft size={18} /></ActionIcon></Tooltip>
     <Text size="sm" c="dimmed" className="mono">{pos + 1} / {total}{label ? ` · ${label}` : ''}</Text>
-    <Tooltip label={next ? `${noun} sau: ${next} (→)` : 'Đây là mục cuối danh sách'}><ActionIcon variant="default" size="lg" disabled={!next} onClick={() => onGo(next)} aria-label={`${noun} sau`}><IconChevronRight size={18} /></ActionIcon></Tooltip></Group>;
+    <Tooltip label={next ? t('listnav.nextTip', { noun, name: next }) : t('listnav.last')}><ActionIcon variant="default" size="lg" disabled={!next} onClick={() => onGo(next)} aria-label={t('listnav.next', { noun })}><IconChevronRight size={18} /></ActionIcon></Tooltip></Group>;
 }
 export function useListKeys(prev, next, onGo, blocked = () => false) {
   useEffect(() => {

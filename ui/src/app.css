@@ -41,7 +41,7 @@ footer{margin-top:0}
 }
 .mantine-Badge-root{font-size:12px}
 @media (pointer:coarse){
-  button[aria-label^="Đóng nhóm"],button[aria-label^="Mở nhóm"]{min-height:44px}
+  button.nav-group-toggle{min-height:44px}
   a.mantine-Badge-root{min-height:32px}
   .mantine-Button-root[data-size^='compact']{min-height:40px}
 }
@@ -50,7 +50,7 @@ footer{margin-top:0}
 .mantine-Badge-label{overflow:visible;text-overflow:clip;white-space:nowrap}
 .mantine-ScrollArea-viewport>div{display:block!important;min-width:0!important}
 @media (pointer:coarse){.qv-icon{min-width:36px!important;min-height:36px!important}}
-/* Khám phá: ảnh bìa lớn, đúng một hàng đầy đủ mỗi mục; số cột theo độ rộng màn hình */
+/* Explore: large covers, exactly one full row per section; the column count follows the screen width */
 .pgrid.home{display:grid;gap:16px;grid-template-columns:repeat(2,1fr)}
 .pgrid.home>:nth-child(n+3){display:none}
 @media (min-width:640px){.pgrid.home{grid-template-columns:repeat(3,1fr)}.pgrid.home>:nth-child(n+3){display:block}.pgrid.home>:nth-child(n+4){display:none}}
@@ -65,7 +65,7 @@ footer{margin-top:0}
 
 .split23{display:grid;gap:24px;grid-template-columns:minmax(0,1fr)}
 @media (min-width:1200px){.split23{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}}
-/* thẻ số liệu: 2 cột, 4 cột, và 6 cột ở màn rộng */
+/* figure cards: 2 columns, 4 columns, and 6 columns on a wide screen */
 /* KPI row shares the 2/3 + 1/3 frame of the row below, so the columns line up at every width */
 .kpi-main,.kpi-side{display:grid;gap:16px;grid-auto-rows:1fr;grid-template-columns:repeat(2,minmax(0,1fr))}
 .kpi-main .kpi,.kpi-side .kpi{height:100%}
@@ -99,20 +99,20 @@ button.poster-play { border: 0; padding: 0; cursor: pointer; }
 .sgrid { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); align-items: start; }
 @media (min-width: 1100px) { .sgrid { grid-template-columns: 264px minmax(0, 1fr); } }
 .sfilters { position: sticky; top: 72px; max-height: calc(100vh - 88px); overflow-y: auto; padding-right: 4px; }
-/* three stat cards in one row (Mới cập nhật) */
+/* three stat cards in one row (Recently updated) */
 .kpi3 { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 760px) { .kpi3 { grid-template-columns: minmax(0, 1fr); } }
 .kpi3 .tile { height: 100%; }
 /* performer photo at its own pixel size, never scaled; the frame is an outline so it adds no pixels */
 .avatar-full { display: block; width: auto; height: auto; max-width: 100%; border-radius: 8px; outline: 1px solid var(--mantine-color-dark-5); outline-offset: -1px; }
-/* full-width movie grids use the same column steps as Khám phá (2/3/4/5/6/8 per row), so the same screen shows the same number and size of covers */
+/* full-width movie grids use the same column steps as Explore (2/3/4/5/6/8 per row), so the same screen shows the same number and size of covers */
 .pgrid.fixed{display:grid;gap:16px;grid-template-columns:repeat(2,minmax(0,1fr))}
 @media (min-width:640px){.pgrid.fixed{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (min-width:1000px){.pgrid.fixed{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media (min-width:1280px){.pgrid.fixed{grid-template-columns:repeat(5,minmax(0,1fr))}}
 @media (min-width:1700px){.pgrid.fixed{grid-template-columns:repeat(6,minmax(0,1fr))}}
 @media (min-width:2200px){.pgrid.fixed{grid-template-columns:repeat(8,minmax(0,1fr))}}
-/* four stat cards in a row (Thống kê) */
+/* four stat cards in a row (Statistics) */
 .kpi4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (min-width: 1000px) { .kpi4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .mantine-MultiSelect-pillsList { gap: 8px; }
