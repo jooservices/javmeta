@@ -86,3 +86,6 @@ if (! app()->runningUnitTests()) {
     $scheduleCommand('ai:warm')->everyFifteenMinutes()->withoutOverlapping();
     $scheduleCommand('follows:notify')->everyFiveMinutes()->withoutOverlapping();
 }
+
+// UI API (v2): the search tables are rebuilt from the catalogue every 20 minutes (PostgreSQL only).
+Schedule::command('xcrawler:read-models:refresh')->cron('*/20 * * * *')->withoutOverlapping()->onOneServer();
