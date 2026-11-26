@@ -5,7 +5,6 @@ declare(strict_types=1);
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use App\Http\Middleware\MarkLegacyUiDeprecated;
 use App\Http\Middleware\RequiresDependency;
 use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\StartupHealthMiddleware;
@@ -34,7 +33,6 @@ return Application::configure(basePath: dirname(__DIR__))
         // A new node has no browser session: its token is the credential for this one call.
         $middleware->validateCsrfTokens(except: ['node/enroll']);
         $middleware->appendToGroup('web', SetLocale::class);
-        $middleware->appendToGroup('web', MarkLegacyUiDeprecated::class);
         $middleware->appendToGroup('api', SetLocale::class);
         if (! app()->runningUnitTests()) {
             $middleware->prepend(StartupHealthMiddleware::class);

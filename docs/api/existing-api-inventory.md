@@ -7,7 +7,7 @@ Total listed operations: 95.
 ## Rule
 
 1. Every `/api/*` and `/api/v1/*` operation below stays byte-compatible (paths, parameters, response shapes, status codes, auth). Its response replay test is part of the backend task.
-2. `/ui-api`, `/ui-me`, `/ui-admin`, `/ops/*`, `/login`, `/logout`, `/app` keep working for the legacy UI until a sunset date; they only receive `Deprecation`/`Sunset`/`Link` headers.
+2. `/ui-api`, `/ui-me`, `/ui-admin`, `/ops/*`, `/login`, `/logout`, `/app` keep working unchanged for the legacy UI.
 3. `/node/*`, `/files/download`, `/metrics`, `/health*`, the media-worker endpoints, MCP and the API-key endpoints are machine contracts: no change at all.
 4. v1 and v2 differ on purpose: v1 `GET /api/v1/movies` is an API-key search with `actress`, ISO dates and cursor pagination and returns `community_score`, `completeness_tier`, boolean `censored` and `performers[].name_romaji`; v2 uses `released_from` as year, page/per_page and returns `score`, `quality_tier`, integer `censored`, `performers[].name`. Putting the v2 shapes on the v1 paths would break clients, which is why v2 is a new major version.
 
