@@ -77,6 +77,10 @@ return [
             'label' => 'Commands always checked at startup',
             'description' => 'One Artisan command name or pattern per line; this list takes priority over the exempt list.',
         ],
+        'observability__prometheus_url' => [
+            'label' => 'Prometheus URL',
+            'description' => 'Source of CPU, memory and disk metrics of the VMs for the Command Center infrastructure page; leave empty and the page shows not connected.',
+        ],
         'health__startup__flaresolverr_url' => [
             'label' => 'FlareSolverr URL',
             'description' => 'Address of the secondary browser service; leave empty if unused.',

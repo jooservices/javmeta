@@ -77,6 +77,10 @@ return [
             'label' => 'Lệnh luôn bị kiểm tra khi khởi động',
             'description' => 'Mỗi dòng một tên hoặc mẫu lệnh Artisan; danh sách này có ưu tiên cao hơn danh sách miễn.',
         ],
+        'observability__prometheus_url' => [
+            'label' => 'Địa chỉ Prometheus',
+            'description' => 'Nguồn số liệu CPU, RAM, đĩa của các VM cho trang hạ tầng Command Center; để trống thì trang hiển thị chưa kết nối.',
+        ],
         'health__startup__flaresolverr_url' => [
             'label' => 'Địa chỉ FlareSolverr',
             'description' => 'Địa chỉ dịch vụ trình duyệt phụ; để trống nếu không dùng.',
