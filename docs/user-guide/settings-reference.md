@@ -1002,6 +1002,12 @@ Số nguyên; từ 1 đến 300. Mã mục: `api.response_cache.ttl.movie_detail
 
 ## Giám sát
 
+### Địa chỉ Prometheus
+
+Nguồn số liệu CPU, RAM, đĩa của các VM cho trang hạ tầng Command Center; để trống thì trang hiển thị chưa kết nối.
+
+Văn bản. Mã mục: `observability.prometheus_url`.
+
 ### Gửi log và metric tới OpenObserve
 
 Tắt thì không ghi telemetry.
