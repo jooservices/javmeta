@@ -10,7 +10,6 @@ use App\Models\MovieGenre;
 use App\Models\MoviePerformer;
 use App\Models\Performer;
 use App\Services\Auth\ApiKeyService;
-use App\Services\Normalize\PerformerAttributeNormalizer;
 
 /**
  * Data mapping between the existing v1 API (what the legacy UI and API clients read) and the new v2 API on the same
@@ -39,9 +38,10 @@ final class V1ParityTest extends PostgresApiTestCase
         parent::setUp();
 
         $this->key = app(ApiKeyService::class)->create('parity', 600, ['movies', 'performers'])->plaintext;
+        // Cup, blood type and location are seeded in the canonical form: the crawler normalizes them when it stores a performer.
         $star = Performer::factory()->create([
             'name_romaji' => 'Aoi Parity', 'name_kanji' => '葵', 'name_kana' => 'あおい', 'birth_date' => '1997-02-03', 'height_cm' => 158, 'bust' => 84, 'waist' => 58, 'hip' => 85,
-            'cup' => 'D', 'blood_type' => 'A', 'bio_text' => 'Debuted in 2016.', 'debut_date' => '2016-05-01', 'location' => 'Osaka', 'image_url' => 'https://img.test/aoi.jpg', 'retired_date' => null,
+            'cup' => 'D', 'blood_type' => 'A', 'bio_text' => 'Debuted in 2016.', 'debut_date' => '2016-05-01', 'location' => '大阪府', 'image_url' => 'https://img.test/aoi.jpg', 'retired_date' => null,
         ]);
         $movie = Movie::factory()->create([
             'display_code' => 'PAR-001', 'title_jp' => '日本語', 'title_en' => 'Parity movie', 'release_date' => '2025-03-04', 'runtime_minutes' => 120, 'maker' => 'Maker P', 'label' => 'Label P',
@@ -83,14 +83,9 @@ final class V1ParityTest extends PostgresApiTestCase
         $v1 = $this->v1("performers/{$id}")['data'];
         $v2 = $this->getJson("/api/v2/performers/{$id}")->assertOk()->json('data');
 
-        $normalizer = new PerformerAttributeNormalizer();
         foreach (self::PERFORMER_FIELDS as $old => $new) {
             self::assertArrayHasKey($new, $v2, "v2 lost {$old}");
-            // Cup, blood type and location are shown in their canonical form in v2 (the form v1 groups them by in its facets).
-            $expected = in_array($old, ['cup', 'blood_type', 'location'], true) && is_string($v1[$old] ?? null)
-                ? ($normalizer->facetValue($old, mb_strtolower($v1[$old])) ?? $v1[$old])
-                : ($v1[$old] ?? null);
-            self::assertEquals($expected, $v2[$new], "{$old} -> {$new}");
+            self::assertEquals($v1[$old] ?? null, $v2[$new], "{$old} -> {$new}");
         }
 
         self::assertSame($v1['linked_title_count'], $v2['movie_count'], 'linked_title_count -> movie_count');
@@ -99,7 +94,7 @@ final class V1ParityTest extends PostgresApiTestCase
     /** A larger catalogue so lists, facets and the calendar have more than one row to compare. */
     private function moreMovies(): void
     {
-        $performers = [Performer::query()->where('name_romaji', 'Aoi Parity')->first(), Performer::factory()->create(['name_romaji' => 'Mio Parity', 'cup' => 'B', 'blood_type' => 'O', 'location' => 'Tokyo'])];
+        $performers = [Performer::query()->where('name_romaji', 'Aoi Parity')->first(), Performer::factory()->create(['name_romaji' => 'Mio Parity', 'cup' => 'B', 'blood_type' => 'O', 'location' => '東京都'])];
         $drama = Genre::query()->where('label_normalized', 'drama')->first();
         $comedy = Genre::factory()->create(['label_normalized' => 'comedy', 'label_raw' => 'Comedy']);
 

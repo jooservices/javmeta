@@ -249,7 +249,7 @@ final class CatalogueDetailsTest extends PostgresApiTestCase
     public function test_performer_facet_values_autocomplete_and_lookups(): void
     {
         $this->getJson('/api/v2/performers/facets/values?facet=cup')->assertOk()->assertJsonCount(2, 'data');
-        $this->getJson('/api/v2/performers/facets/values?facet=location&q=東京')->assertOk()->assertExactJson(['data' => [['value' => '東京都', 'count' => 1]], 'meta' => []]);
+        $this->getJson('/api/v2/performers/facets/values?facet=location&q=tok')->assertOk()->assertExactJson(['data' => [['value' => 'Tokyo', 'count' => 1]], 'meta' => []]);
         $this->getJson('/api/v2/performers/facets/values?facet=blood_type')->assertOk()->assertJsonPath('data.0.value', 'A');
         $this->getJson('/api/v2/performers/facets/values?facet=nope')->assertStatus(400)->assertJsonPath('code', 'invalid_facet');
 
