@@ -83,7 +83,7 @@ final class MeTest extends TestCase
     public function test_the_download_request_counter_reads_the_downloads_table_when_it_exists(): void
     {
         $user = $this->owner();
-        DB::table('download_requests')->insert([['requester' => "user:{$user->id}", 'movie_code' => 'AAA-001', 'state' => 'queued', 'created_at' => now(), 'updated_at' => now()], ['requester' => 'guest:x', 'movie_code' => 'AAA-001', 'state' => 'queued', 'created_at' => now(), 'updated_at' => now()]]);
+        DB::table('download_requests')->insert([['requester' => "user:{$user->id}", 'movie_code' => 'AAA-001', 'state' => 'queued', 'created_at' => now()], ['requester' => 'guest:x', 'movie_code' => 'AAA-001', 'state' => 'queued', 'created_at' => now()]]);
 
         $this->getJson('/api/v2/me')->assertJsonPath('data.counters.download_requests', 1);
     }

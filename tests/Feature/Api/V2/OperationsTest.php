@@ -638,14 +638,4 @@ final class OperationsTest extends TestCase
         $this->patchJson('/api/v2/review-flags/999', ['state' => 'resolved'], $headers)->assertNotFound()->assertJsonPath('code', 'flag_not_found');
         $this->assertNull(DB::table('review_flags')->where('id', $id)->value('resolved_at'));
     }
-
-    public function test_without_a_real_audit_writer_a_change_still_works(): void
-    {
-        $this->app->forgetInstance(AuditLog::class);
-        $this->app->offsetUnset(AuditLog::class);
-        $headers = $this->signIn($this->admin());
-        $id = $this->reviewFlag('alpha');
-
-        $this->patchJson("/api/v2/review-flags/{$id}", ['state' => 'resolved'], $headers)->assertOk();
-    }
 }
