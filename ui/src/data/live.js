@@ -1,11 +1,11 @@
 // Live data layer: same exports the pages already use, but every value comes from the REST API (no static snapshot).
-import { get, send, setCsrf, ApiError } from './api.js';
+import { get, send, setCsrf, ApiError } from './api.js'; import { t, tn, locale } from '../i18n/index.js';
 export { ApiError };
 export const lag = async () => {};
 const norm = s => (s || '').toString().toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '');
-export const fmt = n => (n == null ? '—' : Number(n).toLocaleString('vi'));
+export const fmt = n => (n == null ? '—' : Number(n).toLocaleString(locale()));
 export const fmtBytes = b => (b == null ? '' : b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b >= 1e6 ? Math.round(b / 1e6) + ' MB' : Math.round(b / 1e3) + ' KB');
-export const ago = iso => { if (!iso) return '—'; const s = (Date.now() - new Date(iso)) / 1000; if (s < 90) return `${Math.round(s)} giây trước`; if (s < 5400) return `${Math.round(s / 60)} phút trước`; if (s < 129600) return `${Math.round(s / 3600)} giờ trước`; return `${Math.round(s / 86400)} ngày trước`; };
+export const ago = iso => { if (!iso) return '—'; const s = (Date.now() - new Date(iso)) / 1000; if (s < 90) return tn('time.secondsAgo', Math.round(s)); if (s < 5400) return tn('time.minutesAgo', Math.round(s / 60)); if (s < 129600) return tn('time.hoursAgo', Math.round(s / 3600)); return tn('time.daysAgo', Math.round(s / 86400)); };
 export const ageOf = b => { if (!b) return null; const d = new Date(b), n = new Date(); let a = n.getFullYear() - d.getFullYear(); if (n < new Date(n.getFullYear(), d.getMonth(), d.getDate())) a--; return a; };
 
 // ---------- entities (one copy per movie / performer, shared by every list that shows it)
@@ -104,7 +104,7 @@ export const relaxHints = async (params, chips) => {
   const out = await Promise.all(chips.map(async c => { const x = { ...params, per_page: 1 }; c.keys.forEach(k => { delete x[k]; }); const r = await get('/movies', x); return { chip: c, total: r.meta.pagination.total }; }));
   return out.filter(h => h.total > 0).sort((a, b) => b.total - a.total).slice(0, 3);
 };
-export const didYouMean = async text => { try { const { meta } = await get('/search', { q: text, types: 'movie', per_page: 1 }); return meta.did_you_mean ? [{ name: meta.did_you_mean, kind: 'Gợi ý' }] : []; } catch { return []; } };
+export const didYouMean = async text => { try { const { meta } = await get('/search', { q: text, types: 'movie', per_page: 1 }); return meta.did_you_mean ? [{ name: meta.did_you_mean, kind: t('search.suggestionKind') }] : []; } catch { return []; } };
 export const suggest = async text => (await get('/suggestions', { q: text })).data;
 
 // ---------- discovery
@@ -193,8 +193,8 @@ export const moviesOfPerformer = () => [];
 // ---------- performer profile as the detail page shows it (all bio fields, merged by the server from every source)
 export function performerFacts(p) {
   const r = p.pr || {}; const age = ageOf(p.birth); const hair = [r.hair_color, r.hair_length].filter(Boolean).join(' · ') || null;
-  const facts = [['Tuổi', age != null ? `${age}` : null], ['Ngày sinh', p.birth], ['Nơi ở', p.location], ['Chiều cao', p.height ? `${p.height} cm` : null], ['Số đo (B-W-H)', p.bust ? `${p.bust}-${p.waist ?? '?'}-${p.hip ?? '?'}` : null], ['Cup', p.cup], ['Nhóm máu', p.blood ? `${p.blood}${p.rh ? ` (${p.rh})` : ''}` : null], ['Ra mắt', p.debut],
-    ['Cung', r.zodiac], ['Màu tóc', hair], ['Tên (kanji)', p.kanji], ['Cách đọc', p.kana || r.name_reading], ['Biệt danh', r.nickname], ['Ngày nghỉ', p.retired], ['Hoạt động', r.career_period], ['Công ty', r.agency], ['Sở thích', r.hobby], ['Sở trường', r.skill], ['Yêu thích trên nguồn', r.favorite_count != null ? fmt(r.favorite_count) : null]];
+  const facts = [[t('facts.age'), age != null ? `${age}` : null], [t('facts.birthDate'), p.birth], [t('facts.residence'), p.location], [t('facts.height'), p.height ? `${p.height} cm` : null], [t('facts.measurements'), p.bust ? `${p.bust}-${p.waist ?? '?'}-${p.hip ?? '?'}` : null], [t('facts.cup'), p.cup], [t('facts.bloodType'), p.blood ? `${p.blood}${p.rh ? ` (${p.rh})` : ''}` : null], [t('facts.debut'), p.debut],
+    [t('facts.zodiac'), r.zodiac], [t('facts.hairColor'), hair], [t('facts.nameKanji'), p.kanji], [t('facts.reading'), p.kana || r.name_reading], [t('facts.nickname'), r.nickname], [t('facts.retiredOn'), p.retired], [t('facts.activePeriod'), r.career_period], [t('facts.agency'), r.agency], [t('facts.hobby'), r.hobby], [t('facts.skill'), r.skill], [t('facts.sourceFavorites'), r.favorite_count != null ? fmt(r.favorite_count) : null]];
   const core = [p.birth, p.height, p.bust, p.cup, p.blood, p.location, p.debut, p.bio, p.img];
   return { facts, filled: core.filter(Boolean).length, total: core.length, bio: { other: r.note || null } };
 }
