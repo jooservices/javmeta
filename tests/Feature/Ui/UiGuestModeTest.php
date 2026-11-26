@@ -356,6 +356,11 @@ final class UiGuestModeTest extends TestCase
         $matrix = $this->documentedRouteMatrix();
         $actualRoutes = [];
         foreach (Route::getRoutes() as $route) {
+            // The v2 UI API has its own scope matrix (tests/Feature/Api/V2).
+            if (str_starts_with($route->uri(), 'api/v2')) {
+                continue;
+            }
+
             $identifier = $this->routeIdentifier($route);
             $actualRoutes[] = $identifier;
             $this->assertArrayHasKey($identifier, $matrix, 'Route is missing from the guest matrix: ' . $identifier);
