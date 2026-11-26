@@ -24,8 +24,19 @@ final class CatalogueService
         $sort = (string) ($query['sort'] ?? (($query['q'] ?? '') !== '' ? 'relevance' : 'release_date'));
         $result = $this->repository->movies($query, $sort, $perPage, ($page - 1) * $perPage);
 
+        return ['data' => $this->movieSummaries($result['rows']), 'meta' => Envelope::pagination($page, $perPage, $result['total'])];
+    }
+
+    /**
+     * Rows of rm_movies shaped as movie summaries with their first cast members.
+     *
+     * @param list<object> $rows
+     * @return list<array<string, mixed>>
+     */
+    public function movieSummaries(array $rows): array
+    {
         $castIds = [];
-        foreach ($result['rows'] as $row) {
+        foreach ($rows as $row) {
             $castIds[] = array_slice(array_map('intval', array_filter(explode(',', trim((string) $row->performer_ids, '{}')))), 0, 6);
         }
 
@@ -35,13 +46,13 @@ final class CatalogueService
         }
 
         $data = [];
-        foreach ($result['rows'] as $i => $row) {
+        foreach ($rows as $i => $row) {
             $summary = $this->formatter->movie($row);
             $summary['performers'] = array_values(array_filter(array_map(static fn(int $id): ?array => $cast[$id] ?? null, $castIds[$i])));
             $data[] = $summary;
         }
 
-        return ['data' => $data, 'meta' => Envelope::pagination($page, $perPage, $result['total'])];
+        return $data;
     }
 
     /**

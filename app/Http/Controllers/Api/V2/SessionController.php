@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\V2;
 
 use App\Http\Api\V2\Envelope;
 use App\Http\Requests\Api\V2\SignInRequest;
+use App\Services\Api\V2\Me\Preferences;
 use App\Services\Api\V2\SessionAuthenticator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,7 +14,7 @@ use stdClass;
 
 final class SessionController
 {
-    public function __construct(private readonly SessionAuthenticator $sessions) {}
+    public function __construct(private readonly SessionAuthenticator $sessions, private readonly Preferences $preferences) {}
 
     public function store(SignInRequest $request): JsonResponse
     {
@@ -32,11 +33,13 @@ final class SessionController
             return Envelope::success(['scope' => 'guest', 'user' => null, 'login_required' => $loginRequired]);
         }
 
+        $preferences = $this->preferences->all($user->id);
+
         return Envelope::success([
             'scope' => $user->scope->value,
             'user' => $user->toArray(),
             'csrf' => $request->session()->token(),
-            'preferences' => new stdClass(),
+            'preferences' => $preferences === [] ? new stdClass() : $preferences,
             'login_required' => $loginRequired,
         ]);
     }
