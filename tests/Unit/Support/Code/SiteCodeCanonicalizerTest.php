@@ -52,6 +52,9 @@ final class SiteCodeCanonicalizerTest extends TestCase
             // JOOXCR-720: sources whose product number is not a plain prefix-number code.
             ['comma', ['COMT-070B'], 'COMT-070'],
             ['comma', ['GDRD-123'], 'GDRD-123'],
+            // Natural High marks an AI edition with letters after the number (NHDTA-384AI); the number is the identity.
+            ['naturalhigh', ['NHDTA-384AI'], 'NHDTA-384'],
+            ['naturalhigh', ['NHDTC-271'], 'NHDTC-271'],
             ['gentosha', ['9784344046368'], 'GENTOSHA-9784344046368'],
             ['gentosha', ['978-4-344-04636-8'], 'GENTOSHA-9784344046368'],
             ['tokuma', ['9784198647292'], 'TOKUMA-9784198647292'],
