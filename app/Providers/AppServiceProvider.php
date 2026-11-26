@@ -55,7 +55,7 @@ use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Cache\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use JOOservices\LaravelLogging\Contracts\LogStoreInterface;
 use Laravel\Horizon\Events\MasterSupervisorLooped;
@@ -66,9 +66,13 @@ class AppServiceProvider extends ServiceProvider
 {
     public function boot(): void
     {
-        // UI API (v2): sign-in 10 per minute and password reset 5 per minute, per client address.
-        RateLimiter::for('api-v2-sign-in', static fn(Request $request): Limit => Limit::perMinute(10)->by((string) $request->ip()));
-        RateLimiter::for('api-v2-password-reset', static fn(Request $request): Limit => Limit::perMinute(5)->by((string) $request->ip()));
+        // UI API (v2) limits per client address. Registered when the limiter is first used, not at boot: resolving it at boot
+        // would bind its cache store to the database connection of that moment.
+        $this->callAfterResolving(RateLimiter::class, static function (RateLimiter $limiter): void {
+            $limiter->for('api-v2-sign-in', static fn(Request $request): Limit => Limit::perMinute(10)->by((string) $request->ip()));
+            $limiter->for('api-v2-password-reset', static fn(Request $request): Limit => Limit::perMinute(5)->by((string) $request->ip()));
+            $limiter->for('api-v2-download-request', static fn(Request $request): Limit => Limit::perMinute(8)->by((string) $request->ip()));
+        });
         Event::subscribe(NodeEnrollmentSubscriber::class);
         Event::listen(DownloadLinkSearchUpdated::class, [RecordDownloadLinkSearchUpdate::class, 'handle']);
         Event::listen(JobProcessing::class, [WorkerBusyStateListener::class, 'processing']);
