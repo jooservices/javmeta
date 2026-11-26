@@ -21,7 +21,7 @@ final class V1ParityTest extends PostgresApiTestCase
     private const MOVIE_FIELDS = [
         'code' => 'code', 'title_jp' => 'title_jp', 'title_en' => 'title_en', 'release_date' => 'release_date', 'runtime_minutes' => 'runtime_minutes',
         'maker' => 'maker', 'label' => 'label', 'series' => 'series', 'censored' => 'censored', 'community_score' => 'score',
-        'completeness_tier' => 'quality_tier', 'cover_url' => 'cover_url', 'cover_thumb_url' => 'cover_thumb_url', 'needs_review' => 'needs_review', 'uuid' => 'uuid',
+        'completeness_tier' => 'quality_tier', 'cover_url' => 'cover_url', 'cover_thumb_url' => 'cover_thumb_url', 'needs_review' => 'needs_review',
     ];
 
     /** v1 field => v2 field of a performer */
@@ -65,9 +65,12 @@ final class V1ParityTest extends PostgresApiTestCase
 
         foreach (self::MOVIE_FIELDS as $old => $new) {
             self::assertArrayHasKey($new, $v2, "v2 lost {$old}");
-            self::assertEquals($v1[$old] ?? null, $v2[$new], "{$old} -> {$new}");
+            // v2 deliberately falls back to the full cover when a movie has no thumbnail, so the UI always has a picture to show.
+            $expected = $old === 'cover_thumb_url' ? ($v1[$old] ?? $v1['cover_url']) : ($v1[$old] ?? null);
+            self::assertEquals($expected, $v2[$new], "{$old} -> {$new}");
         }
 
+        self::assertSame($v1['uuid'], $this->getJson('/api/v2/movies/PAR-001')->assertOk()->json('data.uuid'), 'the uuid is on the v2 detail');
         self::assertEqualsCanonicalizing($v1['genres'], $v2['genres'], 'genres');
         self::assertSame(array_column($v1['performers'], 'id'), $v2['performer_ids'], 'cast');
         self::assertSame(array_column($v1['performers'], 'name_romaji'), array_column($v2['performers'], 'name'), 'cast names');

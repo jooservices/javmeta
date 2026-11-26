@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Api\V2\Catalogue;
 
+use Illuminate\Support\Str;
+
 /**
  * The one filter language of the catalogue (same parameter names as the UI URLs). Movie lists, facets, photo search and
  * "performers of the matching movies" all build their WHERE clause here, so a facet count always equals its result.
@@ -101,12 +103,23 @@ final class CatalogueFilters
      */
     private function genres(SqlConditions $c, array $query, array $omit, string $m): void
     {
+        // A genre is found by its label as shown ("Drama") and by its normalized key ("drama"), the way v1 and MCP clients pass it.
         if ($this->has($query, 'genre', $omit)) {
             $operator = ($query['genre_all'] ?? null) === '1' ? '@>' : '&&';
-            $c->add("{$m}.genres {$operator} ?::text[]", SqlConditions::pgArray($this->csv((string) $query['genre'])));
+            $labels = $this->csv((string) $query['genre']);
+            $c->add("({$m}.genres {$operator} ?::text[] OR {$m}.genre_keys {$operator} ?::text[])", SqlConditions::pgArray($labels), SqlConditions::pgArray($this->keys($labels)));
         }
 
-        $this->when($c, $query, 'genre_not', $omit, "NOT ({$m}.genres && ?::text[])", fn(string $v): array => [SqlConditions::pgArray($this->csv($v))]);
+        $this->when($c, $query, 'genre_not', $omit, "NOT ({$m}.genres && ?::text[] OR {$m}.genre_keys && ?::text[])", fn(string $v): array => [SqlConditions::pgArray($this->csv($v)), SqlConditions::pgArray($this->keys($this->csv($v)))]);
+    }
+
+    /**
+     * @param list<string> $labels
+     * @return list<string>
+     */
+    private function keys(array $labels): array
+    {
+        return array_map(static fn(string $label): string => Str::slug($label), $labels);
     }
 
     /**

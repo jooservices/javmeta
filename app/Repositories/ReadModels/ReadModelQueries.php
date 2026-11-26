@@ -9,7 +9,7 @@ final class ReadModelQueries
 {
     /** One row per movie with genres, canonical performer ids, media counts and sources (grouped sub-selects, no per-row queries). */
     public const MOVIES = <<<'SQL'
-WITH g AS (SELECT mg.movie_id, array_agg(DISTINCT gn.label_raw) a FROM movie_genres mg JOIN genres gn ON gn.id = mg.genre_id GROUP BY mg.movie_id),
+WITH g AS (SELECT mg.movie_id, array_agg(DISTINCT gn.label_raw) a, array_agg(DISTINCT gn.label_normalized) k FROM movie_genres mg JOIN genres gn ON gn.id = mg.genre_id GROUP BY mg.movie_id),
      pf AS (SELECT mp.movie_id, array_agg(DISTINCT COALESCE(p.canonical_performer_id, p.id)) ids FROM movie_performers mp JOIN performers p ON p.id = mp.performer_id GROUP BY mp.movie_id),
      md AS (SELECT movie_id, count(*) FILTER (WHERE kind='magnet') dl, count(*) FILTER (WHERE kind='hls') hls, count(*) FILTER (WHERE kind='gallery') gal FROM movie_media GROUP BY movie_id),
      sr AS (SELECT movie_id, array_agg(DISTINCT site_slug) a FROM movie_sources GROUP BY movie_id)
@@ -17,7 +17,7 @@ SELECT m.id, m.display_code, m.code_normalized, m.title_jp, m.title_en, m.releas
        m.maker, m.label, m.series, m.community_score, m.completeness_tier, m.cover_url, m.cover_thumb_url, m.crawled_at, m.first_seen_at, m.updated_at,
        COALESCE(m.needs_review,false), (m.delisted_at IS NOT NULL), COALESCE(g.a,'{}'), COALESCE(pf.ids,'{}'), NULL,
        COALESCE(md.dl,0), COALESCE(md.hls,0), COALESCE(md.gal,0), COALESCE(sr.a,'{}'),
-       lower(concat_ws(' ', m.display_code, m.title_jp, m.title_en, m.maker, m.series))
+       lower(concat_ws(' ', m.display_code, m.title_jp, m.title_en, m.maker, m.series)), COALESCE(g.k,'{}')
 FROM movies m LEFT JOIN g ON g.movie_id=m.id LEFT JOIN pf ON pf.movie_id=m.id LEFT JOIN md ON md.movie_id=m.id LEFT JOIN sr ON sr.movie_id=m.id
 SQL;
 

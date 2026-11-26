@@ -56,8 +56,8 @@ final class CatalogueDetailsTest extends PostgresApiTestCase
             'bio_text' => 'Likes tests.',
             'attrs' => ['zodiac_sign' => 'Taurus', 'tags' => ['idol'], 'favorite_count_raw' => '42', 'extra' => ['hobby' => 'reading', 'rating_looks' => 9, 'movie_count' => 7]],
         ]);
-        $this->mio = Performer::factory()->create(['name_romaji' => 'Mio Sample', 'cup' => 'B', 'location' => 'Osaka']);
-        $merged = Performer::factory()->create(['name_romaji' => 'Aoi Merged', 'canonical_performer_id' => $this->aoi->id, 'source_slug' => 'other-site', 'external_id' => 'x1', 'profile_url' => 'https://other.test/aoi']);
+        $this->mio = Performer::factory()->create(['name_romaji' => 'Mio Sample', 'cup' => 'B', 'location' => 'Osaka', 'image_url' => null]);
+        $merged = Performer::factory()->create(['name_romaji' => 'Aoi Merged', 'canonical_performer_id' => $this->aoi->id, 'source_slug' => 'other-site', 'external_id' => 'x1', 'profile_url' => 'https://other.test/aoi', 'image_url' => null]);
 
         $this->first = $this->movie('AAA-001', ['title_en' => 'First alpha', 'release_date' => '2025-03-01', 'maker' => 'Maker One', 'series' => 'Series S', 'label' => 'Label L', 'cover_url' => 'https://img.test/a.jpg', 'community_score' => 8.5, 'runtime_minutes' => 100, 'description' => 'About alpha', 'attrs' => ['k' => 'v']]);
         $this->second = $this->movie('BBB-002', ['title_en' => 'Second beta', 'release_date' => '2025-04-01', 'maker' => 'Maker Two', 'series' => 'Series S', 'cover_url' => 'https://img.test/b.jpg', 'community_score' => 6.0]);

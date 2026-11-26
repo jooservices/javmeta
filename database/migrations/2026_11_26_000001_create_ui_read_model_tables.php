@@ -65,7 +65,8 @@ return new class extends Migration {
             hls_count integer NOT NULL DEFAULT 0,
             gallery_count integer NOT NULL DEFAULT 0,
             sources text[] NOT NULL DEFAULT '{}',
-            search_text text NOT NULL DEFAULT ''
+            search_text text NOT NULL DEFAULT '',
+            genre_keys text[] NOT NULL DEFAULT '{}'
         )
         SQL,
         <<<'SQL'
@@ -82,6 +83,9 @@ return new class extends Migration {
         SQL,
         <<<'SQL'
         CREATE INDEX rm_movies_genres_idx ON public.rm_movies USING gin (genres)
+        SQL,
+        <<<'SQL'
+        CREATE INDEX rm_movies_genre_keys_idx ON public.rm_movies USING gin (genre_keys)
         SQL,
         <<<'SQL'
         CREATE INDEX rm_movies_perf_idx ON public.rm_movies USING gin (performer_ids)

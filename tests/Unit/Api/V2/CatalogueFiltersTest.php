@@ -38,11 +38,12 @@ final class CatalogueFiltersTest extends TestCase
         $any = $this->filters->movies(['genre' => 'Drama, Creampie']);
         $all = $this->filters->movies(['genre' => 'Drama', 'genre_all' => '1', 'genre_not' => 'Gay']);
 
-        $this->assertStringContainsString('m.genres && ?::text[]', $any->sql());
-        $this->assertSame(['{"Drama","Creampie"}'], array_slice($any->bindings(), 0, 1));
-        $this->assertStringContainsString('m.genres @> ?::text[]', $all->sql());
-        $this->assertStringContainsString('NOT (m.genres && ?::text[])', $all->sql());
-        $this->assertSame(['{"Drama"}', '{"Gay"}'], $all->bindings());
+        // Both the label as shown and its normalized key are matched, so v1 style values ("drama") find the same movies.
+        $this->assertStringContainsString('(m.genres && ?::text[] OR m.genre_keys && ?::text[])', $any->sql());
+        $this->assertSame(['{"Drama","Creampie"}', '{"drama","creampie"}'], array_slice($any->bindings(), 0, 2));
+        $this->assertStringContainsString('(m.genres @> ?::text[] OR m.genre_keys @> ?::text[])', $all->sql());
+        $this->assertStringContainsString('NOT (m.genres && ?::text[] OR m.genre_keys && ?::text[])', $all->sql());
+        $this->assertSame(['{"Drama"}', '{"drama"}', '{"Gay"}', '{"gay"}'], $all->bindings());
     }
 
     public function test_numeric_ranges_flags_and_enums(): void
@@ -99,7 +100,7 @@ final class CatalogueFiltersTest extends TestCase
         $c = $this->filters->performers(['genre' => 'Drama', 'maker' => 'S1', 'age_min' => '25']);
 
         $this->assertStringContainsString('p.id IN (SELECT unnest(m.performer_ids) FROM rm_movies m WHERE', $c->sql());
-        $this->assertSame([25, '{"Drama"}', '%s1%'], $c->bindings());
+        $this->assertSame([25, '{"Drama"}', '{"drama"}', '%s1%'], $c->bindings());
     }
 
     public function test_array_literals_escape_quotes_and_backslashes(): void
