@@ -25,6 +25,11 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\SearchParseController;
 use App\Http\Controllers\StatusController;
 use App\Http\Controllers\SuggestController;
+use App\Http\Controllers\Api\V2\OpenApiController as OpenApiV2Controller;
+use App\Http\Controllers\Api\V2\PasswordResetController;
+use App\Http\Controllers\Api\V2\SessionController;
+use App\Http\Controllers\Api\V2\UserController;
+use App\Http\Middleware\ApiV2\VerifyCsrf;
 use App\Http\Middleware\AuthenticateApiKey;
 use App\Http\Middleware\CacheApiResponse;
 use App\Http\Middleware\LogApiUsage;
@@ -100,3 +105,19 @@ Route::prefix('v1/media')->middleware([AuthenticateApiKey::class, 'requires:post
 });
 
 Route::get('v1/scenes/search', \App\Http\Controllers\Media\SceneSearchController::class)->middleware([AuthenticateApiKey::class, 'requires:postgres', LogApiUsage::class]);
+
+// The UI API (contract: docs/api/openapi.yaml). A new major version next to v1; v1 is unchanged.
+Route::prefix('v2')->middleware('api.v2')->group(static function (): void {
+    Route::get('openapi.json', OpenApiV2Controller::class);
+    Route::post('sessions', [SessionController::class, 'store'])->middleware('throttle:api-v2-sign-in')->withoutMiddleware(VerifyCsrf::class);
+    Route::get('sessions/current', [SessionController::class, 'current']);
+    Route::delete('sessions/current', [SessionController::class, 'destroy']);
+    Route::post('password-resets', [PasswordResetController::class, 'store'])->middleware('throttle:api-v2-password-reset')->withoutMiddleware(VerifyCsrf::class);
+    Route::put('password-resets/{token}', [PasswordResetController::class, 'update'])->withoutMiddleware(VerifyCsrf::class);
+    Route::middleware('scope:admin')->group(static function (): void {
+        Route::get('users', [UserController::class, 'index']);
+        Route::post('users', [UserController::class, 'store']);
+        Route::patch('users/{id}', [UserController::class, 'update'])->whereNumber('id');
+        Route::delete('users/{id}', [UserController::class, 'destroy'])->whereNumber('id');
+    });
+});
