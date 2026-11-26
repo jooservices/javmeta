@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 return [
     'startup' => [
-        'enabled' => true,
+        'enabled' => (bool) env('JAVMETA_HEALTH_STARTUP_ENABLED', true),
         'timeout_seconds' => 2,
         'wait_seconds' => 60,
         'retry_backoff_seconds' => 1,
@@ -42,6 +42,7 @@ return [
             'ai:warm*' => 'worker',
             'telegram:poll*' => 'worker',
             'follows:notify*' => 'worker',
+            'xcrawler:read-models:refresh' => 'worker',
             'node:sample' => 'worker',
             '_complete' => 'web',
             'config-store:get' => 'web',

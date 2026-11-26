@@ -171,7 +171,15 @@ export async function recordView(code) { const mk = 'xc.v.' + code; const last =
 export const loadViewCounts = async codes => { const need = codes.filter(c => !(c in _views.counts)); if (!need.length) return; try { const { data } = await get('/movies/views', { codes: need.join(',') }); Object.assign(_views.counts, data); _vv++; vsubs.forEach(f => f()); } catch { /* keep */ } };
 
 // ---------- operations (Command Center)
-export const loadInfra = async () => (await get('/infrastructure')).data;
+// A degraded answer (no Prometheus) has empty deps and probes: fill what the Command Center pages read so they show "not connected" instead of failing.
+const DEP_DEFAULTS = { postgres: { conn: 0, max: 0, connXcrawler: 0, sizeBytes: 0, series: [] }, mongo: { connections: 0, up: false }, redis: { clients: 0, memBytes: 0, opsPerSec: 0 }, elasticsearch: { color: '—', docs: 0, shards: 0 } };
+const PROBES = ['sentry', 'openobserve', 'prometheus', 'postgres', 'redis', 'mongo', 'elasticsearch', 'flaresolverr', 'ollama', 'playwright'];
+export const loadInfra = async () => {
+  const { data, meta } = await get('/infrastructure');
+  const deps = Object.fromEntries(Object.entries(DEP_DEFAULTS).map(([k, v]) => [k, { ...v, ...(data.deps?.[k] || {}) }]));
+  const probes = Object.fromEntries(PROBES.map(k => [k, { ok: false, ms: 0, ...(data.probes?.[k] || {}) }]));
+  return { ...data, vms: data.vms || [], services: data.services || {}, series: data.series || [], deps, probes, degraded: !!meta?.degraded, reason: meta?.reason || null };
+};
 // the Command Center data, in the shape its tabs draw
 export const loadOps = async () => {
   const [ov, src, nodes, keys, tpl, st, alerts, errs, contrib, perf, ms, ps, me, runs, queue] = await Promise.all([get('/operations/overview'), get('/sources'), get('/nodes'), get('/api-keys', { per_page: 50 }), get('/notification-templates'), get('/settings'), get('/alerts', { per_page: 40 }), get('/crawl-errors'), get('/statistics/contributions'), get('/operations/performance'), get('/statistics/series', { metric: 'movies', days: 14 }), get('/statistics/series', { metric: 'performers', days: 14 }), get('/me'), get('/crawl-runs', { per_page: 40 }), get('/crawl-queue')]);

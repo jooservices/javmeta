@@ -85,7 +85,6 @@ if (! app()->runningUnitTests()) {
     $scheduleCommand('library:scan')->hourly()->withoutOverlapping();
     $scheduleCommand('ai:warm')->everyFifteenMinutes()->withoutOverlapping();
     $scheduleCommand('follows:notify')->everyFiveMinutes()->withoutOverlapping();
+    // UI API (v2): the search tables are rebuilt from the catalogue every 20 minutes.
+    $scheduleCommand('xcrawler:read-models:refresh')->cron('*/20 * * * *')->withoutOverlapping();
 }
-
-// UI API (v2): the search tables are rebuilt from the catalogue every 20 minutes (PostgreSQL only).
-Schedule::command('xcrawler:read-models:refresh')->cron('*/20 * * * *')->withoutOverlapping()->onOneServer();

@@ -12,6 +12,8 @@ const when = t => new Date(t).toISOString().slice(0, 16).replace('T', ' ').repla
 const Stat = ({ label, value, sub, children }) => <Paper className="tile"><Text size="xs" c="dimmed" tt="uppercase" fw={600}>{label}</Text><Text fz={26} fw={600} className="mono" lh={1.2}>{value}</Text>{sub && <Text size="xs" c="dimmed">{sub}</Text>}{children}</Paper>;
 const Delta = ({ v, goodUp = true, unit = '%' }) => v == null ? <Badge variant="light" color="gray" mt={4}>—</Badge> : <Badge mt={4} variant="light" color={(v >= 0) === goodUp ? 'teal' : 'red'} leftSection={v >= 0 ? <IconArrowUpRight size={12} /> : <IconArrowDownRight size={12} />}>{v >= 0 ? '+' : '−'}{Math.abs(v).toFixed(Math.abs(v) < 10 ? 1 : 0)}{unit} so với kỳ trước</Badge>;
 const Gauge = ({ label, v, suffix = '%' }) => <div><Group justify="space-between" mb={2}><Text size="xs" fw={700} c="gray.3">{label}</Text><Text size="xs" className="mono">{v == null ? '—' : `${v.toFixed(0)}${suffix}`}</Text></Group><Progress value={Math.min(100, v ?? 0)} size="sm" color={pctColor(v)} /></div>;
+// A rate is null while the window has no crawl attempt yet (a fresh installation): show a dash, never fail.
+const pct1 = v => (v == null ? '—' : `${v.toFixed(1)}%`);
 const State = ({ ok, text }) => <Badge variant="light" color={ok ? 'teal' : 'red'} leftSection={ok ? <IconCheck size={12} /> : <IconX size={12} />}>{text ?? (ok ? 'Hoạt động' : 'Lỗi')}</Badge>;
 const confirm = (title, body, label, onConfirm) => modals.openConfirmModal({ title, centered: true, children: <Text size="sm">{body}</Text>, labels: { confirm: label, cancel: 'Không, giữ nguyên' }, confirmProps: { color: 'red', leftSection: <IconCheck size={16} /> }, cancelProps: { variant: 'default', leftSection: <IconX size={16} /> }, onConfirm });
 
@@ -21,9 +23,9 @@ export function OverviewTab({ ops2, infra }) {
   const charts = [['Lượt tải thành công mỗi giờ', h => h.ok, 'teal.6'], ['Tỉ lệ lỗi mỗi giờ (%)', h => (h.attempts ? +((bad(h) / h.attempts) * 100).toFixed(2) : null), 'red.6'], ['Độ trễ p90 (ms)', h => h.p90, 'grape.5'], ['Việc sẵn sàng trong hàng đợi', h => (h.queue_ready == null ? null : Math.round(h.queue_ready)), 'blue.5'], [`Kết nối Postgres (trung bình; hiện ${fmt(infra.deps.postgres.conn)}/${fmt(infra.deps.postgres.max)})`, h => h.pg, 'orange.5']];
   return <Stack gap="md"><Group justify="space-between" wrap="wrap"><Text size="sm" c="dimmed">Mỗi số và mỗi đường so với {RANGE_NAME[hrs]} ngay trước đó. Giờ đang thu thập chưa tính.</Text><SegmentedControl size="xs" value={String(hrs)} onChange={v => setHrs(+v)} data={RANGES.map(([l, v]) => ({ value: String(v), label: l }))} aria-label="Khoảng thời gian" /></Group>
     <SimpleGrid cols={{ base: 2, md: 5 }}>
-      <Stat label="Tải thành công" value={`${a.success.toFixed(1)}%`} sub={`${fmt(a.ok)} / ${fmt(a.attempts)} lượt`}><Delta v={a.success - b.success} unit=" điểm" /></Stat>
+      <Stat label="Tải thành công" value={pct1(a.success)} sub={`${fmt(a.ok)} / ${fmt(a.attempts)} lượt`}><Delta v={a.success - b.success} unit=" điểm" /></Stat>
       <Stat label="Lượt tải" value={fmt(a.attempts)} sub={`kỳ trước ${fmt(b.attempts)}`}><Delta v={change(a.attempts, b.attempts)} /></Stat>
-      <Stat label="Tỉ lệ lỗi" value={`${a.errRate.toFixed(1)}%`} sub={`${fmt(a.bad)} lượt chặn, hết hạn, lỗi`}><Delta v={a.errRate - b.errRate} goodUp={false} unit=" điểm" /></Stat>
+      <Stat label="Tỉ lệ lỗi" value={pct1(a.errRate)} sub={`${fmt(a.bad)} lượt chặn, hết hạn, lỗi`}><Delta v={a.errRate - b.errRate} goodUp={false} unit=" điểm" /></Stat>
       <Stat label="Độ trễ p90" value={`${Math.round(a.p90 / 1000 * 10) / 10} s`} sub={`kỳ trước ${Math.round(b.p90 / 1000 * 10) / 10} s`}><Delta v={change(a.p90, b.p90)} goodUp={false} /></Stat>
       <Stat label="Hàng đợi sẵn sàng" value={fmt(Math.round(a.queue))} sub={`kỳ trước ${fmt(Math.round(b.queue))}`}><Delta v={change(a.queue, b.queue)} goodUp={false} /></Stat></SimpleGrid>
     <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg">{charts.map(([title, fn, color]) => <Paper className="tile" key={title}><Text fw={600} mb="xs">{title}</Text>

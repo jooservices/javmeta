@@ -4,8 +4,8 @@ import { Stack, Group, Text, Button, Paper, Badge, Table, Avatar, SimpleGrid, Ac
 import { notifications } from '@mantine/notifications';
 import { modals } from '@mantine/modals';
 import { IconBellOff, IconTrash, IconPlayerPause, IconPlayerPlay } from '@tabler/icons-react';
-import { useAsync, Async, PageHead, MovieCard, QuickView, Empty, usePersonal, MovieGridSkeleton, TableSkeleton, Cover, Pager } from '../components.jsx';
-import { feed, markFeedSeen, personal, photo, fmt, fmtBytes, adaptMovie, adaptPerformer, getMovie, loadMovie, ago } from '../shim.js'; import { get, send } from '../data/api.js';
+import { useScope, useAsync, Async, PageHead, MovieCard, QuickView, Empty, usePersonal, MovieGridSkeleton, TableSkeleton, Cover, Pager } from '../components.jsx';
+import { feed, markFeedSeen, personal, photo, fmt, fmtBytes, adaptMovie, adaptPerformer, getMovie, loadMovie, ago } from '../shim.js'; import { get, send } from '../data/api.js'; import { NeedLogin } from '../account.jsx';
 
 const T = { fav: ['Yêu thích', 'Bấm trái tim ở thẻ phim hoặc trang phim để lưu vào đây.', 'favorite'], later: ['Xem sau', 'Bấm biểu tượng đồng hồ để lưu phim muốn xem sau.', 'want'], seen: ['Đã xem', 'Bấm biểu tượng mắt để đánh dấu đã xem.', 'watched'] };
 export function MarkList({ kind }) {
@@ -51,4 +51,4 @@ export function Media() {
       <SimpleGrid cols={{ base: 2, md: 4 }}>{[['Đang chờ', n('pending')], ['Đang chạy', n('running')], ['Lỗi', n('failed')], ['Hoàn tất', n('done')]].map(([k, v]) => <Paper className="tile" key={k}><Text size="xs" c="dimmed">{k}</Text><Text fz={22} className="mono">{v}</Text></Paper>)}</SimpleGrid>
       {jobs.length ? <Table verticalSpacing={8}><Table.Tbody>{jobs.map(j => <Table.Tr key={j.id}><Table.Td className="mono">#{j.id}</Table.Td><Table.Td>{j.kind}</Table.Td><Table.Td><Badge variant="light">{j.status}</Badge></Table.Td><Table.Td ta="right" className="mono">{ago(j.created_at)}</Table.Td></Table.Tr>)}</Table.Tbody></Table> : <Empty title="Hàng đợi media đang trống" hint="Chưa có công việc media nào. Phụ đề cần thư viện đã quét; dịch cần Ollama." />}</Stack>; }}</Async></Stack>;
 }
-export default function Mine({ kind }) { return kind === 'follows' ? <Follows /> : kind === 'library' ? <Library /> : kind === 'downloads' ? <Downloads /> : kind === 'media' ? <Media /> : <MarkList kind={T[kind] ? kind : 'fav'} />; }
+export default function Mine({ kind }) { const scope = useScope(); if (scope === 'guest') return <NeedLogin />; return kind === 'follows' ? <Follows /> : kind === 'library' ? <Library /> : kind === 'downloads' ? <Downloads /> : kind === 'media' ? <Media /> : <MarkList kind={T[kind] ? kind : 'fav'} />; }

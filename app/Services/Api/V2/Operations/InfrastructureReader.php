@@ -56,7 +56,7 @@ final class InfrastructureReader
     private static function empty(string $reason): array
     {
         return [
-            'data' => ['at' => Iso::stamp(CarbonImmutable::now()), 'vms' => [], 'services' => [], 'series' => [], 'deps' => [], 'probes' => []],
+            'data' => ['at' => Iso::stamp(CarbonImmutable::now()), 'vms' => [], 'services' => new \stdClass(), 'series' => [], 'deps' => new \stdClass(), 'probes' => new \stdClass()],
             'meta' => ['degraded' => true, 'reason' => $reason],
         ];
     }
