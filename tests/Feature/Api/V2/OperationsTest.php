@@ -32,9 +32,9 @@ final class OperationsTest extends TestCase
             /** @param array<int, mixed> $rows */
             public function __construct(private array &$rows) {}
 
-            public function record(?int $actorId, string $resource, string $action, array $detail = []): void
+            public function record(string $actor, string $action, string $target, array $details = []): void
             {
-                $this->rows[] = [$actorId, $resource, $action, $detail];
+                $this->rows[] = [$actor, $action, $target, $details];
             }
         });
     }
@@ -220,7 +220,7 @@ final class OperationsTest extends TestCase
         $event = DB::table('crawl_events')->where('source_slug', 'alpha')->first();
         $this->assertSame('source_toggled', $event->kind);
         $this->assertSame(['from' => true, 'to' => false, 'by' => "user:{$admin->id}"], json_decode((string) $event->detail, true));
-        $this->assertSame([[$admin->id, 'sources/alpha', 'patch', ['enabled' => false, 'was' => true]]], $this->audited);
+        $this->assertSame([['user:' . $admin->id, 'source.update', 'sources/alpha', ['enabled' => false, 'was' => true]]], $this->audited);
 
         $this->patchJson('/api/v2/sources/alpha', ['enabled' => false], $headers)->assertOk();
         $this->assertSame(1, DB::table('crawl_events')->count());
@@ -429,7 +429,7 @@ final class OperationsTest extends TestCase
         $this->assertStringContainsString('--token jne_', $created->json('data.join_command'));
         $this->assertNotSame('', $created->json('data.note'));
         $this->assertStringContainsString('no-store', (string) $created->headers->get('Cache-Control'));
-        $this->assertSame([[$admin->id, "node-enrollments/{$id}", 'post', ['node_name' => 'worker-3', 'role' => 'worker']]], $this->audited);
+        $this->assertSame([['user:' . $admin->id, 'node_enrollment.create', "node-enrollments/{$id}", ['node_name' => 'worker-3', 'role' => 'worker']]], $this->audited);
 
         $past = ['node_name' => 'old-one', 'role' => 'worker', 'token_hash' => hash('sha256', 'a'), 'expires_at' => now()->subHour(), 'created_at' => now()->subHours(2), 'updated_at' => now()];
         $usedId = (int) DB::table('node_enrollments')->insertGetId(['node_name' => 'used-one', 'token_hash' => hash('sha256', 'b'), 'used_at' => now(), 'used_from_ip' => '10.0.0.5', 'expires_at' => now()->addHour(), 'role' => 'worker', 'created_at' => now()->subMinute(), 'updated_at' => now()]);
@@ -619,7 +619,7 @@ final class OperationsTest extends TestCase
 
         $this->patchJson("/api/v2/review-flags/{$id}", ['state' => 'resolved', 'reason' => 'fixed by hand'], $headers)->assertOk()->assertExactJson(['data' => ['id' => $id, 'state' => 'resolved'], 'meta' => []]);
         $this->assertNotNull(DB::table('review_flags')->where('id', $id)->value('resolved_at'));
-        $this->assertSame([[$admin->id, "review-flags/{$id}", 'patch', ['state' => 'resolved', 'reason' => 'fixed by hand']]], $this->audited);
+        $this->assertSame([['user:' . $admin->id, 'review_flag.resolve', "review-flags/{$id}", ['state' => 'resolved', 'reason' => 'fixed by hand']]], $this->audited);
 
         $first = DB::table('review_flags')->where('id', $id)->value('resolved_at');
         $this->patchJson("/api/v2/review-flags/{$id}", ['state' => 'resolved'], $headers)->assertOk();

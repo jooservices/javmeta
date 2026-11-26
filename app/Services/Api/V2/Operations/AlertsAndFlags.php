@@ -63,8 +63,13 @@ final class AlertsAndFlags
             throw ProblemException::notFound('flag_not_found', 'No such flag.');
         }
 
-        $this->audit->record($actorId, "review-flags/{$id}", 'patch', ['state' => 'resolved', 'reason' => $reason]);
+        $this->audit->record($this->actor($actorId), 'review_flag.resolve', "review-flags/{$id}", ['state' => 'resolved', 'reason' => $reason]);
 
         return ['id' => $id, 'state' => 'resolved'];
+    }
+
+    private function actor(?int $actorId): string
+    {
+        return $actorId === null ? 'system' : 'user:' . $actorId;
     }
 }

@@ -101,7 +101,7 @@ final class NodeDirectory
             throw ProblemException::invalid('This node role is not enabled.', [['field' => 'role', 'code' => 'unsupported']]);
         }
 
-        $this->audit->record($actorId, "node-enrollments/{$grant->enrollmentId}", 'post', ['node_name' => $nodeName, 'role' => $role]);
+        $this->audit->record($this->actor($actorId), 'node_enrollment.create', "node-enrollments/{$grant->enrollmentId}", ['node_name' => $nodeName, 'role' => $role]);
 
         return [
             'id' => $grant->enrollmentId,
@@ -117,6 +117,11 @@ final class NodeDirectory
     public function revoke(int $id, ?int $actorId): void
     {
         $this->nodes->revokeUnused($id);
-        $this->audit->record($actorId, "node-enrollments/{$id}", 'delete');
+        $this->audit->record($this->actor($actorId), 'node_enrollment.delete', "node-enrollments/{$id}");
+    }
+
+    private function actor(?int $actorId): string
+    {
+        return $actorId === null ? 'system' : 'user:' . $actorId;
     }
 }

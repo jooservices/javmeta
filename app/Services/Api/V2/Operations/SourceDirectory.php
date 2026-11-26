@@ -61,7 +61,7 @@ final class SourceDirectory
             throw self::missing();
         }
 
-        $this->audit->record($actorId, "sources/{$slug}", 'patch', ['enabled' => $enabled, 'was' => $was]);
+        $this->audit->record($this->actor($actorId), 'source.update', "sources/{$slug}", ['enabled' => $enabled, 'was' => $was]);
 
         return $this->one($slug);
     }
@@ -135,5 +135,10 @@ final class SourceDirectory
             $attempts > 0 && $failed / $attempts > 0.25 => 'degraded',
             default => 'stable',
         };
+    }
+
+    private function actor(?int $actorId): string
+    {
+        return $actorId === null ? 'system' : 'user:' . $actorId;
     }
 }
