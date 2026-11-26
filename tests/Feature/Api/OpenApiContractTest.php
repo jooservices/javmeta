@@ -29,7 +29,8 @@ final class OpenApiContractTest extends TestCase
         $routes = [];
         foreach (Route::getRoutes() as $route) {
             $uri = '/' . $route->uri();
-            if (! str_starts_with($uri, '/api/') || $uri === '/api/openapi.json') {
+            // /api/v2 has its own contract (docs/api/openapi.yaml) and its own tests (tests/Feature/Api/V2).
+            if (! str_starts_with($uri, '/api/') || $uri === '/api/openapi.json' || str_starts_with($uri, '/api/v2/')) {
                 continue;
             }
             foreach ($route->methods() as $method) {
