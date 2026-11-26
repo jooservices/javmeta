@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Api\V2;
 
 use App\Models\User;
-use App\Services\Api\V2\Catalogue\NullMovieViewCounter;
+use App\Services\Api\V2\Catalogue\StoredMovieViewCounter;
 use App\Services\Api\V2\Contracts\MovieViewCounter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -50,13 +50,14 @@ final class CatalogueDetailsTest extends TestCase
         $this->actingAs(User::factory()->create(), 'web')->postJson('/api/v2/movies/lookups', [])->assertStatus(422);
     }
 
-    public function test_view_counts_are_zero_until_a_counter_is_bound_and_the_codes_are_required(): void
+    public function test_views_are_counted_per_code_and_the_codes_are_required(): void
     {
         $counter = $this->app->make(MovieViewCounter::class);
-        self::assertInstanceOf(NullMovieViewCounter::class, $counter);
-        self::assertSame(0, $counter->record('AAA-001', null));
+        self::assertInstanceOf(StoredMovieViewCounter::class, $counter);
+        self::assertSame(1, $counter->record('AAA-001', null));
+        self::assertSame(2, $counter->record('AAA-001', 7));
 
-        $this->getJson('/api/v2/movies/views?codes=AAA-001, BBB-002')->assertOk()->assertExactJson(['data' => ['AAA-001' => 0, 'BBB-002' => 0], 'meta' => []]);
+        $this->getJson('/api/v2/movies/views?codes=AAA-001, BBB-002')->assertOk()->assertExactJson(['data' => ['AAA-001' => 2, 'BBB-002' => 0], 'meta' => []]);
         $this->getJson('/api/v2/movies/views?codes=,')->assertOk()->assertJsonPath('data', []);
         $this->getJson('/api/v2/movies/views')->assertStatus(422)->assertJsonFragment(['field' => 'codes', 'code' => 'required']);
     }
