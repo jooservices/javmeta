@@ -88,7 +88,7 @@ final class Formatter
         return $birth === null ? null : Carbon::parse($birth)->age;
     }
 
-    private function time(?string $value): ?string
+    public function time(?string $value): ?string
     {
         return $value === null ? null : date('c', (int) strtotime($value));
     }
