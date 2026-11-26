@@ -52,7 +52,7 @@ SELECT c.id, c.name_romaji, COALESCE(NULLIF(c.name_kanji,''), a.name_kanji), COA
   COALESCE(c.birth_date, a.birth_date), COALESCE(c.height_cm, a.height_cm), COALESCE(c.bust, a.bust), COALESCE(c.waist, a.waist), COALESCE(c.hip, a.hip),
   COALESCE(NULLIF(c.cup,''), a.cup), COALESCE(NULLIF(c.blood_type,''), a.blood_type), COALESCE(NULLIF(c.blood_rh,''), a.blood_rh),
   COALESCE(NULLIF(left(c.bio_text,1500),''), a.bio), COALESCE(c.debut_date, a.debut_date), COALESCE(c.retired_date, a.retired_date), COALESCE(NULLIF(c.location,''), a.location, NULLIF(btrim(regexp_replace(substring(COALESCE(NULLIF(left(c.bio_text,1500),''), a.bio) from 'Hometown:\s*(.*)$'), '\s+(Hobby|Special|Height|Cup|Bust|Waist|Hips|Blood|Age|D\.O\.B)[: ].*$', '')), '')),
-  COALESCE(a.attrs, '{}'::jsonb), COALESCE(cnt.n,0), COALESCE(al.a,'{}'), ph.photo, COALESCE(ph.gal,0), COALESCE(a.sources,1),
+  COALESCE(a.attrs, '{}'::jsonb), COALESCE(cnt.n,0), COALESCE(al.a,'{}'), COALESCE(ph.photo, c.image_url), COALESCE(ph.gal,0), COALESCE(a.sources,1),
   c.crawled_at, c.first_seen_at, COALESCE(c.needs_review,false),
   lower(concat_ws(' ', c.name_romaji, COALESCE(NULLIF(c.name_kanji,''), a.name_kanji), COALESCE(NULLIF(c.name_kana,''), a.name_kana), array_to_string(al.a,' ')))
 FROM performers c LEFT JOIN agg a ON a.cid=c.id LEFT JOIN cnt ON cnt.cid=c.id LEFT JOIN al ON al.cid=c.id LEFT JOIN ph ON ph.cid=c.id
