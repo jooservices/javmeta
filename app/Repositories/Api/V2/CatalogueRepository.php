@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 /** Reads the search tables (rm_movies, rm_performers, rm_perf_attr). PostgreSQL only. */
 final class CatalogueRepository
 {
-    private const MOVIE_FIELDS = 'm.id, m.code, m.title_jp, m.title_en, m.release_date, m.runtime, m.censored, m.maker, m.label, m.series, m.score, m.tier, m.cover_url, m.cover_thumb_url, m.crawled_at, m.genres::text AS genres, m.performer_ids::text AS performer_ids, m.dl_count, m.hls_count, m.gallery_count, m.sources::text AS sources, m.needs_review, m.delisted';
+    public const MOVIE_FIELDS = 'm.id, m.code, m.title_jp, m.title_en, m.release_date, m.runtime, m.censored, m.maker, m.label, m.series, m.score, m.tier, m.cover_url, m.cover_thumb_url, m.crawled_at, m.genres::text AS genres, m.performer_ids::text AS performer_ids, m.dl_count, m.hls_count, m.gallery_count, m.sources::text AS sources, m.needs_review, m.delisted';
 
     private const PERFORMER_FIELDS = 'p.id, p.name_romaji, p.name_kanji, p.name_kana, p.birth_date, p.height_cm, p.bust, p.waist, p.hip, p.cup, p.blood_type, p.blood_rh, p.location, p.movie_count, p.photo_url, p.photo_count, p.retired_date, p.debut_date, p.aliases::text AS aliases, p.crawled_at, p.first_seen_at, p.source_count';
 
