@@ -4,12 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Api\V2\Contracts;
 
-use Illuminate\Container\Attributes\Bind;
-
-/** Writes one row of the audit trail for a change made through the v2 API. The administration area provides the real writer. */
-#[Bind(NullAuditLog::class)]
+/** Writes one row of the audit trail: who did what to which resource. */
 interface AuditLog
 {
-    /** @param array<string, mixed> $detail */
-    public function record(?int $actorId, string $resource, string $action, array $detail = []): void;
+    /** @param array<string, mixed> $details */
+    public function record(string $actor, string $action, string $target, array $details = []): void;
 }
