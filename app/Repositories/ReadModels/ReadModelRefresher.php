@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Repositories\ReadModels;
 
+use App\Services\Normalize\PerformerAttributeNormalizer;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
@@ -15,6 +16,11 @@ use Throwable;
 final class ReadModelRefresher
 {
     private const LOCK_KEY = 726_001;
+
+    /** Performer attributes the catalogue groups by their canonical value (the same normalizer v1 uses for its facets). */
+    private const CANONICAL_FIELDS = ['cup', 'blood_type', 'location'];
+
+    public function __construct(private readonly PerformerAttributeNormalizer $normalizer = new PerformerAttributeNormalizer()) {}
 
     /** @return array<string, int> rows per table */
     public function refresh(): array
@@ -28,7 +34,7 @@ final class ReadModelRefresher
         }
 
         try {
-            $rows = ['rm_performers' => $this->rebuild('rm_performers', ReadModelQueries::PERFORMERS), 'rm_movies' => $this->rebuild('rm_movies', ReadModelQueries::MOVIES)];
+            $rows = ['rm_performers' => $this->rebuild('rm_performers', ReadModelQueries::PERFORMERS, $this->canonicalize(...)), 'rm_movies' => $this->rebuild('rm_movies', ReadModelQueries::MOVIES)];
             $rows['rm_perf_attr'] = $this->rebuildPairs();
             $this->fillSearchText();
 
@@ -38,13 +44,17 @@ final class ReadModelRefresher
         }
     }
 
-    private function rebuild(string $table, string $select): int
+    /** @param (callable(string): void)|null $prepare runs on the filled new table, before it replaces the live one */
+    private function rebuild(string $table, string $select, ?callable $prepare = null): int
     {
         $started = microtime(true);
         $new = "{$table}_new";
         DB::unprepared("DROP TABLE IF EXISTS {$new}");
         DB::unprepared("CREATE TABLE {$new} (LIKE {$table} INCLUDING ALL)");
         DB::unprepared("INSERT INTO {$new} {$select}");
+        if ($prepare !== null) {
+            $prepare($new);
+        }
         $count = (int) DB::selectOne("SELECT count(*) AS n FROM {$new}")->n;
 
         DB::transaction(function () use ($table, $new): void {
@@ -59,6 +69,24 @@ final class ReadModelRefresher
         $this->record($table, $count, $started);
 
         return $count;
+    }
+
+    /**
+     * Cups, blood types and locations come from many sources in many spellings ("osaka", "Osaka", "大阪府"). They are stored
+     * once in their canonical form, so every facet, filter and catalog groups them exactly as v1 does. A value the
+     * normalizer does not know stays as it is.
+     */
+    private function canonicalize(string $table): void
+    {
+        foreach (self::CANONICAL_FIELDS as $field) {
+            foreach (DB::select("SELECT DISTINCT {$field} AS raw FROM {$table} WHERE {$field} IS NOT NULL AND {$field} <> ''") as $row) {
+                $canonical = $this->normalizer->facetValue($field, mb_strtolower((string) $row->raw));
+
+                if ($canonical !== null && $canonical !== $row->raw) {
+                    DB::update("UPDATE {$table} SET {$field} = ? WHERE {$field} = ?", [$canonical, $row->raw]);
+                }
+            }
+        }
     }
 
     private function rebuildPairs(): int

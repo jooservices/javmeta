@@ -10,6 +10,7 @@ use App\Models\MovieGenre;
 use App\Models\MoviePerformer;
 use App\Models\Performer;
 use App\Services\Auth\ApiKeyService;
+use App\Services\Normalize\PerformerAttributeNormalizer;
 
 /**
  * Data mapping between the existing v1 API (what the legacy UI and API clients read) and the new v2 API on the same
@@ -27,8 +28,8 @@ final class V1ParityTest extends PostgresApiTestCase
     /** v1 field => v2 field of a performer */
     private const PERFORMER_FIELDS = [
         'id' => 'id', 'name_romaji' => 'name', 'name_kanji' => 'name_kanji', 'name_kana' => 'name_kana', 'birth_date' => 'birth_date', 'height_cm' => 'height_cm',
-        'bust' => 'bust', 'waist' => 'waist', 'hip' => 'hip', 'cup' => 'cup', 'blood_type' => 'blood_type', 'blood_rh' => 'blood_rh', 'bio_text' => 'bio_text',
-        'debut_date' => 'debut_date', 'retired_date' => 'retired_date', 'location' => 'location', 'aliases' => 'aliases', 'image_url' => 'photo_url',
+        'bust' => 'bust', 'waist' => 'waist', 'hip' => 'hip', 'cup' => 'cup', 'blood_type' => 'blood_type', 'location' => 'location', 'blood_rh' => 'blood_rh', 'bio_text' => 'bio_text',
+        'debut_date' => 'debut_date', 'retired_date' => 'retired_date', 'aliases' => 'aliases', 'image_url' => 'photo_url',
     ];
 
     private string $key;
@@ -82,12 +83,102 @@ final class V1ParityTest extends PostgresApiTestCase
         $v1 = $this->v1("performers/{$id}")['data'];
         $v2 = $this->getJson("/api/v2/performers/{$id}")->assertOk()->json('data');
 
+        $normalizer = new PerformerAttributeNormalizer();
         foreach (self::PERFORMER_FIELDS as $old => $new) {
             self::assertArrayHasKey($new, $v2, "v2 lost {$old}");
-            self::assertEquals($v1[$old] ?? null, $v2[$new], "{$old} -> {$new}");
+            // Cup, blood type and location are shown in their canonical form in v2 (the form v1 groups them by in its facets).
+            $expected = in_array($old, ['cup', 'blood_type', 'location'], true) && is_string($v1[$old] ?? null)
+                ? ($normalizer->facetValue($old, mb_strtolower($v1[$old])) ?? $v1[$old])
+                : ($v1[$old] ?? null);
+            self::assertEquals($expected, $v2[$new], "{$old} -> {$new}");
         }
 
         self::assertSame($v1['linked_title_count'], $v2['movie_count'], 'linked_title_count -> movie_count');
+    }
+
+    /** A larger catalogue so lists, facets and the calendar have more than one row to compare. */
+    private function moreMovies(): void
+    {
+        $performers = [Performer::query()->where('name_romaji', 'Aoi Parity')->first(), Performer::factory()->create(['name_romaji' => 'Mio Parity', 'cup' => 'B', 'blood_type' => 'O', 'location' => 'Tokyo'])];
+        $drama = Genre::query()->where('label_normalized', 'drama')->first();
+        $comedy = Genre::factory()->create(['label_normalized' => 'comedy', 'label_raw' => 'Comedy']);
+
+        foreach (range(2, 13) as $i) {
+            $movie = Movie::factory()->create([
+                'display_code' => sprintf('PAR-%03d', $i), 'title_en' => "Parity movie {$i}", 'release_date' => sprintf('2025-%02d-%02d', ($i % 6) + 1, $i), 'maker' => 'Maker ' . ($i % 3),
+                'label' => 'Label ' . ($i % 2), 'series' => $i % 4 === 0 ? null : 'Series ' . ($i % 4), 'community_score' => 3 + ($i % 6), 'completeness_tier' => $i % 4, 'updated_at' => now()->subMinutes($i),
+            ]);
+            MoviePerformer::factory()->create(['movie_id' => $movie->id, 'performer_id' => $performers[$i % 2]->id]);
+            MovieGenre::factory()->create(['movie_id' => $movie->id, 'genre_id' => ($i % 2 === 0 ? $drama : $comedy)->id]);
+        }
+
+        $this->artisan('xcrawler:read-models:refresh')->assertSuccessful();
+    }
+
+    /** @param list<array{name: string, count?: int, n?: int}> $rows */
+    private static function counts(array $rows): array
+    {
+        $map = [];
+        foreach ($rows as $row) {
+            $map[$row['name']] = $row['count'] ?? $row['n'];
+        }
+        ksort($map);
+
+        return $map;
+    }
+
+    public function test_lists_in_every_shared_sort_come_back_in_the_same_order(): void
+    {
+        $this->moreMovies();
+
+        foreach (['release_date', 'update_date'] as $sort) {
+            $v1 = [];
+            $v2 = [];
+            $cursor = '';
+            do {
+                $body = $this->v1("movies?sort={$sort}&per_page=5" . ($cursor === '' ? '' : "&cursor={$cursor}"));
+                $v1 = [...$v1, ...array_column($body['data'], 'code')];
+                $cursor = (string) ($body['meta']['pagination']['next_cursor'] ?? '');
+            } while ($cursor !== '');
+            foreach ([1, 2, 3] as $page) {
+                $v2 = [...$v2, ...array_column($this->getJson("/api/v2/movies?sort={$sort}&per_page=5&page={$page}")->assertOk()->json('data'), 'code')];
+            }
+
+            self::assertCount(13, $v2, "{$sort}: all movies listed");
+            self::assertSame($v1, $v2, "the {$sort} order");
+        }
+    }
+
+    public function test_movie_facet_counts_are_the_same(): void
+    {
+        $this->moreMovies();
+        $v1 = $this->v1('movies/facets')['data'];
+        $v2 = $this->getJson('/api/v2/movies/facets')->assertOk()->json('data');
+
+        foreach (['genres', 'makers', 'series', 'labels'] as $facet) {
+            self::assertSame(self::counts($v1[$facet]), self::counts($v2[$facet]), "movie facet {$facet}");
+        }
+    }
+
+    public function test_performer_facet_counts_are_the_same(): void
+    {
+        $this->moreMovies();
+        $v1 = $this->v1('performers/facets')['data'];
+        $v2 = $this->getJson('/api/v2/performers/facets')->assertOk()->json('data');
+
+        foreach (['cups' => 'cups', 'blood_types' => 'blood', 'locations' => 'locations'] as $old => $new) {
+            self::assertSame(self::counts($v1[$old]), self::counts($v2[$new]), "performer facet {$old}");
+        }
+        self::assertSame(self::counts($v1['status']), array_map('intval', $v2['enums']['status']) + [], 'performer status');
+    }
+
+    public function test_the_release_calendar_and_the_totals_are_the_same(): void
+    {
+        $this->moreMovies();
+        $v1 = array_map(static fn(array $day): array => [$day['date'], $day['count']], $this->v1('movies/calendar?month=2025-03')['data']);
+        $v2 = array_map(static fn(array $day): array => [$day['day'], $day['count']], $this->getJson('/api/v2/calendar?month=2025-03')->assertOk()->json('data'));
+
+        self::assertSame($v1, $v2, 'calendar of one month');
     }
 
     public function test_the_movie_list_filters_of_v1_give_the_same_movies_in_v2(): void

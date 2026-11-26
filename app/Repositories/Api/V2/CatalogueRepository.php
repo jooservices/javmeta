@@ -17,7 +17,7 @@ final class CatalogueRepository
 
     private const MOVIE_ORDER = [
         'release_date' => 'm.release_date DESC NULLS LAST',
-        'update_date' => 'm.crawled_at DESC NULLS LAST',
+        'update_date' => 'm.updated_at DESC NULLS LAST',
         'rating' => 'm.score DESC NULLS LAST',
         'runtime' => 'm.runtime DESC NULLS LAST',
         'code' => 'm.code ASC',

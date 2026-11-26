@@ -27,6 +27,7 @@ final class RefreshReadModelsCommandTest extends TestCase
     {
         $database = FakeReadModelDatabase::install()->driver('pgsql')->lenient()
             ->answer('pg_try_advisory_lock', [['locked' => true]])
+            ->answer('SELECT DISTINCT', [])
             ->answer('FROM rm_performers_new', [['n' => 5]])
             ->answer('FROM rm_movies_new', [['n' => 7]])
             ->answer('FROM rm_perf_attr', [['n' => 9]]);
