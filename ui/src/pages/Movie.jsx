@@ -1,0 +1,62 @@
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { LazyImg } from '../lazyimg.jsx';
+import { useState, useEffect, useMemo } from 'react';
+import { Stack, Group, Text, Badge, Title, Paper, SimpleGrid, Button, Modal, ActionIcon, Tooltip, Skeleton, Anchor, CopyButton, Table, Tabs } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
+import { IconDownload, IconCopy, IconCheck, IconChevronLeft, IconBell, IconBellFilled, IconPlayerPlay, IconExternalLink } from '@tabler/icons-react';
+import { useAsync, Async, MarkButtons, Cover, MovieCard, QuickView, Empty, usePersonal } from '../components.jsx'; import { DownloadPanel, CastRow } from '../detail.jsx'; import { readContext, registerList } from '../lists.js'; import { ListNav, useListKeys } from '../listnav.jsx'; import { PreviewPlayer, PhotoViewer } from '../features.jsx';
+import { loadMovie, loadMovieExtras, performersOf, personal, coverFull, descIsTitle, auth, recordView, ago } from '../shim.js';
+
+const Fact = ({ k, v, mono, children }) => <div><Text size="xs" fw={700} c="gray.3">{k}</Text>{children !== undefined ? (children || <Text size="sm" c="dark.3">Chưa có dữ liệu</Text>) : (v ? <Text size="sm" className={mono ? 'mono' : undefined}>{v}</Text> : <Text size="sm" c="dark.3">Chưa có dữ liệu</Text>)}</div>;
+const Follow = ({ type, name }) => { if (!name) return null; const on = personal.isFollowing(type, name); return <Button size="compact-xs" variant={on ? 'filled' : 'light'} leftSection={on ? <IconBellFilled size={12} /> : <IconBell size={12} />} onClick={() => { personal.follow(type, name); notifications.show({ message: on ? `Đã bỏ theo dõi ${name}` : `Đang theo dõi ${name}`, color: 'teal' }); }}>{on ? 'Đang theo dõi' : 'Theo dõi'}</Button>; };
+const CopyCell = ({ value, label = 'Sao chép' }) => <CopyButton value={value} timeout={1500}>{({ copied, copy }) => <Button size="compact-xs" variant="default" onClick={() => { copy(); notifications.show({ message: 'Đã sao chép', color: 'teal', autoClose: 1200 }); }}>{copied ? 'Đã chép' : label}</Button>}</CopyButton>;
+const MARKER = { derived_code: ['Mã suy ra', 'yellow'], needs_review: ['Cần xem lại', 'orange'], delisted: ['Đã gỡ khỏi nguồn', 'gray'] };
+
+function CodesSources({ m }) {
+  return <Stack gap="lg">
+    {m.markers?.length > 0 && <Group gap={8}>{m.markers.map(k => <Badge key={k} color={MARKER[k]?.[1] || 'gray'} variant="light">{MARKER[k]?.[0] || k}</Badge>)}</Group>}
+    <div><Text fw={600} mb="xs">Mã theo loại</Text>{m.codesList?.length ? <div className="scroll-x"><Table withRowBorders verticalSpacing={6}><Table.Thead><Table.Tr><Table.Th>Mã</Table.Th><Table.Th>Loại</Table.Th><Table.Th>Nguồn</Table.Th><Table.Th ta="right">Thu thập</Table.Th></Table.Tr></Table.Thead><Table.Tbody>{m.codesList.map((c, i) => <Table.Tr key={i}><Table.Td className="mono">{c.code}</Table.Td><Table.Td><Badge size="sm" variant="light" color="gray">{c.kind}</Badge></Table.Td><Table.Td>{c.source_url ? <Anchor href={c.source_url} target="_blank" rel="noreferrer" size="sm">{c.source_slug} ↗</Anchor> : c.source_slug}</Table.Td><Table.Td ta="right" className="mono">{c.crawled_at?.slice(0, 10)}</Table.Td></Table.Tr>)}</Table.Tbody></Table></div> : <Text size="sm" c="dimmed">Chưa có mã nào khác.</Text>}</div>
+    <div><Text fw={600} mb="xs">Nguồn dữ liệu ({(m.srcs || []).length})</Text>{(m.srcs || []).length ? <div className="scroll-x"><Table withRowBorders verticalSpacing={6}><Table.Thead><Table.Tr><Table.Th>Nguồn</Table.Th><Table.Th>Mã ở nguồn</Table.Th><Table.Th /></Table.Tr></Table.Thead><Table.Tbody>{m.srcs.map((s, i) => <Table.Tr key={i}><Table.Td><b>{s.slug}</b></Table.Td><Table.Td className="mono">{s.code || '—'}</Table.Td><Table.Td ta="right"><Button size="compact-xs" variant="default" component="a" href={s.url} target="_blank" rel="noreferrer" rightSection={<IconExternalLink size={11} />}>Mở trang</Button></Table.Td></Table.Tr>)}</Table.Tbody></Table></div> : <Text size="sm" c="dimmed">Chưa có nguồn.</Text>}</div>
+  </Stack>;
+}
+function MediaLists({ m, onOpen }) {
+  const hls = m.watch || []; const gal = m.gallery || [];
+  return <Stack gap="lg">
+    <div><Text fw={600} mb="xs">Luồng xem (HLS) · {hls.length}</Text>{hls.length ? <Stack gap={6}>{hls.map((h, i) => <Group key={i} gap="sm" wrap="nowrap"><Badge size="sm" variant="light">{h.quality || 'HLS'}</Badge><Text size="xs" className="mono" truncate flex={1}>{h.url}</Text><CopyCell value={h.url} /></Group>)}</Stack> : <Text size="sm" c="dimmed">Chưa có luồng xem.</Text>}</div>
+    <div><Text fw={600} mb="xs">Thư viện ảnh · {gal.length}</Text>{gal.length ? <div className="pgrid fixed">{gal.slice(0, 60).map((g, i) => <div key={i} className="poster" onClick={() => onOpen(i + 1)}><LazyImg src={g.src} alt={`${m.code} ${i + 1}`}  /></div>)}</div> : <Text size="sm" c="dimmed">Chưa có ảnh.</Text>}</div>
+  </Stack>;
+}
+
+export default function Movie() {
+  const { code: raw } = useParams(); const code = raw.toUpperCase(); const [sp] = useSearchParams(); const nav = useNavigate(); const [pv, setPv] = useState(null); const [lb, setLb] = useState(null); const st = usePersonal();
+  const s = useAsync(async () => { try { const m = await loadMovie(code); await loadMovieExtras(code); personal.pushRecent(code); auth.load().then(() => { recordView(code); personal.noteView('movie', code, m.en || m.jp || code); }); return { m, ps: performersOf(m), rel: m.related || [] }; } catch (e) { if (e.status === 404) return { m: null }; throw e; } }, [code]);
+  const ctx = useMemo(() => readContext('movies', code), [code]); const pos = ctx ? ctx.items.indexOf(code) : -1; const prev = pos > 0 ? ctx.items[pos - 1] : null, next = pos >= 0 && pos < (ctx?.items.length || 0) - 1 ? ctx.items[pos + 1] : null;
+  const go = c => c && nav(`/movies/${c}`, { replace: true });
+  useListKeys(prev, next, go, () => lb !== null);
+  useEffect(() => { if (sp.get('play') && s.data?.m) { const t = setTimeout(() => document.getElementById('watch')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250); return () => clearTimeout(t); } }, [sp, s.data]);
+  return <Async state={s} skeleton={<Group align="flex-start" wrap="wrap"><Skeleton h={320} w={460} maw="100%" /><Stack flex={1} miw={260}><Skeleton h={28} /><Skeleton h={14} /><Skeleton h={120} /></Stack></Group>}>{({ m, ps, rel }) => !m ? <Empty title={`Không tìm thấy ${code}`} hint="Phim này chưa có trong kho." action={<Button component={Link} to="/movies" variant="light">Về danh sách phim</Button>} /> : <Stack gap="lg">
+    <Group gap="xs" justify="space-between" wrap="wrap"><Button size="compact-sm" variant="subtle" color="gray" leftSection={<IconChevronLeft size={14} />} onClick={() => nav(-1)}>Quay lại</Button>
+      <ListNav pos={pos} total={ctx?.items.length} label={ctx?.label} prev={prev} next={next} onGo={go} noun="Phim" /></Group>
+    <Group align="flex-start" gap="xl" wrap="wrap">
+      <Stack w={{ base: '100%', sm: 440 }} gap="sm"><div className="poster contain" style={{ cursor: 'zoom-in' }} onClick={() => setLb(0)}>{coverFull(m) ? <img src={coverFull(m)} alt={m.code} /> : <Cover m={m} />}</div>
+        {(m.gallery || []).length > 0 && <Group gap={8}>{m.gallery.slice(0, 6).map((g, i) => <div key={i} className="poster thumb" onClick={() => setLb(i + 1)}><LazyImg src={g.src} alt={`${code} ${i + 1}`}  /></div>)}</Group>}</Stack>
+      <Stack flex={1} miw={280} gap="sm"><Group gap={8}><Group gap={4} wrap="nowrap"><Badge size="lg" variant="filled" className="mono">{m.code}</Badge><CopyButton value={m.code} timeout={1500}>{({ copied, copy }) => <Tooltip label={copied ? 'Đã sao chép' : 'Sao chép mã'}><ActionIcon variant="subtle" color={copied ? 'teal' : 'gray'} size="sm" onClick={copy} aria-label="Sao chép mã phim">{copied ? <IconCheck size={14} /> : <IconCopy size={14} />}</ActionIcon></Tooltip>}</CopyButton></Group>{m.tier === 3 && <Badge color="teal" variant="light">Đầy đủ dữ liệu</Badge>}{m.tier === 1 && <Badge color="yellow" variant="light">Thiếu dữ liệu</Badge>}{m.censored === 1 && <Badge color="gray" variant="light">Có che</Badge>}{m.censored === 0 && <Badge color="grape" variant="light">Không che</Badge>}{(m.markers || []).map(k => <Badge key={k} color={MARKER[k]?.[1] || 'gray'} variant="outline">{MARKER[k]?.[0] || k}</Badge>)}</Group>
+        {(() => { const main = (m.en || '').replace(m.code, '').trim() || m.jp || m.code; return <><Title order={2} fw={600} lh={1.25}>{main}</Title>{m.jp && m.jp !== main && <Text c="dimmed">{m.jp}</Text>}</>; })()}
+        <Group gap="sm"><MarkButtons code={m.code} size="lg" /><Button leftSection={<IconDownload size={16} />} variant={m.dl?.length ? 'filled' : 'light'} component="a" href="#" onClick={e => { e.preventDefault(); document.getElementById('download')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}>{m.dl?.length ? `Tải về (${m.dl.length})` : 'Yêu cầu tải'}</Button>{(m.watch || []).length > 0 && <Button leftSection={<IconPlayerPlay size={16} />} variant="light" component="a" href="#" onClick={e => { e.preventDefault(); document.getElementById('watch')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}>Xem thử</Button>}</Group>
+        <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="sm" verticalSpacing="sm">
+          <Fact k="Phát hành" v={m.date} mono /><Fact k="Thời lượng" v={m.runtime && `${m.runtime} phút`} mono /><Fact k="Điểm cộng đồng" v={m.score} mono />
+          <Fact k="Hãng">{m.maker ? <Group gap={8}><Anchor component={Link} to={`/movies?maker=${encodeURIComponent(m.maker)}`} size="sm">{m.maker}</Anchor><Follow type="maker" name={m.maker} /></Group> : null}</Fact>
+          <Fact k="Series">{m.series ? <Group gap={8}><Anchor component={Link} to={`/movies?series=${encodeURIComponent(m.series)}`} size="sm">{m.series}</Anchor><Follow type="series" name={m.series} /></Group> : null}</Fact>
+          <Fact k="Nhãn" v={m.label} /><Fact k="Đạo diễn" v={(m.directors || []).join(', ')} /><Fact k="Mã khác" v={(m.codesList || []).filter(c => c.code !== m.code).map(c => c.code).join(' · ')} mono /><Fact k="Thu thập" v={m.crawled ? `${m.crawled.slice(0, 10)} · ${ago(m.crawled)}` : null} mono />
+        </SimpleGrid>
+        {!descIsTitle(m) && <Text size="sm">{m.desc}</Text>}
+        <Group gap={8}>{m.genres.map(g => <Badge key={g} variant="outline" color="gray" component={Link} to={`/movies?genre=${encodeURIComponent(g)}`} style={{ cursor: 'pointer' }}>{g}</Badge>)}</Group></Stack></Group>
+    <Tabs defaultValue="overview" keepMounted={false}><Tabs.List><Tabs.Tab value="overview">Tổng quan</Tabs.Tab><Tabs.Tab value="codes">Mã & nguồn</Tabs.Tab><Tabs.Tab value="media">Ảnh & luồng xem</Tabs.Tab></Tabs.List>
+      <Tabs.Panel value="overview" pt="md"><Stack gap="lg"><CastRow ps={ps} />{(m.watch || []).length > 0 && <PreviewPlayer m={m} />}<DownloadPanel m={m} />
+        <div><Title order={4} fw={600} mb="md">Phim liên quan</Title>{rel.length ? (registerList(`rel-${m.code}`, rel.map(r => r.code)), <div className="pgrid fixed" data-list-id={`rel-${m.code}`} data-list-label="Phim liên quan">{rel.map(r => <MovieCard key={r.id} m={r} onPreview={setPv} />)}</div>) : <Text size="sm" c="dimmed">Không có phim liên quan.</Text>}</div></Stack></Tabs.Panel>
+      <Tabs.Panel value="codes" pt="md"><CodesSources m={m} /></Tabs.Panel>
+      <Tabs.Panel value="media" pt="md"><MediaLists m={m} onOpen={setLb} /></Tabs.Panel></Tabs>
+    <Modal opened={lb !== null} onClose={() => setLb(null)} size="auto" centered withCloseButton styles={{ body: { padding: 0 }, content: { maxWidth: 'min(96vw, 1400px)' } }} title={<Text fw={600}>{m.code} · {lb === 0 ? 'ảnh bìa' : `ảnh ${lb}/${(m.gallery || []).length}`}</Text>}>
+      {lb !== null && <PhotoViewer index={lb} setIndex={setLb} items={[{ src: coverFull(m), thumb: m.cover, label: `${m.code} 0` }, ...(m.gallery || []).map((g, k) => ({ src: g.full, thumb: g.src, label: `${m.code} ${k + 1}` }))]} />}</Modal>
+    <QuickView code={pv} onClose={() => setPv(null)} /></Stack>}</Async>;
+}

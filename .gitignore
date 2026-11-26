@@ -32,3 +32,6 @@ __pycache__/
 # Operator answers contain installation credentials.
 /deploy/answers*.json
 /ui-tests/qa/node_modules
+
+/ui/node_modules
+/ui/dist
