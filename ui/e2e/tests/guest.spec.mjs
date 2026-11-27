@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { watch } from './helpers.mjs';
 
 // Public pages: each must render and call only API endpoints that answer 2xx.
-const PAGES = ['/', '/search', '/updates', '/movies', '/performers', '/calendar', '/stats', '/help', '/genres', '/makers', '/series'];
+const PAGES = ['/', '/search', '/updates', '/movies', '/performers', '/calendar', '/help', '/genres', '/makers', '/series'];
 
 for (const path of PAGES) {
   test(`guest opens ${path} without a failed API call`, async ({ page }) => {
@@ -39,6 +39,15 @@ test('guest searches and finds a movie by its code', async ({ page }) => {
   const problems = watch(page);
   await page.goto('/search?q=E2E-007');
   await expect(page.getByText('E2E-007').first()).toBeVisible();
+  expect(problems).toEqual([]);
+});
+
+test('guest does not see the statistics: the page asks to sign in, the menu has no entry and the API refuses', async ({ page, request }) => {
+  const problems = watch(page);
+  await page.goto('/stats');
+  await expect(page.getByText('Bạn cần đăng nhập')).toBeVisible();
+  await expect(page.locator('a[href="/stats"]')).toHaveCount(0);
+  expect((await request.get('/api/v2/statistics/overview')).status()).toBe(401);
   expect(problems).toEqual([]);
 });
 

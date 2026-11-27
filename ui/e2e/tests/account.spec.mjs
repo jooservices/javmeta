@@ -22,7 +22,7 @@ test('a wrong password is refused with a message', async ({ page }) => {
 test('a signed-in user opens the personal pages without a failed API call', async ({ page }) => {
   await signIn(page, 'viewer@e2e.test');
   const problems = watch(page);
-  for (const path of ['/profile', '/activity', '/history', '/favorites', '/watch-later', '/watched', '/following', '/library', '/downloads', '/media']) {
+  for (const path of ['/stats', '/profile', '/activity', '/history', '/favorites', '/watch-later', '/watched', '/following', '/library', '/downloads', '/media']) {
     await page.goto(path);
     await page.waitForLoadState('networkidle');
   }

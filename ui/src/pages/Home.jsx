@@ -11,7 +11,8 @@ export default function Home() {
   const [pv, setPv] = useState(null); const st = usePersonal(); const [stats, setStats] = useLocalStorage({ key: 'xc.home.stats', defaultValue: true });
   const s = useAsync(loadHome, []);
   return <Stack gap="lg">
-    <Async state={s} skeleton={<Stack><SimpleGrid cols={{ base: 2, md: 4 }}>{[1, 2, 3, 4].map(i => <Skeleton key={i} h={86} />)}</SimpleGrid><MovieGridSkeleton /></Stack>}>{(d) => { const { ov, sm, src } = d; const hours = d.health.map(h => ({ h: new Date(h.hour_at).toLocaleString(locale(), { hour: '2-digit', day: '2-digit', month: '2-digit' }), ok: h.ok, err: h.blocked + h.timeout + h.errors })); return <Stack gap="lg">
+    <Async state={s} skeleton={<Stack><SimpleGrid cols={{ base: 2, md: 4 }}>{[1, 2, 3, 4].map(i => <Skeleton key={i} h={86} />)}</SimpleGrid><MovieGridSkeleton /></Stack>}>{(d) => { const { ov, sm, src } = d; const hours = (d.health || []).map(h => ({ h: new Date(h.hour_at).toLocaleString(locale(), { hour: '2-digit', day: '2-digit', month: '2-digit' }), ok: h.ok, err: h.blocked + h.timeout + h.errors })); return <Stack gap="lg">
+      {ov && <>
       <Group justify="space-between" wrap="nowrap"><div><Text fw={600}>{t('home.systemFigures')}</Text>{!stats && <Text size="xs" c="dimmed">{t('home.figuresHidden')}</Text>}</div><Tooltip label={stats ? t('home.hideFigures') : t('home.showFigures')}><ActionIcon variant="default" onClick={() => setStats(v => !v)} aria-expanded={stats} aria-label={stats ? t('home.hideFigures') : t('home.showFigures')}>{stats ? <IconChevronUp size={16} /> : <IconChevronDown size={16} />}</ActionIcon></Tooltip></Group>
       <Collapse expanded={stats}><Stack gap="lg">
       <div className="split23 kpi-split"><div className="kpi-main">
@@ -30,6 +31,7 @@ export default function Home() {
           <Stack gap="sm">{d.contrib.slice(0, 6).map(x => <div key={x.slug}><Group justify="space-between" mb={4} wrap="nowrap"><Text size="sm" truncate>{x.name}</Text><Text size="sm" className="mono">{fmt(x.n)}</Text></Group><Progress value={(x.n / Math.max(...d.contrib.map(y => y.n))) * 100} size="sm" color="teal" /></div>)}</Stack></Paper>
       </div>
       </Stack></Collapse>
+      </>}
       <TodayPicks st={st} onPreview={setPv} pool={d.pool} />
       <WatchableRow onPreview={setPv} />
       <div><Group justify="space-between" mb="md"><Title order={4} fw={600}>{t('nav.updates')}</Title><SectionLink to="/updates">{t('common.viewAllShort')}</SectionLink></Group><div className="pgrid home" data-list-id="home-upd" data-list-label={t('nav.updates')}>{(registerList('home-upd', d.upd.map(m => m.code)), d.upd).map(m => <MovieCard key={m.id} m={m} onPreview={setPv} />)}</div></div>

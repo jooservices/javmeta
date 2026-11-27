@@ -5,7 +5,7 @@ import { Stack, Group, Text, Title, Button, Badge, Select, Modal, SegmentedContr
 import { Async, useAsync, PageHead, MovieCard, QuickView, MovieGridSkeleton } from '../components.jsx';
 import { t, tk } from '../i18n/index.js'; import { PerfCard } from '../perfcard.jsx';
 import { PhotoViewer } from '../features.jsx'; import { Kpi } from '../kpi.jsx';
-import { recentUpdates, updatesSummary, fmt, adaptMovie, adaptPerformer } from '../shim.js'; import { get } from '../data/api.js'; import { registerList } from '../lists.js';
+import { recentUpdates, updatesSummary, fmt, adaptMovie, adaptPerformer, auth } from '../shim.js'; import { get } from '../data/api.js'; import { registerList } from '../lists.js';
 
 // the feed is grouped by (UTC) day by the server; the page names the days relative to the newest one
 const DAY = 864e5; const dayNo = d => Math.floor(Date.parse(d) / DAY);
@@ -28,7 +28,8 @@ const spark = rows => Array.from({ length: 14 }, (_, i) => rows[rows.length - 14
 
 export default function Updates() {
   const [pv, setPv] = useState(null); const [sort, setSort] = useState('crawled'); const [open, setOpen] = useState(null); const nav = useNavigate();
-  const head = useAsync(async () => { const [sum, m, p] = await Promise.all([updatesSummary(), get('/statistics/series', { metric: 'movies', days: 14 }), get('/statistics/series', { metric: 'performers', days: 14 })]); return { sum, m: m.data, p: p.data }; }, []);
+  // The small trend lines come from the statistics, which are for signed-in users; a guest gets the counts without them.
+  const head = useAsync(async () => { await auth.ready(); const trend = metric => (auth.user() ? get('/statistics/series', { metric, days: 14 }) : Promise.resolve({ data: [] })); const [sum, m, p] = await Promise.all([updatesSummary(), trend('movies'), trend('performers')]); return { sum, m: m.data, p: p.data }; }, []);
   const fm = useFeed('movies', {}, adaptMovie); const fp = useFeed('performers', { sort: sort === 'debut' ? 'debut' : 'crawled', has_photo: sort === 'crawled' ? '' : '' }, x => ({ ...adaptPerformer(x), slug: x.slug })); const fph = useFeed('photos', {}, x => x);
   const go = id => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   registerList('updates', fm.groups.flatMap(g => g.items).map(m => m.code)); registerList('updates-p', fp.groups.flatMap(g => g.items).map(x => x.id));

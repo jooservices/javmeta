@@ -68,10 +68,13 @@ export const related = m => m.related || [];
 let _boot = null;
 // While the installation requires sign-in and nobody is signed in, there is nothing to read yet: answer empty, call nothing.
 const NOTHING_YET = { totals: { movies: 0, performers: 0 }, overview: {}, summary: {} };
+// The statistics are for signed-in users: a guest gets the totals from the public status summary and no overview.
 export const loadCatalog = () => (_boot ||= (async () => {
   await auth.ready();
   if (auth.loginRequired() && !auth.user()) return NOTHING_YET;
-  const [o, s] = await Promise.all([get('/statistics/overview'), get('/status/summary')]);
+  const s = await get('/status/summary');
+  if (!auth.user()) return { totals: { movies: s.data.movies, performers: s.data.performers }, overview: {}, summary: s.data };
+  const o = await get('/statistics/overview');
   return { totals: { movies: o.data.movies, performers: o.data.performers }, overview: o.data, summary: s.data };
 })());
 export const refreshBoot = () => { _boot = null; return loadCatalog(); };
@@ -121,7 +124,7 @@ export const highlights = async () => { const d = (await get('/highlights')).dat
 export const calendarMonth = async (y, mo) => { const key = `${y}-${String(mo + 1).padStart(2, '0')}`; const { data } = await get('/calendar', { month: key }); return { counts: Object.fromEntries(data.map(c => [c.day, c.count])) }; };
 export const calendarDay = async day => (await get('/calendar', { day })).data.map(adaptMovie);
 export const categoryCover = () => null;
-export const profileFill = async () => (await get('/statistics/data-quality')).data;
+export const profileFill = async () => { await auth.ready(); return auth.user() ? (await get('/statistics/data-quality')).data : { total: 0 }; };
 
 // ---------- session + personal state (owner marks live on the server)
 const subs = new Set(); let session = { scope: 'guest', user: null }; const emit = () => subs.forEach(f => f());
@@ -214,7 +217,10 @@ export const ensureViews = code => { if (code in _views.counts) return; _vq.add(
 
 // ---------- the home page: everything it shows in one parallel load
 export async function loadHome() {
-  const [ov, sm, mseries, pseries, hseries, health, contrib, srcs, upd, rel, genres, hl] = await Promise.all([get('/statistics/overview'), get('/updates/summary'), get('/statistics/series', { metric: 'movies', days: 30 }), get('/statistics/series', { metric: 'performers', days: 30 }), get('/statistics/series', { metric: 'movies', interval: 'hour', days: 1 }),
-    get('/statistics/crawl-health', { hours: 72 }), get('/statistics/contributions'), get('/statistics/sources-active'), get('/movies', { sort: 'update_date', per_page: 16 }), get('/movies', { sort: 'release_date', per_page: 16 }), get('/catalogs/genres', { per_page: 24, sort: '-count', script: 'latin', min_count: 100 }), get('/highlights')]);
-  return { ov: ov.data, sm: sm.data, mseries: mseries.data, pseries: pseries.data, hseries: hseries.data, health: health.data, contrib: contrib.data, src: srcs.data, upd: upd.data.map(adaptMovie), rel: rel.data.map(adaptMovie), genres: genres.data, pool: [...hl.data.picks, ...hl.data.newest].map(adaptMovie) };
+  await auth.ready();
+  // The system figures (statistics) are for signed-in users; a guest gets the lists only.
+  const figures = auth.user() ? Promise.all([get('/statistics/overview'), get('/statistics/series', { metric: 'movies', days: 30 }), get('/statistics/series', { metric: 'performers', days: 30 }), get('/statistics/series', { metric: 'movies', interval: 'hour', days: 1 }), get('/statistics/crawl-health', { hours: 72 }), get('/statistics/contributions'), get('/statistics/sources-active')]) : Promise.resolve(null);
+  const [fig, sm, upd, rel, genres, hl] = await Promise.all([figures, get('/updates/summary'), get('/movies', { sort: 'update_date', per_page: 16 }), get('/movies', { sort: 'release_date', per_page: 16 }), get('/catalogs/genres', { per_page: 24, sort: '-count', script: 'latin', min_count: 100 }), get('/highlights')]);
+  const [ov, mseries, pseries, hseries, health, contrib, srcs] = fig || [];
+  return { ov: ov?.data, sm: sm.data, mseries: mseries?.data, pseries: pseries?.data, hseries: hseries?.data, health: health?.data, contrib: contrib?.data, src: srcs?.data, upd: upd.data.map(adaptMovie), rel: rel.data.map(adaptMovie), genres: genres.data, pool: [...hl.data.picks, ...hl.data.newest].map(adaptMovie) };
 }
