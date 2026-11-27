@@ -34,6 +34,17 @@ enum CrawlErrorCode: string
         return in_array($this, [self::NotFound, self::Gone, self::Soft404, self::AuthRequired, self::RateLimited], true);
     }
 
+    /** Whether a person has to act on this code, and on what. */
+    public function failureClass(): CrawlFailureClass
+    {
+        return match (true) {
+            $this->isExpectedOutcome() => CrawlFailureClass::ExpectedOutcome,
+            in_array($this, [self::Blocked, self::Challenge], true) => CrawlFailureClass::RealBlocker,
+            in_array($this, [self::Network, self::Timeout, self::SsrfBlocked, self::WorkerFailed, self::WorkerLost], true) => CrawlFailureClass::OwnFault,
+            default => CrawlFailureClass::Defect,
+        };
+    }
+
     public static function fromCrawlerx(?string $code): self
     {
         return self::tryFrom($code ?? '') ?? self::Unknown;

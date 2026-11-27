@@ -45,6 +45,7 @@ final class CrawlFailureReporter
             $scope->setTag('source', $source);
             $scope->setTag('crawl_kind', $crawlKind);
             $scope->setTag('error_code', $errorCode);
+            $scope->setTag('failure_class', (CrawlErrorCode::tryFrom($errorCode) ?? CrawlErrorCode::Unknown)->failureClass()->value);
             $scope->setFingerprint([$errorCode, $source]);
             $ssrfContext = self::ssrfContextFromMessage($exception->getMessage());
             if ($ssrfContext !== []) {

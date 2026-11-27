@@ -27,6 +27,7 @@ final class CrawlFailureReporterTest extends TestCase
         $scope->shouldReceive('setTag')->once()->with('source', 'sample-source')->andReturnSelf();
         $scope->shouldReceive('setTag')->once()->with('crawl_kind', 'detail')->andReturnSelf();
         $scope->shouldReceive('setTag')->once()->with('error_code', 'worker_failed')->andReturnSelf();
+        $scope->shouldReceive('setTag')->once()->with('failure_class', 'own_fault')->andReturnSelf();
         $scope->shouldReceive('setFingerprint')->once()->with(['worker_failed', 'sample-source'])->andReturnSelf();
 
         $hub->shouldReceive('getClient')->once()->andReturn($client);
@@ -88,6 +89,7 @@ final class CrawlFailureReporterTest extends TestCase
         $scope->shouldReceive('setTag')->once()->with('source', 'jable')->andReturnSelf();
         $scope->shouldReceive('setTag')->once()->with('crawl_kind', 'performer_listing')->andReturnSelf();
         $scope->shouldReceive('setTag')->once()->with('error_code', 'ssrf_blocked')->andReturnSelf();
+        $scope->shouldReceive('setTag')->once()->with('failure_class', 'own_fault')->andReturnSelf();
         $scope->shouldReceive('setFingerprint')->once()->with(['ssrf_blocked', 'jable'])->andReturnSelf();
         $scope->shouldReceive('setContext')->once()->with('ssrf', [
             'reason' => 'no_public_address',
@@ -102,5 +104,39 @@ final class CrawlFailureReporterTest extends TestCase
         $hub->shouldReceive('captureException')->once()->with($exception)->andReturn(null);
 
         (new CrawlFailureReporter($hub))->report($exception, 'jable', 'performer_listing', 'ssrf_blocked');
+    }
+
+    public function test_ac3_two_failures_of_a_real_blocker_on_different_urls_share_one_fingerprint_and_carry_the_class(): void
+    {
+        config()->set(['sentry.role' => 'worker', 'sentry.node' => 'crawl-a']);
+        $fingerprints = [];
+        $classes = [];
+        $scope = Mockery::mock(Scope::class);
+        $scope->shouldReceive('setTag')->andReturnUsing(static function (string $key, string $value) use (&$classes, $scope): Scope {
+            if ($key === 'failure_class') {
+                $classes[] = $value;
+            }
+
+            return $scope;
+        });
+        $scope->shouldReceive('setFingerprint')->andReturnUsing(static function (array $fingerprint) use (&$fingerprints, $scope): Scope {
+            $fingerprints[] = $fingerprint;
+
+            return $scope;
+        });
+        $scope->shouldReceive('setLevel')->andReturnSelf();
+        $hub = Mockery::mock(HubInterface::class);
+        $hub->shouldReceive('getClient')->andReturn(Mockery::mock(ClientInterface::class));
+        $hub->shouldReceive('withScope')->andReturnUsing(static function (callable $callback) use ($scope): void {
+            $callback($scope);
+        });
+        $hub->shouldReceive('captureException')->twice()->andReturn(null);
+
+        $reporter = new CrawlFailureReporter($hub);
+        $reporter->report(new RuntimeException('All fetch methods exhausted for URL [https://example.test/a].'), 'example', 'listing', 'blocked');
+        $reporter->report(new RuntimeException('All fetch methods exhausted for URL [https://example.test/b].'), 'example', 'detail', 'blocked');
+
+        self::assertSame([['blocked', 'example'], ['blocked', 'example']], $fingerprints);
+        self::assertSame(['real_blocker', 'real_blocker'], $classes);
     }
 }
