@@ -49,6 +49,39 @@ final class FetchAttemptTest extends TestCase
             ->expectsTable(['Error', 'Count'], [['a', 1], ['b', 1], ['c', 1], ['d', 1], ['e', 1]])->assertSuccessful();
     }
 
+    public function test_failure_classes_gives_every_source_one_verdict_with_its_evidence(): void
+    {
+        $this->travelTo('2026-11-02T12:34:00Z');
+        $this->insertFailures('venus', 'http', null, 'fetch_error', 'network_timeout', 5);
+        $this->insertFailures('venus', 'playwright', null, 'fetch_error', 'network_timeout', 1);
+        $this->insertFailures('onejav', 'http', 403, 'challenge', 'challenge detected', 3);
+        $this->insertFailures('onejav', 'http', 404, 'http_404', 'HTTP 404', 1);
+        $this->insertFailures('gone', 'http', 404, 'http_404', 'HTTP 404', 2);
+        $this->insertFailures('old', 'http', 403, 'challenge', 'challenge detected', 4, now()->subHours(100));
+        $this->artisan('crawler:failure-classes --hours=72')
+            ->expectsTable(
+                ['Source', 'Errors', 'Verdict', 'Method', 'HTTP status', 'Error code'],
+                [
+                    ['venus', 6, 'own_fault', 'http', '-', 'fetch_error'],
+                    ['onejav', 4, 'real_blocker', 'http', 403, 'challenge'],
+                    ['gone', 2, 'expected_outcome', 'http', 404, 'http_404'],
+                ],
+            )->assertSuccessful();
+    }
+
+    public function test_failure_classes_reports_an_empty_window_and_rejects_a_bad_window(): void
+    {
+        $this->artisan('crawler:failure-classes')->expectsOutputToContain('No failed fetch attempts')->assertSuccessful();
+        $this->artisan('crawler:failure-classes --hours=invalid')->assertFailed();
+    }
+
+    private function insertFailures(string $source, string $method, ?int $status, string $code, string $error, int $count, ?\DateTimeInterface $at = null): void
+    {
+        for ($i = 0; $i < $count; $i++) {
+            DB::table('crawl_fetch_attempts')->insert(['created_at' => $at ?? now(), 'source_slug' => $source, 'url_hash' => str_repeat('a', 64), 'method' => $method, 'started_at' => $at ?? now(), 'duration_ms' => 1, 'http_status' => $status, 'outcome' => 'error', 'error_code' => $code, 'error' => $error]);
+        }
+    }
+
     private function insert(\DateTimeInterface $createdAt, string $error, string $source = 'onejav'): void
     {
         DB::table('crawl_fetch_attempts')->insert(['created_at' => $createdAt, 'source_slug' => $source, 'url_hash' => str_repeat('a', 64), 'method' => 'http', 'started_at' => $createdAt, 'duration_ms' => 1, 'outcome' => 'error', 'error' => $error]);

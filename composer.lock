@@ -1199,16 +1199,16 @@
         },
         {
             "name": "jooservices/crawlerx",
-            "version": "v1.9.0",
+            "version": "v1.9.2",
             "source": {
                 "type": "git",
                 "url": "https://github.com/jooservices/crawlerx.git",
-                "reference": "d271ca2f41ed39b78a0876e0d5be23a78deef5a3"
+                "reference": "ac5340d9b4d75449af5e80a5c2349628ce69e31a"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/jooservices/crawlerx/zipball/d271ca2f41ed39b78a0876e0d5be23a78deef5a3",
-                "reference": "d271ca2f41ed39b78a0876e0d5be23a78deef5a3",
+                "url": "https://api.github.com/repos/jooservices/crawlerx/zipball/ac5340d9b4d75449af5e80a5c2349628ce69e31a",
+                "reference": "ac5340d9b4d75449af5e80a5c2349628ce69e31a",
                 "shasum": ""
             },
             "require": {
@@ -1250,10 +1250,10 @@
             "description": "URL-driven crawl and parse library for JAV catalog sites.",
             "support": {
                 "issues": "https://github.com/jooservices/crawlerx/issues",
-                "source": "https://github.com/jooservices/crawlerx/tree/v1.9.0"
+                "source": "https://github.com/jooservices/crawlerx/tree/v1.9.2"
             },
-            "time": "2026-11-15T16:04:09+00:00",
-            "published-time": "2026-11-15T16:04:34+00:00"
+            "time": "2026-11-27T21:40:39+00:00",
+            "published-time": "2026-11-27T21:40:56+00:00"
         },
         {
             "name": "jooservices/dto",
@@ -3650,16 +3650,16 @@
         },
         {
             "name": "nyholm/psr7",
-            "version": "1.8.2",
+            "version": "1.8.3",
             "source": {
                 "type": "git",
                 "url": "https://github.com/Nyholm/psr7.git",
-                "reference": "a71f2b11690f4b24d099d6b16690a90ae14fc6f3"
+                "reference": "26c1581611614447a5ff753a450390a23f3e323e"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Nyholm/psr7/zipball/a71f2b11690f4b24d099d6b16690a90ae14fc6f3",
-                "reference": "a71f2b11690f4b24d099d6b16690a90ae14fc6f3",
+                "url": "https://api.github.com/repos/Nyholm/psr7/zipball/26c1581611614447a5ff753a450390a23f3e323e",
+                "reference": "26c1581611614447a5ff753a450390a23f3e323e",
                 "shasum": ""
             },
             "require": {
@@ -3712,7 +3712,7 @@
             ],
             "support": {
                 "issues": "https://github.com/Nyholm/psr7/issues",
-                "source": "https://github.com/Nyholm/psr7/tree/1.8.2"
+                "source": "https://github.com/Nyholm/psr7/tree/1.8.3"
             },
             "funding": [
                 {
@@ -3724,8 +3724,8 @@
                     "type": "github"
                 }
             ],
-            "time": "2024-09-09T07:06:30+00:00",
-            "published-time": "2024-09-09T07:07:05+00:00"
+            "time": "2026-11-26T08:19:16+00:00",
+            "published-time": "2026-11-26T08:20:50+00:00"
         },
         {
             "name": "phpoption/phpoption",
