@@ -338,6 +338,23 @@ Cài đặt / Giám sát. Indexes cover `(source_slug, created_at)` for reports 
 `created_at` for retention. The migration is reversible and creates an empty
 table; it does not scan or backfill the crawl queue.
 
+### Failure classes
+
+Every crawl failure has a class that says whether a person has to act: `expected_outcome`
+(not found, gone, soft 404, login required, rate limited: recorded, never sent to Sentry),
+`real_blocker` (the site answers but the fetch chain cannot pass it: challenge, blocked),
+`own_fault` (network, time-out, SSRF policy, a failed worker) and `defect` (a parse failure
+or a code nobody classified). The class comes from `App\Enums\CrawlErrorCode::failureClass()`
+and is sent to Sentry as the `failure_class` tag; the fingerprint stays `[error_code, source]`,
+so one source produces one issue per error code, however many URLs fail.
+
+`php artisan crawler:failure-classes --hours=72` reads `crawl_fetch_attempts` and prints one
+row per source with failed attempts: its error count, the verdict
+(`App\Services\Crawl\FetchAttemptClassifier`) and the method, HTTP status and error code of
+its most frequent failing attempt, which is the evidence the verdict rests on. A source whose
+errors are mixed is judged by its most frequent group; use `crawler:fetch-report <source>` to
+see the rest.
+
 Diagnostic mapping/storage failures emit a warning containing only the exception
 class and queue ID; they do not interrupt normal crawl success/failure handling.
 Malformed required fields/outcomes are ignored, and invalid optional status/error
