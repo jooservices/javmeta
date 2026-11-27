@@ -17,7 +17,8 @@ session or API credential.
 
 | Methods | Route | Guest access | Reason |
 | --- | --- | --- | --- |
-| `GET, HEAD` | `/` | Guest allowed | Redirects to the UI shell without returning data. |
+| `GET, HEAD` | `/` | Guest allowed | Serves the React UI page, a static file that holds no data. |
+| `GET, HEAD` | `{fallbackPlaceholder}` | Guest allowed | Any other page address of the React UI (deep link, reload) gets the same static page; server routes (`api`, `ui-*`, `ops`, `horizon`, `files`, `node`, `storage`) are never answered with it. |
 | `GET, HEAD` | `api/health` | Guest allowed | Guest mode returns only `status` and `checked_at`; dependency, worker, queue, and source details stay private. |
 | `GET, HEAD` | `api/health/live` | Guest allowed | Returns only the fixed process liveness status. |
 | `GET, HEAD` | `api/openapi.json` | Guest allowed | Static API contract; contains no runtime URLs, credentials, or server settings. |

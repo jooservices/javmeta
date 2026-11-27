@@ -358,6 +358,7 @@ apply_release() {
   for folder in app/private app/public framework/cache/data framework/sessions framework/views logs; do mkdir -p "$base/shared/storage/$folder"; done
   ln -s "$base/shared/storage" storage
   step 'Install authoritative production dependencies' composer install --no-dev --classmap-authoritative --no-interaction --prefer-dist
+  step 'Build the React UI' build_ui
   step 'UI render smoke' node ui-tests/render-smoke.mjs
   step 'Startup health on staged release' startup_health
   if [[ "${answers[NODE_ROLE]}" == worker ]]; then
@@ -394,6 +395,10 @@ apply_release() {
   log "Next: cd $base/current && php artisan staging:readiness"
   if [[ "${answers[NODE_ROLE]}" == primary ]] && (( ! start_scheduler )); then log "Scheduler deliberately stopped; next: sudo systemctl start ${answers[UNIT_PREFIX]}-scheduler"; fi
   log "Deployed $commit; total $((SECONDS-started))s; current symlink verified."
+}
+# The React UI is built on the node that serves it (Node is a prerequisite); the build lands in public/web.
+build_ui() {
+  (cd ui && npm ci --no-audit --no-fund && npm run build)
 }
 import_settings() {
   local key

@@ -16,6 +16,7 @@ use App\Models\Source;
 use App\Models\User;
 use App\Services\Crawl\WorkerHeartbeat;
 use App\Services\Ui\UiLoginStateRecorder;
+use Tests\Support\FakesBuiltUi;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route as RouteDefinition;
@@ -32,6 +33,7 @@ use Tests\TestCase;
 
 final class UiGuestModeTest extends TestCase
 {
+    use FakesBuiltUi;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -47,12 +49,14 @@ final class UiGuestModeTest extends TestCase
         Cache::forget('javmeta:ui-login:recording');
         Cache::forget('javmeta:status:summary');
         Cache::forget('javmeta:status:sources');
+        $this->fakeBuiltUi();
     }
 
     protected function tearDown(): void
     {
         Cache::forget('javmeta:ui-login:recorded-state');
         Cache::forget('javmeta:ui-login:recording');
+        $this->removeBuiltUi();
 
         parent::tearDown();
     }

@@ -14,6 +14,16 @@ final class OpsDashboardTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** The host whose /login is the operations sign-in page; every other host gets the React UI there. */
+    private const COMMAND_CENTER = 'ops.internal.test';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config()->set('javmeta_domains.command_center_host', self::COMMAND_CENTER);
+    }
+
     private function admin(string $password = 'correct-horse-battery'): User
     {
         return User::factory()->create([
@@ -23,9 +33,8 @@ final class OpsDashboardTest extends TestCase
         ]);
     }
 
-    public function test_a_visitor_is_sent_to_the_login_page_and_the_root_redirects_to_the_dashboard(): void
+    public function test_a_visitor_is_sent_to_the_login_page(): void
     {
-        $this->get('/')->assertRedirect(route('ui.index'));
         $this->get('/ops')->assertRedirect(route('login'));
         $this->getJson('/ops/data')->assertUnauthorized();
     }
@@ -129,7 +138,7 @@ final class OpsDashboardTest extends TestCase
 
     public function test_the_login_form_does_not_prefill_an_email(): void
     {
-        $html = $this->get('/login')->assertOk()->getContent();
+        $html = $this->get('http://' . self::COMMAND_CENTER . '/login')->assertOk()->getContent();
 
         $this->assertStringNotContainsString('soulevilx@gmail.com', $html);
         $this->assertDoesNotMatchRegularExpression('/id="email"[^>]*value="[^"]+"/', $html);
@@ -137,7 +146,7 @@ final class OpsDashboardTest extends TestCase
 
     public function test_the_login_page_is_vietnamese_xcrawler(): void
     {
-        $this->get('/login?lang=vi')
+        $this->get('http://' . self::COMMAND_CENTER . '/login?lang=vi')
             ->assertOk()
             ->assertSee('lang="vi"', false)
             ->assertSee('Đăng nhập · XCrawler', false)
@@ -149,7 +158,7 @@ final class OpsDashboardTest extends TestCase
 
     public function test_a_failed_sign_in_keeps_the_language_chosen_in_the_url(): void
     {
-        $page = $this->get('/login?lang=vi');
+        $page = $this->get('http://' . self::COMMAND_CENTER . '/login?lang=vi');
         $page->assertSee('/login?lang=vi', false);
 
         $this->withHeader('Accept-Language', 'en')

@@ -43,12 +43,13 @@ if [[ "${0##*/}" == php && "${FAIL_STEP:-}" == worker-bootstrap && "$*" == *sett
 if [[ "${0##*/}" == pg_restore ]]; then printf ';     dbname: fixture\n'; fi
 STUB
 chmod +x "$fixture/bin/stub"
-for tool in php composer node sudo pg_restore psql curl id; do ln -s stub "$fixture/bin/$tool"; done
+for tool in php composer node npm sudo pg_restore psql curl id; do ln -s stub "$fixture/bin/$tool"; done
 export PATH="$fixture/bin:$PATH"
 git init -q -b candidate "$fixture/repo"
 git -C "$fixture/repo" config user.name test
 git -C "$fixture/repo" config user.email test@example.test
-touch "$fixture/repo/artisan" "$fixture/repo/storage/.gitkeep" "$fixture/repo/ui-tests/render-smoke.mjs"
+mkdir -p "$fixture/repo/ui"
+touch "$fixture/repo/artisan" "$fixture/repo/storage/.gitkeep" "$fixture/repo/ui-tests/render-smoke.mjs" "$fixture/repo/ui/.keep"
 git -C "$fixture/repo" add .
 git -C "$fixture/repo" -c core.hooksPath=/dev/null commit -qm 'test: Fixture'
 git -C "$fixture/repo" tag v-test
