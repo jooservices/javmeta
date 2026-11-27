@@ -120,4 +120,5 @@ Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static funct
 
 // Every other address of the React UI (deep links, a reload) gets the same page; the router in the browser does the rest.
 Route::fallback([ReactUiController::class, 'fallback'])
+    ->where('fallbackPlaceholder', ReactUiController::PAGE_ADDRESS)
     ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class]);

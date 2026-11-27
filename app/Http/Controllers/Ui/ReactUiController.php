@@ -16,8 +16,11 @@ use Illuminate\View\View;
  */
 final class ReactUiController
 {
-    /** Server routes that must never be answered with the UI page (an unknown path under them stays a 404). */
-    private const RESERVED = ['api', 'api/*', 'ui-api', 'ui-api/*', 'ui-me', 'ui-me/*', 'ui-admin', 'ui-admin/*', 'ops', 'ops/*', 'horizon', 'horizon/*', 'files', 'files/*', 'node', 'node/*', 'storage', 'storage/*', 'web', 'web/*', 'up', 'metrics'];
+    /**
+     * Page addresses of the UI are everything except the server routes below. The route pattern excludes them, so an unknown
+     * path or a wrong method under them keeps answering as before (404, 405) and is never answered with the UI page.
+     */
+    public const PAGE_ADDRESS = '(?!(?:api|ui-api|ui-me|ui-admin|ops|horizon|files|node|storage|web|up|metrics)(?:/|$)).*';
 
     public function __invoke(Request $request): Response
     {
@@ -38,7 +41,7 @@ final class ReactUiController
     /** Any other page address of the UI (deep links, a reload): the same page, the router in the browser does the rest. */
     public function fallback(Request $request): Response
     {
-        abort_if(! $request->isMethod('GET') || $request->expectsJson() || $request->is(...self::RESERVED), 404);
+        abort_if($request->expectsJson(), 404);
 
         return $this($request);
     }

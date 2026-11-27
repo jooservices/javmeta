@@ -22,12 +22,13 @@ final class LocaleSettingsTest extends TestCase
 
     public function test_login_page_follows_accept_language(): void
     {
-        $vi = $this->get('/login', ['Accept-Language' => 'vi']);
+        config()->set('javmeta_domains.command_center_host', 'ops.internal.test');
+        $vi = $this->get('http://ops.internal.test/login', ['Accept-Language' => 'vi']);
         $vi->assertOk();
         $vi->assertSee('Đăng nhập', false);
         $vi->assertSee('lang="vi"', false);
 
-        $en = $this->get('/login', ['Accept-Language' => 'en']);
+        $en = $this->get('http://ops.internal.test/login', ['Accept-Language' => 'en']);
         $en->assertOk();
         $en->assertSee('Sign in', false);
         $en->assertSee('lang="en"', false);
@@ -35,7 +36,8 @@ final class LocaleSettingsTest extends TestCase
 
     public function test_query_lang_overrides_accept_language_on_login(): void
     {
-        $response = $this->get('/login?lang=en', ['Accept-Language' => 'vi']);
+        config()->set('javmeta_domains.command_center_host', 'ops.internal.test');
+        $response = $this->get('http://ops.internal.test/login?lang=en', ['Accept-Language' => 'vi']);
         $response->assertOk();
         $response->assertSee('Sign in', false);
         $response->assertSee('lang="en"', false);
