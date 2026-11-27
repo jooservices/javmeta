@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature\Api\V2;
 
 use Tests\Support\Api\V2\FakesPostgresRows;
-use Tests\TestCase;
 
 /** Search, suggestions, the photo tab and the interpretation endpoint, with the PostgreSQL rows canned (the SQL itself runs in tests/Integration). */
-final class SearchServiceTest extends TestCase
+final class SearchServiceTest extends V2TestCase
 {
     use FakesPostgresRows;
 

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { Routes, Route, NavLink as RLink, useNavigate, useLocation, Link, Navigate, useParams } from 'react-router-dom';
 import { AppShell, Burger, Group, NavLink, Collapse, Divider as Div, TextInput, Text, Badge, ScrollArea, Popover, Stack, Avatar, Kbd, ActionIcon, Modal, Table, Divider, Box, UnstyledButton, Tooltip, Loader } from '@mantine/core';
 import { useDisclosure, useHotkeys, useDebouncedValue, useLocalStorage, useMediaQuery } from '@mantine/hooks';
@@ -24,13 +24,16 @@ function WatchRedirect() { const { code } = useParams(); return <Navigate to={`/
 export default function App() {
   const [open, { toggle, close }] = useDisclosure(); const loc = useLocation(); const [help, hs] = useDisclosure(false);
   const [rail, setRail] = useLocalStorage({ key: 'xc.nav.rail', defaultValue: false }); const [shut, setShut] = useLocalStorage({ key: 'xc.nav.shut', defaultValue: {} });
-  const scope = useScope(); const desktop = useMediaQuery('(min-width: 62em)'); const slim = desktop && rail;
+  const scope = useScope(); const loginRequired = useSyncExternalStore(auth.subscribe, auth.loginRequired); const desktop = useMediaQuery('(min-width: 62em)'); const slim = desktop && rail;
   useEffect(close, [loc.pathname]);
   useEffect(() => { auth.load().then(() => loadViews()); return auth.subscribe(() => loadViews()); }, []);
   useLegacyHash();
   useEffect(() => { installListTracker(); }, []);
   useGoKeys();
   useHotkeys([['?', hs.open], ['mod+B', () => setRail(r => !r)]]);
+  // While the installation requires sign-in (the default), a visitor sees only the sign-in page.
+  const canRead = !(loginRequired && scope === 'guest');
+  if (!canRead && loc.pathname !== '/login') return <Navigate to="/login" replace />;
   const here = loc.pathname + loc.search;
   const active = to => { const p = to; if (p === '/') return loc.pathname === '/'; if (p === '/movies') return loc.pathname === '/movies' || loc.pathname.startsWith('/movies/'); if (p === '/genres') return CATALOGS.some(k => loc.pathname === `/${k}` || loc.pathname.startsWith(`/${k}/`)); if (p === '/performers') return loc.pathname.startsWith('/performers'); if (p === '/admin') return loc.pathname === '/admin'; return loc.pathname === p; };
   return <AppShell header={{ height: 56 }} navbar={{ width: slim ? 64 : 232, breakpoint: 'md', collapsed: { mobile: !open } }} padding={{ base: 'sm', sm: 'md', md: 'lg' }} styles={{ navbar: { transition: 'width .18s ease' } }}>
@@ -38,7 +41,7 @@ export default function App() {
       <Tooltip label={rail ? t('app.expandSidebarTip') : t('app.collapseSidebarTip')}><ActionIcon variant="default" visibleFrom="md" onClick={() => setRail(r => !r)} aria-label={rail ? t('app.expandSidebar') : t('app.collapseSidebar')}>{rail ? <IconLayoutSidebarLeftExpand size={18} /> : <IconLayoutSidebarLeftCollapse size={18} />}</ActionIcon></Tooltip>
       <Group gap="xs" component={Link} to="/" style={{ textDecoration: 'none', color: 'inherit' }} wrap="nowrap"><Box w={28} h={28} bg="teal.6" style={{ borderRadius: 8, display: 'grid', placeItems: 'center', color: '#04201e', fontWeight: 700 }}>X</Box><Text fw={600} visibleFrom="xs">XCrawler</Text></Group></Group>
       <Box flex={1} miw={0} style={{ display: 'flex', justifyContent: 'flex-start' }}><Omnibox /></Box>
-      <LiveIndicator /><LangSwitch /><PrivacyToggle /><ActionIcon variant="default" onClick={hs.open} aria-label={t('app.shortcutsHelp')} visibleFrom="sm"><IconHelp size={18} /></ActionIcon><AvatarMenu /></Group></AppShell.Header>
+      {canRead && <LiveIndicator />}<LangSwitch /><PrivacyToggle /><ActionIcon variant="default" onClick={hs.open} aria-label={t('app.shortcutsHelp')} visibleFrom="sm"><IconHelp size={18} /></ActionIcon><AvatarMenu /></Group></AppShell.Header>
     <AppShell.Navbar p="xs"><ScrollArea><Stack gap={4}>{NAV.filter(([, , min]) => !min || RANK[scope] >= RANK[min]).map(([g, items]) => { const closed = !!shut[g] && !slim;
       return <div key={g}>
         {slim ? <Div my="xs" /> : <UnstyledButton className="nav-group-toggle" w="100%" px="sm" py={4} onClick={() => setShut(x => ({ ...x, [g]: !x[g] }))} aria-expanded={!closed} aria-label={closed ? t('nav.openGroup', { name: t(g) }) : t('nav.closeGroup', { name: t(g) })}><Group justify="space-between" wrap="nowrap"><Text size="xs" tt="uppercase" c="dimmed" fw={600}>{t(g)}</Text><IconChevronDown size={12} color="#5a6572" style={{ transform: closed ? 'rotate(-90deg)' : 'none', transition: 'transform .15s' }} /></Group></UnstyledButton>}
@@ -53,7 +56,7 @@ export default function App() {
       <Route path="/admin" element={<Guard min="admin"><Ops tab="overview" /></Guard>} />{['infrastructure', 'queue', 'nodes', 'alerts', 'errors', 'runs', 'events'].map(t => <Route key={t} path={`/admin/${t}`} element={<Guard min="admin"><Ops tab={t === 'infrastructure' ? 'infra' : t} /></Guard>} />)}
       <Route path="/admin/sources" element={<Guard min="admin"><Ops tab="sources" /></Guard>} /><Route path="/admin/keys" element={<Guard min="admin"><Admin /></Guard>} /><Route path="/admin/users" element={<Navigate to="/admin/keys" replace />} />
       <Route path="/admin/settings" element={<Guard min="admin"><Settings page="settings" /></Guard>} /><Route path="/admin/notifications" element={<Guard min="admin"><Settings page="notifications" /></Guard>} /><Route path="/admin/reports" element={<Guard min="admin"><Settings page="reports" /></Guard>} /><Route path="/help" element={<Help />} /><Route path="*" element={<Empty title={t('app.notFound')} hint={t('app.notFoundHint')} action={<Button component={Link} to="/" variant="light">{t('app.goHome')}</Button>} />} /></Routes></Box>
-      <Group justify="space-between" wrap="wrap" component="footer" mt="xl" pt="md" style={{ borderTop: '1px solid var(--mantine-color-dark-5)' }}><Text size="xs" c="dimmed">© 2026 JOOservices. All rights reserved.</Text><Group gap="md"><Text size="xs" c="dimmed">XCrawler Console</Text><LiveDataNote /></Group></Group></AppShell.Main>
+      <Group justify="space-between" wrap="wrap" component="footer" mt="xl" pt="md" style={{ borderTop: '1px solid var(--mantine-color-dark-5)' }}><Text size="xs" c="dimmed">© 2026 JOOservices. All rights reserved.</Text><Group gap="md"><Text size="xs" c="dimmed">XCrawler Console</Text>{canRead && <LiveDataNote />}</Group></Group></AppShell.Main>
     <Modal opened={help} onClose={hs.close} title={t('app.shortcuts')} centered><ShortcutTable /></Modal>
   </AppShell>;
 }

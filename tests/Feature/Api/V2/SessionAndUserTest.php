@@ -11,9 +11,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
-use Tests\TestCase;
 
-final class SessionAndUserTest extends TestCase
+final class SessionAndUserTest extends V2TestCase
 {
     use RefreshDatabase;
 

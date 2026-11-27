@@ -18,5 +18,7 @@ abstract class PostgresApiTestCase extends TestCase
         parent::setUp();
 
         self::assertSame('pgsql', DB::getDriverName());
+        // These tests exercise the public (guest) operations; the installation default keeps the UI behind sign-in.
+        config()->set('javmeta.ui_login_required', false);
     }
 }

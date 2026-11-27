@@ -14,9 +14,8 @@ use App\Services\Api\V2\Downloads\LinkSearch;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
-use Tests\TestCase;
 
-final class DownloadsTest extends TestCase
+final class DownloadsTest extends V2TestCase
 {
     use RefreshDatabase;
 

@@ -21,6 +21,8 @@ $app->make(Kernel::class)->bootstrap();
 
 // The browser run has no Elasticsearch, so the startup health gate that waits for it is switched off in this throwaway store.
 app(SettingsService::class)->set('health.startup.enabled', false);
+// The guest journeys need the public catalogue, so the throwaway installation runs with guest mode on (login_required off).
+app(SettingsService::class)->set('ui_security.login_required', false);
 
 User::factory()->create(['name' => 'Admin', 'email' => 'admin@e2e.test', 'password' => 'e2e-password-1', 'role' => 'admin']);
 User::factory()->create(['name' => 'Viewer', 'email' => 'viewer@e2e.test', 'password' => 'e2e-password-1']);

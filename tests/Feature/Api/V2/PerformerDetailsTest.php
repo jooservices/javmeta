@@ -6,10 +6,9 @@ namespace Tests\Feature\Api\V2;
 
 use Tests\Support\Api\V2\FakeReadModelDatabase;
 use Tests\Support\Api\V2\ReadModelRows;
-use Tests\TestCase;
 
 /** One performer over the v2 API: profile, sources, photos, co-performers, statistics, movies, lookups and facets, over canned rows. */
-final class PerformerDetailsTest extends TestCase
+final class PerformerDetailsTest extends V2TestCase
 {
     private FakeReadModelDatabase $database;
 

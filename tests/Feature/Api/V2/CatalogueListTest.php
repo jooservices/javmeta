@@ -6,10 +6,9 @@ namespace Tests\Feature\Api\V2;
 
 use Tests\Support\Api\V2\FakeReadModelDatabase;
 use Tests\Support\Api\V2\ReadModelRows;
-use Tests\TestCase;
 
 /** The movie and performer lists and facets: paging, sorting and shaping run for real over canned search-table rows. */
-final class CatalogueListTest extends TestCase
+final class CatalogueListTest extends V2TestCase
 {
     private FakeReadModelDatabase $database;
 

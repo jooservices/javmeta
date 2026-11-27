@@ -9,10 +9,9 @@ use App\Services\Settings\SettingsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Testing\FakeConfigStore;
-use Tests\TestCase;
 
 /** Shared set-up of the administration area tests: SQLite, a fake settings store, sign-in and CSRF helpers. */
-abstract class AdministrationTestCase extends TestCase
+abstract class AdministrationTestCase extends V2TestCase
 {
     use RefreshDatabase;
 

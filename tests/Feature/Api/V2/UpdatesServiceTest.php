@@ -6,10 +6,9 @@ namespace Tests\Feature\Api\V2;
 
 use Illuminate\Support\Carbon;
 use Tests\Support\Api\V2\FakesPostgresRows;
-use Tests\TestCase;
 
 /** Updates by day, the summary, highlights and the release calendar with canned PostgreSQL rows. */
-final class UpdatesServiceTest extends TestCase
+final class UpdatesServiceTest extends V2TestCase
 {
     use FakesPostgresRows;
 

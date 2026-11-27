@@ -8,10 +8,9 @@ use App\Models\User;
 use App\Services\Api\V2\Catalogue\StoredMovieViewCounter;
 use App\Services\Api\V2\Contracts\MovieViewCounter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
 
 /** The parts of the catalogue detail operations that never reach the PostgreSQL read models: routing, scope, validation, problem codes. */
-final class CatalogueDetailsTest extends TestCase
+final class CatalogueDetailsTest extends V2TestCase
 {
     use RefreshDatabase;
 

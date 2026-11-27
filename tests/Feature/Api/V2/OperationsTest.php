@@ -13,10 +13,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Tests\TestCase;
 
 /** The Command Center part of the v2 API: crawl health, sources, runs, events, nodes, infrastructure, alerts and review flags. */
-final class OperationsTest extends TestCase
+final class OperationsTest extends V2TestCase
 {
     use RefreshDatabase;
 

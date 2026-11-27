@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature\Api\V2;
 
 use Tests\Support\Api\V2\FakeReadModelDatabase;
-use Tests\TestCase;
 
 /** The browsable catalogues and the photo collection over canned rows: filtering, ordering, paging, script index, slugs, 404s. */
-final class CatalogEntriesTest extends TestCase
+final class CatalogEntriesTest extends V2TestCase
 {
     private FakeReadModelDatabase $database;
 

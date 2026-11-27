@@ -66,7 +66,14 @@ export const related = m => m.related || [];
 
 // ---------- bootstrap: totals and the live indicator
 let _boot = null;
-export const loadCatalog = () => (_boot ||= Promise.all([get('/statistics/overview'), get('/status/summary')]).then(([o, s]) => ({ totals: { movies: o.data.movies, performers: o.data.performers }, overview: o.data, summary: s.data })));
+// While the installation requires sign-in and nobody is signed in, there is nothing to read yet: answer empty, call nothing.
+const NOTHING_YET = { totals: { movies: 0, performers: 0 }, overview: {}, summary: {} };
+export const loadCatalog = () => (_boot ||= (async () => {
+  await auth.ready();
+  if (auth.loginRequired() && !auth.user()) return NOTHING_YET;
+  const [o, s] = await Promise.all([get('/statistics/overview'), get('/status/summary')]);
+  return { totals: { movies: o.data.movies, performers: o.data.performers }, overview: o.data, summary: s.data };
+})());
 export const refreshBoot = () => { _boot = null; return loadCatalog(); };
 
 // ---------- search engine (same shapes the Browse page already renders)
@@ -118,9 +125,11 @@ export const profileFill = async () => (await get('/statistics/data-quality')).d
 
 // ---------- session + personal state (owner marks live on the server)
 const subs = new Set(); let session = { scope: 'guest', user: null }; const emit = () => subs.forEach(f => f());
+let firstLoaded; const sessionKnown = new Promise(resolve => { firstLoaded = resolve; });
 export const auth = {
-  user: () => session.user, scope: () => session.scope, key: () => (session.user ? String(session.user.id) : null),
-  async load() { try { const { data } = await get('/sessions/current'); session = data; setCsrf(data.csrf || null); } catch { session = { scope: 'guest', user: null }; } emit(); if (session.user) await personal.load(); return auth.user(); },
+  ready: () => sessionKnown,
+  user: () => session.user, scope: () => session.scope, loginRequired: () => !!session.login_required, key: () => (session.user ? String(session.user.id) : null),
+  async load() { try { const { data } = await get('/sessions/current'); session = data; setCsrf(data.csrf || null); } catch { session = { scope: 'guest', user: null }; } firstLoaded(); _boot = null; emit(); if (session.user) await personal.load(); return auth.user(); },
   async login(email, password) { const { data } = await send('POST', '/sessions', { email, password }); setCsrf(data.csrf); await auth.load(); return data; },
   async logout() { await send('DELETE', '/sessions/current'); session = { scope: 'guest', user: null }; setCsrf(null); personal.reset(); emit(); },
   subscribe: f => (subs.add(f), () => subs.delete(f)),

@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature\Api\V2;
 
 use Tests\Support\Api\V2\FakesPostgresRows;
-use Tests\TestCase;
 
 /** The statistics screens with canned PostgreSQL rows: shaping, clamping, validation and the short cache. */
-final class StatisticsServiceTest extends TestCase
+final class StatisticsServiceTest extends V2TestCase
 {
     use FakesPostgresRows;
 

@@ -11,6 +11,7 @@ use App\Http\Middleware\StartupHealthMiddleware;
 use App\Observability\InfrastructureOutage;
 use App\Http\Api\V2\ProblemRenderer;
 use App\Http\Middleware\ApiV2\RequestId;
+use App\Http\Middleware\ApiV2\RequireLoginWhenConfigured;
 use App\Http\Middleware\ApiV2\RequireScope;
 use App\Http\Middleware\ApiV2\VerifyCsrf;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -29,7 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias(['requires' => RequiresDependency::class, 'scope' => RequireScope::class]);
         // The UI API (v2) keeps the signed-in user in the web session and checks a CSRF header on unsafe requests.
-        $middleware->group('api.v2', [RequestId::class, EncryptCookies::class, AddQueuedCookiesToResponse::class, StartSession::class, VerifyCsrf::class]);
+        $middleware->group('api.v2', [RequestId::class, EncryptCookies::class, AddQueuedCookiesToResponse::class, StartSession::class, VerifyCsrf::class, RequireLoginWhenConfigured::class]);
         // A new node has no browser session: its token is the credential for this one call.
         $middleware->validateCsrfTokens(except: ['node/enroll']);
         $middleware->appendToGroup('web', SetLocale::class);

@@ -6,13 +6,12 @@ namespace Tests\Feature\Api\V2;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Tests\TestCase;
 
 /**
  * The parts of the discovery area that never reach the search tables (those exist only on PostgreSQL):
  * validation, problem codes, and that every route is public. The data itself is covered by tests/Integration/Api/V2/Discovery*.
  */
-final class DiscoveryValidationTest extends TestCase
+final class DiscoveryValidationTest extends V2TestCase
 {
     use RefreshDatabase;
 

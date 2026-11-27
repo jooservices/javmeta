@@ -5,10 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature\Api\V2;
 
 use Tests\Support\Api\V2\FakeReadModelDatabase;
-use Tests\TestCase;
 
 /** xcrawler:read-models:refresh: reports a refusal cleanly (SQLite, busy lock) and prints the rows of every rebuilt table. */
-final class RefreshReadModelsCommandTest extends TestCase
+final class RefreshReadModelsCommandTest extends V2TestCase
 {
     public function test_on_sqlite_it_fails_with_a_message_and_touches_nothing(): void
     {

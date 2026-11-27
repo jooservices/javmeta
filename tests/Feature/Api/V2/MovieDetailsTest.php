@@ -9,10 +9,9 @@ use App\Services\Api\V2\Contracts\MovieViewCounter;
 use Illuminate\Cache\RateLimiter;
 use Tests\Support\Api\V2\FakeReadModelDatabase;
 use Tests\Support\Api\V2\ReadModelRows;
-use Tests\TestCase;
 
 /** One movie over the v2 API: every sub-resource, the lookups, the facet autocomplete and the view counter, over canned rows. */
-final class MovieDetailsTest extends TestCase
+final class MovieDetailsTest extends V2TestCase
 {
     private FakeReadModelDatabase $database;
 

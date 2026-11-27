@@ -13,10 +13,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Tests\TestCase;
 
 /** The repositories of the v2 API whose queries are plain DB::table calls, run on SQLite with the real migrations. */
-final class PortableRepositoriesTest extends TestCase
+final class PortableRepositoriesTest extends V2TestCase
 {
     use RefreshDatabase;
 

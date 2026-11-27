@@ -15,10 +15,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use JOOservices\LaravelConfig\Contracts\ConfigStore;
 use JOOservices\LaravelConfig\Testing\FakeConfigStore;
-use Tests\TestCase;
 
 /** The two narrow adapters the downloads area of the API uses over the crawler's link search and the owner's file server. */
-final class DownloadAdaptersTest extends TestCase
+final class DownloadAdaptersTest extends V2TestCase
 {
     use RefreshDatabase;
 

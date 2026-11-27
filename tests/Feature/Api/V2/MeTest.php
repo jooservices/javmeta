@@ -7,10 +7,9 @@ namespace Tests\Feature\Api\V2;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Tests\TestCase;
 
 /** The /me area of the v2 API on SQLite: scopes, validation, CSRF and everything that needs no PostgreSQL search table. */
-final class MeTest extends TestCase
+final class MeTest extends V2TestCase
 {
     use RefreshDatabase;
 
