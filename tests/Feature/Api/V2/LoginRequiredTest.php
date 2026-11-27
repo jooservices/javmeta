@@ -40,4 +40,21 @@ final class LoginRequiredTest extends TestCase
 
         $this->actingAs(User::factory()->create(), 'web')->getJson('/api/v2/status/summary')->assertOk();
     }
+
+    public function test_a_guest_may_still_ask_for_download_links_while_login_is_required(): void
+    {
+        config()->set('javmeta.ui_login_required', true);
+
+        $this->getJson('/api/v2/download-requests')->assertOk();
+        $this->postJson('/api/v2/download-requests', [])->assertStatus(422)->assertJsonPath('errors.0.field', 'movie_code');
+    }
+
+    public function test_a_guest_never_sees_the_statistics_even_when_login_is_not_required(): void
+    {
+        config()->set('javmeta.ui_login_required', false);
+
+        foreach (['overview', 'series', 'distributions', 'correlations', 'data-quality', 'crawl-health', 'contributions', 'sources-active', 'dashboard', 'compare'] as $page) {
+            $this->getJson('/api/v2/statistics/' . $page)->assertUnauthorized();
+        }
+    }
 }

@@ -12,6 +12,7 @@ info:
     - Errors are RFC 9457 `application/problem+json` with a stable machine `code`; validation errors (422) carry `errors[{field, code}]`.
     - Credentials: cookie session `xcr_session` (HttpOnly, SameSite=Lax). Every unsafe request of a signed-in user needs `X-CSRF-Token` (value returned by `POST /sessions` and `GET /sessions/current`). A few computation-only POSTs are exempt (marked in the operation).
     - Scopes: `public` (guest allowed), `owner` (signed-in user), `admin` (administrator or super administrator). A guest calling an owner/admin operation gets 401, a signed-in user without the scope gets 403.
+    - Sign-in required: while the installation setting `ui_security.login_required` is on (the default) a guest may only call the session and password-reset operations, the contract and the download requests; every other `public` operation then answers 401. Turn it off and every `public` operation is open to guests.
     - Optimistic locking: `PUT` of settings groups, notification templates and the report schedule need `If-Match` with the `ETag` of the last read (`412` when stale, `428` when missing).
     - Pagination: `page` + `per_page`. Sorting and filtering use plain, readable query parameters (the same names as the web UI URLs).
     - Images are hot-linked: `*_url` fields point to the original hosts and the browser sends no referrer.
@@ -6127,9 +6128,8 @@ paths:
       summary: Totals
       description: "`data_as_of` is the time of the last rebuild of the search tables."
       security:
-        - {}
         - cookieAuth: []
-      x-scope: public
+      x-scope: owner
       responses:
         "200":
           description: Totals
@@ -6248,9 +6248,8 @@ paths:
             default: 30
             maximum: 730
       security:
-        - {}
         - cookieAuth: []
-      x-scope: public
+      x-scope: owner
       responses:
         "200":
           description: New items over time
@@ -6323,9 +6322,8 @@ paths:
             description: Max 60
             default: 20
       security:
-        - {}
         - cookieAuth: []
-      x-scope: public
+      x-scope: owner
       responses:
         "200":
           description: Distribution of one attribute
@@ -6385,9 +6383,8 @@ paths:
               - cup-height
             description: Pair
       security:
-        - {}
         - cookieAuth: []
-      x-scope: public
+      x-scope: owner
       responses:
         "200":
           description: Pairs of metrics
@@ -6440,9 +6437,8 @@ paths:
         - Statistics
       summary: How many performers carry each profile field
       security:
-        - {}
         - cookieAuth: []
-      x-scope: public
+      x-scope: owner
       responses:
         "200":
           description: How many performers carry each profile field
@@ -6519,9 +6515,8 @@ paths:
             default: 72
             maximum: 168
       security:
-        - {}
         - cookieAuth: []
-      x-scope: public
+      x-scope: owner
       responses:
         "200":
           description: Crawler successes and failures per hour
@@ -6581,9 +6576,8 @@ paths:
         - Statistics
       summary: Sources that brought new movies in the last 24 hours
       security:
-        - {}
         - cookieAuth: []
-      x-scope: public
+      x-scope: owner
       responses:
         "200":
           description: Sources that brought new movies in the last 24 hours
@@ -6627,9 +6621,8 @@ paths:
         - Statistics
       summary: Enabled vs total sources
       security:
-        - {}
         - cookieAuth: []
-      x-scope: public
+      x-scope: owner
       responses:
         "200":
           description: Enabled vs total sources
@@ -6665,9 +6658,8 @@ paths:
       summary: Everything the statistics page draws
       description: Cached 5 minutes.
       security:
-        - {}
         - cookieAuth: []
-      x-scope: public
+      x-scope: owner
       responses:
         "200":
           description: Everything the statistics page draws
@@ -6887,9 +6879,8 @@ paths:
             type: string
             description: 2–3 names, comma-separated
       security:
-        - {}
         - cookieAuth: []
-      x-scope: public
+      x-scope: owner
       responses:
         "200":
           description: Metrics of 2–3 catalogue entries for the radar

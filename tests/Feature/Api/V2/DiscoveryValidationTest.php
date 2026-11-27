@@ -43,6 +43,7 @@ final class DiscoveryValidationTest extends V2TestCase
 
     public function test_unknown_choices_are_400_with_their_own_problem_code(): void
     {
+        $this->actingAs(User::factory()->create(), 'web');
         $this->getJson('/api/v2/updates?type=episodes')->assertStatus(400)->assertJsonPath('code', 'invalid_type');
         $this->getJson('/api/v2/statistics/distributions?by=colour')->assertStatus(400)->assertJsonPath('code', 'invalid_distribution');
         $this->getJson('/api/v2/statistics/correlations?pair=a-b')->assertStatus(400)->assertJsonPath('code', 'invalid_pair');

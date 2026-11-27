@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Integration\Api\V2;
 
+use App\Models\User;
 use Illuminate\Support\Facades\Cache;
 
 /** The statistics screens on real PostgreSQL. */
@@ -13,6 +14,8 @@ final class DiscoveryStatisticsTest extends DiscoveryTestCase
     {
         parent::setUp();
         Cache::flush();
+        // The statistics are for signed-in users.
+        $this->actingAs(User::factory()->create(), 'web');
     }
 
     public function test_the_overview_counts_the_catalogue_and_names_when_the_data_was_built(): void

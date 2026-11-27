@@ -22,7 +22,8 @@ Route::get('updates/summary', [DiscoveryController::class, 'summary']);
 Route::get('highlights', [DiscoveryController::class, 'highlights']);
 Route::get('calendar', [DiscoveryController::class, 'calendar']);
 
-Route::prefix('statistics')->group(static function (): void {
+// Statistics are for signed-in users only (a guest does not see the numbers of the system).
+Route::prefix('statistics')->middleware('scope:owner')->group(static function (): void {
     Route::get('overview', [StatisticsController::class, 'overview']);
     Route::get('series', [StatisticsController::class, 'series']);
     Route::get('distributions', [StatisticsController::class, 'distributions']);

@@ -4,12 +4,21 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Api\V2;
 
+use App\Models\User;
 use Tests\Support\Api\V2\FakesPostgresRows;
 
 /** The statistics screens with canned PostgreSQL rows: shaping, clamping, validation and the short cache. */
 final class StatisticsServiceTest extends V2TestCase
 {
     use FakesPostgresRows;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // The statistics are for signed-in users: act as one without storing it (the database is faked in these tests).
+        $this->actingAs((new User())->forceFill(['id' => 1, 'role' => 'user']), 'web');
+    }
 
     public function test_the_overview_adds_the_quality_tiers_and_formats_the_refresh_time_in_utc(): void
     {
