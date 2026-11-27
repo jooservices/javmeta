@@ -4,6 +4,20 @@ All notable changes to javmeta (XCrawler) are documented in this file. The forma
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 Releases are cut from `master` (see `docs/03-operations/release-process.md`).
 
+## [1.1.1] - 2026-11-27
+
+### Fixed
+
+- Gentosha and Tokuma Shoten magazines are accepted by any 13-digit JAN code, not only ISBN-13 numbers (GENTOSHA-, TOKUMA-), and Natural High and Comma codes that end in edition letters keep their product number (JOOXCR-720).
+
+### Changed
+
+- CrawlerX 1.9.1: the browser fetch no longer stalls on an IPv6 (AAAA) lookup that some sites' name servers never answer, a content link containing the word "enter" is no longer clicked as an age gate, and every Composer and npm dependency of the package is updated (JOOXCR-727, JOOXCR-522, JOOXCR-717). The browser scripts run on the browser host (192.168.10.19) and are deployed there separately from this release.
+
+### Database migrations
+
+None. Rolling back to v1.1.0-rc.1 (the release running on the nodes today) needs no database change.
+
 ## [1.1.0] - 2026-11-25
 
 ### Added
@@ -32,7 +46,7 @@ Releases are cut from `master` (see `docs/03-operations/release-process.md`).
 
 ### Database migrations
 
-None. Rolling back to v1.0.0 needs no database change. The 14 new source rows created by the deploy stay in `sources` after a rollback. A row that an operator switched on stays on: run `php artisan crawler:source-toggle SLUG off --by=NAME` for each such source before rolling back if it must not run.
+None. Rolling back to v1.0.0 needs no database change. The 14 new source rows created by the deploy stay in `sources` after a rollback. A row that an operator switched on stays on: run `php artisan crawler:source-toggle SLUG off --by=NAME` for each such source before rolling back if it must not run. Switching a source off stops only new dispatch: jobs already queued for it still fetch when a worker runs them, so let the queued work finish first (graceful worker drain, `docs/03-operations/deployment-automation-plan.md` TR-07).
 
 ## [1.0.0] - 2026-11-15
 
