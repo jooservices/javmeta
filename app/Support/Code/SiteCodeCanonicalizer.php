@@ -84,7 +84,7 @@ final class SiteCodeCanonicalizer
             '141jav' => preg_match('/^C(\d+)$/i', $raw, $match) === 1 ? 'C-' . $match[1] : null,
             'fc2' => self::qualifyFc2($raw),
             'xcity' => self::qualifyXcity($raw),
-            'comma' => self::qualifyCommaProductNumber($raw),
+            'comma', 'naturalhigh' => self::qualifyEditionSuffixedNumber($raw),
             'gentosha' => self::qualifyIsbn($raw, 'GENTOSHA'),
             'tokuma' => self::qualifyIsbn($raw, 'TOKUMA') ?? self::qualifyTokumaBookId($raw),
             'gravidia' => self::qualifyNumericId($raw, 'GRAVIDIA'),
@@ -277,13 +277,14 @@ final class SiteCodeCanonicalizer
     }
 
     /**
-     * COMMA VISION product numbers carry a trailing edition letter (COMT-070B); the number is the identity.
+     * COMMA VISION and Natural High product numbers carry edition letters after the number (COMT-070B, NHDTA-384AI);
+     * the number is the identity.
      *
      * @return non-empty-string|null
      */
-    private static function qualifyCommaProductNumber(string $raw): ?string
+    private static function qualifyEditionSuffixedNumber(string $raw): ?string
     {
-        if (preg_match('/^([A-Z]{2,12})[\s_-]?(\d{2,6})[A-Z]?$/u', mb_strtoupper(trim($raw)), $match) !== 1) {
+        if (preg_match('/^([A-Z]{2,12})[\s_-]?(\d{2,6})[A-Z]{0,2}$/u', mb_strtoupper(trim($raw)), $match) !== 1) {
             return null;
         }
 
@@ -291,7 +292,8 @@ final class SiteCodeCanonicalizer
     }
 
     /**
-     * Book publishers identify a title by its ISBN-13 (hyphens allowed); the publisher keeps it out of DVD codes.
+     * Book publishers identify a title by a 13-digit code (hyphens allowed): an ISBN (978...) for books and a JAN
+     * code (491...) for magazines and mooks. The publisher keeps it out of DVD codes.
      *
      * @return non-empty-string|null
      */
@@ -299,7 +301,7 @@ final class SiteCodeCanonicalizer
     {
         $digits = str_replace(['-', ' '], '', trim($raw));
 
-        return preg_match('/^97[89]\d{10}$/', $digits) === 1 ? $publisher . '-' . $digits : null;
+        return preg_match('/^\d{13}$/', $digits) === 1 ? $publisher . '-' . $digits : null;
     }
 
     /**
