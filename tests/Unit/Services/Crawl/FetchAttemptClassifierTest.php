@@ -25,6 +25,9 @@ final class FetchAttemptClassifierTest extends TestCase
             'ssrf policy' => ['ssrf_blocked', 403, CrawlFailureClass::OwnFault],
             'no answer at all' => ['fetch_error', null, CrawlFailureClass::OwnFault],
             'transport error with a status' => ['fetch_error', 200, CrawlFailureClass::OwnFault],
+            'time-out without a status' => ['timeout', null, CrawlFailureClass::OwnFault],
+            'time-out reported with a gateway status' => ['timeout', 504, CrawlFailureClass::OwnFault],
+            'network error without a status' => ['network', null, CrawlFailureClass::OwnFault],
             'no error code' => [null, null, CrawlFailureClass::Defect],
             'a code nobody knows' => ['something_new', null, CrawlFailureClass::Defect],
         ];

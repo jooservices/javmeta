@@ -352,8 +352,8 @@ so one source produces one issue per error code, however many URLs fail.
 row per source with failed attempts: its error count, the verdict
 (`App\Services\Crawl\FetchAttemptClassifier`) and the method, HTTP status and error code of
 its most frequent failing attempt, which is the evidence the verdict rests on. A source whose
-errors are mixed is judged by its most frequent group; use `crawler:fetch-report <source>` to
-see the rest.
+errors are mixed is judged by its most frequent group; use `crawler:fetch-report <source> --hours=72`
+(the same window; its default is 24 hours) to see the rest.
 
 Diagnostic mapping/storage failures emit a warning containing only the exception
 class and queue ID; they do not interrupt normal crawl success/failure handling.

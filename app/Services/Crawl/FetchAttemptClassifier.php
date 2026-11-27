@@ -12,7 +12,7 @@ final class FetchAttemptClassifier
     public function classify(?string $errorCode, ?int $httpStatus): CrawlFailureClass
     {
         return match (true) {
-            $errorCode === 'ssrf_blocked', $errorCode === 'fetch_error' => CrawlFailureClass::OwnFault,
+            in_array($errorCode, ['ssrf_blocked', 'fetch_error', 'timeout', 'network'], true) => CrawlFailureClass::OwnFault,
             $errorCode === 'challenge' => CrawlFailureClass::RealBlocker,
             in_array($httpStatus, [401, 404, 410, 429], true) => CrawlFailureClass::ExpectedOutcome,
             $httpStatus !== null && $httpStatus >= 400 && $httpStatus <= 599 => CrawlFailureClass::RealBlocker,
