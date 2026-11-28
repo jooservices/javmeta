@@ -640,11 +640,17 @@ Ngưỡng warning của metric javmeta_crawl_dispatch_stale; cảnh báo trực 
 
 Số nguyên; từ 30 đến 3600. Mã mục: `alerts.crawl_dispatch_warning_seconds`.
 
-### Việc đến hạn tối thiểu mỗi nguồn nóng
+### Việc đến hạn chờ quá lâu (phút)
 
-Cảnh báo khi nguồn đang crawl còn ít việc đến hạn hơn mức này.
+Cảnh báo khi việc đến hạn cũ nhất của một nguồn đang bật đã chờ lâu hơn mức này. 0 là tắt.
 
-Số nguyên; từ 0 đến 100000. Mã mục: `alerts.backlog_due_min_per_hot_source`.
+Số nguyên; từ 0 đến 525600. Mã mục: `alerts.backlog_age_max_minutes`.
+
+### Hàng đợi tăng tối đa mỗi giờ
+
+Cảnh báo khi số việc đến hạn của một nguồn đang bật tăng nhiều hơn mức này trong một giờ. 0 là tắt.
+
+Số nguyên; từ 0 đến 10000000. Mã mục: `alerts.backlog_growth_max_per_hour`.
 
 ### Số lần thử tối thiểu trong cửa sổ
 

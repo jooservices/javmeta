@@ -18,7 +18,8 @@ final class AlertMetrics
         $knownRules = ['success_rate', 'blocked_ratio', 'postgres_connections', 'dispatch_age'];
         foreach ($this->repository->enabledSourceSlugs() as $source) {
             $knownRules[] = 'source_success_rate:' . $source;
-            $knownRules[] = 'backlog_depth:' . $source;
+            $knownRules[] = 'backlog_age:' . $source;
+            $knownRules[] = 'backlog_growth:' . $source;
         }
         $rules = array_values(array_unique(array_merge($knownRules, $activeRules)));
         $points = [];

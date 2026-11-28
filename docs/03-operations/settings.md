@@ -26,6 +26,15 @@ New features (Telegram follow notifications and bot behavior, the library scanne
 
 `perf.warm_enabled` (default `true`, group Tìm kiếm) controls the `perf:warm` command, which has not been scheduled since JOOXCR-436 (the response cache replaced it) and now only matters when the command is run by hand. It appears automatically on Cài đặt and is applied from the database to `javmeta_perf.warm_enabled`. Turning it off stops proactive refreshes; request-driven caches still work. No environment variable is needed. See [performance](performance.md) for TTLs, subminute scheduling and verification limits.
 
+## Backlog alerts
+
+`alerts.backlog_age_max_minutes` (default 1440) and
+`alerts.backlog_growth_max_per_hour` (default 1000) are the limits of the two
+per-source backlog rules: the oldest due item waiting too long, and the due
+backlog growing too fast. They are database settings in Cài đặt → Cảnh báo
+and are applied to `javmeta_alerts.*`; 0 turns a rule off. Only enabled sources
+are judged. See [notifications](notifications.md) for how each rule is measured.
+
 ## Crawl dispatch alerts
 
 `alerts.dispatch_age_max_seconds` (default 60) controls the scheduled crawl

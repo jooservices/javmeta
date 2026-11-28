@@ -12,8 +12,11 @@ final class AlertMessageFormatter
         if (str_starts_with($rule, 'source_success_rate:')) {
             return 'crawl.source_success_low';
         }
-        if (str_starts_with($rule, 'backlog_depth:')) {
-            return 'crawl.backlog_by_source_high';
+        if (str_starts_with($rule, 'backlog_age:')) {
+            return 'crawl.backlog_age_high';
+        }
+        if (str_starts_with($rule, 'backlog_growth:')) {
+            return 'crawl.backlog_growth_high';
         }
 
         return match ($rule) {

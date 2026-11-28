@@ -63,7 +63,6 @@ final class AlertSnapshotReaderTest extends IntegrationTestCase
 
         self::assertSame(['attempts' => 3, 'successes' => 1, 'blocked' => 2], $snapshot['attempts_by_source']['alert-source']);
         self::assertContains('alert-source', $snapshot['enabled_sources']);
-        self::assertContains('alert-source', $snapshot['hot_sources']);
         self::assertSame(['alert-source' => 1], $snapshot['due_by_source']);
         self::assertTrue($snapshot['has_due_work']);
         self::assertNotNull($snapshot['postgres_connections']);
