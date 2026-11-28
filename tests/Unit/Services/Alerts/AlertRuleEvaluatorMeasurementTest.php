@@ -103,9 +103,19 @@ final class AlertRuleEvaluatorMeasurementTest extends TestCase
         $snapshot = $this->snapshot([], enabled: ['live'], due: ['live' => 7], growth: ['live' => 250, 'gone' => 9000]);
 
         self::assertSame(['value' => 250, 'threshold' => 1000, 'context' => ['source_slug' => 'live', 'due_items' => 7]], $this->evaluator()->measurement('backlog_growth:live', $snapshot));
-        self::assertSame(0, $this->evaluator()->measurement('backlog_growth:live', $this->snapshot([], enabled: ['live']))['value'], 'No history counts as zero.');
+        self::assertSame(0, $this->evaluator()->measurement('backlog_growth:live', $this->snapshot([], enabled: ['live'], growth: ['live' => 0]))['value'], 'A measured zero is a measurement.');
         self::assertNull($this->evaluator()->measurement('backlog_growth:gone', $snapshot));
         self::assertNull($this->evaluator()->measurement('backlog_growth', $snapshot));
+    }
+
+    public function test_a_missing_growth_figure_is_not_a_measurement_unless_the_rule_is_off(): void
+    {
+        $noHistory = $this->snapshot([], enabled: ['live'], due: ['live' => 7]);
+
+        self::assertNull($this->evaluator()->measurement('backlog_growth:live', $noHistory), 'No history is unknown, not zero.');
+
+        config(['javmeta_alerts.backlog_growth_max_per_hour' => 0]);
+        self::assertSame(0, $this->evaluator()->measurement('backlog_growth:live', $noHistory)['value'], 'A rule that is off has nothing to wait for.');
     }
 
     public function test_the_retired_backlog_depth_rule_has_no_measurement(): void

@@ -100,8 +100,9 @@ judged. `backlog_age` fires when the oldest due pending item of the source has
 waited more than `alerts.backlog_age_max_minutes` (default 1440, that is one
 day). `backlog_growth` fires when the due backlog of the source grew by more
 than `alerts.backlog_growth_max_per_hour` items (default 1000) against the
-sample kept about an hour earlier in the cache (`BacklogGrowthSampler`); after
-a cache flush it reports nothing until 45 minutes of history exist. A threshold
+sample nearest one hour old in the cache (`BacklogGrowthSampler`); after a
+cache flush it reports nothing until 45 minutes of history exist, and an open
+growth alert is neither raised nor resolved in the meantime. A threshold
 of 0 turns the rule off. Both thresholds are database settings on Cài đặt.
 When the overall success rule and one or more
 source rules fire together, the overall notice lists the three lowest-rate

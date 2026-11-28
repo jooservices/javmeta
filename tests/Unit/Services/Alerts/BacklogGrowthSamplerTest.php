@@ -66,6 +66,19 @@ final class BacklogGrowthSamplerTest extends TestCase
         self::assertSame(['a' => 1200], $growth);
     }
 
+    public function test_the_baseline_is_the_sample_nearest_one_hour_not_the_oldest_one_kept(): void
+    {
+        $sampler = $this->sampler();
+        $growth = [];
+        for ($step = 0; $step <= 17; $step++) {
+            $minute = $step * 5;
+            $due = $minute >= 15 ? 1300 : 0;
+            $growth = $sampler->growthPerHour(['a' => $due], $this->start->addMinutes($minute));
+        }
+
+        self::assertSame(['a' => 0], $growth, 'The backlog jumped 70 minutes ago and has not moved in the last hour.');
+    }
+
     public function test_a_second_call_within_five_minutes_does_not_replace_the_baseline(): void
     {
         $sampler = $this->sampler();

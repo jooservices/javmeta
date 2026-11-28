@@ -20,10 +20,13 @@ final class BacklogGrowthSampler
     /** A new sample is kept at most this often, so the baseline does not creep forward with every evaluation. */
     private const SAMPLE_EVERY_SECONDS = 300;
 
-    /** Samples older than this are dropped; the oldest one left is the baseline. */
+    /** Samples older than this are dropped. */
     private const KEEP_SECONDS = 4500;
 
     private const MINIMUM_HISTORY_SECONDS = 2700;
+
+    /** The baseline is the sample whose age is nearest to this: growth is reported per hour. */
+    private const TARGET_HISTORY_SECONDS = 3600;
 
     public function __construct(private readonly Repository $cache) {}
 
@@ -40,14 +43,14 @@ final class BacklogGrowthSampler
             $this->samples(),
             static fn(array $sample): bool => $at - $sample['at'] <= self::KEEP_SECONDS,
         ));
-        $baseline = $samples[0] ?? null;
+        $baseline = $this->baseline($samples, $at);
 
         if ($samples === [] || $at - $samples[array_key_last($samples)]['at'] >= self::SAMPLE_EVERY_SECONDS) {
             $samples[] = ['at' => $at, 'due' => $dueBySource];
         }
         $this->cache->put(self::KEY, $samples, self::KEEP_SECONDS);
 
-        if ($baseline === null || $at - $baseline['at'] < self::MINIMUM_HISTORY_SECONDS) {
+        if ($baseline === null) {
             return [];
         }
 
@@ -58,6 +61,28 @@ final class BacklogGrowthSampler
         }
 
         return $growth;
+    }
+
+    /**
+     * The sample nearest one hour old, as long as it is at least 45 minutes old.
+     *
+     * @param list<array{at: int, due: array<string, int>}> $samples
+     * @return array{at: int, due: array<string, int>}|null
+     */
+    private function baseline(array $samples, int $at): ?array
+    {
+        $baseline = null;
+        foreach ($samples as $sample) {
+            $age = $at - $sample['at'];
+            if ($age < self::MINIMUM_HISTORY_SECONDS) {
+                continue;
+            }
+            if ($baseline === null || abs($age - self::TARGET_HISTORY_SECONDS) < abs($at - $baseline['at'] - self::TARGET_HISTORY_SECONDS)) {
+                $baseline = $sample;
+            }
+        }
+
+        return $baseline;
     }
 
     /** @return list<array{at: int, due: array<string, int>}> */

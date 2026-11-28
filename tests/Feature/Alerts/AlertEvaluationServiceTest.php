@@ -226,6 +226,44 @@ final class AlertEvaluationServiceTest extends TestCase
         self::assertNull(AlertEvent::query()->where('rule', 'success_rate')->firstOrFail()->getAttribute('resolved_at'));
     }
 
+    public function test_a_missing_growth_sample_does_not_resolve_an_open_growth_alert_but_a_measured_zero_does(): void
+    {
+        $this->useSnapshot($this->snapshot(100, 100, ['due_growth_per_hour_by_source' => ['javdb' => 1500]]));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        $event = fn(): AlertEvent => AlertEvent::query()->where('rule', 'backlog_growth:javdb')->firstOrFail();
+        self::assertNull($event()->getAttribute('resolved_at'));
+
+        $this->travel(1)->minute();
+        $this->useSnapshot($this->snapshot(100, 100, ['due_growth_per_hour_by_source' => []]));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        self::assertNull($event()->getAttribute('resolved_at'), 'No growth figure after a cache flush is not a recovery.');
+
+        $this->travel(1)->minute();
+        $this->useSnapshot($this->snapshot(100, 100, ['due_growth_per_hour_by_source' => ['javdb' => 0]]));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        self::assertNotNull($event()->getAttribute('resolved_at'), 'A measured growth of zero is a recovery.');
+    }
+
+    public function test_an_open_growth_alert_resolves_when_its_source_is_disabled_or_the_rule_is_switched_off(): void
+    {
+        $this->useSnapshot($this->snapshot(100, 100, ['due_growth_per_hour_by_source' => ['javdb' => 1500]]));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+
+        $this->travel(1)->minute();
+        $this->useSnapshot($this->snapshot(100, 100, ['enabled_sources' => [], 'due_growth_per_hour_by_source' => []]));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        self::assertNotNull(AlertEvent::query()->where('rule', 'backlog_growth:javdb')->firstOrFail()->getAttribute('resolved_at'));
+
+        $this->travel(1)->minute();
+        $this->useSnapshot($this->snapshot(100, 100, ['due_growth_per_hour_by_source' => ['javdb' => 1500]]));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        $this->travel(1)->minute();
+        config()->set('javmeta_alerts.backlog_growth_max_per_hour', 0);
+        $this->useSnapshot($this->snapshot(100, 100, ['due_growth_per_hour_by_source' => []]));
+        $this->artisan('alerts:evaluate')->assertSuccessful();
+        self::assertSame(2, AlertEvent::query()->where('rule', 'backlog_growth:javdb')->whereNotNull('resolved_at')->count());
+    }
+
     public function test_recovery_only_goes_to_channels_that_received_the_open_notice(): void
     {
         $this->setSuccessRateTier('critical');
@@ -425,10 +463,13 @@ final class AlertEvaluationServiceTest extends TestCase
         $service->save('crawl.success_rate_low', [...$policy, 'tier' => $tier, 'send_resolved' => true], null);
     }
 
-    /** @return array<string, mixed> */
-    private function snapshot(int $attempts, int $successes): array
+    /**
+     * @param array<string, mixed> $overrides
+     * @return array<string, mixed>
+     */
+    private function snapshot(int $attempts, int $successes, array $overrides = []): array
     {
-        return [
+        return [...[
             'attempts_by_source' => ['javdb' => ['attempts' => $attempts, 'successes' => $successes, 'blocked' => 0]],
             'enabled_sources' => ['javdb'],
             'due_by_source' => ['javdb' => 20],
@@ -437,7 +478,7 @@ final class AlertEvaluationServiceTest extends TestCase
             'postgres_connections' => null,
             'dispatch_age_seconds' => 0,
             'has_due_work' => false,
-        ];
+        ], ...$overrides];
     }
 
     /** @return array<string, mixed> */

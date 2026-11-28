@@ -254,13 +254,13 @@ final class AlertEvaluationService
         if (in_array($rule, ['success_rate', 'success_rate_critical', 'blocked_ratio'], true)) {
             return true;
         }
-        if (! str_starts_with($rule, 'source_success_rate:')) {
-            return false;
+        foreach (['source_success_rate:', 'backlog_growth:'] as $prefix) {
+            if (str_starts_with($rule, $prefix)) {
+                return in_array(substr($rule, strlen($prefix)), $snapshot['enabled_sources'], true);
+            }
         }
 
-        $source = substr($rule, strlen('source_success_rate:'));
-
-        return in_array($source, $snapshot['enabled_sources'], true);
+        return false;
     }
 
     /** @return array<string, array<string, int>> */

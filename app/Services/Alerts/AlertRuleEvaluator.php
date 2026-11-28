@@ -177,11 +177,14 @@ final class AlertRuleEvaluator
             return null;
         }
 
-        return [
-            'value' => $snapshot['due_growth_per_hour_by_source'][$source] ?? 0,
-            'threshold' => max(0, (int) config('javmeta_alerts.backlog_growth_max_per_hour', 1000)),
-            'context' => $this->backlogContext($snapshot, $source),
-        ];
+        $threshold = max(0, (int) config('javmeta_alerts.backlog_growth_max_per_hour', 1000));
+        $growth = $snapshot['due_growth_per_hour_by_source'][$source] ?? null;
+        if ($growth === null && $threshold > 0) {
+            // No history yet (a flushed cache): the growth is unknown, which is not the same as no growth.
+            return null;
+        }
+
+        return ['value' => $growth ?? 0, 'threshold' => $threshold, 'context' => $this->backlogContext($snapshot, $source)];
     }
 
     /** @param AlertSnapshot $snapshot */
