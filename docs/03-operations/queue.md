@@ -254,6 +254,8 @@ pacing, the gaps and the in-flight limits still decide how many requests go out.
 priority. `javmeta_crawl_queue_priority_depth{priority,state}` shows, per level, the rows that are due (`due`) and those that are
 claimed and unfinished (`claimed`); only the direct lane is counted.
 
+A source that is enabled but has no due work is not necessarily broken; [idle sources](idle-sources.md) records, with numbers and a date, which cause applies to each one that was investigated.
+
 ## Delayed retry lane
 
 The normal lane gets up to `crawl.max_attempts` attempts per URL. Transient
