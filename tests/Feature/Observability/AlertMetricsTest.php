@@ -49,6 +49,9 @@ final class AlertMetricsTest extends TestCase
 
         self::assertContains(['name' => 'javmeta_alert_firing', 'value' => 1, 'labels' => ['rule' => 'success_rate']], $firing);
         self::assertContains(['name' => 'javmeta_alert_firing', 'value' => 0, 'labels' => ['rule' => 'source_success_rate:javdb']], $firing);
+        self::assertContains(['name' => 'javmeta_alert_firing', 'value' => 0, 'labels' => ['rule' => 'backlog_age:javdb']], $firing);
+        self::assertContains(['name' => 'javmeta_alert_firing', 'value' => 0, 'labels' => ['rule' => 'backlog_growth:javdb']], $firing);
+        self::assertNotContains(['name' => 'javmeta_alert_firing', 'value' => 0, 'labels' => ['rule' => 'backlog_depth:javdb']], $firing);
         self::assertContains(['name' => 'javmeta_alert_event_count', 'value' => 1, 'labels' => ['state' => 'firing', 'severity' => 'warning']], $counts);
         self::assertContains(['name' => 'javmeta_alert_event_count', 'value' => 1, 'labels' => ['state' => 'resolved', 'severity' => 'warning']], $counts);
     }

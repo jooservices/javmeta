@@ -89,13 +89,28 @@ final class AlertTemplateValuesTest extends TestCase
         self::assertSame('', $idle['due_items']);
     }
 
-    public function test_backlog_depth_names_its_source_and_an_unknown_rule_has_no_values(): void
+    public function test_backlog_age_names_its_source_the_age_and_the_limit(): void
     {
         self::assertSame(
-            ['source_slug' => 'hot', 'due_items' => 3, 'minimum_items' => 10],
-            $this->values('backlog_depth:hot', 3, 10),
+            ['source_slug' => 'hot', 'oldest_due_minutes' => 1500, 'maximum_minutes' => 1440, 'due_items' => 40],
+            $this->values('backlog_age:hot', 1500, 1440, ['due_items' => 40]),
         );
-        self::assertSame('ctx', $this->values('backlog_depth:hot', 3, 10, ['source_slug' => 'ctx'])['source_slug']);
+        self::assertSame('ctx', $this->values('backlog_age:hot', 1500, 1440, ['source_slug' => 'ctx'])['source_slug']);
+        self::assertSame('', $this->values('backlog_age:hot', 1500, 1440)['due_items']);
+    }
+
+    public function test_backlog_growth_names_its_source_the_growth_and_the_limit(): void
+    {
+        self::assertSame(
+            ['source_slug' => 'hot', 'growth_per_hour' => 1500, 'maximum_per_hour' => 1000, 'due_items' => 4000],
+            $this->values('backlog_growth:hot', 1500, 1000, ['due_items' => 4000]),
+        );
+        self::assertSame('ctx', $this->values('backlog_growth:hot', 1500, 1000, ['source_slug' => 'ctx'])['source_slug']);
+    }
+
+    public function test_the_retired_backlog_depth_rule_and_an_unknown_rule_have_no_values(): void
+    {
+        self::assertSame([], $this->values('backlog_depth:hot', 3, 10));
         self::assertSame([], $this->values('no_such_rule', 1, 1));
     }
 

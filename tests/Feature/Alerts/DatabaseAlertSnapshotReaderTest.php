@@ -72,7 +72,9 @@ final class DatabaseAlertSnapshotReaderTest extends TestCase
 
         self::assertSame(['attempts' => 3, 'successes' => 1, 'blocked' => 2], $snapshot['attempts_by_source']['alert-source']);
         self::assertContains('alert-source', $snapshot['enabled_sources']);
-        self::assertContains('alert-source', $snapshot['hot_sources']);
+        self::assertSame(['alert-source' => 1], $snapshot['due_by_source']);
+        self::assertEqualsWithDelta(60, $snapshot['oldest_due_age_by_source']['alert-source'], 5, 'The due item has waited about one minute.');
+        self::assertSame([], $snapshot['due_growth_per_hour_by_source'], 'The first evaluation has no history to compare with.');
         self::assertSame(['alert-source' => 1], $snapshot['due_by_source']);
         self::assertTrue($snapshot['has_due_work']);
         self::assertNull($snapshot['postgres_connections']);

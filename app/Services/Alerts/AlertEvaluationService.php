@@ -9,6 +9,7 @@ use App\Services\Notifications\NotificationRenderer;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 
+/** @phpstan-import-type AlertSnapshot from AlertSnapshotReader */
 final class AlertEvaluationService
 {
     private const LAST_EVALUATED_KEY = 'javmeta:alerts:last-evaluated-at';
@@ -126,7 +127,7 @@ final class AlertEvaluationService
         }
     }
 
-    /** @param array{attempts_by_source: array<string, array{attempts: int, successes: int, blocked: int}>, enabled_sources: list<string>, hot_sources: list<string>, due_by_source: array<string, int>, postgres_connections: int|null, dispatch_age_seconds: int|null, has_due_work: bool} $snapshot */
+    /** @param AlertSnapshot $snapshot */
     private function resolve(array &$event, string $rule, array $snapshot): void
     {
         $measurement = $this->rules->measurement($rule, $snapshot);
@@ -247,7 +248,7 @@ final class AlertEvaluationService
         }
     }
 
-    /** @param array{attempts_by_source: array<string, array{attempts: int, successes: int, blocked: int}>, enabled_sources: list<string>, hot_sources: list<string>, due_by_source: array<string, int>, postgres_connections: int|null, dispatch_age_seconds: int|null, has_due_work: bool} $snapshot */
+    /** @param AlertSnapshot $snapshot */
     private function needsRateSample(string $rule, array $snapshot): bool
     {
         if (in_array($rule, ['success_rate', 'success_rate_critical', 'blocked_ratio'], true)) {

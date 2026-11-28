@@ -607,9 +607,13 @@ return [
             'label' => 'Ngưỡng metric điều phối crawl (giây)',
             'description' => 'Ngưỡng warning của metric javmeta_crawl_dispatch_stale; cảnh báo trực tiếp dùng ngưỡng riêng bên trên.',
         ],
-        'alerts__backlog_due_min_per_hot_source' => [
-            'label' => 'Việc đến hạn tối thiểu mỗi nguồn nóng',
-            'description' => 'Cảnh báo khi nguồn đang crawl còn ít việc đến hạn hơn mức này.',
+        'alerts__backlog_age_max_minutes' => [
+            'label' => 'Việc đến hạn chờ quá lâu (phút)',
+            'description' => 'Cảnh báo khi việc đến hạn cũ nhất của một nguồn đang bật đã chờ lâu hơn mức này. 0 là tắt.',
+        ],
+        'alerts__backlog_growth_max_per_hour' => [
+            'label' => 'Hàng đợi tăng tối đa mỗi giờ',
+            'description' => 'Cảnh báo khi số việc đến hạn của một nguồn đang bật tăng nhiều hơn mức này trong một giờ. 0 là tắt.',
         ],
         'alerts__min_attempts_in_window' => [
             'label' => 'Số lần thử tối thiểu trong cửa sổ',

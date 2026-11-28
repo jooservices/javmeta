@@ -25,9 +25,13 @@ return [
             'name' => 'Crawl dispatch delayed',
             'usage' => 'Sent when due work remains undispatched.',
         ],
-        'crawl__backlog_by_source_high' => [
-            'name' => 'Source queue nearly empty',
-            'usage' => 'Sent when a source has very few due items left.',
+        'crawl__backlog_age_high' => [
+            'name' => 'Source work waiting too long',
+            'usage' => 'Sent when the oldest due item of an enabled source has waited too long.',
+        ],
+        'crawl__backlog_growth_high' => [
+            'name' => 'Source backlog growing too fast',
+            'usage' => 'Sent when the due items of an enabled source grow too much in one hour.',
         ],
         'crawl__heartbeat_stale' => [
             'name' => 'Worker heartbeat lost',

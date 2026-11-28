@@ -31,10 +31,15 @@ return  [
               'name' => 'Điều phối crawl bị trễ',
               'usage' => 'Gửi khi còn việc đến hạn nhưng chưa được điều phối.',
           ],
-         'crawl__backlog_by_source_high'
+         'crawl__backlog_age_high'
           => [
-              'name' => 'Hàng đợi của nguồn gần cạn',
-              'usage' => 'Gửi khi một nguồn còn rất ít việc đến hạn.',
+              'name' => 'Việc đến hạn của nguồn chờ quá lâu',
+              'usage' => 'Gửi khi việc đến hạn cũ nhất của một nguồn đang bật đã chờ quá lâu.',
+          ],
+         'crawl__backlog_growth_high'
+          => [
+              'name' => 'Hàng đợi của nguồn tăng quá nhanh',
+              'usage' => 'Gửi khi số việc đến hạn của một nguồn đang bật tăng quá nhiều trong một giờ.',
           ],
          'crawl__heartbeat_stale'
           => [

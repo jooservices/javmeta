@@ -18,7 +18,9 @@ final class AlertMessageFormatterTest extends TestCase
         self::assertSame('crawl.source_success_low', $formatter->templateKey('source_success_rate:javbus'));
         self::assertSame('database.connections_high', $formatter->templateKey('postgres_connections'));
         self::assertSame('crawl.dispatch_delayed', $formatter->templateKey('dispatch_age'));
-        self::assertSame('crawl.backlog_by_source_high', $formatter->templateKey('backlog_depth:javbus'));
+        self::assertSame('crawl.backlog_age_high', $formatter->templateKey('backlog_age:javbus'));
+        self::assertSame('crawl.backlog_growth_high', $formatter->templateKey('backlog_growth:javbus'));
+        self::assertNull($formatter->templateKey('backlog_depth:javbus'), 'The retired rule has no template.');
         self::assertNull($formatter->templateKey('unknown_rule'));
     }
 }

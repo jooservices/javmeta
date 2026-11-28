@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Alerts;
 
+/** @phpstan-import-type AlertSnapshot from AlertSnapshotReader */
 final class AlertRuleEvaluator
 {
     /**
-     * @param array{attempts_by_source: array<string, array{attempts: int, successes: int, blocked: int}>, enabled_sources: list<string>, hot_sources: list<string>, due_by_source: array<string, int>, postgres_connections: int|null, dispatch_age_seconds: int|null, has_due_work: bool} $snapshot
+     * @param AlertSnapshot $snapshot
      * @return array{value: float|int, threshold: float|int, context: array<string, mixed>}|null
      */
     public function measurement(string $rule, array $snapshot): ?array
@@ -36,17 +37,14 @@ final class AlertRuleEvaluator
                     'due_items' => array_sum($snapshot['due_by_source']),
                 ],
             ],
-            'backlog_depth' => $source === null || ! in_array($source, $snapshot['hot_sources'], true) ? null : [
-                'value' => $snapshot['due_by_source'][$source] ?? 0,
-                'threshold' => max(0, (int) config('javmeta_alerts.backlog_due_min_per_hot_source', 10)),
-                'context' => ['source_slug' => $source],
-            ],
+            'backlog_age' => $this->backlogAgeMeasurement($source, $snapshot),
+            'backlog_growth' => $this->backlogGrowthMeasurement($source, $snapshot),
             default => null,
         };
     }
 
     /**
-     * @param array{attempts_by_source: array<string, array{attempts: int, successes: int, blocked: int}>, enabled_sources: list<string>, hot_sources: list<string>, due_by_source: array<string, int>, postgres_connections: int|null, dispatch_age_seconds: int|null, has_due_work: bool} $snapshot
+     * @param AlertSnapshot $snapshot
      * @return array<string, array{severity: string, value: float|int, threshold: float|int, context: array<string, mixed>}>
      */
     public function evaluate(array $snapshot): array
@@ -82,7 +80,7 @@ final class AlertRuleEvaluator
     }
 
     /**
-     * @param array{attempts_by_source: array<string, array{attempts: int, successes: int, blocked: int}>, enabled_sources: list<string>, hot_sources: list<string>, due_by_source: array<string, int>, postgres_connections: int|null, dispatch_age_seconds: int|null, has_due_work: bool} $snapshot
+     * @param AlertSnapshot $snapshot
      * @param array<string, array{severity: string, value: float|int, threshold: float|int, context: array<string, mixed>}> $rules
      */
     private function sourceSuccessRules(array $snapshot, int $minimumAttempts, float $threshold, array &$rules): void
@@ -105,7 +103,7 @@ final class AlertRuleEvaluator
     }
 
     /**
-     * @param array{attempts_by_source: array<string, array{attempts: int, successes: int, blocked: int}>, enabled_sources: list<string>, hot_sources: list<string>, due_by_source: array<string, int>, postgres_connections: int|null, dispatch_age_seconds: int|null, has_due_work: bool} $snapshot
+     * @param AlertSnapshot $snapshot
      * @param array<string, array{severity: string, value: float|int, threshold: float|int, context: array<string, mixed>}> $rules
      */
     private function capacityRules(array $snapshot, array &$rules): void
@@ -127,22 +125,78 @@ final class AlertRuleEvaluator
     }
 
     /**
-     * @param array{attempts_by_source: array<string, array{attempts: int, successes: int, blocked: int}>, enabled_sources: list<string>, hot_sources: list<string>, due_by_source: array<string, int>, postgres_connections: int|null, dispatch_age_seconds: int|null, has_due_work: bool} $snapshot
+     * A source that is caught up raises nothing: the rules look at work that is late (the oldest due item) or that piles up
+     * (the backlog growing), never at how little there is. Only enabled sources are judged; a switched-off source keeps its
+     * stranded rows without alerting.
+     *
+     * @param AlertSnapshot $snapshot
      * @param array<string, array{severity: string, value: float|int, threshold: float|int, context: array<string, mixed>}> $rules
      */
     private function backlogRules(array $snapshot, array &$rules): void
     {
-        $threshold = max(0, (int) config('javmeta_alerts.backlog_due_min_per_hot_source', 10));
-        if ($threshold === 0) {
-            return;
-        }
+        $maximumAge = max(0, (int) config('javmeta_alerts.backlog_age_max_minutes', 1440));
+        $maximumGrowth = max(0, (int) config('javmeta_alerts.backlog_growth_max_per_hour', 1000));
 
-        foreach ($snapshot['hot_sources'] as $source) {
-            $due = $snapshot['due_by_source'][$source] ?? 0;
-            if ($due < $threshold) {
-                $rules['backlog_depth:' . $source] = $this->condition($due, $threshold, ['source_slug' => $source]);
+        foreach ($snapshot['enabled_sources'] as $source) {
+            $age = $this->oldestDueMinutes($snapshot, $source);
+            if ($maximumAge > 0 && $age > $maximumAge) {
+                $rules['backlog_age:' . $source] = $this->condition($age, $maximumAge, $this->backlogContext($snapshot, $source));
+            }
+
+            $growth = $snapshot['due_growth_per_hour_by_source'][$source] ?? 0;
+            if ($maximumGrowth > 0 && $growth > $maximumGrowth) {
+                $rules['backlog_growth:' . $source] = $this->condition($growth, $maximumGrowth, $this->backlogContext($snapshot, $source));
             }
         }
+    }
+
+    /**
+     * @param AlertSnapshot $snapshot
+     * @return array{value: int, threshold: int, context: array<string, mixed>}|null
+     */
+    private function backlogAgeMeasurement(?string $source, array $snapshot): ?array
+    {
+        if ($source === null || ! in_array($source, $snapshot['enabled_sources'], true)) {
+            return null;
+        }
+
+        return [
+            'value' => $this->oldestDueMinutes($snapshot, $source),
+            'threshold' => max(0, (int) config('javmeta_alerts.backlog_age_max_minutes', 1440)),
+            'context' => $this->backlogContext($snapshot, $source),
+        ];
+    }
+
+    /**
+     * @param AlertSnapshot $snapshot
+     * @return array{value: int, threshold: int, context: array<string, mixed>}|null
+     */
+    private function backlogGrowthMeasurement(?string $source, array $snapshot): ?array
+    {
+        if ($source === null || ! in_array($source, $snapshot['enabled_sources'], true)) {
+            return null;
+        }
+
+        return [
+            'value' => $snapshot['due_growth_per_hour_by_source'][$source] ?? 0,
+            'threshold' => max(0, (int) config('javmeta_alerts.backlog_growth_max_per_hour', 1000)),
+            'context' => $this->backlogContext($snapshot, $source),
+        ];
+    }
+
+    /** @param AlertSnapshot $snapshot */
+    private function oldestDueMinutes(array $snapshot, string $source): int
+    {
+        return intdiv($snapshot['oldest_due_age_by_source'][$source] ?? 0, 60);
+    }
+
+    /**
+     * @param AlertSnapshot $snapshot
+     * @return array{source_slug: string, due_items: int}
+     */
+    private function backlogContext(array $snapshot, string $source): array
+    {
+        return ['source_slug' => $source, 'due_items' => $snapshot['due_by_source'][$source] ?? 0];
     }
 
     /** @param array<string, mixed> $context
@@ -159,7 +213,7 @@ final class AlertRuleEvaluator
     }
 
     /**
-     * @param array{attempts_by_source: array<string, array{attempts: int, successes: int, blocked: int}>, enabled_sources: list<string>, hot_sources: list<string>, due_by_source: array<string, int>, postgres_connections: int|null, dispatch_age_seconds: int|null, has_due_work: bool} $snapshot
+     * @param AlertSnapshot $snapshot
      * @return array{value: float, threshold: float, context: array<string, mixed>}|null
      */
     private function globalRateMeasurement(array $snapshot, string $numerator, string $thresholdKey): ?array
@@ -179,7 +233,7 @@ final class AlertRuleEvaluator
     }
 
     /**
-     * @param array{attempts_by_source: array<string, array{attempts: int, successes: int, blocked: int}>, enabled_sources: list<string>, hot_sources: list<string>, due_by_source: array<string, int>, postgres_connections: int|null, dispatch_age_seconds: int|null, has_due_work: bool} $snapshot
+     * @param AlertSnapshot $snapshot
      * @return array{value: float, threshold: float, context: array<string, mixed>}|null
      */
     private function sourceRateMeasurement(?string $source, array $snapshot): ?array
@@ -204,7 +258,7 @@ final class AlertRuleEvaluator
     }
 
     /**
-     * @param array{attempts_by_source: array<string, array{attempts: int, successes: int, blocked: int}>, enabled_sources: list<string>, hot_sources: list<string>, due_by_source: array<string, int>, postgres_connections: int|null, dispatch_age_seconds: int|null, has_due_work: bool} $snapshot
+     * @param AlertSnapshot $snapshot
      * @return array{window_minutes: int, top_sources: list<string>}
      */
     private function rateContext(array $snapshot, int $minimumAttempts): array

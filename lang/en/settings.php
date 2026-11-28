@@ -607,9 +607,13 @@ return [
             'label' => 'Crawl dispatch metric threshold (seconds)',
             'description' => 'Warning threshold of the javmeta_crawl_dispatch_stale metric; direct alerts use their own threshold above.',
         ],
-        'alerts__backlog_due_min_per_hot_source' => [
-            'label' => 'Minimum due jobs per hot source',
-            'description' => 'Alerts when a crawling source has fewer due jobs than this.',
+        'alerts__backlog_age_max_minutes' => [
+            'label' => 'Due work waiting for more than (minutes)',
+            'description' => 'Alerts when the oldest due item of an enabled source has waited longer than this. 0 turns it off.',
+        ],
+        'alerts__backlog_growth_max_per_hour' => [
+            'label' => 'Maximum backlog growth per hour',
+            'description' => 'Alerts when the due items of an enabled source grow by more than this in one hour. 0 turns it off.',
         ],
         'alerts__min_attempts_in_window' => [
             'label' => 'Minimum attempts in the window',

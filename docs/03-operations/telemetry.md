@@ -81,7 +81,7 @@ environment.
 | `javmeta_postgres_connection_budget_limit` | — | Maximum worker demand after subtracting the configured non-worker reserve from the role limit. |
 | `javmeta_postgres_connection_demand_warning_threshold` | — | Warning threshold in PostgreSQL slots; 75% of the role limit by default. |
 | `javmeta_postgres_connection_demand_warning` | — | `1` when configured worker demand meets or exceeds the warning threshold, otherwise `0`. |
-| `javmeta_alert_firing` | `rule` | Unitless 0/1 gauge while a rule is firing. Source rules use `source_success_rate:<slug>` and `backlog_depth:<slug>`. |
+| `javmeta_alert_firing` | `rule` | Unitless 0/1 gauge while a rule is firing. Source rules use `source_success_rate:<slug>`, `backlog_age:<slug>` and `backlog_growth:<slug>`. |
 | `javmeta_alert_event_count` | `state`, `severity` | Episode count, split into `firing` or `resolved` and `warning`, `critical` or `info`. Retention follows `alerts.history_retention_days`. |
 | `javmeta_mongo_archive_write_failures` | — | Cumulative count of failed Mongo archive writes since the cache counter was created. |
 | `javmeta_elasticsearch_request_failures` | — | Cumulative count of failed Elasticsearch requests since the cache counter was created. |

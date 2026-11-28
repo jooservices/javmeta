@@ -92,10 +92,18 @@ Cloudflare mitigation marker counts as blocked. Rate rules require at least
 100 attempts by default. Per-source rate checks cover enabled sources.
 
 Rules cover overall and per-source success rate, blocked ratio, PostgreSQL
-client connections, dispatch age while due work exists, and due backlog per
-hot source. A source is hot when enabled and it has a recent success or fetch
-attempt in the evaluation window. Backlog alerts fire below the configured
-due-row floor, including zero. When the overall success rule and one or more
+client connections, dispatch age while due work exists, and, per enabled
+source, how late its due work is (`backlog_age`) and how fast its due backlog
+grows (`backlog_growth`). Neither backlog rule looks at how little there is: a
+source that is caught up never alerts, and a source that is switched off is not
+judged. `backlog_age` fires when the oldest due pending item of the source has
+waited more than `alerts.backlog_age_max_minutes` (default 1440, that is one
+day). `backlog_growth` fires when the due backlog of the source grew by more
+than `alerts.backlog_growth_max_per_hour` items (default 1000) against the
+sample kept about an hour earlier in the cache (`BacklogGrowthSampler`); after
+a cache flush it reports nothing until 45 minutes of history exist. A threshold
+of 0 turns the rule off. Both thresholds are database settings on Cài đặt.
+When the overall success rule and one or more
 source rules fire together, the overall notice lists the three lowest-rate
 sources and suppresses duplicate source notices for that evaluation.
 
@@ -130,7 +138,8 @@ and `php artisan alerts:list --hours=24` to inspect history.
 | Blocked ratio | 403, 429 or Cloudflare-marked attempts exceed configured maximum | Above 10% |
 | PostgreSQL connections | Client connections exceed configured maximum | Above 45 |
 | Dispatch age | Due work exists without a recent feed-pool dispatch | Above 60 seconds |
-| Due backlog per hot source | Due pending rows fall below the configured source floor | Below 10 rows |
+| Due work waiting too long | The oldest due pending item of an enabled source has waited longer than the limit | More than 1440 minutes |
+| Due backlog growing | The due backlog of an enabled source grew by more than the limit in an hour | More than 1000 items per hour |
 
 The safety evaluator rules use the same database templates as the operational
 alert senders. It keeps the configured evaluation, cooldown and channel retry

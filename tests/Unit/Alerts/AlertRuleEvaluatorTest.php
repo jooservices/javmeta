@@ -19,7 +19,8 @@ final class AlertRuleEvaluatorTest extends TestCase
             'javmeta_alerts.min_attempts_in_window' => 100,
             'javmeta_alerts.pg_connections_max' => 45,
             'javmeta_alerts.dispatch_age_max_seconds' => 60,
-            'javmeta_alerts.backlog_due_min_per_hot_source' => 10,
+            'javmeta_alerts.backlog_age_max_minutes' => 1440,
+            'javmeta_alerts.backlog_growth_max_per_hour' => 1000,
             'javmeta_alerts.window_minutes' => 15,
         ]);
     }
@@ -77,7 +78,7 @@ final class AlertRuleEvaluatorTest extends TestCase
         self::assertSame(10.0, $rules['blocked_ratio']['value']);
     }
 
-    public function test_capacity_dispatch_and_low_backlog_rules_fire_at_their_limits(): void
+    public function test_capacity_and_dispatch_rules_fire_at_their_limits(): void
     {
         $rules = (new AlertRuleEvaluator())->evaluate($this->snapshot(
             ['javdb' => ['attempts' => 100, 'successes' => 90, 'blocked' => 0]],
@@ -88,7 +89,96 @@ final class AlertRuleEvaluatorTest extends TestCase
 
         self::assertArrayHasKey('postgres_connections', $rules);
         self::assertArrayHasKey('dispatch_age', $rules);
-        self::assertArrayHasKey('backlog_depth:javdb', $rules);
+    }
+
+    public function test_a_caught_up_source_raises_no_backlog_alert(): void
+    {
+        $rules = (new AlertRuleEvaluator())->evaluate($this->snapshot(
+            ['javdb' => ['attempts' => 100, 'successes' => 95, 'blocked' => 0]],
+            dueBySource: [],
+            hasDueWork: false,
+        ));
+
+        self::assertSame([], array_filter(array_keys($rules), static fn(string $rule): bool => str_starts_with($rule, 'backlog_')));
+    }
+
+    public function test_a_source_with_recent_due_work_and_a_slow_backlog_raises_no_backlog_alert(): void
+    {
+        $rules = (new AlertRuleEvaluator())->evaluate($this->snapshot(
+            ['javdb' => ['attempts' => 100, 'successes' => 95, 'blocked' => 0]],
+            dueBySource: ['javdb' => 2000],
+            oldestDueAge: ['javdb' => 1440 * 60],
+            growth: ['javdb' => 1000],
+        ));
+
+        self::assertArrayNotHasKey('backlog_age:javdb', $rules, 'Exactly the limit is not late.');
+        self::assertArrayNotHasKey('backlog_growth:javdb', $rules, 'Exactly the limit is not growing too fast.');
+    }
+
+    public function test_a_source_whose_oldest_due_item_is_older_than_the_threshold_raises_an_alert(): void
+    {
+        $rules = (new AlertRuleEvaluator())->evaluate($this->snapshot(
+            ['javdb' => ['attempts' => 100, 'successes' => 95, 'blocked' => 0]],
+            dueBySource: ['javdb' => 40],
+            oldestDueAge: ['javdb' => 1441 * 60],
+        ));
+
+        self::assertSame(
+            ['severity' => 'warning', 'value' => 1441.0, 'threshold' => 1440, 'context' => ['source_slug' => 'javdb', 'due_items' => 40]],
+            $rules['backlog_age:javdb'],
+        );
+    }
+
+    public function test_a_source_whose_backlog_grows_faster_than_the_threshold_raises_an_alert(): void
+    {
+        $rules = (new AlertRuleEvaluator())->evaluate($this->snapshot(
+            ['javdb' => ['attempts' => 100, 'successes' => 95, 'blocked' => 0]],
+            dueBySource: ['javdb' => 3000],
+            growth: ['javdb' => 1001],
+        ));
+
+        self::assertSame(
+            ['severity' => 'warning', 'value' => 1001.0, 'threshold' => 1000, 'context' => ['source_slug' => 'javdb', 'due_items' => 3000]],
+            $rules['backlog_growth:javdb'],
+        );
+    }
+
+    public function test_a_shrinking_backlog_raises_no_growth_alert(): void
+    {
+        $rules = (new AlertRuleEvaluator())->evaluate($this->snapshot(
+            ['javdb' => ['attempts' => 100, 'successes' => 95, 'blocked' => 0]],
+            dueBySource: ['javdb' => 10],
+            growth: ['javdb' => -5000],
+        ));
+
+        self::assertArrayNotHasKey('backlog_growth:javdb', $rules);
+    }
+
+    public function test_a_source_that_is_not_enabled_raises_no_backlog_alert(): void
+    {
+        $rules = (new AlertRuleEvaluator())->evaluate([
+            ...$this->snapshot(['javdb' => ['attempts' => 100, 'successes' => 95, 'blocked' => 0]]),
+            'oldest_due_age_by_source' => ['muramura' => 99999 * 60],
+            'due_growth_per_hour_by_source' => ['muramura' => 99999],
+            'due_by_source' => ['muramura' => 101],
+        ]);
+
+        self::assertArrayNotHasKey('backlog_age:muramura', $rules);
+        self::assertArrayNotHasKey('backlog_growth:muramura', $rules);
+    }
+
+    public function test_a_threshold_of_zero_switches_the_backlog_rule_off(): void
+    {
+        config()->set(['javmeta_alerts.backlog_age_max_minutes' => 0, 'javmeta_alerts.backlog_growth_max_per_hour' => 0]);
+
+        $rules = (new AlertRuleEvaluator())->evaluate($this->snapshot(
+            ['javdb' => ['attempts' => 100, 'successes' => 95, 'blocked' => 0]],
+            dueBySource: ['javdb' => 5000],
+            oldestDueAge: ['javdb' => 999999],
+            growth: ['javdb' => 99999],
+        ));
+
+        self::assertSame([], array_filter(array_keys($rules), static fn(string $rule): bool => str_starts_with($rule, 'backlog_')));
     }
 
     public function test_dispatch_alert_requires_due_work_and_thresholds_are_strict(): void
@@ -105,12 +195,13 @@ final class AlertRuleEvaluatorTest extends TestCase
         self::assertArrayNotHasKey('success_rate', $rules);
         self::assertArrayNotHasKey('blocked_ratio', $rules);
         self::assertArrayNotHasKey('dispatch_age', $rules);
-        self::assertArrayNotHasKey('backlog_depth:javdb', $rules);
     }
 
     /**
      * @param  array<string, array{attempts: int, successes: int, blocked: int}>  $attempts
      * @param  array<string, int>  $dueBySource
+     * @param  array<string, int>  $oldestDueAge  seconds
+     * @param  array<string, int>  $growth  due items per hour
      * @return array<string, mixed>
      */
     private function snapshot(
@@ -119,12 +210,15 @@ final class AlertRuleEvaluatorTest extends TestCase
         ?int $dispatchAge = null,
         array $dueBySource = [],
         bool $hasDueWork = true,
+        array $oldestDueAge = [],
+        array $growth = [],
     ): array {
         return [
             'attempts_by_source' => $attempts,
             'enabled_sources' => array_keys($attempts),
-            'hot_sources' => array_keys($attempts),
             'due_by_source' => $dueBySource,
+            'oldest_due_age_by_source' => $oldestDueAge,
+            'due_growth_per_hour_by_source' => $growth,
             'postgres_connections' => $postgresConnections,
             'dispatch_age_seconds' => $dispatchAge,
             'has_due_work' => $hasDueWork,

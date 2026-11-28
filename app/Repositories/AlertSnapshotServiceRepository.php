@@ -71,25 +71,32 @@ final class AlertSnapshotServiceRepository extends EloquentRepository implements
         return $counts;
     }
 
+    /**
+     * Seconds the oldest due pending item of each source has waited since it fell due.
+     *
+     * @return array<string, int>
+     */
+    public function oldestDueAgeBySource(CarbonImmutable $now): array
+    {
+        $rows = DB::table('crawl_queue')
+            ->where('status', CrawlQueue::STATUS_PENDING)
+            ->whereNotNull('next_attempt_at')
+            ->where('next_attempt_at', '<=', $now)
+            ->selectRaw('source_slug, MIN(next_attempt_at) AS oldest_due_at')
+            ->groupBy('source_slug')
+            ->get();
+        $ages = [];
+        foreach ($rows as $row) {
+            $ages[(string) $row->source_slug] = max(0, $now->getTimestamp() - CarbonImmutable::parse((string) $row->oldest_due_at)->getTimestamp());
+        }
+
+        return $ages;
+    }
+
     /** @return list<string> */
     public function enabledSourceSlugs(): array
     {
         return Source::query()->where('enabled', true)->orderBy('slug')->pluck('slug')->map('strval')->all();
-    }
-
-    /** @param list<string> $sourcesWithAttempts
-     *  @return list<string>
-     */
-    public function hotSourceSlugs(CarbonImmutable $cutoff, array $sourcesWithAttempts): array
-    {
-        $query = Source::query()->where('enabled', true)->where(static function ($query) use ($cutoff, $sourcesWithAttempts): void {
-            $query->where('last_success_at', '>=', $cutoff);
-            if ($sourcesWithAttempts !== []) {
-                $query->orWhereIn('slug', $sourcesWithAttempts);
-            }
-        });
-
-        return $query->orderBy('slug')->pluck('slug')->map('strval')->all();
     }
 
     public function postgresConnections(): ?int

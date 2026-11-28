@@ -23,7 +23,8 @@ final class AlertTemplateValues
             str_starts_with($rule, 'source_success_rate:') => $this->sourceSuccessRate($rule, $condition, $context, $window),
             $rule === 'postgres_connections' => ['connection_count' => $condition['value'], 'threshold' => $condition['threshold']],
             $rule === 'dispatch_age' => $this->dispatchAge($condition, $context, $resolved),
-            str_starts_with($rule, 'backlog_depth:') => $this->backlogDepth($rule, $condition, $context),
+            str_starts_with($rule, 'backlog_age:') => $this->backlogAge($rule, $condition, $context),
+            str_starts_with($rule, 'backlog_growth:') => $this->backlogGrowth($rule, $condition, $context),
             default => [],
         };
     }
@@ -125,12 +126,28 @@ final class AlertTemplateValues
      * @param array<string, mixed> $context
      * @return array<string, int|float|string>
      */
-    private function backlogDepth(string $rule, array $condition, array $context): array
+    private function backlogAge(string $rule, array $condition, array $context): array
     {
         return [
-            'source_slug' => $context['source_slug'] ?? substr($rule, strlen('backlog_depth:')),
-            'due_items' => $condition['value'],
-            'minimum_items' => $condition['threshold'],
+            'source_slug' => $context['source_slug'] ?? substr($rule, strlen('backlog_age:')),
+            'oldest_due_minutes' => $condition['value'],
+            'maximum_minutes' => $condition['threshold'],
+            'due_items' => $context['due_items'] ?? '',
+        ];
+    }
+
+    /**
+     * @param array{severity: string, value: float|int, threshold: float|int, context: array<string, mixed>} $condition
+     * @param array<string, mixed> $context
+     * @return array<string, int|float|string>
+     */
+    private function backlogGrowth(string $rule, array $condition, array $context): array
+    {
+        return [
+            'source_slug' => $context['source_slug'] ?? substr($rule, strlen('backlog_growth:')),
+            'growth_per_hour' => $condition['value'],
+            'maximum_per_hour' => $condition['threshold'],
+            'due_items' => $context['due_items'] ?? '',
         ];
     }
 }

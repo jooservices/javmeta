@@ -17,7 +17,10 @@ return [
     'pg_connections_max' => 45,
     'postgres_connection_budget_warning_percent' => 75,
     'dispatch_age_max_seconds' => 60,
-    'backlog_due_min_per_hot_source' => 10,
+    // An enabled source whose oldest due item has waited longer than this many minutes is late (0 turns the rule off).
+    'backlog_age_max_minutes' => 1440,
+    // An enabled source whose due backlog grew by more than this many items over the last hour (0 turns the rule off).
+    'backlog_growth_max_per_hour' => 1000,
     'min_attempts_in_window' => 100,
     'cooldown_minutes' => 30,
     'recovery_notice' => true,

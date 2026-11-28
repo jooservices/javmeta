@@ -21,7 +21,8 @@ final class AlertRuleEvaluatorMeasurementTest extends TestCase
             'javmeta_alerts.blocked_ratio_max_percent' => 10,
             'javmeta_alerts.pg_connections_max' => 45,
             'javmeta_alerts.dispatch_age_max_seconds' => 60,
-            'javmeta_alerts.backlog_due_min_per_hot_source' => 10,
+            'javmeta_alerts.backlog_age_max_minutes' => 1440,
+            'javmeta_alerts.backlog_growth_max_per_hour' => 1000,
             'javmeta_alerts.window_minutes' => 15,
         ]);
     }
@@ -87,14 +88,29 @@ final class AlertRuleEvaluatorMeasurementTest extends TestCase
         self::assertTrue($idle['context']['idle']);
     }
 
-    public function test_backlog_depth_is_measured_only_for_a_hot_source(): void
+    public function test_the_backlog_age_is_measured_in_minutes_for_an_enabled_source_only(): void
     {
-        $snapshot = $this->snapshot([], hot: ['hot'], due: ['hot' => 4, 'cold' => 9]);
+        $snapshot = $this->snapshot([], enabled: ['live'], due: ['live' => 7], oldestDueAge: ['live' => 90 * 60, 'gone' => 5000 * 60]);
 
-        self::assertSame(['value' => 4, 'threshold' => 10, 'context' => ['source_slug' => 'hot']], $this->evaluator()->measurement('backlog_depth:hot', $snapshot));
-        self::assertSame(0, $this->evaluator()->measurement('backlog_depth:hot', $this->snapshot([], hot: ['hot']))['value'], 'No due work counts as zero.');
-        self::assertNull($this->evaluator()->measurement('backlog_depth:cold', $snapshot));
-        self::assertNull($this->evaluator()->measurement('backlog_depth', $snapshot));
+        self::assertSame(['value' => 90, 'threshold' => 1440, 'context' => ['source_slug' => 'live', 'due_items' => 7]], $this->evaluator()->measurement('backlog_age:live', $snapshot));
+        self::assertSame(0, $this->evaluator()->measurement('backlog_age:live', $this->snapshot([], enabled: ['live']))['value'], 'No due work counts as zero.');
+        self::assertNull($this->evaluator()->measurement('backlog_age:gone', $snapshot));
+        self::assertNull($this->evaluator()->measurement('backlog_age', $snapshot));
+    }
+
+    public function test_the_backlog_growth_is_measured_per_hour_for_an_enabled_source_only(): void
+    {
+        $snapshot = $this->snapshot([], enabled: ['live'], due: ['live' => 7], growth: ['live' => 250, 'gone' => 9000]);
+
+        self::assertSame(['value' => 250, 'threshold' => 1000, 'context' => ['source_slug' => 'live', 'due_items' => 7]], $this->evaluator()->measurement('backlog_growth:live', $snapshot));
+        self::assertSame(0, $this->evaluator()->measurement('backlog_growth:live', $this->snapshot([], enabled: ['live']))['value'], 'No history counts as zero.');
+        self::assertNull($this->evaluator()->measurement('backlog_growth:gone', $snapshot));
+        self::assertNull($this->evaluator()->measurement('backlog_growth', $snapshot));
+    }
+
+    public function test_the_retired_backlog_depth_rule_has_no_measurement(): void
+    {
+        self::assertNull($this->evaluator()->measurement('backlog_depth:live', $this->snapshot([], enabled: ['live'], due: ['live' => 1])));
     }
 
     public function test_an_unknown_rule_has_no_measurement(): void
@@ -114,7 +130,7 @@ final class AlertRuleEvaluatorMeasurementTest extends TestCase
      * @param array<string, int> $due
      * @return array{attempts_by_source: array<string, array{attempts: int, successes: int, blocked: int}>, enabled_sources: list<string>, hot_sources: list<string>, due_by_source: array<string, int>, postgres_connections: int|null, dispatch_age_seconds: int|null, has_due_work: bool}
      */
-    private function snapshot(array $attempts, ?array $enabled = null, array $hot = [], array $due = [], ?int $connections = null, ?int $dispatchAge = null, bool $hasDueWork = false): array
+    private function snapshot(array $attempts, ?array $enabled = null, array $due = [], ?int $connections = null, ?int $dispatchAge = null, bool $hasDueWork = false, array $oldestDueAge = [], array $growth = []): array
     {
         $rows = [];
         foreach ($attempts as $source => [$total, $successes, $blocked]) {
@@ -124,8 +140,9 @@ final class AlertRuleEvaluatorMeasurementTest extends TestCase
         return [
             'attempts_by_source' => $rows,
             'enabled_sources' => $enabled ?? array_keys($rows),
-            'hot_sources' => $hot,
             'due_by_source' => $due,
+            'oldest_due_age_by_source' => $oldestDueAge,
+            'due_growth_per_hour_by_source' => $growth,
             'postgres_connections' => $connections,
             'dispatch_age_seconds' => $dispatchAge,
             'has_due_work' => $hasDueWork,
