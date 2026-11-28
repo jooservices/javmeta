@@ -1,7 +1,8 @@
 # Enabled sources that do no work
 
 An enabled source that has no due work costs a slot and can hide a defect. Each finding below says which of the three possible
-causes applies, with the numbers it rests on and the date it was measured, so the next reader does not measure it again.
+causes applies, with the numbers it rests on and the date it was measured. The numbers are historical evidence of that day: queue
+rows, circuit state and gaps change, so check the current state of the source before diagnosing a new idle period.
 
 The three causes: **discovery is broken** (the listing pages are not found or not crawled), **the site is exhausted** (everything it
 offers is already crawled), or **the schedule or the gap is wrong** (work exists but is not due or is paced too slowly).
