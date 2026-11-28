@@ -30,7 +30,7 @@ final class DatabaseAlertSnapshotReader implements AlertSnapshotReader
             'enabled_sources' => $enabledSources,
             'due_by_source' => $dueBySource,
             'oldest_due_age_by_source' => $this->repository->oldestDueAgeBySource($now),
-            'due_growth_per_hour_by_source' => $this->growth->growthPerHour($dueBySource, $now),
+            'due_growth_per_hour_by_source' => $this->growth->growthPerHour($dueBySource, $enabledSources, $now),
             'postgres_connections' => $this->repository->postgresConnections(),
             'dispatch_age_seconds' => $this->dispatchHeartbeat->ageSeconds(),
             'has_due_work' => array_sum($dueBySource) > 0,

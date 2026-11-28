@@ -33,10 +33,11 @@ final class BacklogGrowthSampler
     /**
      * Records the due items of every source and returns how many items per hour each source gained since the oldest sample.
      *
-     * @param array<string, int> $dueBySource
+     * @param array<string, int> $dueBySource only the sources that have something due
+     * @param list<string> $sources every source that is judged, so one with nothing due in either sample has zero growth, not an unknown one
      * @return array<string, int> signed; empty while the history is shorter than 45 minutes
      */
-    public function growthPerHour(array $dueBySource, CarbonImmutable $now): array
+    public function growthPerHour(array $dueBySource, array $sources, CarbonImmutable $now): array
     {
         $at = $now->getTimestamp();
         $samples = array_values(array_filter(
@@ -56,7 +57,7 @@ final class BacklogGrowthSampler
 
         $age = $at - $baseline['at'];
         $growth = [];
-        foreach (array_keys($dueBySource + $baseline['due']) as $source) {
+        foreach (array_unique([...array_keys($dueBySource), ...array_keys($baseline['due']), ...$sources]) as $source) {
             $growth[(string) $source] = (int) round((($dueBySource[$source] ?? 0) - ($baseline['due'][$source] ?? 0)) * 3600 / $age);
         }
 
