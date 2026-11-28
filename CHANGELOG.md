@@ -4,6 +4,38 @@ All notable changes to javmeta (XCrawler) are documented in this file. The forma
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 Releases are cut from `master` (see `docs/03-operations/release-process.md`).
 
+## [1.2.0] - 2026-11-28
+
+### Added
+
+- The new web UI: a React 19 and Mantine 9 application (`ui/`) in Vietnamese and English, served at the root of the site from `public/web` (JOOXCR-724, JOOXCR-725). Guests browse the public catalogue when the setting `ui_security.login_required` is off (while it is on, a guest sees only the sign-in page); the personal features need a signed-in user; the statistics, Command Center, settings and administration pages need an account (the last three an administrator). The legacy UI stays reachable at `/app` and its backend routes (`/ui-api`, `/ui-me`, `/ui-admin`) are unchanged; they are removed later (JOOXCR-728).
+- The UI API `/api/v2` with 139 operations (contract `docs/api/openapi.yaml`, inventory of the existing API `docs/api/existing-api-inventory.md`): resources and HTTP verbs, `problem+json` errors, a cookie session with a CSRF header, the scopes guest, owner and admin, `ETag` and `If-Match` on settings, rate limits (JOOXCR-726). `/api/v1`, MCP, the media worker, the node endpoints, Ops and Horizon are unchanged; a regression test keeps every route and MCP tool that existed before.
+- PostgreSQL read models (`rm_movies`, `rm_performers`, `rm_perf_attr`) behind the catalogue lists, facets and search of the new UI, rebuilt every 20 minutes by the scheduled command `xcrawler:read-models:refresh` (atomic swap, one rebuild at a time).
+- The setting `observability.prometheus_url`: the address of Prometheus for the infrastructure page of the Command Center (empty: the page shows that nothing is connected).
+- Crawl failures are classified in Sentry as expected, real blocker, own fault or defect (JOOXCR-515).
+
+### Changed
+
+- `GET /` and `GET /login` serve the React UI. The command center host keeps its own sign-in page at `/login`, which signs in to `/ops`. `POST /login` and `POST /logout` are unchanged.
+- The deploy installer builds the UI on the node (`npm ci` and `npm run build` in `ui/`, written to `public/web`); Node.js is already a prerequisite.
+- CrawlerX 1.9.2 (JOOXCR-522, JOOXCR-371).
+
+### Documentation
+
+- The guest-mode route matrix lists the UI page routes.
+
+### Database migrations
+
+Five migrations, all additive and applied by the deploy on the primary node:
+
+- `2026_11_26_000001_create_ui_read_model_tables` creates the three `rm_*` tables.
+- `2026_11_27_030001_create_ui_preferences_and_view_history` creates `ui_preferences` and `view_history`.
+- `2026_11_27_040001_create_download_requests_and_extend_download_items` creates `download_requests` and adds `state`, `progress`, `size_bytes` and `updated_at` (with defaults) to `download_items`; its `movie_code` column becomes nullable.
+- `2026_11_27_060001_create_audit_log_and_setting_revisions` creates `audit_log` and `setting_revisions`.
+- `2026_11_27_070001_create_movie_view_counts` creates `movie_view_counts`.
+
+Rolling back to v1.1.1 needs no database change: the previous code ignores the new tables and columns and always sets `movie_code`. The new tables and columns stay in place after a rollback. The built UI in `public/web` also stays and is not served by the previous code (it redirects `/` to `/app`). The read models are rebuilt from the catalogue, so they can be dropped at any time.
+
 ## [1.1.1] - 2026-11-27
 
 ### Fixed
