@@ -327,6 +327,10 @@ return [
             'label' => 'Trần việc đồng thời mức thấp',
             'description' => 'Tối đa số việc mức thấp được nhận và chưa xong cùng lúc; 0 là không giới hạn.',
         ],
+        'queue__coverage_exhausted_after_days' => [
+            'label' => 'Số ngày không có phim mới để coi là đã cạn',
+            'description' => 'crawler:coverage-report coi một nguồn là đã cạn khi không còn việc chờ và không có phim mới trong số ngày này.',
+        ],
         'queue__feed_pool_limit' => [
             'label' => 'Việc nạp mỗi lượt',
             'description' => 'Tối đa số dòng crawl_queue được nạp trong một lượt feed pool.',

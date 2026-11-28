@@ -23,6 +23,12 @@ environment.
 | `javmeta_source_past_due` | `source_slug` | 1 when an enabled source exceeded its manifest cycle plus one scheduler sweep, or global fallback; otherwise 0. |
 | `javmeta_crawl_queue_depth` | `status` | Current queue rows by state. |
 | `javmeta_crawl_queue_priority_depth` | `priority`, `state` | Direct-lane queue rows per priority level (`high`, `normal`, `low`): `state=due` for pending rows that are due now, `state=claimed` for rows claimed and unfinished. Browser and retry lane rows are not counted. |
+| `javmeta_crawl_coverage_listing_discovered` | `source_slug` | Listing pages of the source in the queue, in every status. |
+| `javmeta_crawl_coverage_listing_crawled` | `source_slug` | Listing pages of the source that are done. |
+| `javmeta_crawl_coverage_detail_pending` | `source_slug` | Detail rows of the source that are pending, retry pending or claimed. |
+| `javmeta_crawl_coverage_detail_done` | `source_slug` | Detail rows of the source that are done. |
+| `javmeta_crawl_coverage_last_new_item_age_seconds` | `source_slug` | Seconds since the source last stored a movie nobody had before (the source that stored a movie first owns it), looking back `queue.coverage_exhausted_after_days` days; `-1` means none in that span. |
+| `javmeta_crawl_coverage_exhausted` | `source_slug` | 1 when `crawler:coverage-report` calls the source exhausted, otherwise 0. |
 | `javmeta_crawl_queue_claimed_age_seconds` | — | Age in seconds of the oldest claimed queue row; `-1` means none is claimed. |
 | `javmeta_crawl_dispatch_age_seconds` | — | Seconds since the feed pool last dispatched a crawl job; `-1` means no dispatch is recorded. |
 | `javmeta_crawl_dispatch_stale` | `severity` | 1 when due `pending` or `retry_pending` work has exceeded the warning or critical dispatch-age threshold; 0 otherwise. Future retry rows do not count as due. Thresholds come from database settings. |

@@ -26,6 +26,7 @@ use App\Services\Crawl\CrawlLaneService;
 use App\Services\Crawl\CrawlPriority;
 use App\Services\Crawl\CrawlStatsOperationalSampler;
 use App\Services\Crawl\FeedPoolDiagnostics;
+use App\Services\Crawl\SourceCoverage;
 use App\Services\Crawl\SourceGapPolicy;
 use App\Services\Crawl\SourceThrottle;
 use App\Services\Crawl\SourceCircuitBreaker;
@@ -98,6 +99,7 @@ final class PublishMetricsCommand extends Command
         $points = array_merge(
             $this->sourceMetrics($sourceFreshness, $gapPolicy, $throttle),
             $this->queueMetrics(),
+            $this->coverageMetrics(),
             $feedPoolDiagnostics->metricPointsForMinute(CarbonImmutable::now()->startOfMinute()->subMinute()),
             $this->crawlDispatchMetrics($dispatchHeartbeat),
             $this->crawlEventMetrics(),
@@ -261,6 +263,33 @@ final class PublishMetricsCommand extends Command
                         'labels' => ['node' => $node, 'lane' => (string) $lane, 'state' => $state],
                     ];
                 }
+            }
+        }
+
+        return $points;
+    }
+
+    /**
+     * Per enabled source: listing pages found and crawled, detail rows pending and done, the age of the last new item
+     * (-1 when the statistics hold none) and 1 when the figures show the source exhausted.
+     *
+     * @return list<array{name: string, value: float|int, labels?: array<string, string>}>
+     */
+    private function coverageMetrics(): array
+    {
+        $points = [];
+        foreach (app(SourceCoverage::class)->report() as $row) {
+            $labels = ['source_slug' => $row['source_slug']];
+            $values = [
+                'crawl_coverage_listing_discovered' => $row['listing_discovered'],
+                'crawl_coverage_listing_crawled' => $row['listing_crawled'],
+                'crawl_coverage_detail_pending' => $row['detail_pending'],
+                'crawl_coverage_detail_done' => $row['detail_done'],
+                'crawl_coverage_last_new_item_age_seconds' => $row['last_new_item_age_seconds'] ?? -1,
+                'crawl_coverage_exhausted' => $row['verdict'] === SourceCoverage::EXHAUSTED ? 1 : 0,
+            ];
+            foreach ($values as $name => $value) {
+                $points[] = ['name' => MetricStreams::NAMES[$name], 'value' => $value, 'labels' => $labels];
             }
         }
 

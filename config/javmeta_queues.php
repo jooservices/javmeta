@@ -97,6 +97,9 @@ return [
     'browser_sources' => ['javlibrary', 'javbus', 'missav', 'jable', 'warashi', 'javdatabase'],
     'browser_inflight' => 8,
 
+    /** A source with nothing pending and no new item for this many days is reported as exhausted by crawler:coverage-report. */
+    'coverage_exhausted_after_days' => 7,
+
     /**
      * Priority of the direct (non-browser) lane, read by the same workers in this order: high, normal, low. Rows of a source
      * in high_sources are high, rows of a source in low_sources are low, and a recrawl is low when recrawl_is_low is on; every

@@ -7,6 +7,8 @@ namespace Tests\Feature\Observability;
 use App\Console\Commands\Observability\PublishMetricsCommand;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
+use App\Models\Movie;
+use App\Models\MovieSource;
 use App\Models\Source;
 use App\Observability\MetricStreams;
 use App\Services\Archive\MongoArchiveWriteHealth;
@@ -241,6 +243,42 @@ final class PublishMetricsCommandTest extends TestCase
             ->mapWithKeys(static fn(array $point): array => [$point['labels']['state'] => $point['value']])->all();
 
         self::assertSame(['due' => 1, 'claimed' => 1], $normal, 'Without lanes a browser source is direct work.');
+    }
+
+    public function test_coverage_metrics_are_published_for_every_enabled_source(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-28 12:00:00'));
+        config()->set('javmeta_queues.coverage_exhausted_after_days', 7);
+        Source::factory()->create(['slug' => 'alpha', 'enabled' => true]);
+        Source::factory()->create(['slug' => 'quiet', 'enabled' => true]);
+        foreach ([['listing', 'done'], ['listing', 'done'], ['detail', 'done'], ['detail', 'pending']] as $index => [$kind, $status]) {
+            CrawlQueue::factory()->create(['source_slug' => 'alpha', 'kind' => $kind, 'status' => $status, 'url' => 'https://example.test/alpha/' . $index]);
+        }
+        $movie = Movie::factory()->create(['first_seen_at' => now()->subHours(5)]);
+        MovieSource::query()->create(['movie_id' => $movie->id, 'site_slug' => 'alpha', 'mongo_id' => 'm1', 'source_url' => 'https://example.test/alpha/1', 'source_code' => 'C-1', 'crawled_at' => now()]);
+
+        $method = new ReflectionMethod(PublishMetricsCommand::class, 'coverageMetrics');
+        /** @var list<array{name: string, value: float|int, labels?: array<string, string>}> $points */
+        $points = $method->invoke(app(PublishMetricsCommand::class));
+        $value = static function (string $name, string $source) use ($points): float|int|null {
+            foreach ($points as $point) {
+                if ($point['name'] === MetricStreams::NAMES[$name] && ($point['labels']['source_slug'] ?? null) === $source) {
+                    return $point['value'];
+                }
+            }
+
+            return null;
+        };
+
+        self::assertSame(2, $value('crawl_coverage_listing_discovered', 'alpha'));
+        self::assertSame(2, $value('crawl_coverage_listing_crawled', 'alpha'));
+        self::assertSame(1, $value('crawl_coverage_detail_pending', 'alpha'));
+        self::assertSame(1, $value('crawl_coverage_detail_done', 'alpha'));
+        self::assertSame(5 * 3600, $value('crawl_coverage_last_new_item_age_seconds', 'alpha'));
+        self::assertSame(0, $value('crawl_coverage_exhausted', 'alpha'));
+        self::assertSame(-1, $value('crawl_coverage_last_new_item_age_seconds', 'quiet'), 'No new item in the statistics is -1.');
+        self::assertSame(0, $value('crawl_coverage_listing_discovered', 'quiet'));
+        self::assertSame(0, $value('crawl_coverage_exhausted', 'quiet'));
     }
 
     public function test_command_publishes_feed_pool_diagnostics_metrics_from_the_previous_minute(): void

@@ -56,6 +56,12 @@ Tối đa số việc mức thấp được nhận và chưa xong cùng lúc; 0 
 
 Số nguyên; từ 0 đến 100000. Mã mục: `queue.priority_cap_low`.
 
+### Số ngày không có phim mới để coi là đã cạn
+
+crawler:coverage-report coi một nguồn là đã cạn khi không còn việc chờ và không có phim mới trong số ngày này.
+
+Số nguyên; từ 1 đến 365. Mã mục: `queue.coverage_exhausted_after_days`.
+
 ### Việc nạp mỗi lượt
 
 Tối đa số dòng crawl_queue được nạp trong một lượt feed pool.

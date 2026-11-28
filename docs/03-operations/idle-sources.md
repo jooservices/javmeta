@@ -1,5 +1,8 @@
 # Enabled sources that do no work
 
+To see for every enabled source whether it is exhausted or only not fully crawled, run `php artisan crawler:coverage-report` (see
+[crawl coverage](#crawl-coverage)).
+
 An enabled source that has no due work costs a slot and can hide a defect. Each finding below says which of the three possible
 causes applies, with the numbers it rests on and the date it was measured. The numbers are historical evidence of that day: queue
 rows, circuit state and gaps change, so check the current state of the source before diagnosing a new idle period.
@@ -39,3 +42,23 @@ What it would take to make the source produce work: a listing (and detail) capab
 listing URL here, which is a CrawlerX change with its own ticket. Until then the source can stay enabled without effect or be
 switched off in Cài đặt; that choice belongs to the owner. The staleness watchdog and the staging readiness check already name
 it as a source that is not due under its cycle.
+
+## Crawl coverage
+
+`php artisan crawler:coverage-report [--source=slug]` prints, for each enabled source: the listing pages found and crawled, the detail rows
+pending and done, how long ago the source last stored a new movie, and a verdict. The same figures are published to OpenObserve as
+`javmeta_crawl_coverage_*` (see [telemetry](telemetry.md)). They come from the queue and the catalog; nothing is stored for them.
+
+A movie is **new for the source that stored it first**: the source of its earliest `movie_sources` row. The time is the exact first sighting
+of the movie (`movies.first_seen_at`), looked back over `queue.coverage_exhausted_after_days` days (default 7). The hourly statistics are not used:
+their per-source movie count is empty, so they cannot say which source found a movie.
+
+| Verdict | When |
+|---|---|
+| `not_fully_crawled` | A listing page or a detail row is still pending, retry pending or claimed, or the source stored a new movie within those days. |
+| `exhausted` | Nothing is pending, at least one listing page was crawled, and the source stored no new movie in those days. |
+| `unknown` | No listing page was crawled yet, so the figures prove nothing either way. |
+
+Detail rows that failed for good are not counted as pending: they are failures, not work left. "Nothing is pending" is a snapshot, so a
+source between two cycles can look exhausted for one run; read the verdict together with the last new item. The report does not act on its
+result; it only says where more crawl capacity may help.

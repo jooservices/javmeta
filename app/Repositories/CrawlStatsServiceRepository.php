@@ -31,6 +31,62 @@ final class CrawlStatsServiceRepository extends EloquentRepository implements Re
         parent::__construct($model);
     }
 
+    /**
+     * Listing pages and detail rows of every source, counted from the queue.
+     *
+     * @return array<string, array{listing_discovered: int, listing_crawled: int, listing_open: int, detail_pending: int, detail_done: int}>
+     */
+    public function coverageCountsBySource(): array
+    {
+        $open = [CrawlQueue::STATUS_PENDING, CrawlQueue::STATUS_RETRY_PENDING, CrawlQueue::STATUS_CLAIMED];
+        $rows = DB::table('crawl_queue')
+            ->whereIn('kind', [CrawlQueue::KIND_LISTING, CrawlQueue::KIND_DETAIL])
+            ->selectRaw('source_slug, kind, status, COUNT(*) AS total')
+            ->groupBy('source_slug', 'kind', 'status')
+            ->get();
+        $counts = [];
+        foreach ($rows as $row) {
+            $source = (string) $row->source_slug;
+            $counts[$source] ??= ['listing_discovered' => 0, 'listing_crawled' => 0, 'listing_open' => 0, 'detail_pending' => 0, 'detail_done' => 0];
+            $total = (int) $row->total;
+            if ($row->kind === CrawlQueue::KIND_LISTING) {
+                $counts[$source]['listing_discovered'] += $total;
+                $counts[$source]['listing_crawled'] += $row->status === CrawlQueue::STATUS_DONE ? $total : 0;
+                $counts[$source]['listing_open'] += in_array($row->status, $open, true) ? $total : 0;
+            } else {
+                $counts[$source]['detail_pending'] += in_array($row->status, $open, true) ? $total : 0;
+                $counts[$source]['detail_done'] += $row->status === CrawlQueue::STATUS_DONE ? $total : 0;
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
+     * The last time each source stored a movie nobody had before, looking back to $since. A movie is new for the source that
+     * stored it first, that is the source of the earliest movie_sources row of the movie; the time is the exact first sighting
+     * of the movie. The queue statistics do not hold this: their per-source movie count is empty.
+     *
+     * @return array<string, CarbonImmutable>
+     */
+    public function lastNewItemBySource(CarbonImmutable $since): array
+    {
+        $recent = DB::table('movies')
+            ->where('first_seen_at', '>=', $this->bound($since))
+            ->selectRaw('first_seen_at, (SELECT ms.site_slug FROM movie_sources ms WHERE ms.movie_id = movies.id ORDER BY ms.id LIMIT 1) AS site_slug');
+        $rows = DB::query()->fromSub($recent, 'recent_movies')
+            ->whereNotNull('site_slug')
+            ->selectRaw('site_slug, MAX(first_seen_at) AS last_seen_at')
+            ->groupBy('site_slug')
+            ->get();
+        $last = [];
+        foreach ($rows as $row) {
+            $last[(string) $row->site_slug] = CarbonImmutable::parse((string) $row->last_seen_at);
+        }
+
+        return $last;
+    }
+
     public function hasFetchAttemptsTable(): bool
     {
         return Schema::hasTable('crawl_fetch_attempts');
