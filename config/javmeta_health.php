@@ -42,6 +42,7 @@ return [
             'ai:warm*' => 'worker',
             'telegram:poll*' => 'worker',
             'follows:notify*' => 'worker',
+            'xcrawler:read-models:refresh' => 'worker',
             'node:sample' => 'worker',
             '_complete' => 'web',
             'config-store:get' => 'web',

@@ -69,6 +69,7 @@ final class ScheduleTest extends TestCase
             'search:backfill-embeddings' => '0 * * * *',
             'staging:readiness' => '0 * * * *',
             'telegram:poll' => '* * * * *',
+            'xcrawler:read-models:refresh' => '*/20 * * * *',
         ];
 
         $this->assertCount(count($expectedFrequencies) + 1, $events);

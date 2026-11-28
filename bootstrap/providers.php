@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 return [
+    App\Providers\AdministrationServiceProvider::class,
     App\Providers\AppServiceProvider::class,
     App\Providers\CrawlerxServiceProvider::class,
     App\Providers\DependencyServiceProvider::class,

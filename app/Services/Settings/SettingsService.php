@@ -924,4 +924,18 @@ final class SettingsService
             || array_key_exists('alerts.success_rate_critical_percent', $overrides);
         (new AlertThresholdOrderValidator())->validate($candidate, $validateSuccessRatePair);
     }
+
+    /** The value the code ships with, before anything saved in the database applies. */
+    public function defaultValue(string $key): mixed
+    {
+        return $this->default($key);
+    }
+
+    /** Validates a value for a setting without saving it; returns the cleaned value or throws InvalidArgumentException. */
+    public function assertValid(string $key, mixed $value): mixed
+    {
+        $definition = $this->definitions()[$key] ?? throw new InvalidArgumentException("Unknown setting {$key}.");
+
+        return $this->validate($key, $definition, $value);
+    }
 }

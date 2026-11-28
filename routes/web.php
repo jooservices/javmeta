@@ -18,6 +18,7 @@ use App\Http\Controllers\Ui\UiNotificationTemplateController;
 use App\Http\Controllers\Ui\UiMarksController;
 use App\Http\Controllers\Ui\UiSettingsController;
 use App\Http\Controllers\Ui\UiReportController;
+use App\Http\Controllers\Ui\ReactUiController;
 use App\Http\Controllers\Ui\UiShellController;
 use App\Http\Middleware\EnsureUiOwnerOrGuest;
 use App\Http\Middleware\EnsureSuperAdministrator;
@@ -30,16 +31,18 @@ Route::get('/metrics', PostgresConnectionMetricsController::class)
     ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class])
     ->name('metrics');
 
-Route::get('/', static fn() => redirect()->route('ui.index'));
+Route::get('/', ReactUiController::class)
+    ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class]);
 
 Route::get('/files/download', [FileController::class, 'download'])
     ->middleware(['auth', EnsureSuperAdministrator::class, 'signed'])
     ->name('files.download');
 
-Route::get('/login', [LoginController::class, 'show'])->name('login');
+Route::get('/login', [ReactUiController::class, 'login'])->name('login');
 Route::post('/login', [LoginController::class, 'store'])->middleware('throttle:6,1');
 Route::post('/logout', [LoginController::class, 'destroy'])->middleware('auth')->name('logout');
 
+// The legacy UI stays reachable at /app, unchanged, until it is removed (JOOXCR-728).
 Route::get('/app', UiShellController::class)
     ->middleware(EnsureUiOwnerOrGuest::class)
     ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class])
@@ -114,3 +117,8 @@ Route::middleware(['auth', EnsureSuperAdministrator::class])->group(static funct
     Route::get('/ui-admin/notifications/{key}/revisions', [UiNotificationTemplateController::class, 'revisions'])->where('key', '[a-z0-9_.]+');
     Route::post('/ui-admin/notifications/{key}/revisions/{revision}/restore', [UiNotificationTemplateController::class, 'restore'])->where(['key' => '[a-z0-9_.]+', 'revision' => '[0-9]+']);
 });
+
+// Every other address of the React UI (deep links, a reload) gets the same page; the router in the browser does the rest.
+Route::fallback([ReactUiController::class, 'fallback'])
+    ->where('fallbackPlaceholder', ReactUiController::PAGE_ADDRESS)
+    ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class]);
