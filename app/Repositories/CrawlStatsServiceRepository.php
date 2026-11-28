@@ -63,27 +63,28 @@ final class CrawlStatsServiceRepository extends EloquentRepository implements Re
     }
 
     /**
-     * The hour in which each source last stored a new movie, from the hourly statistics.
+     * The last time each source stored a movie nobody had before, looking back to $since. A movie is new for the source that
+     * stored it first, that is the source of the earliest movie_sources row of the movie; the time is the exact first sighting
+     * of the movie. The queue statistics do not hold this: their per-source movie count is empty.
      *
      * @return array<string, CarbonImmutable>
      */
-    public function lastNewItemBySource(): array
+    public function lastNewItemBySource(CarbonImmutable $since): array
     {
-        $rows = DB::table('crawl_stats_hourly')->where('movies_new', '>', 0)->selectRaw('source_slug, MAX(hour_at) AS last_hour')->groupBy('source_slug')->get();
+        $recent = DB::table('movies')
+            ->where('first_seen_at', '>=', $this->bound($since))
+            ->selectRaw('first_seen_at, (SELECT ms.site_slug FROM movie_sources ms WHERE ms.movie_id = movies.id ORDER BY ms.id LIMIT 1) AS site_slug');
+        $rows = DB::query()->fromSub($recent, 'recent_movies')
+            ->whereNotNull('site_slug')
+            ->selectRaw('site_slug, MAX(first_seen_at) AS last_seen_at')
+            ->groupBy('site_slug')
+            ->get();
         $last = [];
         foreach ($rows as $row) {
-            $last[(string) $row->source_slug] = CarbonImmutable::parse((string) $row->last_hour);
+            $last[(string) $row->site_slug] = CarbonImmutable::parse((string) $row->last_seen_at);
         }
 
         return $last;
-    }
-
-    /** The first hour the hourly statistics cover, or null when they are empty. */
-    public function hourlyStatsStart(): ?CarbonImmutable
-    {
-        $first = DB::table('crawl_stats_hourly')->min('hour_at');
-
-        return $first === null ? null : CarbonImmutable::parse((string) $first);
     }
 
     public function hasFetchAttemptsTable(): bool

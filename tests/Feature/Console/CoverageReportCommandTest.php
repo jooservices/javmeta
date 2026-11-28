@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace Tests\Feature\Console;
 
 use App\Models\CrawlQueue;
+use App\Models\Movie;
+use App\Models\MovieSource;
 use App\Models\Source;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class CoverageReportCommandTest extends TestCase
@@ -34,8 +35,8 @@ final class CoverageReportCommandTest extends TestCase
         $this->artisan('crawler:coverage-report')
             ->expectsTable(self::HEADERS, [
                 ['alpha', 4, 4, 2, 10, '5 h ago', 'not_fully_crawled'],
-                ['beta', 4, 4, 0, 10, '216 h ago', 'exhausted'],
-                ['gamma', 0, 0, 0, 0, 'none in the statistics', 'unknown'],
+                ['beta', 4, 4, 0, 10, 'none in the last 7 days', 'exhausted'],
+                ['gamma', 0, 0, 0, 0, 'none in the last 7 days', 'unknown'],
             ])
             ->assertSuccessful();
     }
@@ -60,10 +61,8 @@ final class CoverageReportCommandTest extends TestCase
             }
         }
         if ($newItemHoursAgo !== null) {
-            DB::table('crawl_stats_hourly')->insert([
-                'hour_at' => now()->startOfHour()->subHours($newItemHoursAgo), 'source_slug' => $slug, 'lane' => 'direct', 'method' => 'http', 'attempts' => 1, 'ok' => 1,
-                'movies_new' => 2, 'created_at' => now(), 'updated_at' => now(),
-            ]);
+            $movie = Movie::factory()->create(['first_seen_at' => now()->subHours($newItemHoursAgo)]);
+            MovieSource::query()->create(['movie_id' => $movie->id, 'site_slug' => $slug, 'mongo_id' => 'm' . $movie->id, 'source_url' => 'https://example.test/' . $slug . '/' . $movie->id, 'source_code' => 'C-' . $movie->id, 'crawled_at' => now()]);
         }
     }
 }

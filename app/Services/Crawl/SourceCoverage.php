@@ -12,7 +12,7 @@ use Carbon\CarbonImmutable;
  * Per-source coverage: how many listing pages were found and crawled, how many detail rows are pending and done, and how long ago
  * the source last stored a new movie, with a verdict on whether those figures prove the source exhausted.
  *
- * The figures come from the queue and the hourly statistics; nothing new is stored.
+ * The figures come from the queue and the catalog (the first sighting of each movie); nothing new is stored.
  */
 final class SourceCoverage
 {
@@ -34,8 +34,7 @@ final class SourceCoverage
     {
         $now = CarbonImmutable::now();
         $counts = $this->stats->coverageCountsBySource();
-        $lastNew = $this->stats->lastNewItemBySource();
-        $statsStart = $this->stats->hourlyStatsStart();
+        $lastNew = $this->stats->lastNewItemBySource($now->subDays($this->days()));
         $rows = [];
         foreach ($this->sources->enabledSlugs() as $slug) {
             if ($source !== null && $source !== $slug) {
@@ -50,7 +49,7 @@ final class SourceCoverage
                 'detail_pending' => $figures['detail_pending'],
                 'detail_done' => $figures['detail_done'],
                 'last_new_item_age_seconds' => $age,
-                'verdict' => $this->verdict($figures, $age, $statsStart, $now),
+                'verdict' => $this->verdict($figures, $age),
             ];
         }
 
@@ -58,23 +57,24 @@ final class SourceCoverage
     }
 
     /**
-     * Not fully crawled: something is still open, or the source still stores new movies. Exhausted: nothing is open, at least one
-     * listing page was crawled, and the source stored no new movie for the configured days, which the statistics must cover.
-     * Anything else cannot be proved from the figures.
+     * Not fully crawled: something is still open, or the source stored a new movie within the configured days. Exhausted: nothing
+     * is open, at least one listing page was crawled and the source stored no new movie in those days. Without a crawled
+     * listing page the figures prove nothing.
      *
      * @param array{listing_discovered: int, listing_crawled: int, listing_open: int, detail_pending: int, detail_done: int} $figures
      */
-    private function verdict(array $figures, ?int $ageSeconds, ?CarbonImmutable $statsStart, CarbonImmutable $now): string
+    private function verdict(array $figures, ?int $ageSeconds): string
     {
-        $window = max(1, (int) config('javmeta_queues.coverage_exhausted_after_days', 7)) * 86400;
-        if ($figures['listing_open'] > 0 || $figures['detail_pending'] > 0 || ($ageSeconds !== null && $ageSeconds < $window)) {
+        if ($figures['listing_open'] > 0 || $figures['detail_pending'] > 0 || $ageSeconds !== null) {
             return self::NOT_FULLY_CRAWLED;
         }
-        if ($figures['listing_crawled'] === 0) {
-            return self::UNKNOWN;
-        }
-        $covered = $ageSeconds !== null || ($statsStart !== null && $now->getTimestamp() - $statsStart->getTimestamp() >= $window);
 
-        return $covered ? self::EXHAUSTED : self::UNKNOWN;
+        return $figures['listing_crawled'] > 0 ? self::EXHAUSTED : self::UNKNOWN;
+    }
+
+    /** The days without a new movie after which a source with nothing pending counts as exhausted. */
+    public function days(): int
+    {
+        return max(1, (int) config('javmeta_queues.coverage_exhausted_after_days', 7));
     }
 }

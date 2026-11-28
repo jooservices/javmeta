@@ -37,7 +37,7 @@ final class CoverageReportCommand extends Command
                 $row['listing_crawled'],
                 $row['detail_pending'],
                 $row['detail_done'],
-                $row['last_new_item_age_seconds'] === null ? 'none in the statistics' : intdiv($row['last_new_item_age_seconds'], 3600) . ' h ago',
+                $row['last_new_item_age_seconds'] === null ? 'none in the last ' . $coverage->days() . ' days' : intdiv($row['last_new_item_age_seconds'], 3600) . ' h ago',
                 $row['verdict'],
             ], $rows),
         );

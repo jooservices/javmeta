@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace Tests\Feature\Crawl;
 
 use App\Models\CrawlQueue;
+use App\Models\Movie;
+use App\Models\MovieSource;
 use App\Models\Source;
 use App\Services\Crawl\SourceCoverage;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class SourceCoverageTest extends TestCase
@@ -80,23 +81,35 @@ final class SourceCoverageTest extends TestCase
         self::assertSame('exhausted', $this->report('alpha')['verdict']);
     }
 
-    public function test_a_source_that_never_stored_a_new_item_is_exhausted_only_when_the_history_is_long_enough(): void
+    public function test_a_movie_is_new_for_the_source_that_stored_it_first_not_for_a_later_one(): void
+    {
+        $this->source('first');
+        $this->source('later');
+        foreach (['first', 'later'] as $slug) {
+            $this->rows($slug, 'listing', ['done' => 2]);
+            $this->rows($slug, 'detail', ['done' => 5]);
+        }
+        $movie = $this->newItems('first', hoursAgo: 24 * 2);
+        $this->storedBy($movie, 'later', now()->subHour());
+
+        self::assertSame('not_fully_crawled', $this->report('first')['verdict']);
+        self::assertSame(2 * 24 * 3600, $this->report('first')['last_new_item_age_seconds']);
+        self::assertSame('exhausted', $this->report('later')['verdict'], 'It only found a movie another source already had.');
+        self::assertNull($this->report('later')['last_new_item_age_seconds']);
+    }
+
+    public function test_the_time_of_the_first_sighting_is_exact_so_a_movie_just_inside_the_window_is_not_missed(): void
     {
         $this->source('alpha');
-        $this->source('beta');
-        $this->rows('alpha', 'listing', ['done' => 4]);
-        $this->rows('alpha', 'detail', ['done' => 10]);
-        $this->rows('beta', 'listing', ['done' => 4]);
-        $this->rows('beta', 'detail', ['done' => 10]);
-        $this->newItems('beta', hoursAgo: 24 * 20);
+        $this->rows('alpha', 'listing', ['done' => 2]);
+        $this->rows('alpha', 'detail', ['done' => 5]);
+        $movie = Movie::factory()->create(['first_seen_at' => now()->subDays(7)->addMinutes(59)]);
+        $this->storedBy($movie, 'alpha', now());
 
-        // The hourly statistics start 20 days ago (beta's row), so 7 days without a new item of alpha is proof.
+        self::assertSame('not_fully_crawled', $this->report('alpha')['verdict'], 'A movie seen 6 days 23 hours ago is inside the 7 days.');
+
+        Movie::query()->whereKey($movie->id)->update(['first_seen_at' => now()->subDays(7)->subMinute()]);
         self::assertSame('exhausted', $this->report('alpha')['verdict']);
-        self::assertNull($this->report('alpha')['last_new_item_age_seconds']);
-
-        DB::table('crawl_stats_hourly')->delete();
-        $this->newItems('beta', hoursAgo: 24 * 3);
-        self::assertSame('unknown', $this->report('alpha')['verdict'], 'Only 3 days of statistics cannot prove 7 days without a new item.');
     }
 
     public function test_a_source_without_a_listing_page_has_no_verdict(): void
@@ -142,11 +155,17 @@ final class SourceCoverageTest extends TestCase
         }
     }
 
-    private function newItems(string $slug, int $hoursAgo): void
+    /** A movie that this source stored first, seen for the first time the given number of hours ago. */
+    private function newItems(string $slug, int $hoursAgo): Movie
     {
-        DB::table('crawl_stats_hourly')->insert([
-            'hour_at' => now()->startOfHour()->subHours($hoursAgo), 'source_slug' => $slug, 'lane' => 'direct', 'method' => 'http', 'attempts' => 1, 'ok' => 1,
-            'movies_new' => 3, 'created_at' => now(), 'updated_at' => now(),
-        ]);
+        $movie = Movie::factory()->create(['first_seen_at' => now()->subHours($hoursAgo)]);
+        $this->storedBy($movie, $slug, now()->subHours($hoursAgo));
+
+        return $movie;
+    }
+
+    private function storedBy(Movie $movie, string $slug, \DateTimeInterface $at): void
+    {
+        MovieSource::query()->create(['movie_id' => $movie->id, 'site_slug' => $slug, 'mongo_id' => 'm' . $movie->id . $slug, 'source_url' => 'https://example.test/' . $slug . '/' . $movie->id, 'source_code' => 'C-' . $movie->id, 'crawled_at' => $at]);
     }
 }

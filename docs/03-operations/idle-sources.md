@@ -47,13 +47,18 @@ it as a source that is not due under its cycle.
 
 `php artisan crawler:coverage-report [--source=slug]` prints, for each enabled source: the listing pages found and crawled, the detail rows
 pending and done, how long ago the source last stored a new movie, and a verdict. The same figures are published to OpenObserve as
-`javmeta_crawl_coverage_*` (see [telemetry](telemetry.md)). They come from the queue and the hourly statistics; nothing is stored for them.
+`javmeta_crawl_coverage_*` (see [telemetry](telemetry.md)). They come from the queue and the catalog; nothing is stored for them.
+
+A movie is **new for the source that stored it first**: the source of its earliest `movie_sources` row. The time is the exact first sighting
+of the movie (`movies.first_seen_at`), looked back over `queue.coverage_exhausted_after_days` days (default 7). The hourly statistics are not used:
+their per-source movie count is empty, so they cannot say which source found a movie.
 
 | Verdict | When |
 |---|---|
-| `not_fully_crawled` | A listing page or a detail row is still pending, retry pending or claimed, or the source stored a new movie less than `queue.coverage_exhausted_after_days` days ago (default 7). |
-| `exhausted` | Nothing is pending, at least one listing page was crawled, and the source stored no new movie for that many days, with statistics that cover that span. |
-| `unknown` | The figures cannot prove either: no listing page was crawled yet, or the hourly statistics are shorter than the span (the statistics start on 2026-11-02). |
+| `not_fully_crawled` | A listing page or a detail row is still pending, retry pending or claimed, or the source stored a new movie within those days. |
+| `exhausted` | Nothing is pending, at least one listing page was crawled, and the source stored no new movie in those days. |
+| `unknown` | No listing page was crawled yet, so the figures prove nothing either way. |
 
-Detail rows that failed for good are not counted as pending: they are failures, not work left. The report does not act on its result; it
-only says where more crawl capacity may help.
+Detail rows that failed for good are not counted as pending: they are failures, not work left. "Nothing is pending" is a snapshot, so a
+source between two cycles can look exhausted for one run; read the verdict together with the last new item. The report does not act on its
+result; it only says where more crawl capacity may help.

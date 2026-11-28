@@ -94,7 +94,7 @@
         },
         {
             "path": "app/Repositories/CrawlStatsServiceRepository.php",
-            "line": 191,
+            "line": 192,
             "identifier": "missingType.iterableValue",
             "messageHash": "141c3faef0b507611d3337bea5774c03d9fd048dd7316338e7bc05af8acca321",
             "sourceHash": "bc7a19bd5573e334c971da0854747c6c1b23944ae4a6cbc618f5c9f1eebb248f"

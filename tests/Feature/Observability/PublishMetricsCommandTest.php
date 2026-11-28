@@ -7,6 +7,8 @@ namespace Tests\Feature\Observability;
 use App\Console\Commands\Observability\PublishMetricsCommand;
 use App\Models\CrawlEvent;
 use App\Models\CrawlQueue;
+use App\Models\Movie;
+use App\Models\MovieSource;
 use App\Models\Source;
 use App\Observability\MetricStreams;
 use App\Services\Archive\MongoArchiveWriteHealth;
@@ -252,10 +254,8 @@ final class PublishMetricsCommandTest extends TestCase
         foreach ([['listing', 'done'], ['listing', 'done'], ['detail', 'done'], ['detail', 'pending']] as $index => [$kind, $status]) {
             CrawlQueue::factory()->create(['source_slug' => 'alpha', 'kind' => $kind, 'status' => $status, 'url' => 'https://example.test/alpha/' . $index]);
         }
-        DB::table('crawl_stats_hourly')->insert([
-            'hour_at' => now()->startOfHour()->subHours(5), 'source_slug' => 'alpha', 'lane' => 'direct', 'method' => 'http', 'attempts' => 1, 'ok' => 1,
-            'movies_new' => 2, 'created_at' => now(), 'updated_at' => now(),
-        ]);
+        $movie = Movie::factory()->create(['first_seen_at' => now()->subHours(5)]);
+        MovieSource::query()->create(['movie_id' => $movie->id, 'site_slug' => 'alpha', 'mongo_id' => 'm1', 'source_url' => 'https://example.test/alpha/1', 'source_code' => 'C-1', 'crawled_at' => now()]);
 
         $method = new ReflectionMethod(PublishMetricsCommand::class, 'coverageMetrics');
         /** @var list<array{name: string, value: float|int, labels?: array<string, string>}> $points */

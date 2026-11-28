@@ -27,7 +27,7 @@ environment.
 | `javmeta_crawl_coverage_listing_crawled` | `source_slug` | Listing pages of the source that are done. |
 | `javmeta_crawl_coverage_detail_pending` | `source_slug` | Detail rows of the source that are pending, retry pending or claimed. |
 | `javmeta_crawl_coverage_detail_done` | `source_slug` | Detail rows of the source that are done. |
-| `javmeta_crawl_coverage_last_new_item_age_seconds` | `source_slug` | Seconds since the hour in which the source last stored a new movie, from the hourly statistics; `-1` means none in the statistics. |
+| `javmeta_crawl_coverage_last_new_item_age_seconds` | `source_slug` | Seconds since the source last stored a movie nobody had before (the source that stored a movie first owns it), looking back `queue.coverage_exhausted_after_days` days; `-1` means none in that span. |
 | `javmeta_crawl_coverage_exhausted` | `source_slug` | 1 when `crawler:coverage-report` calls the source exhausted, otherwise 0. |
 | `javmeta_crawl_queue_claimed_age_seconds` | — | Age in seconds of the oldest claimed queue row; `-1` means none is claimed. |
 | `javmeta_crawl_dispatch_age_seconds` | — | Seconds since the feed pool last dispatched a crawl job; `-1` means no dispatch is recorded. |
