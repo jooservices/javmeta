@@ -207,6 +207,38 @@ final class NodeEgressProbeTest extends TestCase
         self::assertLessThanOrEqual(5, $transport->recorded()[0]['options']->timeout);
     }
 
+    public function test_the_egress_of_an_attempt_follows_its_method_and_only_falls_back_to_the_lane(): void
+    {
+        $this->prepareTelemetry();
+        config()->set([
+            'javmeta_browser.playwright_url' => 'http://browser-a.test',
+            'javmeta_browser.flaresolverr_url' => '',
+            'javmeta_observability.egress_probe_urls' => ['https://ifconfig.me'],
+        ]);
+        Cache::setDefaultDriver('array');
+        $this->fakeTransport(
+            new Response(200, [], "198.51.100.10\n"),
+            new Response(200, [], json_encode(['exitCode' => 0, 'stdout' => json_encode(['html' => "8.8.8.8\n"], JSON_THROW_ON_ERROR)], JSON_THROW_ON_ERROR)),
+        );
+        $probe = app(NodeEgressProbe::class);
+        $probe->probeNodeIfDue();
+        $probe->probeBrowserHostsIfDue();
+
+        // A plain HTTP attempt leaves from the node itself, whatever lane its source runs in.
+        foreach (['http', 'curl_impersonate', 'HTTP'] as $method) {
+            self::assertSame(['egress_ip' => '198.51.100.10', 'egress_kind' => 'node'], $this->egress($probe, 'browser', $method), $method);
+        }
+        // A method that runs in the browser service leaves from the browser host, also for a source of the direct lane.
+        foreach (['playwright', 'playwright_stealth', 'chrome_stealth', 'puppeteer_stealth', 'flaresolverr'] as $method) {
+            self::assertSame('browser_host', $this->egress($probe, 'direct', $method)['egress_kind'], $method);
+            self::assertSame('browser_host', $this->egress($probe, 'browser', $method)['egress_kind'], $method);
+        }
+        // Without a method the lane decides, as before.
+        self::assertSame(['egress_ip' => '8.8.8.8', 'egress_kind' => 'browser_host'], $this->egress($probe, 'browser', null));
+        self::assertSame(['egress_ip' => '198.51.100.10', 'egress_kind' => 'node'], $this->egress($probe, 'direct', null));
+        self::assertSame(['egress_ip' => '198.51.100.10', 'egress_kind' => 'node'], $this->egress($probe, null, null));
+    }
+
     public function test_browser_host_probe_extracts_the_ip_from_the_playwright_page_html(): void
     {
         $this->prepareTelemetry();
@@ -448,6 +480,14 @@ final class NodeEgressProbeTest extends TestCase
 
         self::assertNull($probe->currentBrowserIp('browser-a.test'));
         self::assertSame('Browser service returned HTTP 503.', $probe->browserStatuses()[0]['last_probe_error']);
+    }
+
+    /** @return array{egress_ip: ?string, egress_kind: string} */
+    private function egress(NodeEgressProbe $probe, ?string $lane, ?string $method): array
+    {
+        $context = $probe->contextForLane($lane, $method);
+
+        return ['egress_ip' => $context['egress_ip'], 'egress_kind' => $context['egress_kind']];
     }
 
     private function prepareTelemetry(): void

@@ -16,6 +16,9 @@ use Throwable;
 /** Learns each crawler node and configured browser host's public IPv4 without touching crawl requests. */
 final class NodeEgressProbe
 {
+    /** Fetch methods that run in PHP on the node itself; every other method runs in a browser service. */
+    private const NODE_METHODS = ['http', 'curl_impersonate'];
+
     private const NODE_INDEX_KEY = 'javmeta:egress:nodes';
 
     private const NODE_INDEX_LIMIT = 200;
@@ -33,9 +36,12 @@ final class NodeEgressProbe
     /** @return array{node: string, egress_ip: ?string, egress_kind: string} */
     public function contextForLane(?string $lane = null, ?string $method = null): array
     {
-        $browserLane = $lane === 'browser';
-        $browserHost = $browserLane ? $this->browserHostForMethod($method) : null;
-        $ip = $browserLane ? $this->currentBrowserIp($browserHost) : $this->currentNodeIp();
+        // The method decides where a request leaves from: an HTTP attempt runs in PHP on this node even for a source of
+        // the browser lane, and a browser method runs in the browser service even for a source of the direct lane. Only
+        // when the method is not known does the lane decide.
+        $viaBrowserHost = $method === null ? $lane === 'browser' : ! in_array(strtolower($method), self::NODE_METHODS, true);
+        $browserHost = $viaBrowserHost ? $this->browserHostForMethod($method) : null;
+        $ip = $viaBrowserHost ? $this->currentBrowserIp($browserHost) : $this->currentNodeIp();
         if (! (bool) config('javmeta_observability.record_egress_ip', true)) {
             $ip = null;
         }
@@ -43,7 +49,7 @@ final class NodeEgressProbe
         return [
             'node' => $this->nodeId(),
             'egress_ip' => $ip,
-            'egress_kind' => $browserLane ? 'browser_host' : 'node',
+            'egress_kind' => $viaBrowserHost ? 'browser_host' : 'node',
         ];
     }
 

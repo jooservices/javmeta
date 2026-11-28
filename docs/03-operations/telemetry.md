@@ -444,7 +444,10 @@ When an address changes, one structured record is sent to the configured change
 stream with `event=egress_ip_changed`, `node`, `host` (browser host when
 applicable), `egress_kind`, `old_ip`, `new_ip` and `changed_at`. Fetch-attempt
 rows store nullable `egress_ip`, `node` and `egress_kind` (`node` or
-`browser_host`). Crawl log records, events and spans include `node` and
+`browser_host`). The fetch method of the attempt decides which: `http` and
+`curl_impersonate` run in PHP on the node and are stored as `node` with the node
+address, whatever lane the source is in, and every other method runs in a browser
+service and is stored as `browser_host` with the address of that host. Crawl log records, events and spans include `node` and
 `egress_ip`; an unavailable address remains null in logs/rows and is represented
 as an empty OTLP string attribute on spans.
 
