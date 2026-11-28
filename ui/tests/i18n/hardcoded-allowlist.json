@@ -1,0 +1,6 @@
+[
+  {
+    "file": "src/data/apiValues.js",
+    "reason": "The API sends the kind of a performer photo as the Vietnamese word 'Diễn viên'; the app compares it with this value and shows its own translated text."
+  }
+]

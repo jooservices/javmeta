@@ -32,3 +32,6 @@ __pycache__/
 # Operator answers contain installation credentials.
 /deploy/answers*.json
 /ui-tests/qa/node_modules
+
+# The React UI build (npm run build in ui/ writes it; the deploy builds it on the node)
+/public/web

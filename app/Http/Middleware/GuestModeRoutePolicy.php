@@ -10,6 +10,7 @@ final class GuestModeRoutePolicy
     /** @var list<string> */
     public const ALLOWED_ROUTES = [
         'GET|HEAD /',
+        'GET|HEAD {fallbackPlaceholder}',
         'GET|HEAD api/health',
         'GET|HEAD api/health/live',
         'GET|HEAD api/openapi.json',

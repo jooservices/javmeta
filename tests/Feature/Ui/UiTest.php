@@ -10,10 +10,12 @@ use App\Models\User;
 use App\Services\Crawl\WorkerHeartbeat;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Tests\Support\FakesBuiltUi;
 use Tests\TestCase;
 
 final class UiTest extends TestCase
 {
+    use FakesBuiltUi;
     use RefreshDatabase;
 
     private function owner(): User
@@ -32,9 +34,12 @@ final class UiTest extends TestCase
         $this->assertStringContainsString('/ui/js/app.js', $response->getContent());
     }
 
-    public function test_the_root_address_leads_to_the_ui(): void
+    public function test_the_root_address_serves_the_react_ui(): void
     {
-        $this->get('/')->assertRedirect(route('ui.index'));
+        $this->fakeBuiltUi();
+
+        $this->get('/')->assertOk()->assertSee('React UI', false);
+        $this->removeBuiltUi();
     }
 
     public function test_the_api_bridge_serves_only_the_owner_and_only_reads(): void

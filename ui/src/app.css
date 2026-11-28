@@ -1,0 +1,127 @@
+html,body{background:#0b0e11}
+body{font-size:14px;-webkit-text-size-adjust:100%}
+.poster{position:relative;aspect-ratio:3/2;overflow:hidden;border-radius:8px;background:#181d23;cursor:pointer}
+.poster img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .25s}
+.poster:hover img{transform:scale(1.04)}
+.poster .code{position:absolute;left:10px;bottom:10px;background:rgba(0,0,0,.72);color:#fff;font:600 12px ui-monospace,Menlo,monospace;padding:4px 8px;border-radius:6px}
+.poster .acts{position:absolute;right:6px;top:6px;display:flex;gap:4px;opacity:0;transition:opacity .15s}
+.poster:hover .acts,.poster:focus-within .acts{opacity:1}
+@media (hover:none){.poster .acts{opacity:1}}
+.pgrid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(max(220px,calc((100% - 7 * 16px) / 8)),1fr))} /* never more than 8 per row */
+.pgrid.sm{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
+.cover-portrait{aspect-ratio:3/4}
+.mono{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.kbd{font:12px ui-monospace,Menlo,monospace;border:1px solid #3a434e;border-bottom-width:2px;border-radius:4px;padding:0 5px;color:#8a96a4}
+.clamp2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sticky-bar{position:sticky;top:0;z-index:5;background:#0b0e11e6;backdrop-filter:blur(8px)}
+.scroll-x{overflow-x:auto}
+.tile{border:1px solid #252c35;background:#12161b;border-radius:12px;padding:16px}
+.dim{color:#8a96a4}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%}
+.safe-bottom{padding-bottom:env(safe-area-inset-bottom)}
+.mantine-Badge-root{text-transform:none;letter-spacing:0}
+.poster.contain{aspect-ratio:auto;min-height:240px;max-height:520px;background:#05070a;display:flex;align-items:center;justify-content:center}
+.poster.contain img{width:100%;height:auto;max-height:520px;object-fit:contain}
+
+.poster.thumb{width:98px;flex:0 0 98px}
+.poster .acts{top:10px;right:10px}
+
+a:not([class*='mantine']){color:var(--mantine-color-teal-3);text-decoration:none}
+a:not([class*='mantine']):hover{color:var(--mantine-color-teal-1)}
+footer{margin-top:0}
+
+@media (pointer:coarse){
+  .mantine-ActionIcon-root,.mantine-Burger-root{min-width:44px;min-height:44px}
+  .mantine-Button-root:not([data-size^='compact']){min-height:44px}
+  .mantine-Button-root[data-size^='compact']{min-height:36px}
+  .mantine-Input-input,.mantine-SegmentedControl-root .mantine-SegmentedControl-label{min-height:44px}
+  .mantine-NavLink-root{min-height:48px}
+  .poster .acts .mantine-ActionIcon-root{min-width:40px;min-height:40px}
+  .mantine-Badge-root[component]{min-height:32px}
+}
+.mantine-Badge-root{font-size:12px}
+@media (pointer:coarse){
+  button.nav-group-toggle{min-height:44px}
+  a.mantine-Badge-root{min-height:32px}
+  .mantine-Button-root[data-size^='compact']{min-height:40px}
+}
+.scroll-x .mantine-Table-table{min-width:780px}
+.mantine-Badge-root{max-width:none;overflow:visible;flex-shrink:0}
+.mantine-Badge-label{overflow:visible;text-overflow:clip;white-space:nowrap}
+.mantine-ScrollArea-viewport>div{display:block!important;min-width:0!important}
+@media (pointer:coarse){.qv-icon{min-width:36px!important;min-height:36px!important}}
+/* Explore: large covers, exactly one full row per section; the column count follows the screen width */
+.pgrid.home{display:grid;gap:16px;grid-template-columns:repeat(2,1fr)}
+.pgrid.home>:nth-child(n+3){display:none}
+@media (min-width:640px){.pgrid.home{grid-template-columns:repeat(3,1fr)}.pgrid.home>:nth-child(n+3){display:block}.pgrid.home>:nth-child(n+4){display:none}}
+@media (min-width:1000px){.pgrid.home{grid-template-columns:repeat(4,1fr)}.pgrid.home>:nth-child(n+4){display:block}.pgrid.home>:nth-child(n+5){display:none}}
+@media (min-width:1280px){.pgrid.home{grid-template-columns:repeat(5,1fr)}.pgrid.home>:nth-child(n+5){display:block}.pgrid.home>:nth-child(n+6){display:none}}
+@media (min-width:1700px){.pgrid.home{grid-template-columns:repeat(6,1fr)}.pgrid.home>:nth-child(n+6){display:block}.pgrid.home>:nth-child(n+7){display:none}}
+@media (min-width:2200px){.pgrid.home{grid-template-columns:repeat(8,1fr)}.pgrid.home>:nth-child(n+7){display:block}.pgrid.home>:nth-child(n+9){display:none}}
+
+.poster-bar{position:absolute;left:8px;right:8px;bottom:8px;display:flex;gap:6px;align-items:center;z-index:2;pointer-events:none}
+.poster .poster-bar .code{position:static;flex:0 1 auto;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (pointer:coarse){.poster-bar .mantine-Button-root{min-height:36px}}
+
+.split23{display:grid;gap:24px;grid-template-columns:minmax(0,1fr)}
+@media (min-width:1200px){.split23{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}}
+/* figure cards: 2 columns, 4 columns, and 6 columns on a wide screen */
+/* KPI row shares the 2/3 + 1/3 frame of the row below, so the columns line up at every width */
+.kpi-main,.kpi-side{display:grid;gap:16px;grid-auto-rows:1fr;grid-template-columns:repeat(2,minmax(0,1fr))}
+.kpi-main .kpi,.kpi-side .kpi{height:100%}
+@media (min-width:1200px){.kpi-side{grid-template-columns:minmax(0,1fr)}}
+
+/* A3 privacy mode: every picture stays blurred (cards, popups, galleries, avatars); only press-and-hold reveals it. The live video window is never blurred. */
+[data-privacy="on"] img[src*="/img/"], [data-privacy="on"] .player:not(.live) video, [data-privacy="on"] .mantine-Avatar-image { filter: blur(16px) saturate(.85); transition: filter .15s; }
+[data-privacy="on"] img[src*="/img/"]:active, [data-privacy="on"] .player:not(.live):active video { filter: none; }
+/* A2 player */
+.player { position: relative; background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 16/9; max-height: 70vh; width: 100%; }
+.player video { width: 100%; height: 100%; display: block; background: #000; }
+.player-busy { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+/* A7 viewer */
+.viewer-wrap { position: relative; background: #000; }
+/* the picture is shown at its own pixel size: never scaled; a bigger one scrolls inside the window */
+.viewer { display: flex; background: #000; overflow: auto; max-height: calc(100vh - 190px); max-width: min(96vw, 1400px); touch-action: pan-x pan-y; user-select: none; }
+.viewer img { flex: none; margin: auto; width: auto; height: auto; max-width: none; max-height: none; display: block; }
+.vstrip { display: flex; gap: 8px; overflow-x: auto; padding: 8px 12px; background: #0f1215; }
+.vstrip .vt { flex: 0 0 auto; width: 72px; aspect-ratio: 3/2; border-radius: 6px; overflow: hidden; opacity: .55; outline: 2px solid transparent; cursor: pointer; }
+.vstrip .vt.on { opacity: 1; outline-color: var(--mantine-color-teal-6); }
+.vstrip .vt img { width: 100%; height: 100%; object-fit: cover; display: block; }
+@media (pointer: coarse) { .vstrip .vt { width: 88px; } }
+/* A8 recommendation dismiss */
+.pick { position: relative; } .pick-x { position: absolute; left: 6px; top: 6px; z-index: 2; opacity: 0; transition: opacity .15s; }
+.pick:hover .pick-x, .pick-x:focus-visible { opacity: 1; } @media (pointer: coarse) { .pick-x { opacity: 1; } }
+/* playable marker on a card */
+.poster-play { position: absolute; left: 8px; top: 8px; z-index: 2; width: 26px; height: 26px; border-radius: 999px; background: var(--mantine-color-teal-6); color: #04201e; display: grid; place-items: center; pointer-events: auto; }
+.pick .pick-x { top: 40px; }
+button.poster-play { border: 0; padding: 0; cursor: pointer; }
+/* search page: filters + results */
+.sgrid { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 1100px) { .sgrid { grid-template-columns: 264px minmax(0, 1fr); } }
+.sfilters { position: sticky; top: 72px; max-height: calc(100vh - 88px); overflow-y: auto; padding-right: 4px; }
+/* three stat cards in one row (Recently updated) */
+.kpi3 { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 760px) { .kpi3 { grid-template-columns: minmax(0, 1fr); } }
+.kpi3 .tile { height: 100%; }
+/* performer photo at its own pixel size, never scaled; the frame is an outline so it adds no pixels */
+.avatar-full { display: block; width: auto; height: auto; max-width: 100%; border-radius: 8px; outline: 1px solid var(--mantine-color-dark-5); outline-offset: -1px; }
+/* full-width movie grids use the same column steps as Explore (2/3/4/5/6/8 per row), so the same screen shows the same number and size of covers */
+.pgrid.fixed{display:grid;gap:16px;grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (min-width:640px){.pgrid.fixed{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (min-width:1000px){.pgrid.fixed{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media (min-width:1280px){.pgrid.fixed{grid-template-columns:repeat(5,minmax(0,1fr))}}
+@media (min-width:1700px){.pgrid.fixed{grid-template-columns:repeat(6,minmax(0,1fr))}}
+@media (min-width:2200px){.pgrid.fixed{grid-template-columns:repeat(8,minmax(0,1fr))}}
+/* four stat cards in a row (Statistics) */
+.kpi4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 1000px) { .kpi4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.mantine-MultiSelect-pillsList { gap: 8px; }
+.nowrap-cells td { white-space: nowrap; }
+
+/* lazy pictures: shimmer while waiting, soft fade-in, quiet fallback when the picture is blocked or gone */
+img.lz { transition: opacity .35s ease; background: var(--mantine-color-dark-7); }
+img.lz-idle, img.lz-loading { opacity: .55; background: linear-gradient(100deg, var(--mantine-color-dark-7) 30%, var(--mantine-color-dark-5) 50%, var(--mantine-color-dark-7) 70%) 0 0 / 220% 100%; animation: lzshim 1.3s linear infinite; }
+img.lz-loaded { opacity: 1; animation: none; }
+img.lz-error { opacity: .4; background: var(--mantine-color-dark-6) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 24 24' fill='none' stroke='%235a6572' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'><path d='M15 8h.01M3 6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3zM3 16l5-5c.9-.9 2.1-.9 3 0l5 5M14 14l1-1c.9-.9 2.1-.9 3 0l3 3'/></svg>") center / 28px no-repeat; animation: none; }
+@keyframes lzshim { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+@media (prefers-reduced-motion: reduce) { img.lz-idle, img.lz-loading { animation: none; } }

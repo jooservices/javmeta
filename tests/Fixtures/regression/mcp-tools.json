@@ -1,0 +1,54 @@
+[
+    {
+        "name": "crawl_status",
+        "schema": "cdb728a86a767db21b7b344b7f8bd76e"
+    },
+    {
+        "name": "get_catalog",
+        "schema": "170caf8557c2629acb2a64cedb397d22"
+    },
+    {
+        "name": "get_counts",
+        "schema": "cdb728a86a767db21b7b344b7f8bd76e"
+    },
+    {
+        "name": "get_movie",
+        "schema": "64bf39a695f95a5e2c26ee02fa00bc44"
+    },
+    {
+        "name": "get_performer",
+        "schema": "193d9e074049109ce1fd28f3925dde26"
+    },
+    {
+        "name": "get_related_movies",
+        "schema": "aa926372f9e421da460f06a555715d2b"
+    },
+    {
+        "name": "get_release_calendar",
+        "schema": "cf2258e6e603ac111d23629d870e98ef"
+    },
+    {
+        "name": "lookup_movies",
+        "schema": "82099a70d46eadbe5d75365be228592c"
+    },
+    {
+        "name": "lookup_performers",
+        "schema": "aee37e137a27023588e525697fc189aa"
+    },
+    {
+        "name": "search",
+        "schema": "64c8fee620e8bfad3c856d32f25944d6"
+    },
+    {
+        "name": "search_scenes",
+        "schema": "22844db5814541d801e805ae7a8f78c5"
+    },
+    {
+        "name": "suggest",
+        "schema": "d9a2a9bfcfae3911ad47649bd2209d81"
+    },
+    {
+        "name": "system_status",
+        "schema": "cdb728a86a767db21b7b344b7f8bd76e"
+    }
+]
