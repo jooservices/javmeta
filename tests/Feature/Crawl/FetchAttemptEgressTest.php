@@ -29,7 +29,7 @@ final class FetchAttemptEgressTest extends TestCase
         $node = $this->nodeId();
         Cache::put('javmeta:egress:' . $node, ['ip' => '198.51.100.7']);
 
-        $this->recordAttempt('direct');
+        $this->recordAttempt('direct', 'http');
 
         $attempt = DB::table('crawl_fetch_attempts')->first();
         self::assertSame('198.51.100.7', $attempt->egress_ip);
@@ -83,9 +83,35 @@ final class FetchAttemptEgressTest extends TestCase
         self::assertSame(['browser_host', 'browser_host'], $rows->pluck('egress_kind')->all());
     }
 
+    public function test_an_http_attempt_of_a_browser_lane_row_stores_the_node_ip_not_the_browser_host(): void
+    {
+        config()->set('javmeta_browser.playwright_url', 'http://browser-a.test');
+        Cache::put('javmeta:egress:' . $this->nodeId(), ['ip' => '198.51.100.7']);
+        Cache::put('javmeta:browser-egress:browser-a.test', ['ip' => '203.0.113.8']);
+
+        $this->recordAttempt('browser', 'http');
+
+        $attempt = DB::table('crawl_fetch_attempts')->first();
+        self::assertSame('198.51.100.7', $attempt->egress_ip, 'The plain HTTP request left from the node.');
+        self::assertSame('node', $attempt->egress_kind);
+    }
+
+    public function test_a_browser_attempt_of_a_direct_lane_row_stores_the_browser_host_ip(): void
+    {
+        config()->set('javmeta_browser.playwright_url', 'http://browser-a.test');
+        Cache::put('javmeta:egress:' . $this->nodeId(), ['ip' => '198.51.100.7']);
+        Cache::put('javmeta:browser-egress:browser-a.test', ['ip' => '203.0.113.8']);
+
+        $this->recordAttempt('direct', 'playwright');
+
+        $attempt = DB::table('crawl_fetch_attempts')->first();
+        self::assertSame('203.0.113.8', $attempt->egress_ip, 'The fallback to the browser left from the browser host.');
+        self::assertSame('browser_host', $attempt->egress_kind);
+    }
+
     public function test_attempt_without_a_probe_value_keeps_a_null_ip(): void
     {
-        $this->recordAttempt('direct');
+        $this->recordAttempt('direct', 'http');
 
         $attempt = DB::table('crawl_fetch_attempts')->first();
         self::assertNull($attempt->egress_ip);
@@ -99,20 +125,20 @@ final class FetchAttemptEgressTest extends TestCase
         Cache::put('javmeta:egress:' . $node, ['ip' => '198.51.100.13']);
         config()->set('javmeta_observability.record_egress_ip', false);
 
-        $this->recordAttempt('direct');
+        $this->recordAttempt('direct', 'http');
 
         $attempt = DB::table('crawl_fetch_attempts')->first();
         self::assertNull($attempt->egress_ip);
         self::assertSame($node, $attempt->node);
     }
 
-    private function recordAttempt(string $lane): void
+    private function recordAttempt(string $lane, string $method = 'playwright'): void
     {
         $queue = new CrawlQueue(['source_slug' => 'ffjav', 'url' => 'https://ffjav.example.test/page']);
         $queue->id = 42;
         $queue->setAttribute('claimed_lane', $lane);
         $result = CrawlerxFetchResult::failure('blocked', 'blocked', attempts: [[
-            'method' => 'playwright',
+            'method' => $method,
             'started_at' => now()->toIso8601String(),
             'duration_ms' => 250,
             'outcome' => 'error',

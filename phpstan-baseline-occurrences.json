@@ -591,7 +591,7 @@
         },
         {
             "path": "app/Services/Observability/NodeEgressProbe.php",
-            "line": 285,
+            "line": 291,
             "identifier": "missingType.iterableValue",
             "messageHash": "b441d58e8701950c8af60b2d1d7486fc76e1f2099e4608af102395a75553c12e",
             "sourceHash": "2cb98529eb8ae97fe5f7e6a03bb7883d374f59022b3ecd689af61cf59ff228bb"
