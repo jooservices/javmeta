@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands\Observability;
 
+use App\Repositories\CrawlQueueRepository;
 use App\Repositories\ObservabilityServiceRepository;
 use App\Models\ApiUsageLog;
 use App\Models\CrawlEvent;
@@ -21,6 +22,8 @@ use App\Observability\ResponseCacheMetrics;
 use App\Services\Alerts\AlertMetrics;
 use App\Services\Archive\MongoArchiveWriteHealth;
 use App\Services\Crawl\CrawlerxFetchMethodPlan;
+use App\Services\Crawl\CrawlLaneService;
+use App\Services\Crawl\CrawlPriority;
 use App\Services\Crawl\CrawlStatsOperationalSampler;
 use App\Services\Crawl\FeedPoolDiagnostics;
 use App\Services\Crawl\SourceGapPolicy;
@@ -281,6 +284,17 @@ final class PublishMetricsCommand extends Command
                 'value' => (int) $row->getAttribute('c'),
                 'labels' => ['status' => (string) $row->status],
             ];
+        }
+
+        $depth = app(CrawlQueueRepository::class)->depthByPriority(new CrawlPriority(), app(CrawlLaneService::class)->browserSources());
+        foreach ($depth as $level => $counts) {
+            foreach ($counts as $state => $total) {
+                $points[] = [
+                    'name' => MetricStreams::NAMES['crawl_queue_priority_depth'],
+                    'value' => $total,
+                    'labels' => ['priority' => $level, 'state' => $state],
+                ];
+            }
         }
 
         $oldestClaimed = app(ObservabilityServiceRepository::class)->modelQuery(CrawlQueue::class)

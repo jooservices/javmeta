@@ -96,6 +96,19 @@ return [
     // Both are settings in the database (docs/03-operations/settings.md).
     'browser_sources' => ['javlibrary', 'javbus', 'missav', 'jable', 'warashi', 'javdatabase'],
     'browser_inflight' => 8,
+
+    /**
+     * Priority of the direct (non-browser) lane, read by the same workers in this order: high, normal, low. Rows of a source
+     * in high_sources are high, rows of a source in low_sources are low, and a recrawl is low when recrawl_is_low is on; every
+     * other row is normal. caps limits the rows of a level that may be claimed and unfinished at the same time (0 = no cap).
+     * All of it is a setting in the database (docs/03-operations/settings.md). The browser and retry lanes do not use it.
+     */
+    'priority' => [
+        'high_sources' => [],
+        'low_sources' => [],
+        'recrawl_is_low' => true,
+        'caps' => ['high' => 0, 'normal' => 0, 'low' => 0],
+    ],
     'feed_pool_limit' => 50,
     'feed_interval_seconds' => 10,
 

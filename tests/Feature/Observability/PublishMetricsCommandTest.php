@@ -189,6 +189,39 @@ final class PublishMetricsCommandTest extends TestCase
         }
     }
 
+    public function test_queue_metrics_publish_the_due_and_claimed_rows_of_every_priority_level(): void
+    {
+        config()->set([
+            'javmeta_queues.browser_sources' => ['bro'],
+            'javmeta_queues.priority.high_sources' => ['vip'],
+            'javmeta_queues.priority.low_sources' => ['bulk'],
+            'javmeta_queues.priority.recrawl_is_low' => true,
+        ]);
+        $due = ['status' => CrawlQueue::STATUS_PENDING, 'next_attempt_at' => now()->subMinute()];
+        CrawlQueue::factory()->create([...$due, 'source_slug' => 'vip']);
+        CrawlQueue::factory()->count(2)->create([...$due, 'source_slug' => 'plain']);
+        CrawlQueue::factory()->create([...$due, 'source_slug' => 'plain', 'is_recrawl' => true]);
+        CrawlQueue::factory()->create([...$due, 'source_slug' => 'bulk']);
+        CrawlQueue::factory()->create(['source_slug' => 'bulk', 'status' => CrawlQueue::STATUS_CLAIMED, 'claimed_lane' => 'direct']);
+        CrawlQueue::factory()->create(['source_slug' => 'plain', 'status' => CrawlQueue::STATUS_PENDING, 'next_attempt_at' => now()->addHour()]);
+        CrawlQueue::factory()->create([...$due, 'source_slug' => 'bro']);
+        CrawlQueue::factory()->create(['source_slug' => 'vip', 'status' => CrawlQueue::STATUS_RETRY_PENDING]);
+        CrawlQueue::factory()->create(['source_slug' => 'vip', 'status' => CrawlQueue::STATUS_CLAIMED, 'claimed_lane' => 'retry']);
+
+        $method = new ReflectionMethod(PublishMetricsCommand::class, 'queueMetrics');
+        /** @var list<array{name: string, value: float|int, labels?: array<string, string>}> $points */
+        $points = $method->invoke(app(PublishMetricsCommand::class));
+        $byLevel = collect($points)->where('name', MetricStreams::NAMES['crawl_queue_priority_depth'])
+            ->mapWithKeys(static fn(array $point): array => [$point['labels']['priority'] . ':' . $point['labels']['state'] => $point['value']])
+            ->all();
+
+        self::assertSame(
+            ['high:due' => 1, 'high:claimed' => 0, 'normal:due' => 2, 'normal:claimed' => 0, 'low:due' => 2, 'low:claimed' => 1],
+            $byLevel,
+            'Only the direct lane counts: not the browser source, the retry rows or the row due in an hour; a recrawl is low.',
+        );
+    }
+
     public function test_command_publishes_feed_pool_diagnostics_metrics_from_the_previous_minute(): void
     {
         config()->set([

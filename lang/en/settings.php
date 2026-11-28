@@ -303,6 +303,30 @@ return [
             'label' => 'Concurrent jobs per source',
             'description' => 'Maximum number of jobs from one source that may run at the same time.',
         ],
+        'queue__priority_high_sources' => [
+            'label' => 'High-priority sources (one source code per line)',
+            'description' => 'Jobs of these sources are claimed first in the direct crawl lane.',
+        ],
+        'queue__priority_low_sources' => [
+            'label' => 'Low-priority sources (one source code per line)',
+            'description' => 'Jobs of these sources are claimed last in the direct crawl lane.',
+        ],
+        'queue__priority_recrawl_is_low' => [
+            'label' => 'Recrawls have low priority',
+            'description' => 'When on, recrawls of movies that already exist run after new work (except for high-priority sources).',
+        ],
+        'queue__priority_cap_high' => [
+            'label' => 'Concurrent jobs cap, high priority',
+            'description' => 'Most high-priority jobs that may be claimed and unfinished at the same time; 0 means no limit.',
+        ],
+        'queue__priority_cap_normal' => [
+            'label' => 'Concurrent jobs cap, normal priority',
+            'description' => 'Most normal-priority jobs that may be claimed and unfinished at the same time; 0 means no limit.',
+        ],
+        'queue__priority_cap_low' => [
+            'label' => 'Concurrent jobs cap, low priority',
+            'description' => 'Most low-priority jobs that may be claimed and unfinished at the same time; 0 means no limit.',
+        ],
         'queue__feed_pool_limit' => [
             'label' => 'Jobs fed per cycle',
             'description' => 'Maximum number of crawl_queue rows fed in one feed pool cycle.',

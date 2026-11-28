@@ -303,6 +303,30 @@ return [
             'label' => 'Việc đồng thời mỗi nguồn',
             'description' => 'Tối đa số việc của một nguồn được chạy cùng lúc.',
         ],
+        'queue__priority_high_sources' => [
+            'label' => 'Nguồn ưu tiên cao (mỗi dòng một mã nguồn)',
+            'description' => 'Việc của các nguồn này được lấy trước ở làn crawl trực tiếp.',
+        ],
+        'queue__priority_low_sources' => [
+            'label' => 'Nguồn ưu tiên thấp (mỗi dòng một mã nguồn)',
+            'description' => 'Việc của các nguồn này được lấy sau cùng ở làn crawl trực tiếp.',
+        ],
+        'queue__priority_recrawl_is_low' => [
+            'label' => 'Crawl lại ưu tiên thấp',
+            'description' => 'Bật thì việc crawl lại phim đã có chạy sau việc mới (trừ nguồn ưu tiên cao).',
+        ],
+        'queue__priority_cap_high' => [
+            'label' => 'Trần việc đồng thời mức cao',
+            'description' => 'Tối đa số việc mức cao được nhận và chưa xong cùng lúc; 0 là không giới hạn.',
+        ],
+        'queue__priority_cap_normal' => [
+            'label' => 'Trần việc đồng thời mức thường',
+            'description' => 'Tối đa số việc mức thường được nhận và chưa xong cùng lúc; 0 là không giới hạn.',
+        ],
+        'queue__priority_cap_low' => [
+            'label' => 'Trần việc đồng thời mức thấp',
+            'description' => 'Tối đa số việc mức thấp được nhận và chưa xong cùng lúc; 0 là không giới hạn.',
+        ],
         'queue__feed_pool_limit' => [
             'label' => 'Việc nạp mỗi lượt',
             'description' => 'Tối đa số dòng crawl_queue được nạp trong một lượt feed pool.',

@@ -18,6 +18,7 @@ final class MetricStreams
         'source_consecutive_blocks' => self::PREFIX . 'source_consecutive_blocks',
         'crawl_queue_depth' => self::PREFIX . 'crawl_queue_depth',
         'crawl_queue_claimed_age_seconds' => self::PREFIX . 'crawl_queue_claimed_age_seconds',
+        'crawl_queue_priority_depth' => self::PREFIX . 'crawl_queue_priority_depth',
         'crawl_queue_avg_attempts' => self::PREFIX . 'crawl_queue_avg_attempts',
         'retry_pending' => self::PREFIX . 'retry_pending',
         'retry_success_total' => self::PREFIX . 'retry_success_total',
