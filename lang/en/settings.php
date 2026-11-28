@@ -327,6 +327,10 @@ return [
             'label' => 'Concurrent jobs cap, low priority',
             'description' => 'Most low-priority jobs that may be claimed and unfinished at the same time; 0 means no limit.',
         ],
+        'queue__coverage_exhausted_after_days' => [
+            'label' => 'Days without a new movie before a source counts as exhausted',
+            'description' => 'crawler:coverage-report calls a source exhausted when nothing is pending and it stored no new movie for this many days.',
+        ],
         'queue__feed_pool_limit' => [
             'label' => 'Jobs fed per cycle',
             'description' => 'Maximum number of crawl_queue rows fed in one feed pool cycle.',

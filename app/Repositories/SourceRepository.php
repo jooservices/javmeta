@@ -91,6 +91,12 @@ final class SourceRepository extends EloquentRepository implements RepositoryInt
     }
 
     /** @return list<string> */
+    public function enabledSlugs(): array
+    {
+        return array_values(array_map('strval', $this->newQuery()->where('enabled', true)->orderBy('slug')->pluck('slug')->all()));
+    }
+
+    /** @return list<string> */
     public function disabledSlugs(): array
     {
         return array_values(array_map('strval', $this->newQuery()->where('enabled', false)->pluck('slug')->all()));

@@ -243,6 +243,44 @@ final class PublishMetricsCommandTest extends TestCase
         self::assertSame(['due' => 1, 'claimed' => 1], $normal, 'Without lanes a browser source is direct work.');
     }
 
+    public function test_coverage_metrics_are_published_for_every_enabled_source(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-28 12:00:00'));
+        config()->set('javmeta_queues.coverage_exhausted_after_days', 7);
+        Source::factory()->create(['slug' => 'alpha', 'enabled' => true]);
+        Source::factory()->create(['slug' => 'quiet', 'enabled' => true]);
+        foreach ([['listing', 'done'], ['listing', 'done'], ['detail', 'done'], ['detail', 'pending']] as $index => [$kind, $status]) {
+            CrawlQueue::factory()->create(['source_slug' => 'alpha', 'kind' => $kind, 'status' => $status, 'url' => 'https://example.test/alpha/' . $index]);
+        }
+        DB::table('crawl_stats_hourly')->insert([
+            'hour_at' => now()->startOfHour()->subHours(5), 'source_slug' => 'alpha', 'lane' => 'direct', 'method' => 'http', 'attempts' => 1, 'ok' => 1,
+            'movies_new' => 2, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $method = new ReflectionMethod(PublishMetricsCommand::class, 'coverageMetrics');
+        /** @var list<array{name: string, value: float|int, labels?: array<string, string>}> $points */
+        $points = $method->invoke(app(PublishMetricsCommand::class));
+        $value = static function (string $name, string $source) use ($points): float|int|null {
+            foreach ($points as $point) {
+                if ($point['name'] === MetricStreams::NAMES[$name] && ($point['labels']['source_slug'] ?? null) === $source) {
+                    return $point['value'];
+                }
+            }
+
+            return null;
+        };
+
+        self::assertSame(2, $value('crawl_coverage_listing_discovered', 'alpha'));
+        self::assertSame(2, $value('crawl_coverage_listing_crawled', 'alpha'));
+        self::assertSame(1, $value('crawl_coverage_detail_pending', 'alpha'));
+        self::assertSame(1, $value('crawl_coverage_detail_done', 'alpha'));
+        self::assertSame(5 * 3600, $value('crawl_coverage_last_new_item_age_seconds', 'alpha'));
+        self::assertSame(0, $value('crawl_coverage_exhausted', 'alpha'));
+        self::assertSame(-1, $value('crawl_coverage_last_new_item_age_seconds', 'quiet'), 'No new item in the statistics is -1.');
+        self::assertSame(0, $value('crawl_coverage_listing_discovered', 'quiet'));
+        self::assertSame(0, $value('crawl_coverage_exhausted', 'quiet'));
+    }
+
     public function test_command_publishes_feed_pool_diagnostics_metrics_from_the_previous_minute(): void
     {
         config()->set([
