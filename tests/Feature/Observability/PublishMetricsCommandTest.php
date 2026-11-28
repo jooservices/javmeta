@@ -222,6 +222,27 @@ final class PublishMetricsCommandTest extends TestCase
         );
     }
 
+    public function test_the_priority_metrics_count_every_source_when_the_lanes_are_switched_off(): void
+    {
+        config()->set([
+            'javmeta_queues.lanes_enabled' => false,
+            'javmeta_queues.browser_sources' => ['bro'],
+            'javmeta_queues.priority.high_sources' => [],
+            'javmeta_queues.priority.low_sources' => [],
+        ]);
+        CrawlQueue::factory()->create(['source_slug' => 'bro', 'status' => CrawlQueue::STATUS_PENDING, 'next_attempt_at' => now()->subMinute()]);
+        CrawlQueue::factory()->create(['source_slug' => 'bro', 'status' => CrawlQueue::STATUS_CLAIMED, 'claimed_lane' => 'direct']);
+
+        $method = new ReflectionMethod(PublishMetricsCommand::class, 'queueMetrics');
+        /** @var list<array{name: string, value: float|int, labels?: array<string, string>}> $points */
+        $points = $method->invoke(app(PublishMetricsCommand::class));
+        $normal = collect($points)->where('name', MetricStreams::NAMES['crawl_queue_priority_depth'])
+            ->filter(static fn(array $point): bool => $point['labels']['priority'] === 'normal')
+            ->mapWithKeys(static fn(array $point): array => [$point['labels']['state'] => $point['value']])->all();
+
+        self::assertSame(['due' => 1, 'claimed' => 1], $normal, 'Without lanes a browser source is direct work.');
+    }
+
     public function test_command_publishes_feed_pool_diagnostics_metrics_from_the_previous_minute(): void
     {
         config()->set([

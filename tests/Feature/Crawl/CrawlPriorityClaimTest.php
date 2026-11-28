@@ -92,6 +92,25 @@ final class CrawlPriorityClaimTest extends TestCase
         self::assertSame('vip-b', $this->claim()?->source_slug);
     }
 
+    public function test_claimed_rows_of_the_browser_and_retry_lanes_do_not_count_against_a_direct_cap(): void
+    {
+        config()->set(['javmeta_queues.priority.caps' => ['high' => 0, 'normal' => 1, 'low' => 0]]);
+        $this->queue('bro-a', status: CrawlQueue::STATUS_CLAIMED, claimedLane: 'browser');
+        $this->queue('retrying', status: CrawlQueue::STATUS_CLAIMED, claimedLane: 'retry');
+        $this->queue('plain');
+
+        self::assertSame('plain', $this->claim()?->source_slug, 'Neither claimed row is direct work, so the normal cap is still free.');
+    }
+
+    public function test_an_unfinished_direct_claim_counts_against_the_cap_whatever_its_lane_mark(): void
+    {
+        config()->set(['javmeta_queues.priority.caps' => ['high' => 0, 'normal' => 1, 'low' => 0]]);
+        $this->queue('legacy', status: CrawlQueue::STATUS_CLAIMED, claimedLane: null);
+        $this->queue('plain');
+
+        self::assertNull($this->claim(), 'A claimed row with no lane mark is direct work, and the only normal slot is taken.');
+    }
+
     public function test_a_cap_of_zero_means_no_cap(): void
     {
         config()->set(['javmeta_queues.priority.high_sources' => ['vip-a', 'vip-b'], 'javmeta_queues.priority.caps' => ['high' => 0, 'normal' => 0, 'low' => 0]]);
@@ -147,10 +166,10 @@ final class CrawlPriorityClaimTest extends TestCase
         return app(CrawlQueueService::class)->claimNext('worker', null, [], $lane);
     }
 
-    private function queue(string $slug, bool $recrawl = false, string $status = CrawlQueue::STATUS_PENDING): void
+    private function queue(string $slug, bool $recrawl = false, string $status = CrawlQueue::STATUS_PENDING, ?string $claimedLane = null): void
     {
         Source::query()->firstOrCreate(['slug' => $slug], Source::factory()->make(['slug' => $slug, 'enabled' => true])->getAttributes());
-        CrawlQueue::query()->create([
+        $row = CrawlQueue::query()->create([
             'source_slug' => $slug,
             'url' => 'https://example.test/' . $slug . '/' . CrawlQueue::query()->count(),
             'kind' => CrawlQueue::KIND_DETAIL,
@@ -160,5 +179,7 @@ final class CrawlPriorityClaimTest extends TestCase
             'next_attempt_at' => now()->subSecond(),
             'is_recrawl' => $recrawl,
         ]);
+        // claimed_lane is set by the claim itself and is not mass assignable.
+        $row->forceFill(['claimed_lane' => $claimedLane])->save();
     }
 }

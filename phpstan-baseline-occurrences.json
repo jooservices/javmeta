@@ -38,7 +38,7 @@
         },
         {
             "path": "app/Console/Commands/Observability/PublishMetricsCommand.php",
-            "line": 766,
+            "line": 768,
             "identifier": "missingType.iterableValue",
             "messageHash": "e4c86a99306afc70b0315e5e7fa5d08afb106dca0904697cc69228e8b5cc9c21",
             "sourceHash": "f5a70f697a6e35970c0e650846bf935964fc3f83d9f5cc9f11453e639c2a8347"
@@ -52,42 +52,42 @@
         },
         {
             "path": "app/Repositories/CrawlQueueRepository.php",
-            "line": 240,
+            "line": 241,
             "identifier": "missingType.generics",
             "messageHash": "df0b976d1d864638dfcc932e33b0dfe1d2ad93602f90ad4c773be68b96b0613e",
             "sourceHash": "2bb75c6fb4a05a520114bbd1ab43c02e9fb254337e521af8327530aded23cd24"
         },
         {
             "path": "app/Repositories/CrawlQueueRepository.php",
-            "line": 240,
+            "line": 241,
             "identifier": "missingType.iterableValue",
             "messageHash": "745e602e662d495e013427fef91f030cc02b0cd6b6fd3eec0ff921f70574eb1a",
             "sourceHash": "2bb75c6fb4a05a520114bbd1ab43c02e9fb254337e521af8327530aded23cd24"
         },
         {
             "path": "app/Repositories/CrawlQueueRepository.php",
-            "line": 240,
+            "line": 241,
             "identifier": "missingType.iterableValue",
             "messageHash": "e6d483f04dc4dd545f86258ada7b0f72a779d66382679836af720f78015ddfcb",
             "sourceHash": "2bb75c6fb4a05a520114bbd1ab43c02e9fb254337e521af8327530aded23cd24"
         },
         {
             "path": "app/Repositories/CrawlQueueRepository.php",
-            "line": 542,
+            "line": 543,
             "identifier": "missingType.iterableValue",
             "messageHash": "bd45c4896ea71ac52615b7bcc71520862bb055fd9ab257088f22876fe6dfe9e7",
             "sourceHash": "ff3f789195e1f02299615c7f4c74d922b0c74b6fbbcf3e68ed4374a7beaaba49"
         },
         {
             "path": "app/Repositories/CrawlQueueRepository.php",
-            "line": 553,
+            "line": 554,
             "identifier": "missingType.iterableValue",
             "messageHash": "468ea4204d2148b7659c6703315cd35a729c5c820fea438877ee42366f40edeb",
             "sourceHash": "ded6b64bdcb778fb117955f2989f149ee657855957bbfe50d92defb0865274d1"
         },
         {
             "path": "app/Repositories/CrawlQueueRepository.php",
-            "line": 603,
+            "line": 604,
             "identifier": "missingType.iterableValue",
             "messageHash": "e25eeead851bb5249a9b0f0bf58211791d5e4da91e9ef653c1cb67423cd24629",
             "sourceHash": "95bb2907b44a1655441ff9b44d2267765d9c8c82a0119305e27be9f4ee95eff4"

@@ -220,7 +220,8 @@ final class CrawlQueueRepository extends BusinessQueryRepository
         $claimed = $this->newQuery()
             ->where('status', CrawlQueue::STATUS_CLAIMED)
             ->where(static function (Builder $nested): void {
-                $nested->whereNull('claimed_lane')->orWhere('claimed_lane', '!=', 'retry');
+                // Only unfinished direct work counts; a claim of the browser or the retry lane must not block the direct lane.
+                $nested->whereNull('claimed_lane')->orWhereNotIn('claimed_lane', ['retry', 'browser']);
             })
             ->selectRaw($rank . ' AS priority_rank, COUNT(*) AS total', $bindings)
             ->groupBy('priority_rank')

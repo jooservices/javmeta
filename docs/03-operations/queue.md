@@ -245,8 +245,9 @@ change of a rule applies to rows that are already queued, and no row, migration 
 
 `queue.priority_cap_high`, `queue.priority_cap_normal` and `queue.priority_cap_low` limit how many rows of a level may be claimed and
 unfinished at the same time (0 is no limit, the default). A level at its cap gives way to the next level until one of its rows
-finishes, so low-priority work cannot fill every worker and a high-priority source cannot starve the rest. All six are database
-settings on Cài đặt → Hàng đợi.
+finishes. A cap only limits unfinished claims of that level; it does not reserve workers and does not guarantee that another
+level is served, because a level that finishes each row before the next claim never reaches its cap. Only claims of the direct
+lane count. All six are database settings on Cài đặt → Hàng đợi.
 
 With the default settings the only change is that recrawls run after new work; the request rate is not touched: the per-source
 pacing, the gaps and the in-flight limits still decide how many requests go out. The browser lane and the delayed retry lane ignore

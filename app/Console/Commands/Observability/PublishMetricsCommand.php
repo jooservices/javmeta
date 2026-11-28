@@ -286,7 +286,9 @@ final class PublishMetricsCommand extends Command
             ];
         }
 
-        $depth = app(CrawlQueueRepository::class)->depthByPriority(new CrawlPriority(), app(CrawlLaneService::class)->browserSources());
+        // Without lanes every source is direct work, so no source is left out.
+        $browserSources = (bool) config('javmeta_queues.lanes_enabled', true) ? app(CrawlLaneService::class)->browserSources() : [];
+        $depth = app(CrawlQueueRepository::class)->depthByPriority(new CrawlPriority(), $browserSources);
         foreach ($depth as $level => $counts) {
             foreach ($counts as $state => $total) {
                 $points[] = [
