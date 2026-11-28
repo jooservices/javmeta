@@ -34,7 +34,7 @@ Five migrations, all additive and applied by the deploy on the primary node:
 - `2026_11_27_060001_create_audit_log_and_setting_revisions` creates `audit_log` and `setting_revisions`.
 - `2026_11_27_070001_create_movie_view_counts` creates `movie_view_counts`.
 
-Rolling back to v1.1.1 needs no database change: the previous code ignores the new tables and columns and always sets `movie_code`. The new tables and columns stay in place after a rollback. The built UI in `public/web` also stays and is not served by the previous code (it redirects `/` to `/app`). The read models are rebuilt from the catalogue, so they can be dropped at any time.
+Rolling back to v1.1.1 needs no database change: the previous code ignores the new tables and columns and always sets `movie_code`. The new tables and columns stay in place after a rollback. The built UI in `public/web` also stays and is not served by the previous code (it redirects `/` to `/app`). The read models are rebuilt from the catalogue by `xcrawler:read-models:refresh`, but do not drop them: the catalogue queries of the new UI read them directly, so requests fail while a table is missing, and the scheduled refresh fails without `rm_perf_attr`, until the migration `2026_11_26_000001_create_ui_read_model_tables` creates the tables again.
 
 ## [1.1.1] - 2026-11-27
 
@@ -78,7 +78,7 @@ None. Rolling back to v1.1.0-rc.1 (the release running on the nodes today) needs
 
 ### Database migrations
 
-None. Rolling back to v1.0.0 needs no database change. The 14 new source rows created by the deploy stay in `sources` after a rollback. A row that an operator switched on stays on: run `php artisan crawler:source-toggle SLUG off --by=NAME` for each such source before rolling back if it must not run. Switching a source off stops only new dispatch: jobs already queued for it still fetch when a worker runs them, so let the queued work finish first (graceful worker drain, `docs/03-operations/deployment-automation-plan.md` TR-07).
+None. Rolling back to v1.0.0 needs no database change. The 14 new source rows created by the deploy stay in `sources` after a rollback. A row that an operator switched on stays on: run `php artisan crawler:source-toggle SLUG off --by=NAME` for each such source before rolling back if it must not run. Switching a source off stops its work: jobs already queued for it are not fetched, they stay queued until the source is switched on again and they are still queued after a rollback. If they must be processed before the rollback, switch the source on and let its queue finish first (graceful worker drain, `docs/03-operations/deployment-automation-plan.md` TR-07).
 
 ## [1.0.0] - 2026-11-15
 
