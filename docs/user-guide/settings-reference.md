@@ -20,6 +20,42 @@ Tối đa số việc của một nguồn được chạy cùng lúc.
 
 Số nguyên; từ 1 đến 64. Mã mục: `queue.per_source_inflight`.
 
+### Nguồn ưu tiên cao (mỗi dòng một mã nguồn)
+
+Việc của các nguồn này được lấy trước ở làn crawl trực tiếp.
+
+Danh sách văn bản. Mã mục: `queue.priority_high_sources`.
+
+### Nguồn ưu tiên thấp (mỗi dòng một mã nguồn)
+
+Việc của các nguồn này được lấy sau cùng ở làn crawl trực tiếp.
+
+Danh sách văn bản. Mã mục: `queue.priority_low_sources`.
+
+### Crawl lại ưu tiên thấp
+
+Bật thì việc crawl lại phim đã có chạy sau việc mới (trừ nguồn ưu tiên cao).
+
+Bật/tắt. Mã mục: `queue.priority_recrawl_is_low`.
+
+### Trần việc đồng thời mức cao
+
+Tối đa số việc mức cao được nhận và chưa xong cùng lúc; 0 là không giới hạn.
+
+Số nguyên; từ 0 đến 100000. Mã mục: `queue.priority_cap_high`.
+
+### Trần việc đồng thời mức thường
+
+Tối đa số việc mức thường được nhận và chưa xong cùng lúc; 0 là không giới hạn.
+
+Số nguyên; từ 0 đến 100000. Mã mục: `queue.priority_cap_normal`.
+
+### Trần việc đồng thời mức thấp
+
+Tối đa số việc mức thấp được nhận và chưa xong cùng lúc; 0 là không giới hạn.
+
+Số nguyên; từ 0 đến 100000. Mã mục: `queue.priority_cap_low`.
+
 ### Việc nạp mỗi lượt
 
 Tối đa số dòng crawl_queue được nạp trong một lượt feed pool.

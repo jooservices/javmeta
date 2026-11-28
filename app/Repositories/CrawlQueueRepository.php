@@ -7,6 +7,7 @@ namespace App\Repositories;
 use App\Enums\CrawlErrorCode;
 use App\Models\CrawlQueue;
 use App\Services\Crawl\CrawlLaneService;
+use App\Services\Crawl\CrawlPriority;
 use App\Services\Crawl\FeedPoolStopReason;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
@@ -71,11 +72,13 @@ final class CrawlQueueRepository extends BusinessQueryRepository
         ?array &$diagnostics,
         array $disabledSources,
         CrawlLaneService $lanes,
+        ?CrawlPriority $priority = null,
     ): ?CrawlQueue {
+        $priority ??= new CrawlPriority();
         $collectDiagnostics = $diagnostics !== null;
         $diagnostics = ['rows_examined' => 0, 'stop_reason' => null];
 
-        return DB::transaction(function () use ($workerId, $kind, $excludedSources, $lane, $collectDiagnostics, &$diagnostics, $disabledSources, $lanes): ?CrawlQueue {
+        return DB::transaction(function () use ($workerId, $kind, $excludedSources, $lane, $collectDiagnostics, &$diagnostics, $disabledSources, $lanes, $priority): ?CrawlQueue {
             if (DB::getDriverName() === 'pgsql') {
                 DB::select('SELECT pg_advisory_xact_lock(?)', [281]);
             }
@@ -85,8 +88,8 @@ final class CrawlQueueRepository extends BusinessQueryRepository
                 ->where('status', $lane === 'retry' ? CrawlQueue::STATUS_RETRY_PENDING : CrawlQueue::STATUS_PENDING)
                 ->where(static function (Builder $q): void {
                     $q->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', now());
-                })
-                ->orderBy('id');
+                });
+            $this->orderForClaim($query, $lane, $priority);
 
             if ($kind !== null) {
                 $query->where('kind', $kind);
@@ -109,6 +112,7 @@ final class CrawlQueueRepository extends BusinessQueryRepository
                 $eligibleQuery->whereNotIn('source_slug', $excludedSources);
             }
             $eligibleQuery->whereNotIn('source_slug', $sourcesAtInflightLimit);
+            $this->excludeSaturatedLevels($eligibleQuery, $lane, $priority);
 
             if ($collectDiagnostics) {
                 $row = $this->claimWithDiagnostics($query, $eligibleQuery, $excludedSources, $sourcesAtInflightLimit);
@@ -144,6 +148,93 @@ final class CrawlQueueRepository extends BusinessQueryRepository
 
             return $row->refresh();
         });
+    }
+
+    /**
+     * Rows of the direct lane per priority level: those that are due now and those that are claimed and unfinished.
+     *
+     * @param list<string> $browserSources the sources of the browser lane, which does not use priorities
+     * @return array<string, array{due: int, claimed: int}> level => counts, every level present
+     */
+    public function depthByPriority(CrawlPriority $priority, array $browserSources): array
+    {
+        [$rank, $bindings] = $priority->rankExpression();
+        $rows = $this->newQuery()
+            ->where(static function (Builder $query) use ($browserSources): void {
+                $query->where(static function (Builder $due) use ($browserSources): void {
+                    $due->where('status', CrawlQueue::STATUS_PENDING)
+                        ->where(static function (Builder $when): void {
+                            $when->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', now());
+                        })
+                        ->whereNotIn('source_slug', $browserSources);
+                })->orWhere(static function (Builder $claimed): void {
+                    $claimed->where('status', CrawlQueue::STATUS_CLAIMED)
+                        ->where(static function (Builder $lane): void {
+                            $lane->whereNull('claimed_lane')->orWhereNotIn('claimed_lane', ['retry', 'browser']);
+                        });
+                });
+            })
+            ->selectRaw($rank . ' AS priority_rank, status, COUNT(*) AS total', $bindings)
+            ->groupBy('priority_rank', 'status')
+            ->get();
+
+        $depth = [];
+        foreach (CrawlPriority::LEVELS as $level) {
+            $depth[$level] = ['due' => 0, 'claimed' => 0];
+        }
+        foreach ($rows as $row) {
+            $level = CrawlPriority::LEVELS[(int) $row->getAttribute('priority_rank')];
+            $depth[$level][$row->getAttribute('status') === CrawlQueue::STATUS_CLAIMED ? 'claimed' : 'due'] = (int) $row->getAttribute('total');
+        }
+
+        return $depth;
+    }
+
+    /**
+     * The direct lane serves high before normal before low, and the queue order inside a level; the other lanes keep the queue order.
+     *
+     * @param Builder<CrawlQueue> $query
+     */
+    private function orderForClaim(Builder $query, ?string $lane, CrawlPriority $priority): void
+    {
+        if ($lane === 'direct') {
+            [$rank, $bindings] = $priority->rankExpression();
+            $query->orderByRaw($rank, $bindings);
+        }
+        $query->orderBy('id');
+    }
+
+    /**
+     * A level whose claimed and unfinished rows have reached its cap gives way to the next level until a slot frees.
+     *
+     * @param Builder<CrawlQueue> $query
+     */
+    private function excludeSaturatedLevels(Builder $query, ?string $lane, CrawlPriority $priority): void
+    {
+        $caps = $lane === 'direct' ? $priority->caps() : [];
+        if ($caps === []) {
+            return;
+        }
+
+        [$rank, $bindings] = $priority->rankExpression();
+        $claimed = $this->newQuery()
+            ->where('status', CrawlQueue::STATUS_CLAIMED)
+            ->where(static function (Builder $nested): void {
+                // Only unfinished direct work counts; a claim of the browser or the retry lane must not block the direct lane.
+                $nested->whereNull('claimed_lane')->orWhereNotIn('claimed_lane', ['retry', 'browser']);
+            })
+            ->selectRaw($rank . ' AS priority_rank, COUNT(*) AS total', $bindings)
+            ->groupBy('priority_rank')
+            ->pluck('total', 'priority_rank');
+        $saturated = [];
+        foreach ($caps as $level => $cap) {
+            if ((int) ($claimed[$priority->rank($level)] ?? 0) >= $cap) {
+                $saturated[] = $priority->rank($level);
+            }
+        }
+        if ($saturated !== []) {
+            $query->whereRaw('(' . $rank . ') NOT IN (' . implode(', ', array_fill(0, count($saturated), '?')) . ')', [...$bindings, ...$saturated]);
+        }
     }
 
     /** @param Builder<CrawlQueue> $baseQuery @param Builder<CrawlQueue> $eligibleQuery @param list<string> $excludedSources @param list<string> $sourcesAtInflightLimit */

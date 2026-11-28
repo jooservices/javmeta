@@ -22,6 +22,7 @@ environment.
 | `javmeta_source_last_success_age_seconds` | `source_slug` | Age in seconds since the source's last successful crawl; `-1` means no success is recorded. |
 | `javmeta_source_past_due` | `source_slug` | 1 when an enabled source exceeded its manifest cycle plus one scheduler sweep, or global fallback; otherwise 0. |
 | `javmeta_crawl_queue_depth` | `status` | Current queue rows by state. |
+| `javmeta_crawl_queue_priority_depth` | `priority`, `state` | Direct-lane queue rows per priority level (`high`, `normal`, `low`): `state=due` for pending rows that are due now, `state=claimed` for rows claimed and unfinished. Browser and retry lane rows are not counted. |
 | `javmeta_crawl_queue_claimed_age_seconds` | — | Age in seconds of the oldest claimed queue row; `-1` means none is claimed. |
 | `javmeta_crawl_dispatch_age_seconds` | — | Seconds since the feed pool last dispatched a crawl job; `-1` means no dispatch is recorded. |
 | `javmeta_crawl_dispatch_stale` | `severity` | 1 when due `pending` or `retry_pending` work has exceeded the warning or critical dispatch-age threshold; 0 otherwise. Future retry rows do not count as due. Thresholds come from database settings. |

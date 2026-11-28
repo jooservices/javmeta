@@ -231,6 +231,29 @@ publishes observed counts as `javmeta_horizon_workers{queue,node}`. Changes to
 queue names or other Horizon options that cannot be safely scaled in place are
 reported as `restart-required` and need an operator-managed Horizon restart.
 
+## Priority in the direct lane
+
+The direct (non-browser) lane has three priority levels, served by the same workers in this order: **high**, **normal**, **low**.
+Inside a level rows keep the order of the queue. The level is computed when a row is claimed (`App\Services\Crawl\CrawlPriority`), so a
+change of a rule applies to rows that are already queued, and no row, migration or worker pool is added.
+
+| Level | Which rows |
+|---|---|
+| high | Rows of a source listed in `queue.priority_high_sources` |
+| low | Rows of a source listed in `queue.priority_low_sources`; recrawls of movies that already exist while `queue.priority_recrawl_is_low` is on (the default) and the source is not high |
+| normal | Every other row: new work of any other source |
+
+`queue.priority_cap_high`, `queue.priority_cap_normal` and `queue.priority_cap_low` limit how many rows of a level may be claimed and
+unfinished at the same time (0 is no limit, the default). A level at its cap gives way to the next level until one of its rows
+finishes. A cap only limits unfinished claims of that level; it does not reserve workers and does not guarantee that another
+level is served, because a level that finishes each row before the next claim never reaches its cap. Only claims of the direct
+lane count. All six are database settings on Cài đặt → Hàng đợi.
+
+With the default settings the only change is that recrawls run after new work; the request rate is not touched: the per-source
+pacing, the gaps and the in-flight limits still decide how many requests go out. The browser lane and the delayed retry lane ignore
+priority. `javmeta_crawl_queue_priority_depth{priority,state}` shows, per level, the rows that are due (`due`) and those that are
+claimed and unfinished (`claimed`); only the direct lane is counted.
+
 ## Delayed retry lane
 
 The normal lane gets up to `crawl.max_attempts` attempts per URL. Transient
