@@ -36,6 +36,21 @@ final class RetireBacklogDepthAlertMigrationTest extends TestCase
         self::assertSame(0, DB::table('notification_templates')->where('key', 'crawl.backlog_by_source_high')->count());
     }
 
+    public function test_a_resolved_alert_of_the_retired_rule_that_still_awaits_its_recovery_is_completed_without_a_notice(): void
+    {
+        $resolvedAt = now()->subHour();
+        DB::table('alert_events')->insert([
+            'rule' => 'backlog_depth:javbus', 'severity' => 'warning', 'value' => 1, 'threshold' => 10,
+            'started_at' => now()->subHours(2), 'resolved_at' => $resolvedAt,
+        ]);
+
+        (require database_path('migrations/2026_11_28_000001_retire_backlog_depth_alert.php'))->up();
+
+        $event = DB::table('alert_events')->where('rule', 'backlog_depth:javbus')->first();
+        self::assertNotNull($event->recovery_completed_at, 'The retired rule has no template, so a retried recovery would be empty.');
+        self::assertEquals($resolvedAt->getTimestamp(), \Carbon\CarbonImmutable::parse($event->resolved_at)->getTimestamp(), 'The time it was resolved stays.');
+    }
+
     public function test_the_migration_can_run_again_and_can_be_rolled_back(): void
     {
         $migration = require database_path('migrations/2026_11_28_000001_retire_backlog_depth_alert.php');
